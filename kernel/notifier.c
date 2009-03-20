@@ -90,13 +90,28 @@ static int __kprobes notifier_call_chain(struct notifier_block **nl,
 			continue;
 		}
 #endif
-		ret = nb->notifier_call(nb, val, v);
 
-		if (nr_calls)
-			(*nr_calls)++;
+		ret = NOTIFY_OK;
+		if (unlikely(nb->pre_handler)) {
+			ret = nb->pre_handler(nb, val, v);
+		}
 
-		if ((ret & NOTIFY_STOP_MASK) == NOTIFY_STOP_MASK)
-			break;
+		if (likely(ret == NOTIFY_OK)) {
+			ret = nb->notifier_call(nb, val, v);
+
+			if (nr_calls)
+				(*nr_calls)++;
+
+			if ((ret & NOTIFY_STOP_MASK) == NOTIFY_STOP_MASK)
+				break;
+		}
+
+		if (unlikely(nb->post_handler)) {
+			ret = nb->post_handler(nb, val, v);
+			if ((ret & NOTIFY_STOP_MASK) == NOTIFY_STOP_MASK)
+				break;
+		}
+
 		nb = next_nb;
 		nr_to_call--;
 	}
