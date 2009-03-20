@@ -21,6 +21,8 @@
 #define TRUE	0
 #define FALSE	(!TRUE)
 
+#define CPM_NAME_LEN	12
+
 typedef cpm_size	u8;
 
 
@@ -41,7 +43,7 @@ struct cpm_asm_opph {
  * struct cpm_asm_ddp - 
  */
 struct cpm_asm_ddp {
-	u8 seq;				/* updates count during a DDP */
+	u32 seq;				/* updates count during a DDP */
 	struct cpm_range *range;
 	struct timespec dt_benefit;
 }
@@ -60,8 +62,7 @@ struct cpm_asm_stats {
  * struct cpm_asm - 
  */
 struct cpm_asm {
-#define CPM_ASM_NAME_LEN	12
-	char name[CPM_ASM_NAME_LEN];
+	char name[CPM_NAME_LEN];
 	struct cpm_asm_ddp opph;
 	struct cpm_asm_ddp ddp;
 	struct cpm_asm_stats stats;
@@ -128,6 +129,7 @@ struct cpm_ddp_data {
  * struct cpm_governor - 
  */
 struct cpm_governor {
+	char name[CPM_NAME_LEN];
 	int (*update_validate)(struct cpm_device_block *, u8 idx);
 	int (*ddp_prehandler)(struct notifier_block *, unsigned long, void *);
 	int (*ddp_posthandler)(struct notifier_block *, unsigned long, void *);
@@ -173,7 +175,7 @@ int cpm_register_policy(struct cpm_policy *policy);
  * struct cpm_asm_params - 
  */
 struct cpm_asm_params {
-	char name[CPM_ASM_NAME_LEN];
+	char name[CPM_NAME_LEN];
 	cpm_asm_id id;			/* the ID of the ASM mapped */
 #define CPM_INTEREST_AFFECT		0
 #define CPM_INTEREST_INFLUENCE		1
