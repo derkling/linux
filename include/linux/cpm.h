@@ -126,12 +126,24 @@ struct cpm_ddp_gov_data {
 #define to_gov_data(data)					\
 	container_of(data, struct cpm_ddp_data, drv_data)
 
+/*
+ * The governor's visible data of an FSC 
+ */
+struct cpm_fsc {
+	cpm_asm_id id;		/* the ID for the FSC */
+	list_head asm_range;	/* the list of cpm_asm_range */
+	void * gov_data;	/* governor specific data */
+	list_head node;		/* the next cpm_asm_region */
+}
+
+
 /**
  * struct cpm_governor - 
  */
 struct cpm_governor {
 	char name[CPM_NAME_LEN];
 	int (*update_validate)(struct notifier_block *nb, cpm_asm_id asm_id);
+	int (*update_fsc_data)(list_head fsc_list);
 	int (*ddp_prehandler)(struct notifier_block *nb, unsigned long, void *);
 	int (*ddp_posthandler)(struct notifier_block *nb, unsigned long, void *);
 	int (*ddp_init)(struct cpm_ddp_data* ddp_data);
@@ -143,9 +155,14 @@ struct cpm_governor {
 #define CPM_DDP_BAD	NOTIFY_BAD
 
 /**
- * cpm_register_governor() -
+ *
  */
 int cpm_register_governor(struct cpm_governor *governor);
+
+/*
+ * Define the ordered FSC list to use for validation and  selection.
+ */
+int cpm_set_ordered_fsc_list(list_head *ordered_fsc_list);
 
 
 /*********************************************************************
@@ -172,16 +189,25 @@ int cpm_register_policy(struct cpm_policy *policy);
  *                      CPM DRIVER INTERFACE                         *
  *********************************************************************/
 
-/**
- * struct cpm_asm_params - 
- */
-struct cpm_asm_params {
-	char name[CPM_NAME_LEN];
-	cpm_asm_id id;			/* the ID of the ASM mapped */
-#define CPM_INTEREST_AFFECT		0
-#define CPM_INTEREST_INFLUENCE		1
-	u8 type:1;			/* interest (affect/influenced) */
+struct cpm_asm_range {
+	cpm_asm_id id;		/* The ASM */
+	cpm_range range;	/* The range in the corresponding ASM */
+	list_head node;		/* The next cpm_asm_range */
 }
+
+struct cpm_asm_region {
+	char name[CPM_NAME_LEN];	/* The name of a region */
+	cpm_asm_id id;			/* The ID for the region */
+	// NOTE this list should be ordered based on asm_range->id;
+	// Use the core provided functions to insert properly nodes
+	list_head asm_range;		/* The list of cpm_asm_range */
+	list_head node;			/* The next cpm_asm_region */
+}
+
+/*
+ * Insert the given asm_range into the specified ordered list.
+ */
+int cpm_add_asm_region(list_head *list, struct cpm_asm_range *range);
 
 /**
  * struct cpm_dev_data - 
@@ -204,24 +230,29 @@ struct cpm_ddp_drv_data {
 }
 
 /**
- * cpm_subscribe_asms() -
+ * 
  */
-int cpm_subscribe_asms(struct device *dev, struct cpm_dev_data *dev_data);
+int cpm_register_dwr(struct device *dev, list_head *dwrs);
 
 /**
- * cpm_unsubscribe_asms() -
+ *
  */
-int cpm_unsubscribe_asms(struct device *dev, cpm_asm_id asm_id);
+int cpm_release_dwr(struct device *dev);
 
 /**
- * cpm_release_asms() -
+ *
  */
-int cpm_release_asms(struct device *dev);
+int cpm_add_constraint(struct device *dev, cpm_asm_id asm_id, struct cpm_range * range);
 
 /**
- * cpm_update_asm() -
+ *
  */
-int cpm_update_asm(struct device *dev, cpm_asm_id asm_id, struct cpm_range * range);
+int cpm_update_constraint(struct device *dev, cpm_asm_id asm_id, struct cpm_range * range);
+
+/**
+ *
+ */
+int cpm_remove_constraint(struct device *dev, cpm_asm_id asm_id);
 
 #define MIN(a, b) ((u32)(a) < (u32)(b) ? (a) : (b))
 #define MAX(a, b) ((u32)(a) > (u32)(b) ? (a) : (b))
@@ -320,7 +351,7 @@ inline int cpm_update_ddp_range(struct cpm_range asms[], cpm_asm_id idx, struct 
 			break;
 		case CPM_ASM_TYPE_LBOUND:
 		case CPM_ASM_TYPE_UBOUND:
-			if ( cpm_verify_range(range, amsm[idx].lower)) == CPM_RANGE_ERROR ) {
+			if ( cpm_verify_range(range, amsm[idx].lower) == CPM_RANGE_ERROR ) {
 				ret = -EINVAL;
 			}
 			break;
