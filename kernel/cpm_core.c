@@ -37,7 +37,7 @@
 						"cpm-core", msg)
 
 struct cpm_asm_map {
-	cpm_asm_id id;			/* the ID of the ASM mapped */
+	cpm_id id;			/* the ID of the ASM mapped */
 	list_head node;
 }
 
@@ -89,7 +89,7 @@ struct cpm_constraint_request {
 }
 
 struct cpm_constraint {
-	cpm_asm_id id;		/* The index of the ASM */
+	cpm_id id;		/* The index of the ASM */
 	cpm_range cur;		/* The current tighter range for the ASM */
 	list_head *requests;	/* The requested values for this ASM */
 }
@@ -200,7 +200,7 @@ EXPORT_SYMBOL(cpm_debug_printk);
 
 /* Get a reference to the ASM corresponding to the specified id
  * or NULL if it don't exist */
-static struct cpm_asm * cpm_get_asm(cpm_asm_id asm_id) {
+static struct cpm_asm * cpm_get_asm(cpm_id asm_id) {
 
 	WARN_ON();
 	if (!platform) {
@@ -320,7 +320,7 @@ static struct cpm_dev_block* find_device_block(struct device *dev) {
 	return 0;
 }
 
-static struct cpm_asm_map * find_asm_map(struct cpm_dev_block * nb, cpm_asm_id id) {
+static struct cpm_asm_map * find_asm_map(struct cpm_dev_block * nb, cpm_id id) {
 	struct cpm_asm_map * asm;
 
 	list_for_each_entry(asm, nb->asm_list, node) {
@@ -343,19 +343,19 @@ int cpm_release_dwr(struct device *dev)
 }
 EXPORT_SYMBOL(cpm_release_dwr);
 
-int cpm_add_constraint(struct device *dev, cpm_asm_id asm_id, struct cpm_range * range)
+int cpm_add_constraint(struct device *dev, cpm_id asm_id, struct cpm_range * range)
 {
 	return 0;
 }
 EXPORT_SYMBOL(cpm_add_constraint);
 
-int cpm_update_constraint(struct device *dev, cpm_asm_id asm_id, struct cpm_range * range)
+int cpm_update_constraint(struct device *dev, cpm_id asm_id, struct cpm_range * range)
 {
 	return 0;
 }
 EXPORT_SYMBOL(cpm_update_constraint);
 
-int cpm_remove_constraint(struct device *dev, cpm_asm_id asm_id)
+int cpm_remove_constraint(struct device *dev, cpm_id asm_id)
 {
 	return 0;
 }

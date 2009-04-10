@@ -23,7 +23,7 @@
 
 #define CPM_NAME_LEN	12
 
-typedef cpm_asm_id	u8;
+typedef cpm_id	u8;
 
 
 /*********************************************************************
@@ -99,7 +99,7 @@ struct cpm_platform_data {
 	struct cpm_range cur_range[];	/* current ASM ranges (actual FSC) */ 
 	struct cpm_range ddp_range[];	/* ASM ranges during a DDP */	
 	struct cpm_asm	asms[];
-	cpm_asm_id count;			/* total number of platform ASMs */
+	cpm_id count;			/* total number of platform ASMs */
 }
 
 /**
@@ -130,7 +130,7 @@ struct cpm_ddp_gov_data {
  * The governor's visible data of an FSC 
  */
 struct cpm_fsc {
-	cpm_asm_id id;		/* the ID for the FSC */
+	cpm_id id;		/* the ID for the FSC */
 	list_head asm_range;	/* the list of cpm_asm_range */
 	void * gov_data;	/* governor specific data */
 	list_head node;		/* the next cpm_asm_region */
@@ -190,14 +190,14 @@ int cpm_register_policy(struct cpm_policy *policy);
  *********************************************************************/
 
 struct cpm_asm_range {
-	cpm_asm_id id;		/* The ASM */
+	cpm_id id;		/* The ASM */
 	cpm_range range;	/* The range in the corresponding ASM */
 	list_head node;		/* The next cpm_asm_range */
 }
 
 struct cpm_asm_region {
 	char name[CPM_NAME_LEN];	/* The name of a region */
-	cpm_asm_id id;			/* The ID for the region */
+	cpm_id id;			/* The ID for the region */
 	// NOTE this list should be ordered based on asm_range->id;
 	// Use the core provided functions to insert properly nodes
 	list_head asm_range;		/* The list of cpm_asm_range */
@@ -242,17 +242,18 @@ int cpm_release_dwr(struct device *dev);
 /**
  *
  */
-int cpm_add_constraint(struct device *dev, cpm_asm_id asm_id, struct cpm_range * range);
+int cpm_add_constraint(struct device *dev, cpm_id asm_id, struct cpm_range * range);
 
 /**
  *
  */
-int cpm_update_constraint(struct device *dev, cpm_asm_id asm_id, struct cpm_range * range);
+int cpm_update_constraint(struct device *dev, cpm_id asm_id, struct cpm_range * range);
 
 /**
  *
  */
-int cpm_remove_constraint(struct device *dev, cpm_asm_id asm_id);
+int cpm_remove_constraint(struct device *dev, cpm_id asm_id);
+
 
 #define MIN(a, b) ((u32)(a) < (u32)(b) ? (a) : (b))
 #define MAX(a, b) ((u32)(a) > (u32)(b) ? (a) : (b))
@@ -296,7 +297,7 @@ inline int cpm_verify_range(struct cpm_range *range, u32 value) {
 /**
  * Update the range for a specified ASM.
  */
-inline int cpm_update_ddp_range(struct cpm_range asms[], cpm_asm_id idx, struct cpm_range *range) {
+inline int cpm_update_ddp_range(struct cpm_range asms[], cpm_id idx, struct cpm_range *range) {
 	int ret = 0;
 
 	switch( asms[idx].type ) {
