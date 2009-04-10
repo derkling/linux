@@ -198,6 +198,187 @@ EXPORT_SYMBOL(cpm_debug_printk);
  *   CORE                                                                     *
  ******************************************************************************/
 
+#define MIN(a, b) ((u32)(a) < (u32)(b) ? (a) : (b))
+#define MAX(a, b) ((u32)(a) > (u32)(b) ? (a) : (b))
+
+#define CPM_RANGE_OK		TRUE
+#define CPM_RANGE_ERROR		FALSE
+/**
+ * Verify if the specified value is within the given range
+ * @range:	the range to consider for the check
+ * @value:	the value to check
+ *
+ * Long description...
+ *
+ * Return values: CPM_RANGE_ERROR if value is outside the range,
+ * CPM_RANGE_OK otherwise.
+ */
+int cpm_verify_range(struct cpm_range *range, u32 value) {
+	switch (range->type) {
+	case CPM_ASM_TYPE_RANGE:
+		if (value>range->upper)
+			return CPM_RANGE_ERROR;
+		if (value<range->lower)
+			return CPM_RANGE_ERROR;
+		break;
+	case CPM_ASM_TYPE_SINGLE:
+		if (value!=range->lower)
+			return CPM_RANGE_ERROR;
+		break;
+	case CPM_ASM_TYPE_LBOUND:
+		if (value<range->lower)
+			return CPM_RANGE_ERROR;
+		break;
+	case CPM_ASM_TYPE_UBOUND:
+		if (value>range->upper)
+			return CPM_RANGE_ERROR;
+		break;
+	}
+	return CPM_RANGE_OK;
+}
+
+/**
+ * Update the range for a specified ASM.
+ */
+int cpm_update_ddp_range(struct cpm_range asms[], cpm_id idx, struct cpm_range *range) {
+	int ret = 0;
+
+	switch( asms[idx].type ) {
+
+	case CPM_ASM_TYPE_RANGE:
+		switch( range.type ) {
+		case CPM_ASM_TYPE_RANGE:
+			if ( ( asms[idx].lower > range->upper ) ||
+					( asms[idx].upper < range->lower ) ) {
+				ret = -EINVAL;
+			} else {
+				asms[idx].lower = MAX(asms[idx].lower, range->lower);
+				asms[idx].upper = MIN(asms[idx].upper, range->upper);
+			}
+			break;
+		case CPM_ASM_TYPE_SINGLE:
+			if ( cpm_verify_range(&asms[idx], range->lower) == CPM_RANGE_ERROR ) {
+				ret = -EINVAL;
+			} else {
+				asms[idx].lower = range->lower;
+				asms[idx].type = CPM_ASM_TYPE_SINGLE;
+			}
+			break;
+		case CPM_ASM_TYPE_LBOUND:
+			if ( cpm_verify_range(&asms[idx], range->lower) == CPM_RANGE_ERROR ) {
+				ret = -EINVAL;
+			} else {
+				asms[idx].lower = range->lower;
+			}
+			break;
+		case CPM_ASM_TYPE_UBOUND:
+			if ( cpm_verify_range(&asms[idx], range->upper) == CPM_RANGE_ERROR ) {
+				ret = -EINVAL;
+			} else {
+				asms[idx].upper = range->upper;
+			}
+			break;
+		}
+		break;
+
+	case CPM_ASM_TYPE_SINGLE:
+		switch( range.type ) {
+		case CPM_ASM_TYPE_RANGE:
+			if ( cpm_verify_range(range, amsm[idx].lower) == CPM_RANGE_ERROR ) {
+				ret = -EINVAL;
+			}
+			break;
+		case CPM_ASM_TYPE_SINGLE:
+			if ( asms[idx].lower != range->lower ) {
+				ret = -EINVAL;
+			}	
+			break;
+		case CPM_ASM_TYPE_LBOUND:
+		case CPM_ASM_TYPE_UBOUND:
+			if ( cpm_verify_range(range, amsm[idx].lower) == CPM_RANGE_ERROR ) {
+				ret = -EINVAL;
+			}
+			break;
+		}
+		break;
+
+	case CPM_ASM_TYPE_LBOUND:
+		switch( range.type ) {
+		case CPM_ASM_TYPE_RANGE:
+			if ( cpm_verify_range(&asms[idx], range->lower)
+						== CPM_RANGE_ERROR ) {
+				ret = -EINVAL;
+			} else {
+				asms[idx].lower = MAX(asms[idx].lower, range->lower);
+				asms[idx].upper = range->upper;
+				asms[idx].type = CPM_ASM_TYPE_RANGE;
+			}
+			break;
+
+		case CPM_ASM_TYPE_SINGLE:
+			if ( cpm_verify_range(&asms[idx], range->lower)
+						== CPM_RANGE_ERROR ) {
+				ret = -EINVAL;
+			} else {
+				asms[idx].lower = range->lower;
+				asms[idx].type = CPM_ASM_TYPE_SINGLE;
+			}
+			break;
+		case CPM_ASM_TYPE_LBOUND:
+			asms[idx].lower = MAX(asms[idx].lower, range->lower);
+			break;
+		case CPM_ASM_TYPE_UBOUND:
+			if ( cpm_verify_range(&asms[idx], range->upper)
+						== CPM_RANGE_ERROR ) {
+				ret = -EINVAL;
+			} else {
+				asms[idx].upper = range->upper;
+				asms[idx].type = CPM_ASM_TYPE_RANGE;
+			}
+			break;
+		}
+
+	case CPM_ASM_TYPE_UBOUND:
+		switch( range.type ) {
+		case CPM_ASM_TYPE_RANGE:
+			if ( cpm_verify_range(&asms[idx], range->lower)
+						== CPM_RANGE_ERROR ) {
+				ret = -EINVAL;
+			} else {
+				asms[idx].upper = MIN(asms[idx].upper, range->upper);
+				asms[idx].lower = range->lower;
+				asms[idx].type = CPM_ASM_TYPE_RANGE;
+			}
+			break;
+		case CPM_ASM_TYPE_SINGLE:
+			if ( cpm_verify_range(&asms[idx], range->lower)
+						== CPM_RANGE_ERROR ) {
+				ret = -EINVAL;
+			} else {
+				asms[idx].lower = range->lower;
+				asms[idx].type = CPM_ASM_TYPE_SINGLE;
+			}
+			break;
+		case CPM_ASM_TYPE_LBOUND:
+			if ( cpm_verify_range(&asms[idx], range->lower)
+						== CPM_RANGE_ERROR ) {
+				ret = -EINVAL;
+			} else {
+				asms[idx].lower = range->lower;
+				asms[idx].type = CPM_ASM_TYPE_RANGE;
+			}
+			break;
+		case CPM_ASM_TYPE_UBOUND:
+			asms[idx].upper = MAX(asms[idx].upper, range->upper);
+			break;
+		}
+	}
+
+	return ret;
+
+}
+
+
 /* Get a reference to the ASM corresponding to the specified id
  * or NULL if it don't exist */
 static struct cpm_asm * cpm_get_asm(cpm_id asm_id) {
