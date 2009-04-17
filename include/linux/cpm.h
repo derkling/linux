@@ -45,7 +45,7 @@ struct cpm_range {
 }
 
 /**
- * struct cpm_asm_opph - 
+ * 
  */
 struct cpm_asm_opph {
 	u32 value;			/* NOTE è ridondante */
@@ -54,31 +54,11 @@ struct cpm_asm_opph {
 }
 
 /**
- * struct cpm_asm_ddp - 
- */
-struct cpm_asm_ddp {
-	u32 seq;				/* updates count during a DDP */
-	struct cpm_range *range;
-}
-
-/**
- * struct cpm_asm_stats - 
- */
-struct cpm_asm_stats {
-	struct timespec t_update;	/* timestamp of last update */
-	u32 violations;			/* violations count for this ASM */
-	u32 min_value;			/* minimum value used for this ASM */
-	u32 max_value;			/* maximum value used for this ASM */
-}
-
-/**
- * struct cpm_asm - 
+ * 
  */
 struct cpm_asm {
 	char name[CPM_NAME_LEN];
 	struct cpm_asm_ddp opph;
-	struct cpm_asm_ddp ddp;		/* DDP data for an ASM */
-	struct cpm_asm_stats stats;
 	void *data;			/* governor specific data */
 #define CPM_TYPE_LIB	0
 #define CPM_TYPE_GIB	1
@@ -93,7 +73,7 @@ struct cpm_asm {
 
 
 /**
- * struct cpm_platform_data - 
+ * 
  */
 struct cpm_platform_data {
 	struct cpm_range cur_range[];	/* current ASM ranges (actual FSC) */ 
@@ -103,7 +83,7 @@ struct cpm_platform_data {
 }
 
 /**
- * cpm_register_platform_asms() -
+ * 
  */
 int cpm_register_platform_asms(cpm_platform_data *asm_data);
 
@@ -113,40 +93,50 @@ int cpm_register_platform_asms(cpm_platform_data *asm_data);
  *                          CPM GOVERNORS                            *
  *********************************************************************/
 
-extern struct cpm_ddp_drv_data;
-/**
- * struct cpm_ddp_data - 
- */
-struct cpm_ddp_gov_data {
-	struct cpm_ddp_drv_data drv_data;	/* driver DDP data*/
-}
-
-#define to_gov_data(data)					\
-	container_of(data, struct cpm_ddp_data, drv_data)
+extern struct cpm_asm_region;
 
 /*
- * The governor's visible data of an FSC 
+ * A system FSC
  */
 struct cpm_fsc {
-	cpm_id id;		/* the ID for the FSC */
-	list_head asm_range;	/* the list of cpm_asm_range */
-	void * gov_data;	/* governor specific data */
-	list_head node;		/* the next cpm_asm_region */
+	struct cpm_asm_region region;	/* A FSC */
+	void *gov_data;			/* governor specific data */
+	void *pol_data;			/* policy specific data */
+	list_head node;			/* the next cpm_asm_region */
 }
 
+/*
+ * A device DWR
+ */
+struct cpm_dev_dwr {
+	struct cpm_asm_region region;	/* A DWR */
+	void *gov_data;			/* governor specific data */
+	void *pol_data;			/* policy specific data */
+	list_head node;			/* The next cpm_asm_region */
+}
+
+/*
+ * The public visible data of a device register to CPM
+ */
+struct cpm_dev {
+	struct device *dev;		/* the device interested */
+	list_head dwr_list;		/* list of cpm_dev_dwr */
+	void *gov_data;			/* governor specific data */
+	void *pol_data;			/* policy specific data */
+	list_head node;			/* the next cpm_dev in the list */
+}
 
 /**
- * 
+ * A CPM Governor
+ *
+ * Basically define the list of available FSC with an algorithm that identify
+ * all the system available FSC according to an identification strategy.
  */
 struct cpm_governor {
 	char name[CPM_NAME_LEN];
-	int (*update_fsc_data)(list_head fsc_list);
-	int (*ddp_handler)(unsigned long, void *);
+	int (*build_fsc_list)(list_head *dev_list, list_head *fsc_list);
 }
 
-#define CPM_DDP_DONE	NOTIFY_DONE
-#define CPM_DDP_OK	NOTIFY_OK
-#define CPM_DDP_BAD	NOTIFY_BAD
 
 /**
  *
@@ -164,11 +154,18 @@ int cpm_set_ordered_fsc_list(list_head *ordered_fsc_list);
  *********************************************************************/
 
 /**
- * The policy define the algorithm to use to identify FSC 
+ * A CPM Policy
+ *
+ * Basically define a FSCs ordering strategy and a system
+ * configuration switching supervisor.
  */
 struct cpm_policy {
-	int (*update_fsc_list)(/*TO BE DEFINED*/);
-	u8 check_type:1;
+	char name[CPM_NAME_LEN];
+	int (*sort_fsc_list)(list_head *fsc_list);
+#define CPM_DDP_DONE	NOTIFY_DONE
+#define CPM_DDP_OK	NOTIFY_OK
+#define CPM_DDP_BAD	NOTIFY_BAD
+	int (*ddp_handler)(unsigned long, void *);
 }
 
 
@@ -185,18 +182,17 @@ int cpm_register_policy(struct cpm_policy *policy);
  *********************************************************************/
 
 struct cpm_asm_range {
-	cpm_id id;		/* The ASM */
+	cpm_id id;		/* The ID of the ASM */
 	cpm_range range;	/* The range in the corresponding ASM */
 	list_head node;		/* The next cpm_asm_range */
 }
 
 struct cpm_asm_region {
-	char name[CPM_NAME_LEN];	/* The name of a region */
 	cpm_id id;			/* The ID for the region */
-	// NOTE this list should be ordered based on asm_range->id;
-	// Use the core provided functions to insert properly nodes
+	char name[CPM_NAME_LEN];	/* The name of a region */
+	// NOTE the following list should be ordered based on asm_range->id.
+	// Use the core provided functions properly insert new nodes.
 	list_head asm_range;		/* The list of cpm_asm_range */
-	list_head node;			/* The next cpm_asm_region */
 }
 
 /*

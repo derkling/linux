@@ -41,38 +41,21 @@ struct cpm_asm_map {
 	list_head node;
 }
 
-struct cpm_dev_stats {
-	u32 ddp_start_count;		/* How many time the device has started a ddp */
-	u32 ddp_done_count;
-	u32 ddp_ok_count;
-	u32 ddp_bad_count;
-	struct timespec avg_resp_time;
-}
-
-struct cpm_dev_dwr {
-	struct cpm_asm_region dwr;	/* A DWR */
-	/* TODO core or governor specific data */
-}
-
-struct cpm_dev_block {
-	struct device *dev;		/* the device interested */
-	struct notifier_block nb;
-	list_head asm_list;		/* list of ASM that belongs to at least one DWR */
-	list_head dwr_list;		/* list of DWRs */
-	list_head node;			/* the next cpm_dev_block in the list */
-	struct cpm_dev_stats stats;	/* statistics on DDP */
-	u8 ddp_suspended:1;		/* the device has a DDP pending */ 
+struct cpm_dev_core {
+	struct cpm_dev dev;		/* the public accessible data */
+	struct notifier_block nb;	/* the notifer chain block */
+	list_head asm_list;		/* list of cpm_asm_map that belongs to at least one DWR */
 }
 
 struct cpm_fsc_dwr {
 	struct cpm_dev_dwr *dwr;	/* a DWR mapping to an FSC */
-	struct cpm_dev_block *dev;	/* the device to which this DWR belongs */
+	struct cpm_dev_core *dev;	/* the device to which this DWR belongs */
 	list_head node;			/* the DWR for the next device */
 }
 
 struct cpm_fsc_core {
 	struct cpm_fsc fsc;	/* public FSC data */
-	list_head dwrs_list;	/* the set of DWR that maps to this FSC */
+	list_head dwr_list;	/* the list of cpm_fsc_dwr that maps to this FSC */
 }
 
 struct cpm_constraint_request {
@@ -143,7 +126,6 @@ static unsigned int debug_ratelimit = 1;
  */
 static unsigned int disable_ratelimit = 1;
 static DEFINE_MUTEX(disable_ratelimit_mutex);
-
 static void cpm_debug_enable_ratelimit(void)
 {
 	unsigned long flags;
@@ -401,11 +383,11 @@ static struct cpm_range
  * To identify last time we seen an ASM value its sequence number is used.
  */
 static int __ddp_prehandler(struct notifier_block * nb, unsigned long run, void * ddp_data) {
-	struct cpm_dev_block * cdb = 0; 
+	struct cpm_dev_core * cdb = 0; 
 	struct cpm_asm_map * asm = 0;
 	int ret = NOTIFY_JUMP;
 
-	cdb = container_of(nb, struct cpm_dev_block, nb);
+	cdb = container_of(nb, struct cpm_dev_core, nb);
 
 	/* check if it exist an ASM that has been updated after last time this
 	 * device has checked it (ddp seq number has increased) */
@@ -488,10 +470,10 @@ EXPORT_SYMBOL(cpm_register_governor);
  *                      CPM DRIVER                                   *
  *********************************************************************/
 
-/* Find the cpm_dev_block for the specified device, or null if the device 
+/* Find the cpm_dev_core for the specified device, or null if the device 
  * has never registered an ASM before */
-static struct cpm_dev_block* find_device_block(struct device *dev) {
-	struct cpm_dev_block * nb;
+static struct cpm_dev_core* find_device_block(struct device *dev) {
+	struct cpm_dev_core * nb;
 
 	list_for_each_entry(nb, dev_list, node) {
 		if (nb->dev==dev)
@@ -501,7 +483,7 @@ static struct cpm_dev_block* find_device_block(struct device *dev) {
 	return 0;
 }
 
-static struct cpm_asm_map * find_asm_map(struct cpm_dev_block * nb, cpm_id id) {
+static struct cpm_asm_map * find_asm_map(struct cpm_dev_core * nb, cpm_id id) {
 	struct cpm_asm_map * asm;
 
 	list_for_each_entry(asm, nb->asm_list, node) {
