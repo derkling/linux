@@ -477,7 +477,7 @@ static struct cpm_dev_core* find_device_block(struct device *dev) {
 	struct cpm_dev_core * nb;
 
 	list_for_each_entry(nb, &dev_list, asm_list) {
-		if ( (nb.dev->dev) == dev )
+		if ( (nb->dev.dev) == dev )
 			return nb;
 	}
 

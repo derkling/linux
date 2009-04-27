@@ -43,7 +43,7 @@ struct cpm_range {
 #define CPM_ASM_TYPE_UBOUND		3
 	u8 type:2;
 
-}
+};
 
 /**
  * 
