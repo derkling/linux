@@ -17,13 +17,14 @@
 
 #include <linux/notifier.h>
 #include <linux/time.h>
+#include <linux/types.h>
 
 #define TRUE	1
 #define FALSE	(!TRUE)
 
 #define CPM_NAME_LEN	12
 
-typedef cpm_id	u8;
+typedef u8 cpm_id;
 
 
 /*********************************************************************
@@ -51,14 +52,13 @@ struct cpm_asm_opph {
 	u32 value;			/* NOTE è ridondante */
 	struct cpm_range *range;
 	struct timespec dt_benefit;
-}
+};
 
 /**
  * 
  */
 struct cpm_asm {
 	char name[CPM_NAME_LEN];
-	struct cpm_asm_ddp opph;
 	void *data;			/* governor specific data */
 #define CPM_TYPE_LIB	0
 #define CPM_TYPE_GIB	1
@@ -69,31 +69,29 @@ struct cpm_asm {
 #define CPM_COMPOSITION_ADDICTIVE	0
 #define CPM_COMPOSITION_RESTRICTIVE	1
 	u8 comp:1;
-}
+};
+
+struct cpm_asm_region {
+	cpm_id id;			/* The ID for the region */
+	char name[CPM_NAME_LEN];	/* The name of a region */
+	// NOTE the following list should be ordered based on asm_range->id.
+	// Use the core provided functions properly insert new nodes.
+	struct list_head asm_range;	/* The list of cpm_asm_range */
+};
 
 
 /**
  * 
  */
 struct cpm_platform_data {
-	struct cpm_range cur_range[];	/* current ASM ranges (actual FSC) */ 
-	struct cpm_range ddp_range[];	/* ASM ranges during a DDP */	
-	struct cpm_asm	asms[];
-	cpm_id count;			/* total number of platform ASMs */
-}
-
-/**
- * 
- */
-int cpm_register_platform_asms(cpm_platform_data *asm_data);
-
-
+	cpm_id count;	/*total number of platform ASMs*/
+	// flexible array not at the end of the struct 
+	struct cpm_asm	*asms;
+};
 
 /*********************************************************************
  *                          CPM GOVERNORS                            *
  *********************************************************************/
-
-extern struct cpm_asm_region;
 
 /*
  * A system FSC
@@ -102,8 +100,8 @@ struct cpm_fsc {
 	struct cpm_asm_region region;	/* A FSC */
 	void *gov_data;			/* governor specific data */
 	void *pol_data;			/* policy specific data */
-	list_head node;			/* the next cpm_asm_region */
-}
+	struct list_head node;		/* the next cpm_asm_region */
+};
 
 /*
  * A device DWR
@@ -112,19 +110,19 @@ struct cpm_dev_dwr {
 	struct cpm_asm_region region;	/* A DWR */
 	void *gov_data;			/* governor specific data */
 	void *pol_data;			/* policy specific data */
-	list_head node;			/* The next cpm_asm_region */
-}
+	struct list_head node;		/* The next cpm_asm_region */
+};
 
 /*
  * The public visible data of a device register to CPM
  */
 struct cpm_dev {
 	struct device *dev;		/* the device interested */
-	list_head dwr_list;		/* list of cpm_dev_dwr */
+	struct list_head dwr_list;	/* list of cpm_dev_dwr */
 	void *gov_data;			/* governor specific data */
 	void *pol_data;			/* policy specific data */
-	list_head node;			/* the next cpm_dev in the list */
-}
+	struct list_head node;		/* the next cpm_dev in the list */
+};
 
 /**
  * A CPM Governor
@@ -134,19 +132,14 @@ struct cpm_dev {
  */
 struct cpm_governor {
 	char name[CPM_NAME_LEN];
-	int (*build_fsc_list)(list_head *dev_list, list_head *fsc_list);
-}
+	int (*build_fsc_list)(struct list_head *dev_list, struct list_head *fsc_list);
+};
 
-
-/**
- *
- */
-int cpm_register_governor(struct cpm_governor *governor);
 
 /*
- * Define the ordered FSC list to use for validation and selection.
+ * Register a governor to cpm_core
  */
-int cpm_set_ordered_fsc_list(list_head *ordered_fsc_list);
+int cpm_register_governor(struct cpm_governor *governor);
 
 
 /*********************************************************************
@@ -159,14 +152,19 @@ int cpm_set_ordered_fsc_list(list_head *ordered_fsc_list);
  * Basically define a FSCs ordering strategy and a system
  * configuration switching supervisor.
  */
+
+
+int cpm_register_platform_asms(struct cpm_platform_data *asm_data);
+
+
 struct cpm_policy {
 	char name[CPM_NAME_LEN];
-	int (*sort_fsc_list)(list_head *fsc_list);
+	int (*sort_fsc_list)(struct list_head *fsc_list);
 #define CPM_DDP_DONE	NOTIFY_DONE
 #define CPM_DDP_OK	NOTIFY_OK
 #define CPM_DDP_BAD	NOTIFY_BAD
 	int (*ddp_handler)(unsigned long, void *);
-}
+};
 
 
 /**
@@ -175,6 +173,11 @@ struct cpm_policy {
 int cpm_register_policy(struct cpm_policy *policy);
 
 
+/*
+ * Define the ordered FSC list to use for validation and selection.
+ */
+int cpm_set_ordered_fsc_list(struct list_head *ordered_fsc_list);
+
 
 
 /*********************************************************************
@@ -182,23 +185,15 @@ int cpm_register_policy(struct cpm_policy *policy);
  *********************************************************************/
 
 struct cpm_asm_range {
-	cpm_id id;		/* The ID of the ASM */
-	cpm_range range;	/* The range in the corresponding ASM */
-	list_head node;		/* The next cpm_asm_range */
-}
-
-struct cpm_asm_region {
-	cpm_id id;			/* The ID for the region */
-	char name[CPM_NAME_LEN];	/* The name of a region */
-	// NOTE the following list should be ordered based on asm_range->id.
-	// Use the core provided functions properly insert new nodes.
-	list_head asm_range;		/* The list of cpm_asm_range */
-}
+	cpm_id id;			/* The ID of the ASM */
+	struct cpm_range range;		/* The range in the corresponding ASM */
+	struct list_head node;		/* The next cpm_asm_range */
+};
 
 /*
  * Insert the given asm_range into the specified ordered list.
  */
-int cpm_add_asm_region(list_head *list, struct cpm_asm_range *range);
+int cpm_add_asm_region(struct list_head *list, struct cpm_asm_range *range);
 
 /**
  * Device specific data for CPM registration.
@@ -210,15 +205,15 @@ struct cpm_dev_data {
 #define CPM_EVENT_PRE_CHANGE		3
 #define CPM_EVENT_POST_CHANGE		4
 	int (*notifier_call)(struct notifier_block *, unsigned long, void *);
-	list_head *dwrs;
-}
+	struct list_head *dwrs;
+};
 
 /**
  * The data that the core provide to devices during a DDP.
  */
 struct cpm_ddp_drv_data {
 	struct cpm_fsc * fsc;
-}
+};
 
 /**
  * Register a device and its DWRs.

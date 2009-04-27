@@ -27,55 +27,59 @@
  * Patrick Bellasi <derkling@gmail.com>
  */
 
-#include <linux/cpm.h>
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/init.h>
+#include <linux/kallsyms.h>
 #include <linux/notifier.h>
 #include <linux/mutex.h>
 #include <linux/string.h>
 #include <linux/list.h>
+#include <linux/cpm.h>
 
 #define dprintk(msg...) cpm_debug_printk(CPM_DEBUG_CORE, \
 						"cpm-core", msg)
 
 struct cpm_asm_map {
 	cpm_id id;			/* the ID of the ASM mapped */
-	list_head node;
-}
+	struct list_head node;
+};
 
 struct cpm_dev_core {
 	struct cpm_dev dev;		/* the public accessible data */
 	struct notifier_block nb;	/* the notifer chain block */
-	list_head asm_list;		/* list of cpm_asm_map that belongs to at least one DWR */
-}
+	struct list_head asm_list;	/* list of cpm_asm_map that belongs to at least one DWR */
+};
 
 struct cpm_fsc_dwr {
 	struct cpm_dev_dwr *dwr;	/* a DWR mapping to an FSC */
 	struct cpm_dev_core *dev;	/* the device to which this DWR belongs */
-	list_head node;			/* the DWR for the next device */
-}
+	struct list_head node;			/* the DWR for the next device */
+};
 
 struct cpm_fsc_core {
-	struct cpm_fsc fsc;	/* public FSC data */
-	list_head dwr_list;	/* the list of cpm_fsc_dwr that maps to this FSC */
-}
+	struct cpm_fsc fsc;		/* public FSC data */
+	struct list_head dwr_list;	/* the list of cpm_fsc_dwr that maps to this FSC */
+};
 
 struct cpm_constraint_request {
-	cpm_range range;
+	struct cpm_range range;
 #define CPM_CONSTRAINT_APP	0
 #define CPM_CONSTRAINT_DRV	1
 	u8 type:1;
 	union {
 		struct process* app;
 		struct device* drv;
-	} 			/* A reference to the request applicant
+	}; 			/* A reference to the request applicant
 				   ("current" for APP, device* for DRV) */
-	list_head node;		/* The next request */
-}
+	struct list_head node;	/* The next request */
+};
 
 struct cpm_constraint {
-	cpm_id id;		/* The index of the ASM */
-	cpm_range cur;		/* The current tighter range for the ASM */
-	list_head *requests;	/* The requested values for this ASM */
-}
+	cpm_id id;			/* The index of the ASM */
+	struct cpm_range cur;		/* The current tighter range for the ASM */
+	struct list_head *requests;	/* The requested values for this ASM */
+};
 
 /* Platform specific ASMs */
 static struct cpm_platform_data *platform = 0;
@@ -175,6 +179,7 @@ void cpm_debug_printk(unsigned int type, const char *prefix,
 	}
 }
 EXPORT_SYMBOL(cpm_debug_printk);
+#endif
 
 /******************************************************************************
  *   CORE                                                                     *
@@ -182,14 +187,28 @@ EXPORT_SYMBOL(cpm_debug_printk);
 
 #define MIN(a, b) ((u32)(a) < (u32)(b) ? (a) : (b))
 #define MAX(a, b) ((u32)(a) > (u32)(b) ? (a) : (b))
+/* Get a reference to the ASM corresponding to the specified id
+ * or NULL if it don't exist */
+static struct cpm_asm * cpm_get_asm(cpm_id asm_id) {
+	if (!platform) {
+		return 0;
+	}
+
+	if (asm_id > platform->count) {
+		return 0;
+	}
+	 
+	return &(platform->asms[asm_id]);
+}
 
 #define CPM_RANGE_OK		TRUE
 #define CPM_RANGE_ERROR		FALSE
+
 /**
  * Verify if the specified value is within the given range
  * @range:	the range to consider for the check
  * @value:	the value to check
- *
+ * 
  * Long description...
  *
  * Return values: CPM_RANGE_ERROR if value is outside the range,
@@ -218,66 +237,71 @@ int cpm_verify_range(struct cpm_range *range, u32 value) {
 	}
 	return CPM_RANGE_OK;
 }
+EXPORT_SYMBOL(cpm_verify_range);
 
-/**
- * Update the range for a specified ASM.
+/*
+ * Merge two cpm_range
+ * @first:	first cpm_range, also used to return the result
+ * @second:	second cpm_range to be merged with the first
+ *
+ * Return values: -EINVAL if the two ranges can't be merged, 0 if merge is ok
  */
-int cpm_update_ddp_range(struct cpm_range asms[], cpm_id idx, struct cpm_range *range) {
+int merge_cpm_range(struct cpm_range *first, struct cpm_range *second) {
 	int ret = 0;
 
-	switch( asms[idx].type ) {
+	switch( first->type ) {
 
 	case CPM_ASM_TYPE_RANGE:
-		switch( range.type ) {
+		switch( second->type ) {
 		case CPM_ASM_TYPE_RANGE:
-			if ( ( asms[idx].lower > range->upper ) ||
-					( asms[idx].upper < range->lower ) ) {
+			if ( ( first->lower > second->upper ) ||
+					( first->upper < second->lower ) ) {
 				ret = -EINVAL;
 			} else {
-				asms[idx].lower = MAX(asms[idx].lower, range->lower);
-				asms[idx].upper = MIN(asms[idx].upper, range->upper);
+				first->lower = MAX(first->lower, second->lower);
+				first->upper = MIN(first->upper, second->upper);
 			}
 			break;
 		case CPM_ASM_TYPE_SINGLE:
-			if ( cpm_verify_range(&asms[idx], range->lower) == CPM_RANGE_ERROR ) {
+			if ( cpm_verify_range(first, second->lower) == CPM_RANGE_ERROR ) {
 				ret = -EINVAL;
 			} else {
-				asms[idx].lower = range->lower;
-				asms[idx].type = CPM_ASM_TYPE_SINGLE;
+				first->lower = second->lower;
+				first->type = CPM_ASM_TYPE_SINGLE;
 			}
 			break;
 		case CPM_ASM_TYPE_LBOUND:
-			if ( cpm_verify_range(&asms[idx], range->lower) == CPM_RANGE_ERROR ) {
+			if ( cpm_verify_range(first, second->lower) == CPM_RANGE_ERROR ) {
 				ret = -EINVAL;
 			} else {
-				asms[idx].lower = range->lower;
+				first->lower = second->lower;
 			}
 			break;
 		case CPM_ASM_TYPE_UBOUND:
-			if ( cpm_verify_range(&asms[idx], range->upper) == CPM_RANGE_ERROR ) {
+			if ( cpm_verify_range(first, second->upper) == CPM_RANGE_ERROR ) {
 				ret = -EINVAL;
 			} else {
-				asms[idx].upper = range->upper;
+				first->upper = second->upper;
 			}
 			break;
 		}
 		break;
 
 	case CPM_ASM_TYPE_SINGLE:
-		switch( range.type ) {
+		switch( second->type ) {
 		case CPM_ASM_TYPE_RANGE:
-			if ( cpm_verify_range(range, amsm[idx].lower) == CPM_RANGE_ERROR ) {
+			if ( cpm_verify_range(second, first->lower) == CPM_RANGE_ERROR ) {
 				ret = -EINVAL;
 			}
 			break;
 		case CPM_ASM_TYPE_SINGLE:
-			if ( asms[idx].lower != range->lower ) {
+			if ( first->lower != second->lower ) {
 				ret = -EINVAL;
 			}	
 			break;
 		case CPM_ASM_TYPE_LBOUND:
 		case CPM_ASM_TYPE_UBOUND:
-			if ( cpm_verify_range(range, amsm[idx].lower) == CPM_RANGE_ERROR ) {
+			if ( cpm_verify_range(second, first->lower) == CPM_RANGE_ERROR ) {
 				ret = -EINVAL;
 			}
 			break;
@@ -285,73 +309,71 @@ int cpm_update_ddp_range(struct cpm_range asms[], cpm_id idx, struct cpm_range *
 		break;
 
 	case CPM_ASM_TYPE_LBOUND:
-		switch( range.type ) {
+		switch( second->type ) {
 		case CPM_ASM_TYPE_RANGE:
-			if ( cpm_verify_range(&asms[idx], range->lower)
-						== CPM_RANGE_ERROR ) {
+			if ( cpm_verify_range(first, second->lower) == CPM_RANGE_ERROR ) {
 				ret = -EINVAL;
 			} else {
-				asms[idx].lower = MAX(asms[idx].lower, range->lower);
-				asms[idx].upper = range->upper;
-				asms[idx].type = CPM_ASM_TYPE_RANGE;
+				first->lower = MAX(first->lower, second->lower);
+				first->upper = second->upper;
+				first->type = CPM_ASM_TYPE_RANGE;
 			}
 			break;
 
 		case CPM_ASM_TYPE_SINGLE:
-			if ( cpm_verify_range(&asms[idx], range->lower)
+			if ( cpm_verify_range(first, second->lower)
 						== CPM_RANGE_ERROR ) {
 				ret = -EINVAL;
 			} else {
-				asms[idx].lower = range->lower;
-				asms[idx].type = CPM_ASM_TYPE_SINGLE;
+				first->lower = second->lower;
+				first->type = CPM_ASM_TYPE_SINGLE;
 			}
 			break;
 		case CPM_ASM_TYPE_LBOUND:
-			asms[idx].lower = MAX(asms[idx].lower, range->lower);
+			first->lower = MAX(first->lower, second->lower);
 			break;
 		case CPM_ASM_TYPE_UBOUND:
-			if ( cpm_verify_range(&asms[idx], range->upper)
-						== CPM_RANGE_ERROR ) {
+			if ( cpm_verify_range(first, second->upper) == CPM_RANGE_ERROR ) {
 				ret = -EINVAL;
 			} else {
-				asms[idx].upper = range->upper;
-				asms[idx].type = CPM_ASM_TYPE_RANGE;
+				first->upper = second->upper;
+				first->type = CPM_ASM_TYPE_RANGE;
 			}
 			break;
 		}
 
 	case CPM_ASM_TYPE_UBOUND:
-		switch( range.type ) {
+		switch( second->type ) {
 		case CPM_ASM_TYPE_RANGE:
-			if ( cpm_verify_range(&asms[idx], range->lower)
+			if ( cpm_verify_range(first, second->lower)
 						== CPM_RANGE_ERROR ) {
 				ret = -EINVAL;
 			} else {
-				asms[idx].upper = MIN(asms[idx].upper, range->upper);
-				asms[idx].lower = range->lower;
-				asms[idx].type = CPM_ASM_TYPE_RANGE;
+				first->upper = MIN(first->upper, second->upper);
+				first->lower = second->lower;
+				first->type = CPM_ASM_TYPE_RANGE;
 			}
 			break;
 		case CPM_ASM_TYPE_SINGLE:
-			if ( cpm_verify_range(&asms[idx], range->lower)
+			if ( cpm_verify_range(first, second->lower)
 						== CPM_RANGE_ERROR ) {
 				ret = -EINVAL;
 			} else {
-				asms[idx].lower = range->lower;
-				asms[idx].type = CPM_ASM_TYPE_SINGLE;
+				first->lower = second->lower;
+				first->type = CPM_ASM_TYPE_SINGLE;
 			}
 			break;
 		case CPM_ASM_TYPE_LBOUND:
-			if ( cpm_verify_range(&asms[idx], range->lower)
+			if ( cpm_verify_range(first, second->lower)
 						== CPM_RANGE_ERROR ) {
 				ret = -EINVAL;
 			} else {
-				asms[idx].lower = range->lower;
-				asms[idx].type = CPM_ASM_TYPE_RANGE;
+				first->lower = second->lower;
+				first->type = CPM_ASM_TYPE_RANGE;
 			}
 			break;
 		case CPM_ASM_TYPE_UBOUND:
-			asms[idx].upper = MAX(asms[idx].upper, range->upper);
+			first->upper = MAX(first->upper, second->upper);
 			break;
 		}
 	}
@@ -359,70 +381,14 @@ int cpm_update_ddp_range(struct cpm_range asms[], cpm_id idx, struct cpm_range *
 	return ret;
 
 }
-
-
-/* Get a reference to the ASM corresponding to the specified id
- * or NULL if it don't exist */
-static struct cpm_asm * cpm_get_asm(cpm_id asm_id) {
-
-	WARN_ON();
-	if (!platform) {
-		WARN_ON
-		return 0;
-	}
-
-	if (asm_id > platform->count) 
-}
-
-static struct cpm_range
-
-/*
- * Verify if a specified device should be notified during a DDP
- * A device has to be notified only if one of the ASM to witch it is
- * subscribed has been updated since last time it has observed its values.
- * To identify last time we seen an ASM value its sequence number is used.
- */
-static int __ddp_prehandler(struct notifier_block * nb, unsigned long run, void * ddp_data) {
-	struct cpm_dev_core * cdb = 0; 
-	struct cpm_asm_map * asm = 0;
-	int ret = NOTIFY_JUMP;
-
-	cdb = container_of(nb, struct cpm_dev_core, nb);
-
-	/* check if it exist an ASM that has been updated after last time this
-	 * device has checked it (ddp seq number has increased) */
-	list_for_each_entry(asm, cdb->asm_list, node) {
-		if (asm->seq < (platform->asms)[asm->id].ddp.seq) {
-			ret = NOTIFY_OK;
-			break;
-		}
-	}
-
-	if ( ret == NOTIFY_OK ) {
-		/* call the (eventually defined) governor pre-handler */
-		if (governor->ddp_prehandler)
-			governor->ddp_prehandler(nb, run, ddp_data);
-	}
-
-	/* all ASMs to witch this device has subscribed has not been updated since
-	 * last call: this JUMP this device callback */
-	return ret;
-}
-
-static int __ddp_posthandler(struct notifier_block * nb, unsigned long run, void * ddp_data) {
-	
-	if (governor->ddp_posthandler)
-		governor->ddp_posthandler(nb, run, ddp_data);
-	
-	return 0;
-}
+EXPORT_SYMBOL(merge_cpm_range);
 
 
 /******************************************************************************
  *   CPM PLATFORM                                                             *
  ******************************************************************************/
 
-int cpm_register_platform_asms(cpm_platform_data *cpd) {
+int cpm_register_platform_asms(struct cpm_platform_data *cpd) {
 	
 	if (!cpd)
 		return -EINVAL;
@@ -445,7 +411,7 @@ EXPORT_SYMBOL(cpm_register_platform_asms);
 
 
 /******************************************************************************
- *   CPM GOVERNORS                                                            *
+ *				CPM GOVERNORS                                 *
  ******************************************************************************/
 
 int cpm_register_governor(struct cpm_governor *cg) {
@@ -466,8 +432,43 @@ int cpm_register_governor(struct cpm_governor *cg) {
 EXPORT_SYMBOL(cpm_register_governor);
 
 
+/******************************************************************************
+ *				CPM POLICIES				      *
+ ******************************************************************************/
+
+int cpm_register_policy(struct cpm_policy *cp) {
+
+	if (!cp)
+		return -EINVAL;
+
+	//TODO use mutex
+	policy = cp;
+
+	dprintk("new policy [%s] registered\n",
+		(cp->name[0]) ? cp->name : "UNNAMED");
+
+	return 0;
+}
+EXPORT_SYMBOL(cpm_register_policy);
+
+
+int cpm_set_ordered_fsc_list(struct list_head *cfsc){
+
+	if (!cfsc)
+		return -EINVAL;
+	
+	//TODO clean previous fsc list? or made it somewhere else?
+	fsc_list = *cfsc;
+
+	dprintk("new FSCs ordered list registered");
+	
+	return 0;
+}
+EXPORT_SYMBOL(cpm_set_ordered_fsc_list);
+
+
 /*********************************************************************
- *                      CPM DRIVER                                   *
+ *				 CPM DRIVER                          *
  *********************************************************************/
 
 /* Find the cpm_dev_core for the specified device, or null if the device 
@@ -475,8 +476,8 @@ EXPORT_SYMBOL(cpm_register_governor);
 static struct cpm_dev_core* find_device_block(struct device *dev) {
 	struct cpm_dev_core * nb;
 
-	list_for_each_entry(nb, dev_list, node) {
-		if (nb->dev==dev)
+	list_for_each_entry(nb, &dev_list, asm_list) {
+		if ( (nb.dev->dev) == dev )
 			return nb;
 	}
 
@@ -484,17 +485,17 @@ static struct cpm_dev_core* find_device_block(struct device *dev) {
 }
 
 static struct cpm_asm_map * find_asm_map(struct cpm_dev_core * nb, cpm_id id) {
-	struct cpm_asm_map * asm;
+	struct cpm_asm_map * asm_map;
 
-	list_for_each_entry(asm, nb->asm_list, node) {
-		if (asm->id==id)
-			return asm;
+	list_for_each_entry(asm_map, &nb->asm_list, node) {
+		if (asm_map->id==id)
+			return asm_map;
 	}
 
 	return 0;
 }
 
-int cpm_register_dwr(struct device *dev, list_head *dwrs)
+int cpm_register_dwr(struct device *dev, struct list_head *dwrs)
 {
 	return 0;
 }
