@@ -1,0 +1,28 @@
+#
+# CPM support
+#
+
+
+menuconfig CPM
+	bool "Enable CPM support"
+	default n
+	---help--- 
+	  Say Y here to enable CPM support.
+	  
+if CPM
+
+#
+# Testing CPM support
+#
+
+menu "Testing CPM support"
+
+config CPM_BUDDY
+	tristate "buddy test driver"
+	depends on EXPERIMENTAL
+	help
+	  If you say yes todo...
+	  
+endmenu
+
+endif # CPM
