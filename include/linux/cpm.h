@@ -79,20 +79,6 @@ struct cpm_asm_region {
 	struct list_head asm_range;	/* The list of cpm_asm_range */
 };
 
-
-/**
- * 
- */
-struct cpm_platform_data {
-	cpm_id count;	/*total number of platform ASMs*/
-	// flexible array not at the end of the struct 
-	struct cpm_asm	*asms;
-};
-
-/*********************************************************************
- *                          CPM GOVERNORS                            *
- *********************************************************************/
-
 /*
  * A system FSC
  */
@@ -112,6 +98,36 @@ struct cpm_dev_dwr {
 	void *pol_data;			/* policy specific data */
 	struct list_head node;		/* The next cpm_asm_region */
 };
+
+/*
+ * Mapping between DWR and FSC
+ */
+struct cpm_fsc_dwr {
+	struct cpm_dev_dwr *dwr;	/* a DWR mapping to an FSC */
+	struct cpm_dev_core *dev;	/* the device to which this DWR belongs */
+	struct list_head node;		/* the DWR for the next device */
+};
+
+/*
+ * Wrapping of cpm_fsc for manage binding with corresponding DWRs
+ */
+struct cpm_fsc_core {
+	struct cpm_fsc fsc;		/* public FSC data */
+	struct list_head dwr_list;	/* the list of cpm_fsc_dwr that maps to this FSC */
+};
+
+/**
+ * 
+ */
+struct cpm_platform_data {
+	cpm_id count;	/*total number of platform ASMs*/
+	// flexible array not at the end of the struct 
+	struct cpm_asm	*asms;
+};
+
+/*********************************************************************
+ *                          CPM GOVERNORS                            *
+ *********************************************************************/
 
 /*
  * The public visible data of a device register to CPM

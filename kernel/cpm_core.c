@@ -51,17 +51,6 @@ struct cpm_dev_core {
 	struct list_head asm_list;	/* list of cpm_asm_map that belongs to at least one DWR */
 };
 
-struct cpm_fsc_dwr {
-	struct cpm_dev_dwr *dwr;	/* a DWR mapping to an FSC */
-	struct cpm_dev_core *dev;	/* the device to which this DWR belongs */
-	struct list_head node;			/* the DWR for the next device */
-};
-
-struct cpm_fsc_core {
-	struct cpm_fsc fsc;		/* public FSC data */
-	struct list_head dwr_list;	/* the list of cpm_fsc_dwr that maps to this FSC */
-};
-
 struct cpm_constraint_request {
 	struct cpm_range range;
 #define CPM_CONSTRAINT_APP	0
