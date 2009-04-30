@@ -80,16 +80,6 @@ struct cpm_asm_region {
 };
 
 /*
- * A system FSC
- */
-struct cpm_fsc {
-	struct cpm_asm_region region;	/* A FSC */
-	void *gov_data;			/* governor specific data */
-	void *pol_data;			/* policy specific data */
-	struct list_head node;		/* the next cpm_asm_region */
-};
-
-/*
  * A device DWR
  */
 struct cpm_dev_dwr {
@@ -100,20 +90,23 @@ struct cpm_dev_dwr {
 };
 
 /*
+ * A system FSC
+ */
+struct cpm_fsc {
+	struct cpm_asm_region region;	/* A FSC */
+	void *gov_data;			/* governor specific data */
+	void *pol_data;			/* policy specific data */
+	struct list_head dwr_list;	/* the list of cpm_fsc_dwr that maps to this FSC */
+	struct list_head node;		/* the next cpm_asm_region */
+};
+
+/*
  * Mapping between DWR and FSC
  */
 struct cpm_fsc_dwr {
 	struct cpm_dev_dwr *dwr;	/* a DWR mapping to an FSC */
 	struct cpm_dev_core *dev;	/* the device to which this DWR belongs */
 	struct list_head node;		/* the DWR for the next device */
-};
-
-/*
- * Wrapping of cpm_fsc for manage binding with corresponding DWRs
- */
-struct cpm_fsc_core {
-	struct cpm_fsc fsc;		/* public FSC data */
-	struct list_head dwr_list;	/* the list of cpm_fsc_dwr that maps to this FSC */
 };
 
 /**
