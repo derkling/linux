@@ -484,17 +484,23 @@ static struct cpm_asm_map * find_asm_map(struct cpm_dev_core * nb, cpm_id id) {
 	return 0;
 }
 
-int cpm_register_dwr(struct device *dev, struct list_head *dwrs)
+int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
 {
-	return 0;
-}
-EXPORT_SYMBOL(cpm_register_dwr);
 
-int cpm_release_dwr(struct device *dev)
-{
+	dprintk("Registering new device %s\n", dev->name);
+
 	return 0;
 }
-EXPORT_SYMBOL(cpm_release_dwr);
+EXPORT_SYMBOL(cpm_register_device);
+
+int cpm_unregister_device(struct device *dev)
+{
+	
+	dprintk("Device %s unregistered\n", dev->name);
+
+	return 0;
+}
+EXPORT_SYMBOL(cpm_unregister_device);
 
 int cpm_add_constraint(struct device *dev, cpm_id asm_id, struct cpm_range * range)
 {
