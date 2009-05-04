@@ -28,7 +28,6 @@
 #define CPM_BUDDY_DATA_PORT	NULL //0x400
 #define CPM_BUDDY_NR_PORTS	32
 
-
 /* macro to initialize ASMs of a DWR */
 #define DEV_DWR_ASM(_ASM_ID_, _LOWER_, _UPPER_, _TYPE_) \
 {							\
@@ -225,11 +224,15 @@ static ssize_t cpm_buddy_rmconstraint_show(struct device *dev,
 static ssize_t cpm_buddy_rmconstraint_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
-	
-	asm_array[3] = simple_strtoul(buf, NULL, 10);
-	
-	if(asm_array[3] > 1000){
-		printk(KERN_INFO "cpm_buddy: asm3 > 1000.\n");
+	int ret = 0;
+	struct platform_device *pdev = container_of(dev, struct platform_device, dev);
+//	char * constraint;
+
+//	* constraint = * buf;
+//	ret =  cpm_remove_constraint(struct device *dev, cpm_id asm_id);
+	ret = 1;
+	if(ret){
+		printk(KERN_INFO "cpm_buddy: %s removed by cpm_buddy.%d.\n", buf, pdev->id);
 	}
 	return count;
 }

@@ -1,0 +1,17 @@
+#
+# Testing CPM support
+#
+
+menu "CPM Testing Support"
+
+comment "Testing sipport..."
+	depends on CPM
+
+config CPM_BUDDY
+	tristate "buddy test driver"
+	depends on EXPERIMENTAL
+	help
+	  If you say yes todo.
+	  
+endmenu
+
