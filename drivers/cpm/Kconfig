@@ -11,18 +11,6 @@ menuconfig CPM
 	  
 if CPM
 
-#
-# Testing CPM support
-#
-
-menu "Testing CPM support"
-
-config CPM_BUDDY
-	tristate "buddy test driver"
-	depends on EXPERIMENTAL
-	help
-	  If you say yes todo...
-	  
-endmenu
+source "drivers/cpm/test/Kconfig"
 
 endif # CPM

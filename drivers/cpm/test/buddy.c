@@ -163,38 +163,6 @@ static struct platform_device buddy2 = {
 /*todo for each buddyX_data*/
 static struct cpm_dev_data *buddy1_data;
 static struct cpm_dev_data *buddy2_data;
-/*
-static int cpm_buddy_device_init(void)
-{
-	int ret = -ENXIO;
-
-	//Enventual device initialization ...  add mutex
-	ret = 0 ;
-
-	return ret;
-}
-
-*/
-
-/* Device model stuff */
-/*static int cpm_buddy_probe(struct platform_device *dev)
-{
-	int ret;
-
-	ret = cpm_buddy_device_init();
-	if (ret)
-		return ret;
-
-	printk(KERN_INFO "cpm_buddy: device successfully initialized.\n");
-	return 0;
-}
-
-static int cpm_buddy_resume(struct platform_device *dev)
-{
-	return cpm_buddy_device_init();
-}
-
-*/
 
 static struct platform_driver cpm_buddy_driver = {
 //	.probe = cpm_buddy_probe,
@@ -205,12 +173,14 @@ static struct platform_driver cpm_buddy_driver = {
 	},
 };
 
+// to be removed
 int asm_array[4] = {20, 30, 40, 50};
 int asm_array1[4] = {22, 32, 42, 52};
 
+
 /* SYSFS interface - show and store*/
 
-/*Show name of the device*/
+/*Show NAME of the device*/
 static ssize_t cpm_buddy_name_show(struct device *dev,
 				   struct device_attribute *attr, char *buf)
 {
@@ -221,6 +191,7 @@ static ssize_t cpm_buddy_name_show(struct device *dev,
 static DEVICE_ATTR(name, 0444, cpm_buddy_name_show, NULL);
 
 
+/* set constraint: SETCONSTRAINT*/
 static ssize_t cpm_buddy_setconstraint_show(struct device *dev,
 				   struct device_attribute *attr, char *buf)
 {
@@ -243,6 +214,30 @@ static ssize_t cpm_buddy_setconstraint_store(struct device *dev,
 static DEVICE_ATTR(setconstraint, 0644, cpm_buddy_setconstraint_show, cpm_buddy_setconstraint_store);
 
 
+/* remove constraint: RMCONSTRAINT*/
+static ssize_t cpm_buddy_rmconstraint_show(struct device *dev,
+				   struct device_attribute *attr, char *buf)
+{
+//	struct platform_device *pdev = container_of(dev, struct platform_device, dev);
+	return snprintf(buf, PAGE_SIZE, "remove\n");//, pdev->id);
+}
+
+static ssize_t cpm_buddy_rmconstraint_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	
+	asm_array[3] = simple_strtoul(buf, NULL, 10);
+	
+	if(asm_array[3] > 1000){
+		printk(KERN_INFO "cpm_buddy: asm3 > 1000.\n");
+	}
+	return count;
+}
+
+static DEVICE_ATTR(rmconstraint, 0644, cpm_buddy_rmconstraint_show, cpm_buddy_rmconstraint_store);
+
+
+/* ASM0 */
 static ssize_t cpm_buddy_asm0_show(struct device *dev,
 				   struct device_attribute *attr, char *buf)
 {
@@ -258,19 +253,22 @@ static ssize_t cpm_buddy_asm0_show(struct device *dev,
 	
 }				   
 
+
+/* ASM1 */
 static ssize_t cpm_buddy_asm1_show(struct device *dev,
 				   struct device_attribute *attr, char *buf)
 {
 	return snprintf(buf, PAGE_SIZE, "%d\n", asm_array[1]);
 }
 
+/* ASM2 */
 static ssize_t cpm_buddy_asm2_show(struct device *dev,
 				   struct device_attribute *attr, char *buf)
 {
 	return snprintf(buf, PAGE_SIZE, "%d\n", asm_array[2]);
 }
 
-
+/* ASM3 */
 static ssize_t cpm_buddy_asm3_show(struct device *dev,
 				   struct device_attribute *attr, char *buf)
 {
@@ -294,7 +292,7 @@ static DEVICE_ATTR(asm2, 0444, cpm_buddy_asm2_show, NULL);
 static DEVICE_ATTR(asm3, 0644, cpm_buddy_asm3_show, cpm_buddy_asm3_store);
 
 
-static struct attribute *asm_attributes[] = {
+static struct attribute *dwr1_attributes[] = {
 	&dev_attr_asm0.attr,
 	&dev_attr_asm1.attr,
 	&dev_attr_asm2.attr,
@@ -302,13 +300,26 @@ static struct attribute *asm_attributes[] = {
 	NULL
 };
 
-static const struct attribute_group asm_group =  { 
-	.name = "asms",		//if name is present a new directory is created
-	.attrs = asm_attributes 
+static const struct attribute_group dwr1_group =  { 
+	.name = "dwr1",		//if name is present a new directory is created
+	.attrs = dwr1_attributes 
 };
 
 
+static struct attribute *dwr2_attributes[] = {
+	&dev_attr_asm0.attr,
+	&dev_attr_asm1.attr,
+	&dev_attr_asm2.attr,
+	&dev_attr_asm3.attr,
+	NULL
+};
 
+static const struct attribute_group dwr2_group =  { 
+	.name = "dwr2",		//if name is present a new directory is created
+	.attrs = dwr2_attributes 
+};
+
+/* /constraints/cons_asmX: CONS_ASM0*/
 static ssize_t cpm_buddy_cons_asm0_show(struct device *dev,
 				   struct device_attribute *attr, char *buf)
 {
@@ -324,20 +335,21 @@ static ssize_t cpm_buddy_cons_asm0_show(struct device *dev,
 	
 }				   
 
-
+/* /constraints/cons_asmX: CONS_ASM1*/
 static ssize_t cpm_buddy_cons_asm1_show(struct device *dev,
 				   struct device_attribute *attr, char *buf)
 {
 	return snprintf(buf, PAGE_SIZE, "%d\n", asm_array[1]);
 }
 
-
+/* /constraints/cons_asmX: CONS_ASM2*/
 static ssize_t cpm_buddy_cons_asm2_show(struct device *dev,
 				   struct device_attribute *attr, char *buf)
 {
 	return snprintf(buf, PAGE_SIZE, "%d\n", asm_array[2]);
 }
 
+/* /constraints/cons_asmX: CONS_ASM3*/
 static ssize_t cpm_buddy_cons_asm3_show(struct device *dev,
 				   struct device_attribute *attr, char *buf)
 {
@@ -461,9 +473,11 @@ static int __init cpm_buddy_init(void) {
 	printk(KERN_INFO "cpm_buddy: cpm_register_device done.\n");
 		
 	ret = sysfs_create_file(&buddy1.dev.kobj, &dev_attr_name.attr);
-	ret = sysfs_create_group(&buddy1.dev.kobj, &asm_group);
+	ret = sysfs_create_group(&buddy1.dev.kobj, &dwr1_group);
+	ret = sysfs_create_group(&buddy1.dev.kobj, &dwr2_group);
 	ret = sysfs_create_group(&buddy1.dev.kobj, &constraint_group);
 	ret = sysfs_create_file(&buddy1.dev.kobj, &dev_attr_setconstraint.attr);
+	ret = sysfs_create_file(&buddy1.dev.kobj, &dev_attr_rmconstraint.attr);
 	printk(KERN_INFO "cpm_buddy: sysfs_create_files done.\n");
 	
 	if (ret)
@@ -473,9 +487,11 @@ static int __init cpm_buddy_init(void) {
 	printk(KERN_INFO "cpm_buddy: cpm_register_device done.\n");
 		
 	ret = sysfs_create_file(&buddy2.dev.kobj, &dev_attr_name.attr);
-	ret = sysfs_create_group(&buddy2.dev.kobj, &asm_group);
+	ret = sysfs_create_group(&buddy2.dev.kobj, &dwr1_group);
+	ret = sysfs_create_group(&buddy2.dev.kobj, &dwr2_group);
 	ret = sysfs_create_group(&buddy2.dev.kobj, &constraint_group);
 	ret = sysfs_create_file(&buddy2.dev.kobj, &dev_attr_setconstraint.attr);
+	ret = sysfs_create_file(&buddy2.dev.kobj, &dev_attr_rmconstraint.attr);
 	printk(KERN_INFO "cpm_buddy: sysfs_create_file name done.\n");		
 	if (ret)
 		goto out_device2;
@@ -526,6 +542,16 @@ static void __exit cpm_buddy_exit(void) {
 	SYSFS_DEL_PUT(cpm_buddy2) */
 
 	platform_driver_unregister(&cpm_buddy_driver);
+	sysfs_remove_file(&buddy2.dev.kobj, &dev_attr_rmconstraint.attr);
+	sysfs_remove_file(&buddy1.dev.kobj, &dev_attr_rmconstraint.attr);
+	sysfs_remove_file(&buddy2.dev.kobj, &dev_attr_setconstraint.attr);
+	sysfs_remove_file(&buddy1.dev.kobj, &dev_attr_setconstraint.attr);
+	sysfs_remove_group(&buddy2.dev.kobj, &constraint_group);
+	sysfs_remove_group(&buddy1.dev.kobj, &constraint_group);
+	sysfs_remove_group(&buddy2.dev.kobj, &dwr2_group);
+	sysfs_remove_group(&buddy1.dev.kobj, &dwr2_group);
+	sysfs_remove_group(&buddy2.dev.kobj, &dwr1_group);
+	sysfs_remove_group(&buddy1.dev.kobj, &dwr1_group);
 	sysfs_remove_file(&buddy2.dev.kobj, &dev_attr_name.attr);
 	sysfs_remove_file(&buddy1.dev.kobj, &dev_attr_name.attr);
 	platform_device_unregister(&buddy2);
@@ -538,8 +564,7 @@ static void __exit cpm_buddy_exit(void) {
  
 
 MODULE_AUTHOR("Matteo Carnevali <rekstorm@gmail.com>");
-MODULE_DESCRIPTION("'cpm_buddy_platform' - a template for platform driver \
-with sysfs support... now used for cpm buddies");
+MODULE_DESCRIPTION("cpm buddy: a test driver for CPM framework");
 MODULE_LICENSE("GPL");
 
 
