@@ -442,10 +442,43 @@ int cpm_set_ordered_fsc_list(struct list_head *cfsc){
 }
 EXPORT_SYMBOL(cpm_set_ordered_fsc_list);
 
+/************************************************************************
+ *	SYSFS INTERFACE							*
+ ************************************************************************/
 
-/*********************************************************************
- *				 CPM DRIVER                          *
- *********************************************************************/
+#ifdef CONFIG_CPM_SYSFS
+
+/* lock protects against cpm_unregister_device() being called while
+ * sysfs files are active.
+ */
+static DEFINE_MUTEX(sysfs_lock);
+
+static ssize_t cpm_asm_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	const struct cpm_asm_range *asm_range = container_of(attr, struct cpm_asm_range, attr);
+	ssize_t	status;
+
+	mutex_lock(&sysfs_lock);
+
+	status = sprintf(buf, "%d:%s %u %u",
+			asm_range->id,
+			platform->asms[asm_range->id].name,
+			asm_range->range.lower,
+			asm_range->range.upper);
+	//TODO handle properly the printing of bounds and single values
+
+	mutex_unlock(&sysfs_lock);
+	return status;
+}
+
+static const DEVICE_ATTR(asm, 0444, cpm_asm_show, NULL);
+
+#endif
+
+/************************************************************************
+ *	CPM DRIVER                          				*
+ ************************************************************************/
 
 /* Find the cpm_dev_core for the specified device, or null if the device 
  * has never registered an ASM before */

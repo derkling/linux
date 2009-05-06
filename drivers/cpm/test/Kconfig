@@ -2,16 +2,19 @@
 # Testing CPM support
 #
 
-menu "CPM Testing Support"
-
-comment "Testing sipport..."
-	depends on CPM
+menuconfig CPM_TESTING
+	bool "Enable Testing support"
+	default n
+	---help--- 
+	  Say Y here to enable CPM support.
+	  
+if CPM_TESTING
 
 config CPM_BUDDY
 	tristate "buddy test driver"
 	depends on EXPERIMENTAL
 	help
 	  If you say yes todo.
-	  
-endmenu
+
+endif # CPM_TESTING
 

@@ -11,6 +11,39 @@ menuconfig CPM
 	  
 if CPM
 
+config CPM_SYSFS
+        bool "Enable SYSFS interface"
+	default y
+        ---help---
+          Select this to enable sysfs interface.
+
+choice
+	prompt "Default CPM governor"
+	default CPM_DEFAULT_GOV_EXHAUSTIVE
+	help
+	  This option sets which CPUFreq governor shall be loaded at
+	  startup. If in doubt, select 'performance'.
+
+config CPM_DEFAULT_GOV_EXHAUSTIVE
+	bool "exhaustive"
+	select CPM_GOV_EXHAUSTIVE
+	help
+	  Use the CPM governor 'exhaustive' as default.
+
+endchoice
+
+
+config CPM_GOV_EXHAUSTIVE
+	tristate "'exhaustive' governor"
+	help
+	  This CPM governor...
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called cpm_exhaustive.
+
+	  If in doubt, say Y.
+
+
 source "drivers/cpm/test/Kconfig"
 
 endif # CPM

@@ -18,6 +18,7 @@
 #include <linux/notifier.h>
 #include <linux/time.h>
 #include <linux/types.h>
+#include <linux/device.h>
 
 #define TRUE	1
 #define FALSE	(!TRUE)
@@ -55,6 +56,9 @@ struct cpm_range {
 struct cpm_asm_range {
 	cpm_id id;			/* The ID of the ASM */
 	struct cpm_range range;		/* The range in the corresponding ASM */
+#ifdef CONFIG_CPM_SYSFS
+	struct device_attribute attr;	/* The sysfs attribute to access this range */
+#endif
 };
 
 /**
@@ -120,10 +124,13 @@ struct cpm_fsc {
  * 
  */
 struct cpm_platform_data {
-	cpm_id count;	/*total number of platform ASMs*/
-	// flexible array not at the end of the struct 
-	struct cpm_asm	*asms;
+	struct cpm_asm	*asms;	/* the array of ASM defined by platform code*/
+	u8 count;		/* total number of platform ASMs */
+
 };
+
+int cpm_register_platform_asms(struct cpm_platform_data *asm_data);
+
 
 /*********************************************************************
  *                          CPM GOVERNORS                            *
@@ -169,11 +176,6 @@ int cpm_register_governor(struct cpm_governor *governor);
  * Basically define a FSCs ordering strategy and a system
  * configuration switching supervisor.
  */
-
-
-int cpm_register_platform_asms(struct cpm_platform_data *asm_data);
-
-
 struct cpm_policy {
 	char name[CPM_NAME_LEN];
 	int (*sort_fsc_list)(struct list_head *fsc_list);
