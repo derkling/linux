@@ -176,19 +176,6 @@ EXPORT_SYMBOL(cpm_debug_printk);
 
 #define MIN(a, b) ((u32)(a) < (u32)(b) ? (a) : (b))
 #define MAX(a, b) ((u32)(a) > (u32)(b) ? (a) : (b))
-/* Get a reference to the ASM corresponding to the specified id
- * or NULL if it don't exist */
-static struct cpm_asm * cpm_get_asm(cpm_id asm_id) {
-	if (!platform) {
-		return 0;
-	}
-
-	if (asm_id > platform->count) {
-		return 0;
-	}
-	 
-	return &(platform->asms[asm_id]);
-}
 
 #define CPM_RANGE_OK		TRUE
 #define CPM_RANGE_ERROR		FALSE
@@ -473,17 +460,6 @@ static struct cpm_dev_core* find_device_block(struct device *dev) {
 	return 0;
 }
 
-static struct cpm_asm_map * find_asm_map(struct cpm_dev_core * nb, cpm_id id) {
-	struct cpm_asm_map * asm_map;
-
-	list_for_each_entry(asm_map, &nb->asm_list, node) {
-		if (asm_map->id==id)
-			return asm_map;
-	}
-
-	return 0;
-}
-
 int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
 {
 	struct cpm_dev_core *pcd;
@@ -568,8 +544,26 @@ EXPORT_SYMBOL(cpm_register_device);
 
 int cpm_unregister_device(struct device *dev)
 {
-	
-	dprintk("Device %s unregistered\n", dev->name);
+	struct cpm_dev_core *pcd;
+	struct cpm_dev_dwr *pdwr;
+	u8 i;
+
+	// Check if the device is already registerd
+	pcd = find_device_block(dev);
+	if ( pcd == 0 ) {
+		dprintk("device [%s] not registerd\n", dev->name);
+		return -ENODEV;
+	}
+
+	dprintk("unregistering device [%s]...\n", dev->name);
+
+	list_del(&(pcd->dev_info.node));
+
+	for(pdwr = pcd->dev_info.dwrs, i=0; i<pcd->dev_info.dwrs_count; pdwr++, i++) {
+		kfree(pdwr->asms);
+	}
+
+	kfree(pcd);
 
 	return 0;
 }
