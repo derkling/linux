@@ -46,7 +46,7 @@ struct cpm_asm_map {
 };
 
 struct cpm_dev_core {
-	struct cpm_dev dev;		/* the public accessible data */
+	struct cpm_dev dev_info;	/* the public accessible data */
 	struct notifier_block nb;	/* the notifer chain block */
 	struct list_head asm_list;	/* list of cpm_asm_map that belongs to at least one DWR */
 };
@@ -466,7 +466,7 @@ static struct cpm_dev_core* find_device_block(struct device *dev) {
 	struct cpm_dev_core * nb;
 
 	list_for_each_entry(nb, &dev_list, asm_list) {
-		if ( (nb->dev.dev) == dev )
+		if ( (nb->dev_info.dev) == dev )
 			return nb;
 	}
 
@@ -486,10 +486,83 @@ static struct cpm_asm_map * find_asm_map(struct cpm_dev_core * nb, cpm_id id) {
 
 int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
 {
+	struct cpm_dev_core *pcd;
+	struct cpm_dev_dwr *pdwrs;
+	struct cpm_dev_dwr *pdwr;
+	struct cpm_asm_range *pasms;
+	int result = 0;
+	u8 i;
 
-	dprintk("Registering new device %s\n", dev->name);
+	// Check if the device is already registerd
+	pcd = find_device_block(dev);
+	if ( pcd != 0 ) {
+		dprintk("device [%s] already registered\n", dev->name);
+		return -EEXIST;
+	}
 
+	dprintk("registering new device [%s]...\n", dev->mame);
+
+	// add device notifier block
+	pcd = kzalloc(sizeof(struct cpm_dev_core), GFP_KERNEL);
+        if (!pcd) {
+		dprintk("out-of-mem on cpm_dev_core allocation\n");
+		return -ENOMEM;
+        }
+
+        // init device reference
+        pcd->dev_info.dev = dev;
+
+	// copy DWRs definitions	
+	pdwrs = kzalloc(data->dwrs_count*sizeof(struct cpm_dev_dwr), GFP_KERNEL);
+        if (!pdwrs) {
+		dprintk("out-of-mem on cpm_dev_block allocation\n");
+		result = -ENOMEM;
+		goto crd_exit_nomem_dwr;
+        }
+	*pdwrs = *(data->dwrs);
+	pcd->dev_info.dwrs = pdwrs;
+	pcd->dev_info.dwrs_count = data->dwrs_count;
+
+	for(pdwr = pdwrs, i=0; i<pcd->dev_info.dwrs_count; pdwr++, i++) {
+		pasms = kzalloc(pdwr->asms_count*sizeof(struct cpm_asm_range), GFP_KERNEL);
+		if (!pasms) {
+			dprintk("out-of-mem on cpm_asm_range allocation\n");
+			result = -ENOMEM;
+			goto crd_exit_nomem_asm;
+		}
+		*pasms = *(pdwr->asms);
+		pdwr->asms = pasms;
+		dprintk("added DWR [%s:%s] with %n ASM%s\n"
+				dev->name, pdwr->name, pdwr->asms_count,
+				(pdwr->asms_count>1) ? "s" : "");
+	}
+	
+	// copy the DDP handler callback reference
+	pcd->nb.notifier_call = data->notifier_callback;
+
+        // register to DDP notifier chain
+        srcu_notifier_chain_register(&cpm_ddp_notifier_list, &(pcd->nb));
+
+        // add into device chain
+        list_add(&(pcd->dev_info.node), &dev_list);
+	cpm_nb_count++;
+
+        dprintk("new device successfully [%s] registerd\n", dev->name);
+	
 	return 0;
+
+
+crd_exit_nomem_asm:
+	do {
+		kfree(pdwr);
+		pdwr--;
+	} while (pdwr != pdwrs);
+
+crd_exit_nomem_dwr:
+	kfree(pcd);
+
+	return result;
+
 }
 EXPORT_SYMBOL(cpm_register_device);
 

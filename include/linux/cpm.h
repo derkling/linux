@@ -22,7 +22,11 @@
 #define TRUE	1
 #define FALSE	(!TRUE)
 
+// The maximum lenght of text lables (e.g. device/dwr/fsc names, ...)
 #define CPM_NAME_LEN	12
+
+// The maximum number of DWR each device can have
+#define CPM_DEV_MAX_DWR	16
 
 typedef u8 cpm_id;
 
@@ -32,17 +36,25 @@ typedef u8 cpm_id;
  *********************************************************************/
 
 /**
- * struct cpm_range - 
+ * A generic range
  */
 struct cpm_range {
-	u32 lower;
-	u32 upper;
+	u32 lower;				/* range lower bound */
+	u32 upper;				/* range upper bound */
 #define CPM_ASM_TYPE_RANGE		0
 #define CPM_ASM_TYPE_SINGLE		1
 #define CPM_ASM_TYPE_LBOUND		2
 #define CPM_ASM_TYPE_UBOUND		3
-	u8 type:2;
+	u8 type:2;				/* range type */
 
+};
+
+/**
+ * An ASM range 
+ */
+struct cpm_asm_range {
+	cpm_id id;			/* The ID of the ASM */
+	struct cpm_range range;		/* The range in the corresponding ASM */
 };
 
 /**
@@ -71,42 +83,37 @@ struct cpm_asm {
 	u8 comp:1;
 };
 
-struct cpm_asm_region {
-	cpm_id id;			/* The ID for the region */
-	char name[CPM_NAME_LEN];	/* The name of a region */
-	// NOTE the following list should be ordered based on asm_range->id.
-	// Use the core provided functions properly insert new nodes.
-	struct list_head asm_range;	/* The list of cpm_asm_range */
-};
-
 /*
  * A device DWR
  */
 struct cpm_dev_dwr {
-	struct cpm_asm_region region;	/* A DWR */
+	cpm_id id;			/* ID for the device's DWR */
+	char name[CPM_NAME_LEN];	/* name of a region */
+	struct cpm_asm_range *asms;	/* ASM's array */
+	u8 asms_count;			/* number of ASM in the 'asms' array */
 	void *gov_data;			/* governor specific data */
 	void *pol_data;			/* policy specific data */
-	struct list_head node;		/* The next cpm_asm_region */
 };
 
 /*
- * A system FSC
- */
-struct cpm_fsc {
-	struct cpm_asm_region region;	/* A FSC */
-	void *gov_data;			/* governor specific data */
-	void *pol_data;			/* policy specific data */
-	struct list_head dwr_list;	/* the list of cpm_fsc_dwr that maps to this FSC */
-	struct list_head node;		/* the next cpm_asm_region */
-};
-
-/*
- * Mapping between DWR and FSC
+ * Maps an FSC to its DWRs and corresponding devices
  */
 struct cpm_fsc_dwr {
 	struct cpm_dev_dwr *dwr;	/* a DWR mapping to an FSC */
 	struct cpm_dev_core *dev;	/* the device to which this DWR belongs */
-	struct list_head node;		/* the DWR for the next device */
+};
+/*
+ * A system FSC
+ */
+struct cpm_fsc {
+	cpm_id id;			/* ID for the system's FSC */
+	struct cpm_asm_range *asms;	/* ASM's array */
+	u8 asms_count;			/* number of ASM in the 'asms' array */
+	struct cpm_fsc_dwr *dwrs;	/* array of DWRs that maps to this FSC */
+	u8 dwrs_count;			/* the number of DWRs in the 'dwrs' array */
+	void *gov_data;			/* governor specific data */
+	void *pol_data;			/* policy specific data */
+	struct list_head node;		/* the next FSC */
 };
 
 /**
@@ -127,7 +134,8 @@ struct cpm_platform_data {
  */
 struct cpm_dev {
 	struct device *dev;		/* the device interested */
-	struct list_head dwr_list;	/* list of cpm_dev_dwr */
+	struct cpm_dev_dwr *dwrs;	/* the DWRS's array */
+	u8 dwrs_count;			/* the number of DWRs */
 	void *gov_data;			/* governor specific data */
 	void *pol_data;			/* policy specific data */
 	struct list_head node;		/* the next cpm_dev in the list */
@@ -193,16 +201,17 @@ int cpm_set_ordered_fsc_list(struct list_head *ordered_fsc_list);
  *                      CPM DRIVER INTERFACE                         *
  *********************************************************************/
 
-struct cpm_asm_range {
-	cpm_id id;			/* The ID of the ASM */
-	struct cpm_range range;		/* The range in the corresponding ASM */
-	struct list_head node;		/* The next cpm_asm_range */
-};
-
-/*
- * Insert the given asm_range into the specified ordered list.
+/**
+ * ddp_callback - a device's DDP callback function
+ * @ddp_stage: the DDP stage
+ * @ddp_data: a pointer to a cpm_ddp_data struct containing the informations
+ * needed by the DDP.
+ *
+ * Every device should provide such a function that will be called back by the
+ * core during the DDP stages.
  */
-int cpm_add_asm_region(struct list_head *list, struct cpm_asm_range *range);
+typedef int (*ddp_callback)(struct notifier_block *, unsigned long, void *);
+
 
 /**
  * Device specific data for CPM registration.
@@ -213,19 +222,22 @@ struct cpm_dev_data {
 #define	CPM_EVENT_DO_CHANGE		2
 #define CPM_EVENT_PRE_CHANGE		3
 #define CPM_EVENT_POST_CHANGE		4
-	int (*notifier_call)(struct notifier_block *, unsigned long, void *);
-	struct list_head *dwrs;
+	ddp_callback notifier_callback;	/* The device's DDP callback */
+	struct cpm_dev_dwr *dwrs;	/* The DWR's array for the subscribing device */
+	u8 dwrs_count;			/* The number of DWR int the 'dwrs' array */
 };
 
 /**
- * The data that the core provide to devices during a DDP.
+ * The data that the core provide to devices during a DDP
  */
-struct cpm_ddp_drv_data {
-	struct cpm_fsc * fsc;
+struct cpm_ddp_data {
+	struct cpm_fsc *fsc;
 };
 
 /**
  * Register a device and its DWRs.
+ *
+ * Return 0 un success, -EEXIST if the device is already registered.
  */
 int cpm_register_device(struct device *dev, struct cpm_dev_data *data);
 
