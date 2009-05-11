@@ -532,7 +532,14 @@ int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
 	pcd->dev_info.dwrs = pdwrs;
 	pcd->dev_info.dwrs_count = data->dwrs_count;
 
-	for(pdwr = pdwrs, i=0; i<pcd->dev_info.dwrs_count; pdwr++, i++) {
+	
+	for (pdwr = pdwrs, i=0; i<pcd->dev_info.dwrs_count; pdwr++, i++) {
+
+		if ( ! pdwr->asms || ! pdwr->asms_count ) {
+			dprintk("WARNING: uninitialized driver DWR");
+			continue;
+		}
+
 		pasms = kzalloc(pdwr->asms_count*sizeof(struct cpm_asm_range), GFP_KERNEL);
 		if (!pasms) {
 			dprintk("out-of-mem on cpm_asm_range allocation\n");
