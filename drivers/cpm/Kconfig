@@ -11,6 +11,12 @@ menuconfig CPM
 	  
 if CPM
 
+config CPM_DEBUG
+	bool "Enable CPM debugging"
+	default n
+	---help---
+	  Say Y here to enable CPM debugging
+
 config CPM_SYSFS
         bool "Enable SYSFS interface"
 	default y

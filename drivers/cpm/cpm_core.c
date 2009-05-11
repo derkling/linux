@@ -121,8 +121,6 @@ static unsigned int disable_ratelimit = 1;
 static DEFINE_MUTEX(disable_ratelimit_mutex);
 static void cpm_debug_enable_ratelimit(void)
 {
-	unsigned long flags;
-
 	mutex_lock(&disable_ratelimit_mutex);
 	if (disable_ratelimit)
 		disable_ratelimit--;
@@ -131,8 +129,6 @@ static void cpm_debug_enable_ratelimit(void)
 
 static void cpm_debug_disable_ratelimit(void)
 {
-	unsigned long flags;
-
 	mutex_lock(&disable_ratelimit_mutex);
 	disable_ratelimit++;
 	mutex_unlock(&disable_ratelimit_mutex);
@@ -144,7 +140,6 @@ void cpm_debug_printk(unsigned int type, const char *prefix,
 	char s[256];
 	va_list args;
 	unsigned int len;
-	unsigned long flags;
 
 	WARN_ON(!prefix);
 	if (type & debug) {
@@ -505,11 +500,11 @@ int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
 	// Check if the device is already registerd
 	pcd = find_device_block(dev);
 	if ( pcd != 0 ) {
-		dprintk("device [%s] already registered\n", dev->name);
+		dprintk("device [%s] already registered\n", dev_name(dev));
 		return -EEXIST;
 	}
 
-	dprintk("registering new device [%s]...\n", dev->mame);
+	dprintk("registering new device [%s]...\n", dev_name(dev));
 
 	// add device notifier block
 	pcd = kzalloc(sizeof(struct cpm_dev_core), GFP_KERNEL);
@@ -548,8 +543,8 @@ int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
 		}
 		*pasms = *(pdwr->asms);
 		pdwr->asms = pasms;
-		dprintk("added DWR [%s:%s] with %n ASM%s\n"
-				dev->name, pdwr->name, pdwr->asms_count,
+		dprintk("added DWR [%s:%s] with %n ASM%s\n",
+				dev_name(dev), pdwr->name, pdwr->asms_count,
 				(pdwr->asms_count>1) ? "s" : "");
 	}
 	
@@ -563,7 +558,7 @@ int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
         list_add(&(pcd->dev_info.node), &dev_list);
 	cpm_nb_count++;
 
-        dprintk("new device successfully [%s] registerd\n", dev->name);
+        dprintk("new device successfully [%s] registerd\n", dev_name(dev));
 	
 	return 0;
 
@@ -591,11 +586,11 @@ int cpm_unregister_device(struct device *dev)
 	// Check if the device is already registerd
 	pcd = find_device_block(dev);
 	if ( pcd == 0 ) {
-		dprintk("device [%s] not registerd\n", dev->name);
+		dprintk("device [%s] not registerd\n", dev_name(dev));
 		return -ENODEV;
 	}
 
-	dprintk("unregistering device [%s]...\n", dev->name);
+	dprintk("unregistering device [%s]...\n", dev_name(dev));
 
 	list_del(&(pcd->dev_info.node));
 
