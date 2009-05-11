@@ -45,11 +45,25 @@ struct cpm_asm_map {
 	struct list_head node;
 };
 
+struct cpm_dev_sysfs {
+	struct kobject cpm;		/* the kobj to export device info in sysfs (<device>/cpm) */
+	struct kobject dwrs;		/* the kobj to export device DWRS in sysfs (<device>/cpm/dwrs) */
+	struct kobject constraints;	/* the kobj to export device constraints in sysfs (<device>/cpm/constraints) */
+	/* TODO add entries for statistics */
+};
+
 struct cpm_dev_core {
 	struct cpm_dev dev_info;	/* the public accessible data */
 	struct notifier_block nb;	/* the notifer chain block */
 	struct list_head asm_list;	/* list of cpm_asm_map that belongs to at least one DWR */
+#ifdef CONFIG_CPM_SYSFS
+	struct cpm_dev_sysfs sysfs;		/* the sysfs interface */
+#endif
 };
+
+/* cpm_dev_ktype - the ktype of each device registerd to CPM */
+struct kobj_type cpm_dev_ktype;
+struct sysfs_ops cpm_dev_ops;
 
 struct cpm_constraint_request {
 	struct cpm_range range;
@@ -443,15 +457,62 @@ EXPORT_SYMBOL(cpm_set_ordered_fsc_list);
 
 #ifdef CONFIG_CPM_SYSFS
 
+#define CPM_DATTR_RO(_dattr,_name,_show) {	\
+	do {					\
+		(_dattr)->attr.name = _name;	\
+		(_dattr)->attr.mode = 0444;	\
+		(_dattr)->show = _show;		\
+	} while(0);				\
+}
+
+#define	CPM_ADD_ATTR(_pattrs, _dattr)		\
+	*(_pattrs) = &((_dattr).attr);		\
+	(_pattrs)++;
+
+
 /* lock protects against cpm_unregister_device() being called while
  * sysfs files are active.
  */
 static DEFINE_MUTEX(sysfs_lock);
 
+static void cpm_sysfs_dev_release(struct kobject *kobj)
+{
+	/* TODO add cpm releease code */
+}
+
+static ssize_t cpm_sysfs_dev_show(struct kobject * kobj, struct attribute *attr, char *str) {
+	/* TODO add the cpm base attributes and use this to show values... */
+	return 0;
+}
+
+static int cpm_sysfs_dev_init(struct cpm_dev_core *pcd)
+{
+	int result = 0;
+
+	/* create the <device>/cpm folder */
+	result = kobject_init_and_add(&((pcd->sysfs).cpm),
+			&cpm_dev_ktype, &(((pcd->dev_info).dev)->kobj),
+			"cpm");
+
+	/* NOTE we use the same ktype for cpm and its subfolder! */
+
+	/* create the <device>/cpm/dwrs folder */
+	result = kobject_init_and_add(&((pcd->sysfs).dwrs),
+			&cpm_dev_ktype, &((pcd->sysfs).cpm),
+			"dwrs");
+
+	/* create the <device>/cpm/constraints folder */
+	result = kobject_init_and_add(&((pcd->sysfs).constraints),
+			&cpm_dev_ktype, &((pcd->sysfs).cpm),
+			"constraints");
+
+	return result;
+}
+
 static ssize_t cpm_asm_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	const struct cpm_asm_range *asm_range = container_of(attr, struct cpm_asm_range, attr);
+	const struct cpm_asm_range *asm_range = (struct cpm_asm_range*)container_of(attr, struct cpm_asm_range, dattr);
 	ssize_t	status;
 
 	mutex_lock(&sysfs_lock);
@@ -467,9 +528,129 @@ static ssize_t cpm_asm_show(struct device *dev,
 	return status;
 }
 
-static const DEVICE_ATTR(asm, 0444, cpm_asm_show, NULL);
+// This is initialized and binded in the registration code
+// static const DEVICE_ATTR(asm, 0444, cpm_asm_show, NULL);
+
+static ssize_t cpm_dwr_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	const struct cpm_dev_dwr *dwr = (struct cpm_dev_dwr*)container_of(attr, struct cpm_dev_dwr, dattr);
+	ssize_t	status;
+
+	mutex_lock(&sysfs_lock);
+
+	status = sprintf(buf, "%s", dwr->name);
+
+	mutex_unlock(&sysfs_lock);
+	return status;
+}
+
+
+
+/*
+ * Initialize and export to sysfs device's DWRs attributes
+ */
+static int cpm_sysfs_dwr_setup(struct cpm_dev_core *pcd) {
+	struct cpm_dev_dwr *pdwr;
+	struct cpm_asm_range *pasm;
+	struct attribute **pattrs;
+	int result = 0;
+	u8 i, j;
+
+	/* Init sysfs for this device */
+	cpm_sysfs_dev_init(pcd);
+
+	/* create attributes for each DWR */
+	for (pdwr = pcd->dev_info.dwrs, i=0; i<pcd->dev_info.dwrs_count; pdwr++, i++) {
+
+		/* build the attribute_group array for the ASM of this DWR */
+		pdwr->asms_group.attrs  = pattrs = (struct attribute **)kzalloc(((pdwr->asms_count)+1)*sizeof(struct attribute *), GFP_KERNEL);
+		if ( !pattrs ) {
+			dprintk("out-of-mem on cpm_dev_block allocation\n");
+			result = -ENOMEM;
+			goto crd_exit_nomem_dwr;
+		}
+
+		/* adding the DWR name attribute */
+		CPM_DATTR_RO(&(pdwr->dattr), "name", cpm_dwr_show);
+		CPM_ADD_ATTR(pattrs, pdwr->dattr);
+
+		/* scanning a DWR's ASMs and adding attributes */
+		pasm = pdwr->asms;
+		for (j=0; j<pdwr->asms_count; j++) {
+			sprintf(pasm->name, "asm%02d", pasm->id);
+			CPM_DATTR_RO(&(pasm->dattr), pasm->name, cpm_asm_show);
+			CPM_ADD_ATTR(pattrs, pasm->dattr);
+			pasm++;
+		}
+
+		/* complete attribute group definition */
+		pdwr->asms_group.name = pdwr->name;
+
+		/* export this DWR to sysfs */
+		result = sysfs_create_group(&(pcd->sysfs.dwrs), &(pdwr->asms_group));
+		if ( result ) {
+			dprintk("DWR exporting failed");
+			goto crd_exit_sysfs_dwr_failed;
+		}
+
+
+	}
+
+	return 0;
+
+
+crd_exit_sysfs_dwr_failed:
+
+crd_exit_nomem_dwr:
+
+	/* TODO add free-up code */
+	dprintk("%s:%d memory-leak: free-up allocated structures", __FUNCTION__, __LINE__);
+
+	return result;
+
+}
+
+
+
+static int __init cpm_sysfs_init(void)
+{
+
+	/* Setting-up CPM subsystem */
+	/* TODO */
+
+	/* Setting up ktype for <devices>/cpm folders */
+	cpm_dev_ops.show = cpm_sysfs_dev_show;
+	cpm_dev_ops.store = NULL;
+	cpm_dev_ktype.release = cpm_sysfs_dev_release;
+	cpm_dev_ktype.sysfs_ops = &cpm_dev_ops;
+	cpm_dev_ktype.default_attrs = NULL;
+
+	/* Setting up ktype for <device>/cpm/dwrs folders */
+	/* TODO */
+
+	/* Setting up ktype for <device>/cpm/constraints folders */
+	/* TODO */
+
+	dprintk("sysfs interface initialized");
+
+	return 0;
+}
+
+#else
+
+static int __init cpm_sysfs_init(void)
+{
+	return 0;
+}
+
+static int cpm_sysfs_dwr_setup(struct cpm_dev_core *pcd)
+{
+	return 0;
+}
 
 #endif
+
 
 /************************************************************************
  *	CPM DRIVER                          				*
@@ -559,6 +740,9 @@ int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
         list_add(&(pcd->dev_info.node), &dev_list);
 	cpm_nb_count++;
 
+	/* Setting-up sysfs interface */
+	cpm_sysfs_dwr_setup(pcd);
+
         dprintk("new device successfully [%s] registerd\n", dev_name(dev));
 	
 	return 0;
@@ -636,6 +820,8 @@ pure_initcall(init_cpm_ddp_notifier_list);
 
 static int __init cpm_core_init(void)
 {
+
+	cpm_sysfs_init();
 
 	dprintk("CPM Core initialized");
 	return 0;
