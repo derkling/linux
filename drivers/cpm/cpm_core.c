@@ -523,10 +523,10 @@ int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
 		result = -ENOMEM;
 		goto crd_exit_nomem_dwr;
         }
-	*pdwrs = *(data->dwrs);
+	memcpy((void*)data->dwrs, (void*)pdwrs, data->dwrs_count*sizeof(struct cpm_dev_dwr));
+
 	pcd->dev_info.dwrs = pdwrs;
 	pcd->dev_info.dwrs_count = data->dwrs_count;
-
 	
 	for (pdwr = pdwrs, i=0; i<pcd->dev_info.dwrs_count; pdwr++, i++) {
 
@@ -541,8 +541,9 @@ int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
 			result = -ENOMEM;
 			goto crd_exit_nomem_asm;
 		}
-		*pasms = *(pdwr->asms);
+		memcpy((void*)pdwr->asms, (void*)pasms, pdwr->asms_count*sizeof(struct cpm_asm_range));
 		pdwr->asms = pasms;
+
 		dprintk("added DWR [%s:%s] with %n ASM%s\n",
 				dev_name(dev), pdwr->name, pdwr->asms_count,
 				(pdwr->asms_count>1) ? "s" : "");
