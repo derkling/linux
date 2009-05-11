@@ -177,6 +177,16 @@ void cpm_debug_printk(unsigned int type, const char *prefix,
 	}
 }
 EXPORT_SYMBOL(cpm_debug_printk);
+
+module_param(debug, uint, 0644);
+MODULE_PARM_DESC(debug, "CPM debugging: add 1 to debug core,"
+		" 2 to debug governors.");
+
+module_param(debug_ratelimit, uint, 0644);
+MODULE_PARM_DESC(debug_ratelimit, "CPM debugging:"
+		" set to 0 to disable ratelimiting.");
+
+
 #endif
 
 /******************************************************************************
