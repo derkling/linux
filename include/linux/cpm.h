@@ -91,6 +91,7 @@ struct cpm_asm {
  * A device DWR
  */
 struct cpm_dev_dwr {
+	struct device *dev;		/* The device to which this DWR's belongs to */
 	cpm_id id;			/* ID for the device's DWR */
 	char name[CPM_NAME_LEN];	/* name of a region */
 	struct cpm_asm_range *asms;	/* ASM's array */
@@ -104,7 +105,7 @@ struct cpm_dev_dwr {
  */
 struct cpm_fsc_dwr {
 	struct cpm_dev_dwr *dwr;	/* a DWR mapping to an FSC */
-	struct cpm_dev_core *dev;	/* the device to which this DWR belongs */
+	/* add any other FSC-DWR specific data */
 };
 /*
  * A system FSC
