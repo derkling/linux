@@ -83,7 +83,7 @@ struct cpm_asm {
 #define CPM_USER_RO	0
 #define CPM_USER_RW	1
 	u8 userw:1;			/* user writable */
-#define CPM_COMPOSITION_ADDICTIVE	0
+#define CPM_COMPOSITION_ADDITIVE	0
 #define CPM_COMPOSITION_RESTRICTIVE	1
 	u8 comp:1;
 };
