@@ -149,6 +149,7 @@ struct cpm_dev {
 	struct device *dev;		/* the device interested */
 	struct cpm_dev_dwr *dwrs;	/* the DWRS's array */
 	u8 dwrs_count;			/* the number of DWRs */
+	struct notifier_block nb;	/* the notifer chain block */
 	void *gov_data;			/* governor specific data */
 	void *pol_data;			/* policy specific data */
 	struct list_head node;		/* the next cpm_dev in the list */

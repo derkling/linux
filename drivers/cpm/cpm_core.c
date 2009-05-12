@@ -54,7 +54,6 @@ struct cpm_dev_sysfs {
 
 struct cpm_dev_core {
 	struct cpm_dev dev_info;	/* the public accessible data */
-	struct notifier_block nb;	/* the notifer chain block */
 	struct list_head asm_list;	/* list of cpm_asm_map that belongs to at least one DWR */
 #ifdef CONFIG_CPM_SYSFS
 	struct cpm_dev_sysfs sysfs;		/* the sysfs interface */
@@ -741,10 +740,10 @@ int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
 	}
 	
 	// copy the DDP handler callback reference
-	pcd->nb.notifier_call = data->notifier_callback;
+	pcd->dev_info.nb.notifier_call = data->notifier_callback;
 
         // register to DDP notifier chain
-        srcu_notifier_chain_register(&cpm_ddp_notifier_list, &(pcd->nb));
+        srcu_notifier_chain_register(&cpm_ddp_notifier_list, &((pcd->dev_info).nb));
 
         // add into device chain
         list_add(&(pcd->dev_info.node), &dev_list);
