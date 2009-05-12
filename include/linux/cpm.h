@@ -57,7 +57,7 @@ struct cpm_asm_range {
 	cpm_id id;			/* The ID of the ASM */
 	struct cpm_range range;		/* The range in the corresponding ASM */
 #ifdef CONFIG_CPM_SYSFS
-	struct device_attribute dattr;	/* The sysfs attribute to access this ASM data */
+	struct kobj_attribute kattr;	/* The sysfs attribute to access this ASM data */
 	char name[CPM_NAME_LEN];	/* The attribute name */
 #endif
 };
@@ -98,7 +98,7 @@ struct cpm_dev_dwr {
 	struct cpm_asm_range *asms;	/* ASM's array */
 	u8 asms_count;			/* number of ASM in the 'asms' array */
 #ifdef CONFIG_CPM_SYSFS
-	struct device_attribute dattr;      	/* The sysfs attribute to access this DWR data */
+	struct kobj_attribute kattr;      	/* The sysfs attribute to access this DWR data */
 	struct attribute_group asms_group;  	/* The ASMs of this device */
 #endif
 	void *gov_data;			/* governor specific data */

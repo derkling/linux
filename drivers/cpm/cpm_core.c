@@ -119,7 +119,7 @@ DEFINE_MUTEX(ddp_mutex);
 #ifdef CONFIG_CPM_DEBUG
 
 /* what part(s) of the CPM subsystem are debugged? */
-static unsigned int debug;
+static unsigned int debug = 0xFFFF;
 
 /* is the debug output ratelimit'ed using printk_ratelimit? User can
  * set or modify this value.
@@ -176,16 +176,6 @@ void cpm_debug_printk(unsigned int type, const char *prefix,
 	}
 }
 EXPORT_SYMBOL(cpm_debug_printk);
-
-module_param(debug, uint, 0644);
-MODULE_PARM_DESC(debug, "CPM debugging: add 1 to debug core,"
-		" 2 to debug governors.");
-
-module_param(debug_ratelimit, uint, 0644);
-MODULE_PARM_DESC(debug_ratelimit, "CPM debugging:"
-		" set to 0 to disable ratelimiting.");
-
-
 #endif
 
 /******************************************************************************
@@ -454,7 +444,7 @@ int cpm_set_ordered_fsc_list(struct list_head *cfsc){
 	//TODO clean previous fsc list? or made it somewhere else?
 	fsc_list = *cfsc;
 
-	dprintk("new FSCs ordered list registered");
+	dprintk("new FSCs ordered list registered\n");
 	
 	return 0;
 }
@@ -466,17 +456,18 @@ EXPORT_SYMBOL(cpm_set_ordered_fsc_list);
 
 #ifdef CONFIG_CPM_SYSFS
 
-#define CPM_DATTR_RO(_dattr,_name,_show) {	\
+#define CPM_DATTR_RO(_kattr,_name,_show)	\
 	do {					\
-		(_dattr)->attr.name = _name;	\
-		(_dattr)->attr.mode = 0444;	\
-		(_dattr)->show = _show;		\
-	} while(0);				\
-}
+		(_kattr)->attr.name = _name;	\
+		(_kattr)->attr.mode = 0444;	\
+		(_kattr)->show = _show;		\
+	} while(0);
 
-#define	CPM_ADD_ATTR(_pattrs, _dattr)		\
-	*(_pattrs) = &((_dattr).attr);		\
-	(_pattrs)++;
+#define	CPM_ADD_ATTR(_pattrs, _kattr)		\
+	do {					\
+		*(_pattrs) = &((_kattr).attr);	\
+		(_pattrs)++;			\
+	} while(0);
 
 
 /* lock protects against cpm_unregister_device() being called while
@@ -486,12 +477,32 @@ static DEFINE_MUTEX(sysfs_lock);
 
 static void cpm_sysfs_dev_release(struct kobject *kobj)
 {
-	/* TODO add cpm releease code */
+	dprintk("TODO, cpm_sysfs_dev_release\n");
 }
 
-static ssize_t cpm_sysfs_dev_show(struct kobject * kobj, struct attribute *attr, char *str) {
-	/* TODO add the cpm base attributes and use this to show values... */
-	return 0;
+static ssize_t cpm_sysfs_dev_show(struct kobject * kobj, struct attribute *attr,
+		char *buf) {
+	struct kobj_attribute *kattr;
+	ssize_t ret = -EIO;
+
+	kattr = container_of(attr, struct kobj_attribute, attr);
+	if (kattr->show)
+		ret = kattr->show(kobj, kattr, buf);
+
+	return ret;
+}
+
+static ssize_t cpm_sysfs_dev_store(struct kobject *kobj, struct attribute *attr,
+		const char *buf, size_t count)
+{
+	struct kobj_attribute *kattr;
+	ssize_t ret = -EIO;
+
+	kattr = container_of(attr, struct kobj_attribute, attr);
+	if (kattr->store)
+		ret = kattr->store(kobj, kattr, buf, count);
+
+	return ret;
 }
 
 static int cpm_sysfs_dev_init(struct cpm_dev_core *pcd)
@@ -502,8 +513,6 @@ static int cpm_sysfs_dev_init(struct cpm_dev_core *pcd)
 	result = kobject_init_and_add(&((pcd->sysfs).cpm),
 			&cpm_dev_ktype, &(((pcd->dev_info).dev)->kobj),
 			"cpm");
-
-	/* NOTE we use the same ktype for cpm and its subfolder! */
 
 	/* create the <device>/cpm/dwrs folder */
 	result = kobject_init_and_add(&((pcd->sysfs).dwrs),
@@ -518,39 +527,63 @@ static int cpm_sysfs_dev_init(struct cpm_dev_core *pcd)
 	return result;
 }
 
-static ssize_t cpm_asm_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
+static ssize_t cpm_asm_show(struct kobject *kobj,
+		struct kobj_attribute *attr, char *buf)
 {
-	const struct cpm_asm_range *asm_range = (struct cpm_asm_range*)container_of(attr, struct cpm_asm_range, dattr);
+	struct cpm_asm_range *asm_range;
 	ssize_t	status;
+
+	asm_range = container_of(attr, struct cpm_asm_range, kattr);
 
 	mutex_lock(&sysfs_lock);
 
-	status = sprintf(buf, "%d:%s %u %u",
+	switch(asm_range->range.type) {
+	case CPM_ASM_TYPE_RANGE:
+		status = sprintf(buf, "%d:%s (R) %u %u\n",
 			asm_range->id,
 			platform->asms[asm_range->id].name,
 			asm_range->range.lower,
 			asm_range->range.upper);
-	//TODO handle properly the printing of bounds and single values
+		break;
+	case CPM_ASM_TYPE_SINGLE:
+		status = sprintf(buf, "%d:%s (S) %u\n",
+			asm_range->id,
+			platform->asms[asm_range->id].name,
+			asm_range->range.lower);
+		break;
+	case CPM_ASM_TYPE_LBOUND:
+		status = sprintf(buf, "%d:%s (L) %u\n",
+			asm_range->id,
+			platform->asms[asm_range->id].name,
+			asm_range->range.lower);
+		break;
+	case CPM_ASM_TYPE_UBOUND:
+		status = sprintf(buf, "%d:%s (U) %u\n",
+			asm_range->id,
+			platform->asms[asm_range->id].name,
+			asm_range->range.upper);
+		break;
+	}
 
 	mutex_unlock(&sysfs_lock);
+
 	return status;
 }
 
-// This is initialized and binded in the registration code
-// static const DEVICE_ATTR(asm, 0444, cpm_asm_show, NULL);
-
-static ssize_t cpm_dwr_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
+static ssize_t cpm_dwr_show(struct kobject *kobj,
+		struct kobj_attribute *attr, char *buf)
 {
-	const struct cpm_dev_dwr *dwr = (struct cpm_dev_dwr*)container_of(attr, struct cpm_dev_dwr, dattr);
+	const struct cpm_dev_dwr *dwr;
 	ssize_t	status;
+
+	dwr = container_of(attr, struct cpm_dev_dwr, kattr);
 
 	mutex_lock(&sysfs_lock);
 
-	status = sprintf(buf, "%s", dwr->name);
+	status = sprintf(buf, "%s\n", dwr->name);
 
 	mutex_unlock(&sysfs_lock);
+
 	return status;
 }
 
@@ -573,7 +606,8 @@ static int cpm_sysfs_dwr_setup(struct cpm_dev_core *pcd) {
 	for (pdwr = pcd->dev_info.dwrs, i=0; i<pcd->dev_info.dwrs_count; pdwr++, i++) {
 
 		/* build the attribute_group array for the ASM of this DWR */
-		pdwr->asms_group.attrs  = pattrs = (struct attribute **)kzalloc(((pdwr->asms_count)+1)*sizeof(struct attribute *), GFP_KERNEL);
+		pdwr->asms_group.name = pdwr->name;
+		pdwr->asms_group.attrs  = pattrs = (struct attribute **)kzalloc(((pdwr->asms_count)+2)*sizeof(struct attribute *), GFP_KERNEL);
 		if ( !pattrs ) {
 			dprintk("out-of-mem on cpm_dev_block allocation\n");
 			result = -ENOMEM;
@@ -581,25 +615,25 @@ static int cpm_sysfs_dwr_setup(struct cpm_dev_core *pcd) {
 		}
 
 		/* adding the DWR name attribute */
-		CPM_DATTR_RO(&(pdwr->dattr), "name", cpm_dwr_show);
-		CPM_ADD_ATTR(pattrs, pdwr->dattr);
+		CPM_DATTR_RO(&(pdwr->kattr), "name", cpm_dwr_show);
+		CPM_ADD_ATTR(pattrs, pdwr->kattr);
 
 		/* scanning a DWR's ASMs and adding attributes */
 		pasm = pdwr->asms;
 		for (j=0; j<pdwr->asms_count; j++) {
 			sprintf(pasm->name, "asm%02d", pasm->id);
-			CPM_DATTR_RO(&(pasm->dattr), pasm->name, cpm_asm_show);
-			CPM_ADD_ATTR(pattrs, pasm->dattr);
+			CPM_DATTR_RO(&(pasm->kattr), pasm->name, cpm_asm_show);
+			CPM_ADD_ATTR(pattrs, pasm->kattr);
 			pasm++;
 		}
 
 		/* complete attribute group definition */
-		pdwr->asms_group.name = pdwr->name;
+		(*pattrs) = NULL;
 
 		/* export this DWR to sysfs */
 		result = sysfs_create_group(&(pcd->sysfs.dwrs), &(pdwr->asms_group));
 		if ( result ) {
-			dprintk("DWR exporting failed");
+			dprintk("DWR exporting failed\n");
 			goto crd_exit_sysfs_dwr_failed;
 		}
 
@@ -614,7 +648,7 @@ crd_exit_sysfs_dwr_failed:
 crd_exit_nomem_dwr:
 
 	/* TODO add free-up code */
-	dprintk("%s:%d memory-leak: free-up allocated structures", __FUNCTION__, __LINE__);
+	dprintk("%s:%d memory-leak: free-up allocated structures\n", __FUNCTION__, __LINE__);
 
 	return result;
 
@@ -628,20 +662,14 @@ static int __init cpm_sysfs_init(void)
 	/* Setting-up CPM subsystem */
 	/* TODO */
 
-	/* Setting up ktype for <devices>/cpm folders */
+	/* Setting up ktype for <devices>/cpm and its folders */
 	cpm_dev_ops.show = cpm_sysfs_dev_show;
-	cpm_dev_ops.store = NULL;
+	cpm_dev_ops.store = cpm_sysfs_dev_store;
 	cpm_dev_ktype.release = cpm_sysfs_dev_release;
 	cpm_dev_ktype.sysfs_ops = &cpm_dev_ops;
 	cpm_dev_ktype.default_attrs = NULL;
 
-	/* Setting up ktype for <device>/cpm/dwrs folders */
-	/* TODO */
-
-	/* Setting up ktype for <device>/cpm/constraints folders */
-	/* TODO */
-
-	dprintk("sysfs interface initialized");
+	dprintk("sysfs interface initialized\n");
 
 	return 0;
 }
@@ -667,12 +695,15 @@ static int cpm_sysfs_dwr_setup(struct cpm_dev_core *pcd)
 
 /* Find the cpm_dev_core for the specified device, or null if the device 
  * has never registered an ASM before */
-static struct cpm_dev_core* find_device_block(struct device *dev) {
-	struct cpm_dev_core * nb;
+static struct cpm_dev_core *find_device_block(struct device *dev) {
+	struct cpm_dev *pdev;
+	struct cpm_dev_core *pcdev;
 
-	list_for_each_entry(nb, &dev_list, asm_list) {
-		if ( (nb->dev_info.dev) == dev )
-			return nb;
+	list_for_each_entry(pdev, &dev_list, node) {
+		if ( (pdev->dev) == dev ) {
+			pcdev = container_of(pdev, struct cpm_dev_core, dev_info);
+			return pcdev;
+		}
 	}
 
 	return 0;
@@ -713,15 +744,16 @@ int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
 		result = -ENOMEM;
 		goto crd_exit_nomem_dwr;
         }
-	memcpy((void*)data->dwrs, (void*)pdwrs, data->dwrs_count*sizeof(struct cpm_dev_dwr));
+	memcpy((void*)pdwrs, (void*)data->dwrs, data->dwrs_count*sizeof(struct cpm_dev_dwr));
 
 	pcd->dev_info.dwrs = pdwrs;
 	pcd->dev_info.dwrs_count = data->dwrs_count;
 	
 	for (pdwr = pdwrs, i=0; i<pcd->dev_info.dwrs_count; pdwr++, i++) {
 
+		dprintk("ASM array [%p], ASM count [%d]\n", pdwr->asms, pdwr->asms_count);
 		if ( ! pdwr->asms || ! pdwr->asms_count ) {
-			dprintk("WARNING: uninitialized driver DWR");
+			dprintk("WARNING: uninitialized driver DWR\n");
 			continue;
 		}
 
@@ -731,12 +763,12 @@ int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
 			result = -ENOMEM;
 			goto crd_exit_nomem_asm;
 		}
-		memcpy((void*)pdwr->asms, (void*)pasms, pdwr->asms_count*sizeof(struct cpm_asm_range));
+
+		memcpy((void*)pasms, (void*)pdwr->asms, pdwr->asms_count*sizeof(struct cpm_asm_range));
 		pdwr->asms = pasms;
 
-		dprintk("added DWR [%s:%s] with %n ASM%s\n",
-				dev_name(dev), pdwr->name, pdwr->asms_count,
-				(pdwr->asms_count>1) ? "s" : "");
+		dprintk("added DWR [%s:%s] with %d ASMs\n",
+				dev_name(dev), pdwr->name, pdwr->asms_count);
 	}
 	
 	// copy the DDP handler callback reference
@@ -752,7 +784,7 @@ int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
 	/* Setting-up sysfs interface */
 	cpm_sysfs_dwr_setup(pcd);
 
-        dprintk("new device successfully [%s] registerd\n", dev_name(dev));
+        dprintk("new device [%s] successfully registerd\n", dev_name(dev));
 	
 	return 0;
 
@@ -788,7 +820,7 @@ int cpm_unregister_device(struct device *dev)
 
 	list_del(&(pcd->dev_info.node));
 
-	for(pdwr = pcd->dev_info.dwrs, i=0; i<pcd->dev_info.dwrs_count; pdwr++, i++) {
+	for (pdwr = pcd->dev_info.dwrs, i=0; i<pcd->dev_info.dwrs_count; pdwr++, i++) {
 		kfree(pdwr->asms);
 	}
 
@@ -832,7 +864,7 @@ static int __init cpm_core_init(void)
 
 	cpm_sysfs_init();
 
-	dprintk("CPM Core initialized");
+	dprintk("CPM Core initialized\n");
 	return 0;
 }
 core_initcall(cpm_core_init);
