@@ -112,6 +112,7 @@ struct cpm_fsc_dwr {
 	struct cpm_dev_dwr *dwr;	/* a DWR mapping to an FSC */
 	/* add any other FSC-DWR specific data */
 };
+
 /*
  * A system FSC
  */
@@ -172,6 +173,10 @@ struct cpm_governor {
  */
 int cpm_register_governor(struct cpm_governor *governor);
 
+/*
+ * Merge, if possible,  two cpm_range
+ */
+int merge_cpm_range(struct cpm_range *first, struct cpm_range *second);
 
 /*********************************************************************
  *                          CPM POLICIES                             *
