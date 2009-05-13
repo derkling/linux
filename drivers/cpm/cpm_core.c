@@ -115,6 +115,9 @@ DEFINE_MUTEX(ddp_mutex);
  * used */
 static short unsigned cpm_enabled = 0;
 
+/* The FSC list is marked outdated when a device register/unregister */
+static short unsigned cpm_fsc_outdated = 0;
+
 /* The core workqueue */
 static struct workqueue_struct *cpm_wq = 0;
 
@@ -417,16 +420,23 @@ EXPORT_SYMBOL(cpm_register_platform_asms);
 
 static void cpm_work_update_fsc(struct work_struct *work)
 {
-	iprintk("START: FSC update workqueue");
+	int result = 0;
+
+	iprintk("START: FSC update workqueue\n");
 
 	mutex_lock(&fsc_mutex);
 
 	dprintk("calling governor [%s]\n", governor->name);
-	governor->build_fsc_list(&dev_list, cpm_dev_count, &fsc_list);
+	result = governor->build_fsc_list(&dev_list, cpm_dev_count, &fsc_list);
+	if (result) {
+		eprintk("rebuild FSCs failed\n");
+	} else {
+		cpm_fsc_outdated = 0;
+	}
 
 	mutex_unlock(&fsc_mutex);
 
-	iprintk("END: FSC update workqueue");
+	iprintk("END: FSC update workqueue\n");
 }
 
 DECLARE_WORK(cpm_work_governor, cpm_work_update_fsc);
@@ -761,6 +771,9 @@ static ssize_t cpm_sysfs_core_store(struct kobject *kobj, struct kobj_attribute 
 		sscanf(buf, "%hu", &cpm_enabled);
 		if (cpm_enabled) {
 			iprintk("CPM enabled\n");
+			if (cpm_fsc_outdated) {
+				cpm_update_governor();
+			}
 		} else {
 			iprintk("CPM disabled\n");
 		}
@@ -934,6 +947,7 @@ int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
         // add into device chain
         list_add(&(pcd->dev_info.node), &dev_list);
 	cpm_dev_count++;
+	cpm_fsc_outdated = 1;
 
 	/* Setting-up sysfs interface */
 	cpm_sysfs_dwr_setup(pcd);
@@ -986,6 +1000,11 @@ static int __cpm_unregister_device(struct cpm_dev_core *pcd)
 
 	dprintk("f\n");
 	kfree(pcd);
+
+	/* Notify governor */
+	cpm_fsc_outdated = 1;
+	cpm_update_governor();
+
 
 	return 0;
 
