@@ -99,6 +99,9 @@ static LIST_HEAD(constraint_list);
 /* The existing FSC */
 static LIST_HEAD(fsc_list);
 
+/* The FSC's list mutex */
+DEFINE_MUTEX(fsc_mutex);
+
 /* The notifier list used for DDP */
 static struct srcu_notifier_head cpm_ddp_notifier_list;
 
@@ -107,6 +110,13 @@ static u8 cpm_dev_count = 0;
 
 /* The DDP Mutex */
 DEFINE_MUTEX(ddp_mutex);
+
+/* Define if the CPM core is enabled (i.e. governors/policy and DDP will be
+ * used */
+static short unsigned cpm_enabled = 0;
+
+/* The core workqueue */
+static struct workqueue_struct *cpm_wq = 0;
 
 
 
@@ -405,10 +415,50 @@ EXPORT_SYMBOL(cpm_register_platform_asms);
  *				CPM GOVERNORS                                 *
  ******************************************************************************/
 
+static void cpm_work_update_fsc(struct work_struct *work)
+{
+	iprintk("START: FSC update workqueue");
+
+	mutex_lock(&fsc_mutex);
+
+	dprintk("calling governor [%s]\n", governor->name);
+	governor->build_fsc_list(&dev_list, cpm_dev_count, &fsc_list);
+
+	mutex_unlock(&fsc_mutex);
+
+	iprintk("END: FSC update workqueue");
+}
+
+DECLARE_WORK(cpm_work_governor, cpm_work_update_fsc);
+
+static int cpm_update_governor(void) {
+
+	/* return immediatly if CPM is disabled */
+	if (!cpm_enabled) {
+		dprintk("CPM disabled: governor update disabled\n");
+		return 0;
+	}
+
+	/* a permission error is returned if the goeverno has not bee
+	 * configured */
+	if (!governor) {
+		eprintk("governor not configured: update failed\n");
+		return -EPERM;
+	}
+
+	/* let the governor do the job... */
+	queue_work(cpm_wq, &cpm_work_governor);
+
+	return 0;
+
+}
+
 int cpm_register_governor(struct cpm_governor *cg) {
 
-	if (!cg)
+	if (!cg) {
+		dprintk("governor already registered\n");
 		return -EINVAL;
+	}
 
 	// TODO use MUTEX
 
@@ -671,13 +721,95 @@ crd_exit_nomem_dwr:
 
 }
 
+static int cpm_sysfs_dwr_remove(struct cpm_dev_core *pcd)
+{
+	struct cpm_dev_dwr *pdwr;
+	u8 i;
 
+	/* releasing attributes for each DWR */
+	for (pdwr = pcd->dev_info.dwrs, i=0; i<pcd->dev_info.dwrs_count; pdwr++, i++) {
+		dprintk("1\n");
+		sysfs_remove_group(&(pcd->sysfs.dwrs), &(pdwr->asms_group));
+		dprintk("2\n");
+		kfree(pdwr->asms_group.attrs);
+	}
+	dprintk("3\n");
+	cpm_sysfs_dev_remove(pcd);
+
+	return 0;
+}
+
+/*--- CPM Core SYSFS interface ---*/
+
+static ssize_t cpm_sysfs_core_show(struct kobject *kobj, struct kobj_attribute *attr,
+		char *buf)
+{
+	ssize_t count = 0;
+
+	if (strcmp(attr->attr.name, "enable") == 0) {
+		count = sprintf(buf, "%d\n", cpm_enabled);
+	}
+
+	return count;
+}
+
+static ssize_t cpm_sysfs_core_store(struct kobject *kobj, struct kobj_attribute *attr,
+		const char *buf, size_t count)
+{
+
+	if (strcmp(attr->attr.name, "enable") == 0) {
+		sscanf(buf, "%hu", &cpm_enabled);
+		if (cpm_enabled) {
+			iprintk("CPM enabled\n");
+		} else {
+			iprintk("CPM disabled\n");
+		}
+	}
+
+	return count;
+}
+
+
+static struct kobj_attribute cpm_sysfs_core_enable_attr =
+	__ATTR(enable, 0666, cpm_sysfs_core_show, cpm_sysfs_core_store);
+
+static struct attribute *cpm_sysfs_core_attrs[] = {
+	&cpm_sysfs_core_enable_attr.attr,
+	NULL,   /* need to NULL terminate the list of attributes */
+};
+
+static struct attribute_group cpm_sysfs_core_attr_group = {
+	.attrs = cpm_sysfs_core_attrs,
+};
+
+static struct kobject *cpm_core_kobj;
+
+
+static int __init cpm_sysfs_core_init(void)
+{
+	int retval;
+
+	/* create the "cpm" sysfs' entry under /sys/kernel */
+	cpm_core_kobj = kobject_create_and_add("cpm", kernel_kobj);
+	if (!cpm_core_kobj)
+		return -ENOMEM;
+
+	retval = sysfs_create_group(cpm_core_kobj, &cpm_sysfs_core_attr_group);
+	if (retval)
+		kobject_put(cpm_core_kobj);
+
+	return retval;
+}
 
 static int __init cpm_sysfs_init(void)
 {
+	int retval;
 
 	/* Setting-up CPM subsystem */
-	/* TODO */
+	retval = cpm_sysfs_core_init();
+	if (retval) {
+		eprintk("setting-up core sysfs interface FAILED\n");
+	}
 
 	/* Setting up ktype for <devices>/cpm and its folders */
 	cpm_dev_ops.show = cpm_sysfs_dev_show;
@@ -806,6 +938,9 @@ int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
 	/* Setting-up sysfs interface */
 	cpm_sysfs_dwr_setup(pcd);
 
+	/* Notify governor */
+	cpm_update_governor();
+
         dprintk("new device [%s] successfully registerd\n", dev_name(dev));
 	
 	return 0;
@@ -903,6 +1038,15 @@ static int __init init_cpm_ddp_notifier_list(void)
 }
 pure_initcall(init_cpm_ddp_notifier_list);
 
+
+static int __init cpm_core_setup_workqueue(void)
+{
+
+	cpm_wq = create_singlethread_workqueue("cpm-core");
+	dprintk("singlethread workqueue configured\n");
+
+	return 0;
+}
 
 static int __init cpm_core_init(void)
 {
