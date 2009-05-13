@@ -25,12 +25,20 @@
 *.elf
 *.bin
 *.gz
+*.bz2
 
 #
 # Top-level generic files
 #
 tags
 TAGS
+GPATH
+GRTAGS
+GSYMS
+GTAGS
+HTML/
+tar-install/
+
 vmlinux
 System.map
 Module.markers
