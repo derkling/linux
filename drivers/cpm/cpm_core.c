@@ -37,8 +37,6 @@
 #include <linux/list.h>
 #include <linux/cpm.h>
 
-#define dprintk(msg...) cpm_debug_printk(CPM_DEBUG_CORE, \
-						"cpm-core", msg)
 
 struct cpm_asm_map {
 	cpm_id id;			/* the ID of the ASM mapped */
@@ -118,6 +116,14 @@ DEFINE_MUTEX(ddp_mutex);
  *********************************************************************/
 #ifdef CONFIG_CPM_DEBUG
 
+#define dprintk(msg...) cpm_debug_printk(CPM_DEBUG_CORE, \
+						"cpm-core", msg)
+
+#define iprintk(msg...) pr_info("cpm-core: " msg)
+
+#define eprintk(msg...) pr_err("cpm-core: " msg)
+
+
 /* what part(s) of the CPM subsystem are debugged? */
 static unsigned int debug = 0xFFFF;
 
@@ -176,6 +182,7 @@ void cpm_debug_printk(unsigned int type, const char *prefix,
 	}
 }
 EXPORT_SYMBOL(cpm_debug_printk);
+
 #endif
 
 /******************************************************************************
