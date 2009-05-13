@@ -103,7 +103,7 @@ static LIST_HEAD(fsc_list);
 static struct srcu_notifier_head cpm_ddp_notifier_list;
 
 /* The number of devices subscribed (i.e. dev_list entries) */
-static u8 cpm_nb_count = 0;
+static u8 cpm_dev_count = 0;
 
 /* The DDP Mutex */
 DEFINE_MUTEX(ddp_mutex);
@@ -786,7 +786,7 @@ int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
 
         // add into device chain
         list_add(&(pcd->dev_info.node), &dev_list);
-	cpm_nb_count++;
+	cpm_dev_count++;
 
 	/* Setting-up sysfs interface */
 	cpm_sysfs_dwr_setup(pcd);
