@@ -484,7 +484,7 @@ static DEFINE_MUTEX(sysfs_lock);
 
 static void cpm_sysfs_dev_release(struct kobject *kobj)
 {
-	dprintk("TODO, cpm_sysfs_dev_release\n");
+	dprintk("TODO, cpm_sysfs_dev_release [%s]\n", kobj->name);
 }
 
 static ssize_t cpm_sysfs_dev_show(struct kobject * kobj, struct attribute *attr,
@@ -534,11 +534,21 @@ static int cpm_sysfs_dev_init(struct cpm_dev_core *pcd)
 	return result;
 }
 
+static int cpm_sysfs_dev_remove(struct cpm_dev_core *pcd)
+{
+
+	kobject_put(&((pcd->sysfs).cpm));
+	kobject_put(&((pcd->sysfs).dwrs));
+	kobject_put(&((pcd->sysfs).constraints));
+
+	return 0;
+}
+
 static ssize_t cpm_asm_show(struct kobject *kobj,
 		struct kobj_attribute *attr, char *buf)
 {
 	struct cpm_asm_range *asm_range;
-	ssize_t	status;
+	ssize_t	status = 0;
 
 	asm_range = container_of(attr, struct cpm_asm_range, kattr);
 
@@ -693,6 +703,11 @@ static int cpm_sysfs_dwr_setup(struct cpm_dev_core *pcd)
 	return 0;
 }
 
+static int cpm_sysfs_dwr_release(struct cpm_dev_core *pcd)
+{
+	return 0;
+}
+
 #endif
 
 
@@ -810,11 +825,40 @@ crd_exit_nomem_dwr:
 }
 EXPORT_SYMBOL(cpm_register_device);
 
+
+static int __cpm_unregister_device(struct cpm_dev_core *pcd)
+{
+	struct cpm_dev_dwr *pdwr;
+	u8 i;
+
+	dprintk("a\n");
+	cpm_sysfs_dwr_remove(pcd);
+
+	dprintk("b\n");
+	cpm_dev_count--;
+	list_del(&(pcd->dev_info.node));
+
+	dprintk("c\n");
+	srcu_notifier_chain_unregister(&cpm_ddp_notifier_list, &((pcd->dev_info).nb));
+
+	dprintk("d\n");
+	for (pdwr = pcd->dev_info.dwrs, i=0; i<pcd->dev_info.dwrs_count; pdwr++, i++) {
+		kfree(pdwr->asms);
+	}
+
+	dprintk("e\n");
+	kfree(pcd->dev_info.dwrs);
+
+	dprintk("f\n");
+	kfree(pcd);
+
+	return 0;
+
+}
+
 int cpm_unregister_device(struct device *dev)
 {
 	struct cpm_dev_core *pcd;
-	struct cpm_dev_dwr *pdwr;
-	u8 i;
 
 	// Check if the device is already registerd
 	pcd = find_device_block(dev);
@@ -825,13 +869,7 @@ int cpm_unregister_device(struct device *dev)
 
 	dprintk("unregistering device [%s]...\n", dev_name(dev));
 
-	list_del(&(pcd->dev_info.node));
-
-	for (pdwr = pcd->dev_info.dwrs, i=0; i<pcd->dev_info.dwrs_count; pdwr++, i++) {
-		kfree(pdwr->asms);
-	}
-
-	kfree(pcd);
+	__cpm_unregister_device(pcd);
 
 	return 0;
 }
