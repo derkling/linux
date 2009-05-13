@@ -163,7 +163,7 @@ struct cpm_dev {
  */
 struct cpm_governor {
 	char name[CPM_NAME_LEN];
-	int (*build_fsc_list)(struct list_head *dev_list, struct list_head *fsc_list);
+	int (*build_fsc_list)(struct list_head *dev_list, u8 dev_count, struct list_head *fsc_list);
 };
 
 
@@ -185,6 +185,12 @@ int cpm_register_governor(struct cpm_governor *governor);
  */
 struct cpm_policy {
 	char name[CPM_NAME_LEN];
+	 /* This is an anynchronous call that should not block.
+	  * It is used to notify the policy for the possibility pro provide
+	  * a new sorted FSC list.
+	  * The sorted list has to be computed asynchronously (e.g. using a
+	  * tasklet) and once ready notified to the core using the provided
+	  * cpm_set_orderet_fsc_list */
 	int (*sort_fsc_list)(struct list_head *fsc_list);
 #define CPM_DDP_DONE	NOTIFY_DONE
 #define CPM_DDP_OK	NOTIFY_OK
