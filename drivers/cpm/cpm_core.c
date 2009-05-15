@@ -100,7 +100,7 @@ static LIST_HEAD(constraint_list);
 static LIST_HEAD(fsc_list);
 
 /* The FSC's list mutex */
-DEFINE_MUTEX(fsc_mutex);
+static DEFINE_MUTEX(fsc_mutex);
 
 /* The notifier list used for DDP */
 static struct srcu_notifier_head cpm_ddp_notifier_list;
@@ -422,19 +422,13 @@ static void cpm_work_update_fsc(struct work_struct *work)
 {
 	int result = 0;
 
-	iprintk("START: FSC update workqueue\n");
-
-	mutex_lock(&fsc_mutex);
-
-	dprintk("calling governor [%s]\n", governor->name);
-	result = governor->build_fsc_list(&dev_list, cpm_dev_count, &fsc_list);
+	dprintk("START: FSC update workqueue, governor [%s]\n", governor->name);
+	result = governor->build_fsc_list(&dev_list, cpm_dev_count);
 	if (result) {
 		eprintk("rebuild FSCs failed\n");
 	} else {
 		cpm_fsc_outdated = 0;
 	}
-
-	mutex_unlock(&fsc_mutex);
 
 	iprintk("END: FSC update workqueue\n");
 }
@@ -442,6 +436,7 @@ static void cpm_work_update_fsc(struct work_struct *work)
 DECLARE_WORK(cpm_work_governor, cpm_work_update_fsc);
 
 static int cpm_update_governor(void) {
+	int result = 0;
 
 	/* return immediatly if CPM is disabled */
 	if (!cpm_enabled) {
@@ -457,9 +452,13 @@ static int cpm_update_governor(void) {
 	}
 
 	/* let the governor do the job... */
-	queue_work(cpm_wq, &cpm_work_governor);
+	dprintk("schedling governor call work_queue\n");
+	result = queue_work(cpm_wq, &cpm_work_governor);
+	if (!result) {
+		eprintk("queuing new governor work failed\n");
+	}
 
-	return 0;
+	return result;
 
 }
 
@@ -481,6 +480,44 @@ int cpm_register_governor(struct cpm_governor *cg) {
 	return 0;
 }
 EXPORT_SYMBOL(cpm_register_governor);
+
+int cpm_set_fsc_list(struct list_head *new_fsc_list)
+{
+	struct list_head old_fsc_list;
+	struct list_head *node;
+	struct cpm_fsc *pfsc;
+
+	if ( !list_empty(&fsc_list) ) {
+		dprintk("new FSC list received\n");
+
+		/* saving a ref to old FSC list*/
+		old_fsc_list = fsc_list;
+
+		/* updating current FSC list */
+		mutex_lock(&fsc_mutex);
+		fsc_list = (*new_fsc_list);
+		mutex_unlock(&fsc_mutex);
+
+#ifdef CONFIG_CPM_SYSFS
+		/* release sysfs kobj */
+		eprintk("TODO: implement sysfs FSC kobjects release");
+#else
+		/* clean-up old list */
+		list_for_each(node, old_fsc_list) {
+			/* get pointer to contained fsc struct */
+			pfsc = list_entry(node, struct cpm_fsc, node);
+			/* remove this node from the list */
+			list_del(node);
+			/* release memory */
+			kfree(pfsc);
+		}
+#endif
+
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(cpm_set_fsc_list);
 
 
 /******************************************************************************
@@ -1069,6 +1106,8 @@ static int __init cpm_core_setup_workqueue(void)
 
 static int __init cpm_core_init(void)
 {
+
+	cpm_core_setup_workqueue();
 
 	cpm_sysfs_init();
 

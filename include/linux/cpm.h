@@ -164,9 +164,8 @@ struct cpm_dev {
  */
 struct cpm_governor {
 	char name[CPM_NAME_LEN];
-	int (*build_fsc_list)(struct list_head *dev_list, u8 dev_count, struct list_head *fsc_list);
+	int (*build_fsc_list)(struct list_head *dev_list, u8 dev_count);
 };
-
 
 /*
  * Register a governor to cpm_core
@@ -174,9 +173,16 @@ struct cpm_governor {
 int cpm_register_governor(struct cpm_governor *governor);
 
 /*
+ * Define a new FSC list
+ */
+int cpm_set_fsc_list(struct list_head *fsc_list);
+
+/*
  * Merge, if possible,  two cpm_range
  */
 int merge_cpm_range(struct cpm_range *first, struct cpm_range *second);
+
+
 
 /*********************************************************************
  *                          CPM POLICIES                             *
@@ -203,12 +209,10 @@ struct cpm_policy {
 	int (*ddp_handler)(unsigned long, void *);
 };
 
-
 /**
  * 
  */
 int cpm_register_policy(struct cpm_policy *policy);
-
 
 /*
  * Define the ordered FSC list to use for validation and selection.
