@@ -220,14 +220,12 @@ EXPORT_SYMBOL(cpm_debug_printk);
  */
 int cpm_verify_range(struct cpm_range *range, u32 value) {
 	switch (range->type) {
+	case CPM_ASM_TYPE_UNBOUNDED:
+		break;
 	case CPM_ASM_TYPE_RANGE:
 		if (value>range->upper)
 			return CPM_RANGE_ERROR;
 		if (value<range->lower)
-			return CPM_RANGE_ERROR;
-		break;
-	case CPM_ASM_TYPE_SINGLE:
-		if (value!=range->lower)
 			return CPM_RANGE_ERROR;
 		break;
 	case CPM_ASM_TYPE_LBOUND:
@@ -253,84 +251,100 @@ EXPORT_SYMBOL(cpm_verify_range);
 int merge_cpm_range(struct cpm_range *first, struct cpm_range *second) {
 	int ret = 0;
 
-	switch( first->type ) {
+	if ( unlikely(second->type == CPM_ASM_TYPE_UNBOUNDED) )
+		return 0;
 
-	case CPM_ASM_TYPE_RANGE:
-		switch( second->type ) {
-		case CPM_ASM_TYPE_RANGE:
-			if ( ( first->lower > second->upper ) ||
-					( first->upper < second->lower ) ) {
-				ret = -EINVAL;
-			} else {
-				first->lower = MAX(first->lower, second->lower);
-				first->upper = MIN(first->upper, second->upper);
-			}
-			break;
-		case CPM_ASM_TYPE_SINGLE:
-			if ( cpm_verify_range(first, second->lower) == CPM_RANGE_ERROR ) {
-				ret = -EINVAL;
-			} else {
-				first->lower = second->lower;
-				first->type = CPM_ASM_TYPE_SINGLE;
-			}
-			break;
-		case CPM_ASM_TYPE_LBOUND:
-			if ( cpm_verify_range(first, second->lower) == CPM_RANGE_ERROR ) {
-				ret = -EINVAL;
-			} else {
-				first->lower = second->lower;
-			}
-			break;
-		case CPM_ASM_TYPE_UBOUND:
-			if ( cpm_verify_range(first, second->upper) == CPM_RANGE_ERROR ) {
-				ret = -EINVAL;
-			} else {
-				first->upper = second->upper;
-			}
-			break;
-		}
+	switch( first->type ) {
+	case CPM_ASM_TYPE_UNBOUNDED:
+		(*first) = (*second);
 		break;
 
-	case CPM_ASM_TYPE_SINGLE:
-		switch( second->type ) {
-		case CPM_ASM_TYPE_RANGE:
-			if ( cpm_verify_range(second, first->lower) == CPM_RANGE_ERROR ) {
-				ret = -EINVAL;
+	case CPM_ASM_TYPE_RANGE:
+		if ( first->lower < first->upper) {
+		/* first is a range */
+			switch( second->type ) {
+			case CPM_ASM_TYPE_RANGE:
+				if ( second->lower < second->upper) {
+				/* second is a range */
+					if ( ( first->lower > second->upper ) ||
+							( first->upper < second->lower ) ) {
+						ret = -EINVAL;
+					} else {
+						first->lower = MAX(first->lower, second->lower);
+						first->upper = MIN(first->upper, second->upper);
+					}
+				} else {
+				/* second is a single value */
+					if ( cpm_verify_range(first, second->lower) == CPM_RANGE_ERROR ) {
+						ret = -EINVAL;
+					} else {
+						(*first) = (*second);
+					}
+				}
+				break;
+			case CPM_ASM_TYPE_LBOUND:
+				if ( cpm_verify_range(first, second->lower) == CPM_RANGE_ERROR ) {
+					ret = -EINVAL;
+				} else {
+					first->lower = second->lower;
+				}
+				break;
+			case CPM_ASM_TYPE_UBOUND:
+				if ( cpm_verify_range(first, second->upper) == CPM_RANGE_ERROR ) {
+					ret = -EINVAL;
+				} else {
+					first->upper = second->upper;
+				}
+				break;
 			}
-			break;
-		case CPM_ASM_TYPE_SINGLE:
-			if ( first->lower != second->lower ) {
-				ret = -EINVAL;
-			}	
-			break;
-		case CPM_ASM_TYPE_LBOUND:
-		case CPM_ASM_TYPE_UBOUND:
-			if ( cpm_verify_range(second, first->lower) == CPM_RANGE_ERROR ) {
-				ret = -EINVAL;
+		} else {
+		/* first is a single value */
+			switch( second->type ) {
+			case CPM_ASM_TYPE_RANGE:
+				if ( second->lower < second->upper ) {
+				/* second is a range */
+					if ( cpm_verify_range(second, first->lower) == CPM_RANGE_ERROR ) {
+						ret = -EINVAL;
+					}
+				} else {
+				/* second is a single value */
+					if ( first->lower != second->lower ) {
+						ret = -EINVAL;
+					}
+				}
+				break;
+			case CPM_ASM_TYPE_LBOUND:
+			case CPM_ASM_TYPE_UBOUND:
+				if ( cpm_verify_range(second, first->lower) == CPM_RANGE_ERROR ) {
+					ret = -EINVAL;
+				}
+				break;
 			}
-			break;
 		}
 		break;
 
 	case CPM_ASM_TYPE_LBOUND:
 		switch( second->type ) {
 		case CPM_ASM_TYPE_RANGE:
-			if ( cpm_verify_range(first, second->lower) == CPM_RANGE_ERROR ) {
-				ret = -EINVAL;
-			} else {
-				first->lower = MAX(first->lower, second->lower);
-				first->upper = second->upper;
-				first->type = CPM_ASM_TYPE_RANGE;
-			}
-			break;
+			if ( second->lower < second->upper) {
+			/* second is a range */
+				if ( cpm_verify_range(first, second->lower) == CPM_RANGE_ERROR ) {
+					ret = -EINVAL;
+				} else {
+					first->lower = MAX(first->lower, second->lower);
+					first->upper = second->upper;
+					first->type = CPM_ASM_TYPE_RANGE;
+				}
+				break;
 
-		case CPM_ASM_TYPE_SINGLE:
-			if ( cpm_verify_range(first, second->lower)
-						== CPM_RANGE_ERROR ) {
-				ret = -EINVAL;
 			} else {
-				first->lower = second->lower;
-				first->type = CPM_ASM_TYPE_SINGLE;
+			/* first is a single value */
+				if ( cpm_verify_range(first, second->lower)
+							== CPM_RANGE_ERROR ) {
+					ret = -EINVAL;
+				} else {
+					(*first) = (*second);
+				}
 			}
 			break;
 		case CPM_ASM_TYPE_LBOUND:
@@ -349,22 +363,25 @@ int merge_cpm_range(struct cpm_range *first, struct cpm_range *second) {
 	case CPM_ASM_TYPE_UBOUND:
 		switch( second->type ) {
 		case CPM_ASM_TYPE_RANGE:
-			if ( cpm_verify_range(first, second->lower)
-						== CPM_RANGE_ERROR ) {
-				ret = -EINVAL;
+			if ( second->lower < second->upper ) {
+			/* second is a range */
+				if ( cpm_verify_range(first, second->lower)
+							== CPM_RANGE_ERROR ) {
+					ret = -EINVAL;
+				} else {
+					first->upper = MIN(first->upper, second->upper);
+					first->lower = second->lower;
+					first->type = CPM_ASM_TYPE_RANGE;
+				}
+				break;
 			} else {
-				first->upper = MIN(first->upper, second->upper);
-				first->lower = second->lower;
-				first->type = CPM_ASM_TYPE_RANGE;
-			}
-			break;
-		case CPM_ASM_TYPE_SINGLE:
-			if ( cpm_verify_range(first, second->lower)
-						== CPM_RANGE_ERROR ) {
-				ret = -EINVAL;
-			} else {
-				first->lower = second->lower;
-				first->type = CPM_ASM_TYPE_SINGLE;
+			/* first is a single value */
+				if ( cpm_verify_range(first, second->lower)
+							== CPM_RANGE_ERROR ) {
+					ret = -EINVAL;
+				} else {
+					(*first) = (*second);
+				}
 			}
 			break;
 		case CPM_ASM_TYPE_LBOUND:
@@ -652,27 +669,33 @@ static ssize_t cpm_asm_show(struct kobject *kobj,
 	mutex_lock(&sysfs_lock);
 
 	switch(asm_range->range.type) {
-	case CPM_ASM_TYPE_RANGE:
-		status = sprintf(buf, "%d:%s (R) %u %u\n",
-			asm_range->id,
-			platform->asms[asm_range->id].name,
-			asm_range->range.lower,
-			asm_range->range.upper);
+	case CPM_ASM_TYPE_UNBOUNDED:
+		status = sprintf(buf, "%d:%s (UnB)\n",
+				asm_range->id,
+				platform->asms[asm_range->id].name);
 		break;
-	case CPM_ASM_TYPE_SINGLE:
-		status = sprintf(buf, "%d:%s (S) %u\n",
-			asm_range->id,
-			platform->asms[asm_range->id].name,
-			asm_range->range.lower);
+	case CPM_ASM_TYPE_RANGE:
+		if ( asm_range->range.lower < asm_range->range.upper ) {
+			status = sprintf(buf, "%d:%s (R) %u %u\n",
+				asm_range->id,
+				platform->asms[asm_range->id].name,
+				asm_range->range.lower,
+				asm_range->range.upper);
+		} else {
+			status = sprintf(buf, "%d:%s (S) %u\n",
+				asm_range->id,
+				platform->asms[asm_range->id].name,
+				asm_range->range.lower);
+		}
 		break;
 	case CPM_ASM_TYPE_LBOUND:
-		status = sprintf(buf, "%d:%s (L) %u\n",
+		status = sprintf(buf, "%d:%s (LB) %u\n",
 			asm_range->id,
 			platform->asms[asm_range->id].name,
 			asm_range->range.lower);
 		break;
 	case CPM_ASM_TYPE_UBOUND:
-		status = sprintf(buf, "%d:%s (U) %u\n",
+		status = sprintf(buf, "%d:%s (UB) %u\n",
 			asm_range->id,
 			platform->asms[asm_range->id].name,
 			asm_range->range.upper);

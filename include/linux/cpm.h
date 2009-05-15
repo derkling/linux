@@ -40,12 +40,14 @@ typedef u8 cpm_id;
  * A generic range
  */
 struct cpm_range {
-	u32 lower;				/* range lower bound */
-	u32 upper;				/* range upper bound */
-#define CPM_ASM_TYPE_RANGE		0
-#define CPM_ASM_TYPE_SINGLE		1
-#define CPM_ASM_TYPE_LBOUND		2
-#define CPM_ASM_TYPE_UBOUND		3
+	u32 lower;				/* lower bound */
+	u32 upper;				/* upper bound */
+#define CPM_ASM_TYPE_UNBOUNDED		0	/* no bounds defined         */
+#define CPM_ASM_TYPE_RANGE		1	/* upper and lover bound     */
+						/*  defined (if lower==upper */
+						/*  than is a single value)  */
+#define CPM_ASM_TYPE_LBOUND		2	/* lower bound only */
+#define CPM_ASM_TYPE_UBOUND		3	/* upper bound only */
 	u8 type:2;				/* range type */
 
 };
