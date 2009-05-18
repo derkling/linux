@@ -200,6 +200,10 @@ int merge_cpm_range(struct cpm_range *first, struct cpm_range *second);
 /*********************************************************************
  *                          CPM POLICIES                             *
  *********************************************************************/
+struct cpm_fsc_pointer {
+	struct cpm_fsc *fsc;		/* The FSC referred */
+	struct list_head node;		/* The next element*/
+};
 
 /**
  * A CPM Policy
@@ -229,6 +233,7 @@ int cpm_register_policy(struct cpm_policy *policy);
 
 /*
  * Define the ordered FSC list to use for validation and selection.
+ * This method will return a list of cpm_fsc_pointer's elements.
  */
 int cpm_set_ordered_fsc_list(struct list_head *ordered_fsc_list);
 
