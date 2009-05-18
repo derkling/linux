@@ -56,6 +56,9 @@ struct cpm_fsc_dwr *curr_dwr = 0;
 /*The internal list of founded FSCs*/
 LIST_HEAD(__fsc_list);
 
+/*The number of FSCs found*/
+u8 tot_fsc = 0;
+
 
 
 
@@ -220,7 +223,6 @@ int __build_fsc_list_exhaustive(struct list_head *l_dev, u8 ndev)
 			curr_dwr[ndev].dwr = &dev->dwrs[idwr];
 			/*if this is the last device a NEW FSC has been found*/
 			dprintk("next: %p head: %p\n",l_dev->next,h_dev);
-//REMOVE 		if (list_is_last(l_dev,h_dev)){
 			if (ndev == tot_dev-1){
 				/*last device has been query: new fsc can be added to fsc_list*/
 				dprintk("building the new FSC found\n");
@@ -231,6 +233,7 @@ int __build_fsc_list_exhaustive(struct list_head *l_dev, u8 ndev)
 				if (!new_fsc->dwrs)
 					return -ENOMEM;
 				new_fsc->asms = (struct cpm_asm_range *)(kzalloc(sizeof(struct cpm_asm_range)*tot_grgs,GFP_KERNEL));
+				new_fsc->id = tot_fsc++;
 				new_fsc->gov_data = 0;
 				new_fsc->pol_data = 0;
 				INIT_LIST_HEAD(&(new_fsc->node));	
@@ -307,7 +310,8 @@ int build_fsc_list_exhaustive(struct list_head *dev_list, u8 ndev)
  		h_dev = dev_list;
 		tot_dev = ndev;
 		tot_grgs = 0;
-		
+		tot_fsc = 0;	
+	
 		/*Array allocation for DWRs-FSC mapping*/
 		curr_dwr = (struct cpm_fsc_dwr *)kzalloc(sizeof(struct cpm_fsc_dwr *)*ndev,GFP_KERNEL);
 		if (!curr_dwr){
