@@ -70,7 +70,9 @@ struct cpm_dev_core {
 struct cpm_fsc_core {
 	struct cpm_fsc info;		/* the public accessible data */
 #ifdef CONFIG_CPM_SYSFS
-	struct kobj_attribute kattr;	/* the sysfs attribute to show ASMs values */
+	struct attribute_group asms_group;  	/* The ASMs of this FSC */
+	struct attribute_group dwrs_group;	/* The DWRs of this FSC */
+	char name[CPM_NAME_LEN];		/* The name of this FSC */
 #endif
 };
 
@@ -121,6 +123,9 @@ static LIST_HEAD(constraint_list);
 
 /* The existing FSC */
 static LIST_HEAD(fsc_list);
+
+/* The count of FSC in the fsc_list */
+static unsigned int fsc_count;
 
 /* The FSC's list mutex */
 static DEFINE_MUTEX(fsc_mutex);
@@ -569,41 +574,61 @@ int cpm_register_governor(struct cpm_governor *cg) {
 }
 EXPORT_SYMBOL(cpm_register_governor);
 
+static int cpm_sysfs_fsc_update(void);
 int cpm_set_fsc_list(struct list_head *new_fsc_list)
 {
 	struct list_head old_fsc_list;
 	struct list_head *node;
-	struct cpm_fsc *pfsc;
 
-	if ( !list_empty(&fsc_list) ) {
-		dprintk("new FSC list received\n");
-
-		/* saving a ref to old FSC list*/
-		old_fsc_list = fsc_list;
-
-		/* updating current FSC list */
-		mutex_lock(&fsc_mutex);
-		fsc_list = (*new_fsc_list);
-		mutex_unlock(&fsc_mutex);
-
-#ifdef CONFIG_CPM_SYSFS
-		/* release sysfs kobj */
-		eprintk("TODO: implement sysfs FSC kobjects release");
-#else
-		/* clean-up old list */
-		list_for_each(node, old_fsc_list) {
-			/* get pointer to contained fsc struct */
-			pfsc = list_entry(node, struct cpm_fsc, node);
-			/* remove this node from the list */
-			list_del(node);
-			/* release memory */
-			kfree(pfsc);
-		}
-#endif
-
+	if ( list_empty(new_fsc_list) ) {
+		eprintk("empty FSC list: falling back to best-effort policy\n");
+		//TODO disable CPM and fall-back to best-effort policy with
+		//only constraints aggretation and notification...
+		//Unitl either:
+		// - device base change (remove some device)
+		return 0;
 	}
 
+	dprintk("new FSC list received\n");
+
+	mutex_lock(&fsc_mutex);
+
+	/* saving a ref to old FSC list*/
+	old_fsc_list = fsc_list;
+
+	/* updating current FSC list */
+	list_replace_init(new_fsc_list, &fsc_list);
+
+	/* Update the FSC count */
+	fsc_count = 0;
+	list_for_each(node, &fsc_list) {
+		fsc_count++;
+	}
+
+	mutex_unlock(&fsc_mutex);
+
+#ifdef CONFIG_CPM_SYSFS
+	/* release sysfs kobj */
+	eprintk("TODO: implement sysfs FSC kobjects release");
+#else
+	struct cpm_fsc *pfsc;
+
+	/* clean-up old list */
+	list_for_each(node, old_fsc_list) {
+		/* get pointer to contained fsc struct */
+		pfsc = list_entry(node, struct cpm_fsc, node);
+		/* remove this node from the list */
+		list_del(node);
+		/* release memory */
+		kfree(pfsc);
+	}
+#endif
+
+	dprintk("Updating FSC sysfs interface\n");
+	cpm_sysfs_fsc_update();
+
 	return 0;
+
 }
 EXPORT_SYMBOL(cpm_set_fsc_list);
 
@@ -740,49 +765,43 @@ static ssize_t cpm_asm_show(struct kobject *kobj,
 		struct kobj_attribute *attr, char *buf)
 {
 	struct cpm_asm_range *asm_range;
-	ssize_t	status = 0;
+	ssize_t	count = 0;
 
 	asm_range = container_of(attr, struct cpm_asm_range, kattr);
 
 	mutex_lock(&sysfs_lock);
 
+	count = sprintf(buf, "%d:%s",
+			asm_range->id,
+			platform[asm_range->id].info.name);
+
 	switch(asm_range->range.type) {
 	case CPM_ASM_TYPE_UNBOUNDED:
-		status = sprintf(buf, "%d:%s (UnB)\n",
-				asm_range->id,
-				platform[asm_range->id].info.name);
+		count += sprintf(buf+count, " UnB\n");
 		break;
 	case CPM_ASM_TYPE_RANGE:
 		if ( asm_range->range.lower < asm_range->range.upper ) {
-			status = sprintf(buf, "%d:%s (R) %u %u\n",
-				asm_range->id,
-				platform[asm_range->id].info.name,
+			count += sprintf(buf+count, " R %u %u\n",
 				asm_range->range.lower,
 				asm_range->range.upper);
 		} else {
-			status = sprintf(buf, "%d:%s (S) %u\n",
-				asm_range->id,
-				platform[asm_range->id].info.name,
+			count += sprintf(buf+count, " S %u\n",
 				asm_range->range.lower);
 		}
 		break;
 	case CPM_ASM_TYPE_LBOUND:
-		status = sprintf(buf, "%d:%s (LB) %u\n",
-			asm_range->id,
-			platform[asm_range->id].info.name,
+		count += sprintf(buf+count, " LB %u\n",
 			asm_range->range.lower);
 		break;
 	case CPM_ASM_TYPE_UBOUND:
-		status = sprintf(buf, "%d:%s (UB) %u\n",
-			asm_range->id,
-			platform[asm_range->id].info.name,
+		count += sprintf(buf+count, " UB %u\n",
 			asm_range->range.upper);
 		break;
 	}
 
 	mutex_unlock(&sysfs_lock);
 
-	return status;
+	return count;
 }
 
 static ssize_t cpm_dwr_show(struct kobject *kobj,
@@ -935,6 +954,7 @@ static struct attribute_group cpm_sysfs_core_attr_group = {
 
 static struct kobject *cpm_core_kobj;
 
+static struct kobject *cpm_fscs_kobj;
 
 static int __init cpm_sysfs_core_init(void)
 {
@@ -942,14 +962,35 @@ static int __init cpm_sysfs_core_init(void)
 
 	/* create the "cpm" sysfs' entry under /sys/kernel */
 	cpm_core_kobj = kobject_create_and_add("cpm", kernel_kobj);
-	if (!cpm_core_kobj)
+	if (!cpm_core_kobj) {
+		eprintk("out-of-memory on \"cpm\" sysfs interface creation\n");
 		return -ENOMEM;
+	}
 
 	retval = sysfs_create_group(cpm_core_kobj, &cpm_sysfs_core_attr_group);
-	if (retval)
+	if (retval) {
+		eprintk("\"cpm\" sysfs interface attributes initialization failed\n");
 		kobject_put(cpm_core_kobj);
+		goto out_sysfs_core_cpm; 
+	}
+
+	/* create the "fscs" sysfs' entry under /sys/kernel/cpm */
+	cpm_fscs_kobj = kobject_create_and_add("fscs", cpm_core_kobj);
+	if (!cpm_fscs_kobj) {
+		eprintk("out-of-memory on \"cpm/fscs\" sysfs interface creation\n");
+		retval = -ENOMEM;
+		goto out_sysfs_core_fscs;
+	}
+
+	return 0;
+
+out_sysfs_core_fscs:
+	kobject_put(cpm_core_kobj);
+
+out_sysfs_core_cpm:
 
 	return retval;
+
 }
 
 static int __init cpm_sysfs_init(void)
@@ -1077,6 +1118,121 @@ out_sysfs_asms_init_nomem:
 	return result;
 
 }
+
+struct attribute_group current_fsc_group;
+
+/*
+ * cpm_sysfs_export_asms - export the specified ASMs via sysfs
+ * @pasm - the array of ASMs to export
+ * @asms_count - the number of elements in the array
+ * @name - the name of this group
+ * @attr_group - the group of attributes to use for the export
+ * @kobj - the parent kobject under witch this group will be exported
+ */
+static int cpm_sysfs_asms_export(struct cpm_asm_range *pasm, u8 asms_count, char *name, struct attribute_group *attr_group, struct kobject *kobj)
+{
+	int j, result;
+	struct attribute **pattrs;
+
+	attr_group->name = name;
+	attr_group->attrs = (struct attribute **)kzalloc((asms_count+1)*sizeof(struct attribute *), GFP_KERNEL);
+	if ( !attr_group->attrs  ) {
+		dprintk("out-of-mem on ASMs attributes allocation\n");
+		result = -ENOMEM;
+		goto out_sysfs_asm_nomem;
+	}
+
+	/* Loop on ASMs array */
+	pattrs = attr_group->attrs;
+	for (j=0; pasm && j<asms_count; j++) {
+		snprintf(pasm->name, CPM_NAME_LEN, "asm%02d", pasm->id);
+		CPM_KATTR_RO(&(pasm->kattr), pasm->name, cpm_asm_show);
+		CPM_ADD_ATTR(pattrs, pasm->kattr);
+		pasm++;
+	}
+
+	/* complete attribute group definition */
+	(*pattrs) = NULL;
+
+	/* export this ASMs group via sysfs */
+	result = sysfs_create_group(kobj, attr_group);
+	if ( result ) {
+		dprintk("ASMs exporting failed\n");
+		goto out_sysfs_asms_export_failed;
+	}
+
+	return 0;
+
+
+out_sysfs_asms_export_failed:
+
+	kfree(attr_group->attrs);
+
+out_sysfs_asm_nomem:
+
+	return result;
+
+}
+
+static int cpm_sysfs_fsc_export(void)
+{
+	int result = 0;
+	unsigned short i;
+	struct cpm_fsc_core *pcfsc;
+
+	dprintk("exporting new FSC list...\n");
+
+	/* Loop on FSCs */
+	i = 0;
+	list_for_each_entry(pcfsc, &fsc_list, info.node) {
+
+		/* create the asms group for this FSC */
+		snprintf(pcfsc->name, CPM_NAME_LEN, "FSC%02u", pcfsc->info.id);
+
+		/* exporting ASMs for this FSC */
+		result = cpm_sysfs_asms_export(pcfsc->info.asms,
+				pcfsc->info.asms_count,
+				pcfsc->name,
+				&(pcfsc->asms_group),
+				cpm_fscs_kobj);
+
+		/* exporting DWRs for this FSC */
+		//TODO
+
+		i++;
+	}
+
+	return 0;
+
+out_sysfs_fsc_asm_nomem:
+
+out_sysfs_fsc_new_nomem:
+
+	return result;
+}
+
+static int cpm_sysfs_fsc_update(void)
+{
+	int result;
+
+	/* Cleaning up existing FSC lists */
+	//TODO
+
+	/* Export new FSC list */
+	result = cpm_sysfs_fsc_export();
+	if ( result ) {
+		eprintk("exporting FSCs failed\n");
+		goto out_sysfs_fsc_export;
+	}
+
+	return 0;
+
+out_sysfs_fsc_export:
+
+	return result;
+}
+
+
 
 #else
 
