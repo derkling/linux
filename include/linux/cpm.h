@@ -88,6 +88,8 @@ struct cpm_asm {
 #define CPM_COMPOSITION_ADDITIVE	0
 #define CPM_COMPOSITION_RESTRICTIVE	1
 	u8 comp:1;
+	u32 min;			/* min feasible value */
+	u32 max;			/* max feasible value */
 };
 
 /*

@@ -50,6 +50,15 @@ struct cpm_dev_sysfs {
 	/* TODO add entries for statistics */
 };
 
+struct cpm_asm_core {
+	struct cpm_asm info;		/* the public accessible data */
+	cpm_id id;			/* the ASMs unique identifier */
+	struct cpm_range cur_range;	/* the current range for this ASM */
+#ifdef CONFIG_CPM_SYSFS
+	struct kobj_attribute kattr;	/* the sysfs attribute to show ASMs values */
+#endif
+};
+
 struct cpm_dev_core {
 	struct cpm_dev dev_info;	/* the public accessible data */
 	struct list_head asm_list;	/* list of cpm_asm_map that belongs to at least one DWR */
@@ -81,8 +90,15 @@ struct cpm_constraint {
 	struct list_head *requests;	/* The requested values for this ASM */
 };
 
-/* Platform specific ASMs */
-static struct cpm_platform_data *platform = 0;
+/* Platform defined ASMs */
+static struct cpm_asm_core *platform = 0;
+
+/* The number of available ASMs */
+static unsigned int cpm_asm_count;
+
+/* The ASMs data mutex */
+static DEFINE_MUTEX(asm_mutex);
+
 
 /* The governor in use */
 static struct cpm_governor *governor = 0;
@@ -409,24 +425,56 @@ EXPORT_SYMBOL(merge_cpm_range);
  *   CPM PLATFORM                                                             *
  ******************************************************************************/
 
+static int cpm_sysfs_core_asms_init(void);
+
 int cpm_register_platform_asms(struct cpm_platform_data *cpd) {
-	
-	if (!cpd)
+	int i, result;
+	struct cpm_asm *pasm;
+
+	if (!cpd) {
+		eprintk("invalid platform data");
 		return -EINVAL;
+	}
 
-	// NOTE platform data can be defined onyl one time
-	if (platform)
-		return -EBUSY;
+	mutex_lock(&asm_mutex);
 
-	// TODO use MUTEX
-	platform = cpd;
+	// NOTE platform data can be defined only one time
+	if (platform) {
+		eprintk("platform data already defined");
+		result = -EBUSY;
+		goto cpm_plat_asm_exist;
+	}
 
-	// TODO allocate cpm_ranges arrays?!?
+	platform = (struct cpm_asm_core*)kzalloc((cpd->count)*sizeof(struct cpm_asm_core), GFP_KERNEL);
+	if ( !platform ) {
+		eprintk("out-of-mem on platform data allocation\n");
+		result = -ENOMEM;
+		goto cpm_platform_asm_nomem;
+	}
+
+	pasm = cpd->asms;
+	for (i=0; i<cpd->count; i++) {
+		platform[i].id = i;
+		platform[i].info = (*pasm);
+		pasm++;
+	}
+	cpm_asm_count = i;
+
+	mutex_unlock(&asm_mutex);
 
 	dprintk("platform data registered, %u ASM defined\n",
-		platform->count);
+		cpm_asm_count);
+
+	cpm_sysfs_core_asms_init();
 
 	return 0;
+
+cpm_plat_asm_exist:
+cpm_platform_asm_nomem:
+	mutex_unlock(&asm_mutex);
+
+	return result;
+
 }
 EXPORT_SYMBOL(cpm_register_platform_asms);
 
@@ -577,13 +625,20 @@ EXPORT_SYMBOL(cpm_set_ordered_fsc_list);
 
 #ifdef CONFIG_CPM_SYSFS
 
-#define CPM_DATTR_RO(_kattr,_name,_show)	\
+#define CPM_KATTR_RO(_kattr,_name,_show)	\
 	do {					\
 		(_kattr)->attr.name = _name;	\
 		(_kattr)->attr.mode = 0444;	\
 		(_kattr)->show = _show;		\
+		(_kattr)->store = NULL;		\
 	} while(0);
-
+#define CPM_KATTR_RW(_kattr,_name,_show,_store)	\
+	do {					\
+		(_kattr)->attr.name = _name;	\
+		(_kattr)->attr.mode = 0664;	\
+		(_kattr)->show = _show;		\
+		(_kattr)->store = _store;	\
+	} while(0);
 #define	CPM_ADD_ATTR(_pattrs, _kattr)		\
 	do {					\
 		*(_pattrs) = &((_kattr).attr);	\
@@ -672,32 +727,32 @@ static ssize_t cpm_asm_show(struct kobject *kobj,
 	case CPM_ASM_TYPE_UNBOUNDED:
 		status = sprintf(buf, "%d:%s (UnB)\n",
 				asm_range->id,
-				platform->asms[asm_range->id].name);
+				platform[asm_range->id].info.name);
 		break;
 	case CPM_ASM_TYPE_RANGE:
 		if ( asm_range->range.lower < asm_range->range.upper ) {
 			status = sprintf(buf, "%d:%s (R) %u %u\n",
 				asm_range->id,
-				platform->asms[asm_range->id].name,
+				platform[asm_range->id].info.name,
 				asm_range->range.lower,
 				asm_range->range.upper);
 		} else {
 			status = sprintf(buf, "%d:%s (S) %u\n",
 				asm_range->id,
-				platform->asms[asm_range->id].name,
+				platform[asm_range->id].info.name,
 				asm_range->range.lower);
 		}
 		break;
 	case CPM_ASM_TYPE_LBOUND:
 		status = sprintf(buf, "%d:%s (LB) %u\n",
 			asm_range->id,
-			platform->asms[asm_range->id].name,
+			platform[asm_range->id].info.name,
 			asm_range->range.lower);
 		break;
 	case CPM_ASM_TYPE_UBOUND:
 		status = sprintf(buf, "%d:%s (UB) %u\n",
 			asm_range->id,
-			platform->asms[asm_range->id].name,
+			platform[asm_range->id].info.name,
 			asm_range->range.upper);
 		break;
 	}
@@ -752,14 +807,14 @@ static int cpm_sysfs_dwr_setup(struct cpm_dev_core *pcd) {
 		}
 
 		/* adding the DWR name attribute */
-		CPM_DATTR_RO(&(pdwr->kattr), "name", cpm_dwr_show);
+		CPM_KATTR_RO(&(pdwr->kattr), "name", cpm_dwr_show);
 		CPM_ADD_ATTR(pattrs, pdwr->kattr);
 
 		/* scanning a DWR's ASMs and adding attributes */
 		pasm = pdwr->asms;
 		for (j=0; j<pdwr->asms_count; j++) {
 			sprintf(pasm->name, "asm%02d", pasm->id);
-			CPM_DATTR_RO(&(pasm->kattr), pasm->name, cpm_asm_show);
+			CPM_KATTR_RO(&(pasm->kattr), pasm->name, cpm_asm_show);
 			CPM_ADD_ATTR(pattrs, pasm->kattr);
 			pasm++;
 		}
@@ -896,6 +951,110 @@ static int __init cpm_sysfs_init(void)
 	return 0;
 }
 
+static ssize_t cpm_sysfs_core_asms_show(struct kobject *kobj, struct kobj_attribute *attr,
+		char *buf)
+{
+	ssize_t count = 0;
+	struct cpm_asm_core *pcasm;
+
+	pcasm = container_of(attr, struct cpm_asm_core, kattr);
+
+	mutex_lock(&sysfs_lock);
+
+	count = sprintf(buf, "%u:%s %c %c %u %u", pcasm->id, pcasm->info.name,
+			(pcasm->info.type == CPM_TYPE_LIB) ? 'L' : 'G',
+			(pcasm->info.comp == CPM_COMPOSITION_ADDITIVE) ? 'A' : 'R',
+			pcasm->info.min,
+			pcasm->info.max);
+
+	switch(pcasm->cur_range.type) {
+	case CPM_ASM_TYPE_UNBOUNDED:
+		count += sprintf(buf+count, " (UnB)\n");
+		break;
+	case CPM_ASM_TYPE_RANGE:
+		if ( pcasm->cur_range.lower < pcasm->cur_range.upper ) {
+			count += sprintf(buf+count, " (R) %u %u\n",
+				pcasm->cur_range.lower,
+				pcasm->cur_range.upper);
+		} else {
+			count += sprintf(buf+count, " (S) %u\n",
+				pcasm->cur_range.lower);
+		}
+		break;
+	case CPM_ASM_TYPE_LBOUND:
+		count += sprintf(buf+count, " (LB) %u\n",
+				pcasm->cur_range.lower);
+		break;
+	case CPM_ASM_TYPE_UBOUND:
+		count += sprintf(buf+count, " (UB) %u\n",
+				pcasm->cur_range.upper);
+		break;
+	}
+
+	mutex_unlock(&sysfs_lock);
+	
+	return count;
+}
+
+static ssize_t cpm_sysfs_core_asms_store(struct kobject *kobj, struct kobj_attribute *attr,
+		const char *buf, size_t count)
+{
+		
+	return count;
+}
+
+struct attribute_group platform_asms_group;
+
+static int cpm_sysfs_core_asms_init(void)
+{
+	int result, i;
+	struct cpm_asm_core *pcasm;
+	struct attribute **pattrs;
+
+	dprintk("exporting platform ASMs...\n");
+
+	platform_asms_group.attrs  = pattrs = (struct attribute **)kzalloc(((cpm_asm_count)+1)*sizeof(struct attribute *), GFP_KERNEL);
+	if ( !pattrs ) {
+		dprintk("out-of-mem on platform_asms_group.attrs allocation\n");
+		result = -ENOMEM;
+		goto out_sysfs_asms_init_nomem;
+	}
+	platform_asms_group.name = "asms";
+
+	pcasm = platform;
+	for (i=0; i<cpm_asm_count; i++) {
+	
+		if ( pcasm->info.userw == CPM_USER_RW) {
+			CPM_KATTR_RW(&(pcasm->kattr), pcasm->info.name, cpm_sysfs_core_asms_show, cpm_sysfs_core_asms_store);
+		} else {
+			CPM_KATTR_RO(&(pcasm->kattr), pcasm->info.name, cpm_sysfs_core_asms_show);
+		}
+		CPM_ADD_ATTR(pattrs, pcasm->kattr);
+		pcasm++;
+	}
+	/* complete attribute group definition */
+	(*pattrs) = NULL;
+
+	/* export platform ASMs to sysfs */
+	result = sysfs_create_group(cpm_core_kobj, &(platform_asms_group));
+	if ( result ) {
+		dprintk("platform ASMs exporting failed\n");
+		goto out_sysfs_asms_init_export;
+	}
+
+	return 0;
+
+
+out_sysfs_asms_init_export:
+
+
+out_sysfs_asms_init_nomem:
+
+
+	return result;
+
+}
+
 #else
 
 static int __init cpm_sysfs_init(void)
@@ -909,6 +1068,11 @@ static int cpm_sysfs_dwr_setup(struct cpm_dev_core *pcd)
 }
 
 static int cpm_sysfs_dwr_release(struct cpm_dev_core *pcd)
+{
+	return 0;
+}
+
+static int cpm_sysfs_core_asms_init(void)
 {
 	return 0;
 }
