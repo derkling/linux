@@ -32,6 +32,11 @@ config CPM_SYSFS
         ---help---
           Select this to enable sysfs interface.
 
+config CPM_POLICY_SAME
+	tristate "Enable policy same"
+	help
+	  If you say...
+
 choice
 	prompt "Default CPM governor"
 	default CPM_DEFAULT_GOV_EXHAUSTIVE
