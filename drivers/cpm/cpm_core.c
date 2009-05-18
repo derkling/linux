@@ -67,6 +67,13 @@ struct cpm_dev_core {
 #endif
 };
 
+struct cpm_fsc_core {
+	struct cpm_fsc info;		/* the public accessible data */
+#ifdef CONFIG_CPM_SYSFS
+	struct kobj_attribute kattr;	/* the sysfs attribute to show ASMs values */
+#endif
+};
+
 /* cpm_dev_ktype - the ktype of each device registerd to CPM */
 struct kobj_type cpm_dev_ktype;
 struct sysfs_ops cpm_dev_ops;
@@ -482,6 +489,22 @@ EXPORT_SYMBOL(cpm_register_platform_asms);
 /******************************************************************************
  *				CPM GOVERNORS                                 *
  ******************************************************************************/
+
+struct cpm_fsc *cpm_get_new_fsc(void) {
+	struct cpm_fsc_core *pcfsc;
+
+	dprintk("allocate a new FSC\n");
+
+	pcfsc = (struct cpm_fsc_core*)kzalloc(sizeof(struct cpm_fsc_core), GFP_KERNEL);
+	if ( unlikely(!pcfsc) ) {
+		eprintk("out-of-memory on cpm_fsc_core alloation\n");
+		return 0;
+	}
+
+	return &(pcfsc->info);
+
+}
+EXPORT_SYMBOL(cpm_get_new_fsc);
 
 static void cpm_work_update_fsc(struct work_struct *work)
 {

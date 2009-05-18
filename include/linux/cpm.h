@@ -177,6 +177,15 @@ struct cpm_governor {
 int cpm_register_governor(struct cpm_governor *governor);
 
 /*
+ * Get a reference to a new FSC node
+ *
+ * This method return a pointer to a new FSC element.
+ * The element returned is zeroed and properly initialized with necessary core values.
+ * A NULL pointer will be returned on errors.
+ */
+struct cpm_fsc *cpm_get_new_fsc(void);
+
+/*
  * Define a new FSC list
  */
 int cpm_set_fsc_list(struct list_head *fsc_list);
