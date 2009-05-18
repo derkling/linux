@@ -147,6 +147,9 @@ int cpm_register_platform_asms(struct cpm_platform_data *asm_data);
  *                          CPM GOVERNORS                            *
  *********************************************************************/
 
+/* The cpm workwueue for asynchronous tasks scheduling */
+extern struct workqueue_struct *cpm_wq;
+
 /*
  * The public visible data of a device register to CPM
  */

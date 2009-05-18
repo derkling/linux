@@ -142,7 +142,7 @@ static short unsigned cpm_enabled = 0;
 static short unsigned cpm_fsc_outdated = 0;
 
 /* The core workqueue */
-static struct workqueue_struct *cpm_wq = 0;
+struct workqueue_struct *cpm_wq = 0;
 EXPORT_SYMBOL(cpm_wq);
 
 
