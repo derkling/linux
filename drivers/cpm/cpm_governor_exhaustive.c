@@ -79,11 +79,11 @@ void print_g_rgs(){
 	struct cpm_range pr;
 	list_for_each_entry(p,l_ranges,node){
 		pr = p->normal_range.range;
-		dprintk("dev:%p id:%hu type:%hu lower:%hu upper:%hu\n",\
+		dprintk("dev:%2p id:%2hu t:%1hu l:%3hu u:%3hu\n",\
 			p->dev,p->normal_range.id,pr.type,pr.lower,pr.upper);
 		list_for_each_entry(pold,&p->old,old){
 			pr = pold->normal_range.range;
-			dprintk("dev:%p id:%hu type:%hu lower:%hu upper:%hu\n",\
+			dprintk("dev:%2p id:%2hu t:%1hu l:%3hu u:%3hu\n",\
 				pold->dev,pold->normal_range.id,pr.type,pr.lower,pr.upper);
 		}
 	}
@@ -98,7 +98,8 @@ void print_fscs(){
 		dprintk("FSC:\n");
 		for (i=0;i<p->asms_count;i++){
 			r = p->asms[i];
-			dprintk("d: %hu type: %hu lower: %hu upper %hu\n",\
+
+			dprintk("id:%2hu t:%1u l:%3hu u:%3hu\n",\
 				r.id,r.range.type, r.range.lower,r.range.upper); 
 		}
 	}
@@ -120,18 +121,17 @@ int __build_fsc_list_exhaustive(struct list_head *l_dev, u8 ndev)
 	u8 idwr = 0, ndwr = 0, irgs = 0, i = 0;
 	int merge_res = 0;
 	
-	dprintk("recursive search call: list_head 0x%p ndev: %hu\n", l_dev, ndev);	
+	dprintk("recursive search call: list_head 0x%p ndev:%2hu\n", l_dev, ndev);	
 
 	dev = (list_entry(l_dev->next,struct cpm_dev,node));
 	ndwr = dev->dwrs_count;
-	dprintk("device #: %hu total dwrs: %hu\n", ndev, dev->dwrs_count);
+	dprintk("dev:%2hu total dwrs:%2hu\n", ndev, dev->dwrs_count);
 
 	/*iterate on dwrs of the current level device*/
 	for (idwr = 0 ; idwr < ndwr ; idwr++){
-		dprintk("analizyng dwr: %hu of dev: %hu\n", idwr, ndev);
+		dprintk("analizyng dwr:%2hu of dev:%2hu\n", idwr, ndev);
 		merge_res = 0;
 		dwrs = dev->dwrs[idwr];
-		//nrgs = dwrs.asms_count;
 		if (list_empty(l_ranges)){
 			/*no governor ranges are present yet: this is the first*/
 			/*device level. DWR's ranges can be copied directly */
@@ -147,13 +147,13 @@ int __build_fsc_list_exhaustive(struct list_head *l_dev, u8 ndev)
 				INIT_LIST_HEAD(&(new_g_rg->old));				
 				INIT_LIST_HEAD(&(new_g_rg->node));
 				new_g_rg->dev = dev;
-				dprintk("adding range type: %hu lower: %hu upper: %hu\n",\
+				dprintk("adding range t:%1hu l:%3hu u:%3hu\n",\
 					 new_g_rg->normal_range.range.type,new_g_rg->normal_range.range.lower,\
 						new_g_rg->normal_range.range.upper);
 				list_add(&(new_g_rg->node),l_ranges);
 				tot_grgs++;
 			}
-			dprintk("ranges added total ranges %hu\n", tot_grgs);
+			dprintk("ranges added total ranges %2hu\n", tot_grgs);
 		}else{
 			/*governor ranges are present: this is not the first*/
 			/*device. DWR's ranges must by compared with current*/
@@ -161,7 +161,7 @@ int __build_fsc_list_exhaustive(struct list_head *l_dev, u8 ndev)
 			//nrgs = dwrs.asms_count 
 			dprintk("l_ranges NOT empty: search if asm is  present\n");
 			for (irgs = 0 ; irgs < dwrs.asms_count ; irgs++){
-				dprintk("analizyng asm: %hu of dwr: %hu\n", irgs, idwr);		
+				dprintk("analizyng asm:%2hu of dwr:%2hu\n", irgs, idwr);		
 				d_rgs = dwrs.asms[irgs]; 
 				list_for_each_entry(g_rgs,l_ranges,node){
 					if (d_rgs.id == g_rgs->normal_range.id)
@@ -174,10 +174,10 @@ int __build_fsc_list_exhaustive(struct list_head *l_dev, u8 ndev)
 					dprintk("asm exist in local governor ranges\n");
 					new_cand_rg = g_rgs->normal_range;
 					merge_res = merge_cpm_range(&(new_cand_rg.range),&(dwrs.asms[irgs].range));
-					dprintk("return merge: %hu\n",merge_res);
+					dprintk("return merge:%2hu\n",merge_res);
 					if (merge_res == -EINVAL){
 						/*no merging is possible: stop current dwr analysis*/
-						dprintk("no merge is possible\n");
+						dprintk("no merge possible\n");
 						break;
 					}else{
 						//merging is possible: new candidate range for this asm must be added
@@ -191,7 +191,7 @@ int __build_fsc_list_exhaustive(struct list_head *l_dev, u8 ndev)
 						new_g_rg->dev = dev;	
 						list_add_tail(&new_g_rg->old,&g_rgs->old);
 						list_replace(&g_rgs->node,&new_g_rg->node);
-						dprintk("adding range type: %hu lower: %hu upper: %hu\n",\
+						dprintk("adding range t:%1hu l:%3hu u:%3hu\n",\
 							new_g_rg->normal_range.range.type,new_g_rg->normal_range.range.lower,\
 								new_g_rg->normal_range.range.upper);
 					}
@@ -207,7 +207,7 @@ int __build_fsc_list_exhaustive(struct list_head *l_dev, u8 ndev)
                                         new_g_rg->dev = dev;
 					list_add(&new_g_rg->node,&g_rgs->node);
 					tot_grgs++;
-					dprintk("adding range type: %hu lower: %hu upper: %hu\n",\
+					dprintk("adding range t:%1hu l:%3hu u:%3hu\n",\
 						new_g_rg->normal_range.range.type,new_g_rg->normal_range.range.lower,\
 							new_g_rg->normal_range.range.upper);
 					dprintk("ranges added total ranges %hu\n", tot_grgs);
@@ -222,7 +222,7 @@ int __build_fsc_list_exhaustive(struct list_head *l_dev, u8 ndev)
 			/*current DWR must be added to DWRs that map on current FSC*/
 			curr_dwr[ndev].dwr = &dev->dwrs[idwr];
 			/*if this is the last device a NEW FSC has been found*/
-			dprintk("next: %p head: %p\n",l_dev->next,h_dev);
+			dprintk("next:%p head:%p\n",l_dev->next,h_dev);
 			if (ndev == tot_dev-1){
 				/*last device has been query: new fsc can be added to fsc_list*/
 				dprintk("building the new FSC found\n");
@@ -243,7 +243,7 @@ int __build_fsc_list_exhaustive(struct list_head *l_dev, u8 ndev)
 					new_fsc->asms[i] = g_rgs->normal_range;
 					i++;
 				}
-				dprintk("ranges copied into fsc: %hu",i);
+				dprintk("ranges copied into fsc:%hu",i);
 				dprintk("copy dwr that bind to the new FSC\n");
 				new_fsc->asms_count = tot_grgs;
 				for (i=0; i < tot_dev; i++){
