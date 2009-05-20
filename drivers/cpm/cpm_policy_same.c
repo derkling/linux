@@ -65,9 +65,14 @@ int sort_fsc_list_same(struct list_head *fsc_list)
 	int result = 0;	
 
 	original_fscs = fsc_list;
+
 	dprintk("queuing work\n");
 	result = queue_work(cpm_wq,&cpm_work_policy);
-	return result;	
+	if (!result)
+		return -EAGAIN;
+
+	return 0;
+
 } 
 
 
