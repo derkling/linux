@@ -433,6 +433,55 @@ int merge_cpm_range(struct cpm_range *first, struct cpm_range *second) {
 EXPORT_SYMBOL(merge_cpm_range);
 
 
+static inline u32 __cpm_get_max(struct cpm_range *range, cpm_id asm_id)
+{
+
+	if ( (range->type == CPM_ASM_TYPE_UNBOUNDED) ||
+			(range->type == CPM_ASM_TYPE_LBOUND) )
+		return platform[asm_id].info.max;
+
+	return range->upper;
+
+}
+
+static inline u32 __cpm_get_min(struct cpm_range *range, cpm_id asm_id)
+{
+
+	if ( (range->type == CPM_ASM_TYPE_UNBOUNDED) ||
+			(range->type == CPM_ASM_TYPE_UBOUND) )
+		return platform[asm_id].info.min;
+
+	return range->lower;
+
+}
+
+int cpm_weight_range(struct cpm_range *range, cpm_id asm_id, float *weight)
+{
+	u32 value;
+
+	if ( asm_id>=cpm_asm_count ) {
+		eprintk("weighting unexisting ASM\n");
+		return -EINVAL;
+	}
+
+	*weight = platform[asm_id].info.weight;
+
+	/* small speed optimization */
+	if ( unlikely( ! *weight ) )
+		return 0;
+
+	if ( *weight >= 0 )
+		value = __cpm_get_max(range, asm_id);
+	else
+		value = __cpm_get_min(range, asm_id);
+
+	*weight *= value;
+
+	return 0;
+
+}
+EXPORT_SYMBOL(cpm_weight_range);
+
 /******************************************************************************
  *   CPM PLATFORM                                                             *
  ******************************************************************************/

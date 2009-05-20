@@ -88,6 +88,7 @@ struct cpm_asm {
 #define CPM_COMPOSITION_ADDITIVE	0
 #define CPM_COMPOSITION_RESTRICTIVE	1
 	u8 comp:1;
+	float weight;			/* the policy defined weitght for this ASM */
 	u32 min;			/* min feasible value */
 	u32 max;			/* max feasible value */
 };
@@ -198,6 +199,10 @@ int cpm_set_fsc_list(struct list_head *fsc_list);
  */
 int merge_cpm_range(struct cpm_range *first, struct cpm_range *second);
 
+/*
+ * Compute the weight of a range on the specified ASM
+ */
+int cpm_weight_range(struct cpm_range *range, cpm_id asm_id, float *weight);
 
 
 /*********************************************************************
