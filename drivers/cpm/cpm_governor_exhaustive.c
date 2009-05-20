@@ -173,7 +173,7 @@ int __build_fsc_list_exhaustive(struct list_head *l_dev, u8 ndev)
 					/* with the currend dwr range*/
 					dprintk("asm exist in local governor ranges\n");
 					new_cand_rg = g_rgs->normal_range;
-					merge_res = merge_cpm_range(&(new_cand_rg.range),&(dwrs.asms[irgs].range));
+					merge_res = cpm_merge_range(&(new_cand_rg.range),&(dwrs.asms[irgs].range));
 					dprintk("return merge:%2hu\n",merge_res);
 					if (merge_res == -EINVAL){
 						/*no merging is possible: stop current dwr analysis*/
