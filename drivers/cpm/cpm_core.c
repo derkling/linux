@@ -276,7 +276,7 @@ EXPORT_SYMBOL(cpm_verify_range);
  *
  * Return values: -EINVAL if the two ranges can't be merged, 0 if merge is ok
  */
-int merge_cpm_range(struct cpm_range *first, struct cpm_range *second) {
+int cpm_merge_range(struct cpm_range *first, struct cpm_range *second) {
 	int ret = 0;
 
 	if ( unlikely(second->type == CPM_ASM_TYPE_UNBOUNDED) )
@@ -430,7 +430,7 @@ int merge_cpm_range(struct cpm_range *first, struct cpm_range *second) {
 	return ret;
 
 }
-EXPORT_SYMBOL(merge_cpm_range);
+EXPORT_SYMBOL(cpm_merge_range);
 
 
 static inline u32 __cpm_get_max(struct cpm_range *range, cpm_id asm_id)

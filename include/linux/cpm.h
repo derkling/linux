@@ -197,7 +197,8 @@ int cpm_set_fsc_list(struct list_head *fsc_list);
 /*
  * Merge, if possible,  two cpm_range
  */
-int merge_cpm_range(struct cpm_range *first, struct cpm_range *second);
+int cpm_merge_range(struct cpm_range *first, struct cpm_range *second);
+
 
 /*
  * Compute the weight of a range on the specified ASM
