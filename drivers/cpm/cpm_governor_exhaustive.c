@@ -299,54 +299,52 @@ int build_fsc_list_exhaustive(struct list_head *dev_list, u8 ndev)
 	if (list_empty(dev_list)){
 		eprintk("error on build_fsc_list_exhaustive dev_list==0\n");
 		return -EINVAL;	
-	}else{
-		/*Number of devices can't be equal to 0*/
-		if (ndev == 0){
-			eprintk("error on build_fsc_list_exhaustive ndev==0");
-			return -EINVAL;
-		}
-
-   		/*Global data setup*/            
- 		h_dev = dev_list;
-		tot_dev = ndev;
-		tot_grgs = 0;
-		tot_fsc = 0;	
-	
-		/*Array allocation for DWRs-FSC mapping*/
-		curr_dwr = (struct cpm_fsc_dwr *)kzalloc(sizeof(struct cpm_fsc_dwr *)*ndev,GFP_KERNEL);
-		if (!curr_dwr){
-			eprintk("out-of-mem on cpm_fsc_dwr allocation\n");
-			return -ENOMEM;
-		}
-		
-		l_ranges = (struct list_head *)kzalloc(sizeof(struct list_head),GFP_KERNEL);
-		if(!l_ranges){
-			eprintk("out-of-mem on list_head allocation\n");
-			return -ENOMEM;
-		}
-		INIT_LIST_HEAD(l_ranges);
-	
-		/*Call to recursive function for DWRS COMBINATION TREE exploration*/
-		dprintk("starting recursive searching\n");
-		__build_fsc_list_exhaustive(dev_list, 0);	
-	
-		if (list_empty(&__fsc_list)){
-			dprintk("empty fsc list returned\n");
-			return -EINVAL;
-		}
-		else{
-			dprintk("fsc list returned\n");
-			print_fscs();			
-			cpm_set_fsc_list(&__fsc_list);
-			INIT_LIST_HEAD(&__fsc_list);			
-			return TRUE;
-		}
-		
-		h_dev = 0;
-		tot_dev = 0;		
-		kfree(curr_dwr);
-		kfree(l_ranges);
 	}
+	/*Number of devices can't be equal to 0*/
+	if (!ndev){
+		eprintk("error on build_fsc_list_exhaustive ndev==0\n");
+		return -EINVAL;
+	}
+
+	/*Global data setup*/            
+	h_dev = dev_list;
+	tot_dev = ndev;
+	tot_grgs = 0;
+	tot_fsc = 0;	
+	
+	/*Array allocation for DWRs-FSC mapping*/
+	curr_dwr = (struct cpm_fsc_dwr *)kzalloc(sizeof(struct cpm_fsc_dwr *)*ndev,GFP_KERNEL);
+	if (!curr_dwr){
+		eprintk("out-of-mem on cpm_fsc_dwr allocation\n");
+		return -ENOMEM;
+	}
+		
+	l_ranges = (struct list_head *)kzalloc(sizeof(struct list_head),GFP_KERNEL);
+	if(!l_ranges){
+		eprintk("out-of-mem on list_head allocation\n");
+		return -ENOMEM;
+	}
+	INIT_LIST_HEAD(l_ranges);
+
+	/*Call to recursive function for DWRS COMBINATION TREE exploration*/
+	dprintk("starting recursive searching\n");
+	__build_fsc_list_exhaustive(dev_list, 0);	
+	
+	if (list_empty(&__fsc_list)){
+		dprintk("empty fsc list returned\n");
+		return -EINVAL;
+	}
+
+	dprintk("fsc list returned\n");
+	print_fscs();			
+	cpm_set_fsc_list(&__fsc_list);
+	INIT_LIST_HEAD(&__fsc_list);			
+		
+	h_dev = 0;
+	tot_dev = 0;		
+	kfree(curr_dwr);
+	kfree(l_ranges);
+	return 0;
 }
 
 /*
