@@ -36,7 +36,7 @@
 #include <linux/string.h>
 #include <linux/list.h>
 #include <linux/cpm.h>
-
+#include <linux/sched.h>
 
 struct cpm_asm_map {
 	cpm_id id;			/* the ID of the ASM mapped */
@@ -50,10 +50,30 @@ struct cpm_dev_sysfs {
 	/* TODO add entries for statistics */
 };
 
+struct cpm_entity {
+	union {
+		struct task_struct *task;
+		struct device *dev;
+		void *ptr;
+	};
+#define CPM_ENTITY_TYPE_DRIVER	0
+#define CPM_ENTITY_TYPE_TASK	1
+	u8 type:1;			/* The entity type */
+};
+
+struct cpm_constraint {
+	struct cpm_entity entity;	/* The entity asserting the constraint */
+	struct cpm_range range;		/* The asserted contraint */
+	struct list_head node;		/* The next constraint */
+};
+
 struct cpm_asm_core {
 	struct cpm_asm info;		/* the public accessible data */
 	cpm_id id;			/* the ASMs unique identifier */
-	struct cpm_range cur_range;	/* the current range for this ASM */
+	struct cpm_range cur_range;	/* the current range for this ASM according to asserted constraints */
+	struct cpm_range ddp_range;	/* the range to use during a DDP */
+	struct cpm_range valid_range;	/* the ASM validity range according to current contraints */
+	struct list_head constraints;	/* the list of contraints asserted on this ASM */
 #ifdef CONFIG_CPM_SYSFS
 	struct kobj_attribute kattr;	/* the sysfs attribute to show ASMs values */
 #endif
@@ -69,6 +89,7 @@ struct cpm_dev_core {
 
 struct cpm_fsc_core {
 	struct cpm_fsc info;		/* the public accessible data */
+	u8 valid:1;			/* this flasg the FSC as valid */
 #ifdef CONFIG_CPM_SYSFS
 	struct attribute_group asms_group;  	/* The ASMs of this FSC */
 	struct attribute_group dwrs_group;	/* The DWRs of this FSC */
@@ -80,30 +101,11 @@ struct cpm_fsc_core {
 struct kobj_type cpm_dev_ktype;
 struct sysfs_ops cpm_dev_ops;
 
-struct cpm_constraint_request {
-	struct cpm_range range;
-#define CPM_CONSTRAINT_APP	0
-#define CPM_CONSTRAINT_DRV	1
-	u8 type:1;
-	union {
-		struct process* app;
-		struct device* drv;
-	}; 			/* A reference to the request applicant
-				   ("current" for APP, device* for DRV) */
-	struct list_head node;	/* The next request */
-};
-
-struct cpm_constraint {
-	cpm_id id;			/* The index of the ASM */
-	struct cpm_range cur;		/* The current tighter range for the ASM */
-	struct list_head *requests;	/* The requested values for this ASM */
-};
-
 /* Platform defined ASMs */
 static struct cpm_asm_core *platform = 0;
 
 /* The number of available ASMs */
-static unsigned int cpm_asm_count;
+static unsigned int cpm_asm_count = 0;
 
 /* The ASMs data mutex */
 static DEFINE_MUTEX(asm_mutex);
@@ -125,10 +127,19 @@ static LIST_HEAD(constraint_list);
 static LIST_HEAD(fsc_list);
 
 /* The count of FSC in the fsc_list */
-static unsigned int fsc_count;
+static unsigned int fsc_count = 0;
+
+/* The current selected FSC */
+static struct cpm_fsc_pointer *pcfp = 0;
 
 /* The FSC's list mutex */
 static DEFINE_MUTEX(fsc_mutex);
+
+/* The ordered FSC list to use for valid FSC selection during a DDP */
+static LIST_HEAD(fsc_ordered_list);
+
+/* The ordered FSC list mutex */
+static DEFINE_MUTEX(fsc_ordered_mutex);
 
 /* The notifier list used for DDP */
 static struct srcu_notifier_head cpm_ddp_notifier_list;
@@ -137,7 +148,7 @@ static struct srcu_notifier_head cpm_ddp_notifier_list;
 static u8 cpm_dev_count = 0;
 
 /* The DDP Mutex */
-DEFINE_MUTEX(ddp_mutex);
+static DEFINE_MUTEX(ddp_mutex);
 
 /* Define if the CPM core is enabled (i.e. governors/policy and DDP will be
  * used */
@@ -455,7 +466,7 @@ static inline u32 __cpm_get_min(struct cpm_range *range, cpm_id asm_id)
 
 }
 
-int cpm_weight_range(struct cpm_range *range, cpm_id asm_id, float *weight)
+int cpm_weight_range(struct cpm_range *range, cpm_id asm_id, u32 *weight)
 {
 	u32 value;
 
@@ -481,6 +492,24 @@ int cpm_weight_range(struct cpm_range *range, cpm_id asm_id, float *weight)
 
 }
 EXPORT_SYMBOL(cpm_weight_range);
+
+static const char *__cpm_entity_name(void *ptr, u8 type)
+{
+	if ( type == CPM_ENTITY_TYPE_DRIVER )
+		return dev_name((struct device*)ptr);
+
+	return ((struct task_struct*)ptr)->comm;
+
+}
+
+static const char *cpm_entity_name(struct cpm_entity *entity)
+{
+
+	if ( entity->type == CPM_ENTITY_TYPE_DRIVER )
+		return dev_name(entity->dev);
+
+	return entity->task->comm;
+}
 
 /******************************************************************************
  *   CPM PLATFORM                                                             *
@@ -517,6 +546,9 @@ int cpm_register_platform_asms(struct cpm_platform_data *cpd) {
 	for (i=0; i<cpd->count; i++) {
 		platform[i].id = i;
 		platform[i].info = (*pasm);
+		platform[i].cur_range.lower = pasm->min;
+		platform[i].cur_range.upper = pasm->max;
+		INIT_LIST_HEAD(&(platform[i].constraints));
 		pasm++;
 	}
 	cpm_asm_count = i;
@@ -623,6 +655,25 @@ int cpm_register_governor(struct cpm_governor *cg) {
 }
 EXPORT_SYMBOL(cpm_register_governor);
 
+int cpm_update_policy(void)
+{
+	int result;
+
+	if ( !policy ) {
+		dprintk("policy not defined: unable to obtain ordered_fsc_list\n");
+		return -EINVAL;
+	}
+
+	dprintk("updating policy...\n");
+	result = policy->sort_fsc_list(&fsc_list);
+	if ( result ) {
+		eprintk("policy update failed\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int cpm_sysfs_fsc_update(void);
 int cpm_set_fsc_list(struct list_head *new_fsc_list)
 {
@@ -638,12 +689,11 @@ int cpm_set_fsc_list(struct list_head *new_fsc_list)
 		return 0;
 	}
 
-	dprintk("new FSC list received\n");
 
 	mutex_lock(&fsc_mutex);
 
 	/* saving a ref to old FSC list*/
-	old_fsc_list = fsc_list;
+	list_replace_init(&fsc_list, &old_fsc_list);
 
 	/* updating current FSC list */
 	list_replace_init(new_fsc_list, &fsc_list);
@@ -656,9 +706,14 @@ int cpm_set_fsc_list(struct list_head *new_fsc_list)
 
 	mutex_unlock(&fsc_mutex);
 
+	dprintk("new FSC list received, [%d] entry\n", fsc_count);
+
+	/* Updating ordered FSC list */
+	cpm_update_policy();
+
 #ifdef CONFIG_CPM_SYSFS
 	/* release sysfs kobj */
-	eprintk("TODO: implement sysfs FSC kobjects release");
+	eprintk("TODO: implement sysfs FSC kobjects release\n");
 #else
 	struct cpm_fsc *pfsc;
 
@@ -702,13 +757,29 @@ int cpm_register_policy(struct cpm_policy *cp) {
 EXPORT_SYMBOL(cpm_register_policy);
 
 
-int cpm_set_ordered_fsc_list(struct list_head *cfsc){
+int cpm_set_ordered_fsc_list(struct list_head *fscpl_head) {
+	struct list_head old_fsc_ordered_list;
+	struct cpm_fsc_pointer *pcfp;
 
-	if (!cfsc)
+	if (!fscpl_head) {
+		eprintk("trying to set empty ordered FSC list\n");
 		return -EINVAL;
+	}
 	
-	//TODO clean previous fsc list? or made it somewhere else?
-	fsc_list = *cfsc;
+	mutex_lock(&fsc_ordered_mutex);
+
+	/* Update the new ordered FSC list */
+	list_replace_init(&fsc_ordered_list, &old_fsc_ordered_list);
+	list_replace_init(fscpl_head, &fsc_ordered_list);
+
+	mutex_unlock(&fsc_ordered_mutex);
+
+	/* Clean-up old list */
+	list_for_each_entry(pcfp, &old_fsc_ordered_list, node) {
+		dprintk("releasing cpm_fsc_pointer\n");
+		list_del(&pcfp->node);
+		kfree(pcfp);
+	}
 
 	dprintk("new FSCs ordered list registered\n");
 	
@@ -747,6 +818,38 @@ EXPORT_SYMBOL(cpm_set_ordered_fsc_list);
  * sysfs files are active.
  */
 static DEFINE_MUTEX(sysfs_lock);
+
+
+static int cpm_sysfs_print_range(char *buf, ssize_t size, struct cpm_range *range)
+{
+	int count = 0;
+
+	switch(range->type) {
+	case CPM_ASM_TYPE_UNBOUNDED:
+		count = snprintf(buf, size, "UnB");
+		break;
+	case CPM_ASM_TYPE_RANGE:
+		if ( range->lower < range->upper ) {
+			count = snprintf(buf, size, "R %u %u",
+					range->lower,
+					range->upper);
+		} else {
+			count = snprintf(buf, size, "S %u",
+					range->lower);
+		}
+		break;
+	case CPM_ASM_TYPE_LBOUND:
+		count = snprintf(buf, size, "LB %u",
+			range->lower);
+		break;
+	case CPM_ASM_TYPE_UBOUND:
+		count = snprintf(buf, size, "UB %u",
+			range->upper);
+		break;
+	}
+
+	return count;
+}
 
 static void cpm_sysfs_dev_release(struct kobject *kobj)
 {
@@ -1082,24 +1185,24 @@ static ssize_t cpm_sysfs_core_asms_show(struct kobject *kobj, struct kobj_attrib
 
 	switch(pcasm->cur_range.type) {
 	case CPM_ASM_TYPE_UNBOUNDED:
-		count += sprintf(buf+count, " (UnB)\n");
+		count += sprintf(buf+count, " UnB\n");
 		break;
 	case CPM_ASM_TYPE_RANGE:
 		if ( pcasm->cur_range.lower < pcasm->cur_range.upper ) {
-			count += sprintf(buf+count, " (R) %u %u\n",
+			count += sprintf(buf+count, " R %u %u\n",
 				pcasm->cur_range.lower,
 				pcasm->cur_range.upper);
 		} else {
-			count += sprintf(buf+count, " (S) %u\n",
+			count += sprintf(buf+count, " S %u\n",
 				pcasm->cur_range.lower);
 		}
 		break;
 	case CPM_ASM_TYPE_LBOUND:
-		count += sprintf(buf+count, " (LB) %u\n",
+		count += sprintf(buf+count, " LB %u\n",
 				pcasm->cur_range.lower);
 		break;
 	case CPM_ASM_TYPE_UBOUND:
-		count += sprintf(buf+count, " (UB) %u\n",
+		count += sprintf(buf+count, " UB %u\n",
 				pcasm->cur_range.upper);
 		break;
 	}
@@ -1109,10 +1212,48 @@ static ssize_t cpm_sysfs_core_asms_show(struct kobject *kobj, struct kobj_attrib
 	return count;
 }
 
+static int __cpm_update_constraint(void *entity, u8 type, cpm_id asm_id, struct cpm_range *range);
+static int __cpm_remove_constraint(void *entity, u8 type, cpm_id asm_id);
 static ssize_t cpm_sysfs_core_asms_store(struct kobject *kobj, struct kobj_attribute *attr,
 		const char *buf, size_t count)
 {
-		
+	int value;
+	struct cpm_asm_core *pasm;
+	struct cpm_range range;
+	const char *entity_name;
+
+	pasm = container_of(attr, struct cpm_asm_core, kattr);
+
+	/* Getting user value */
+	if ( !sscanf(buf, "%du", &value) ) {
+		/* An empty write on sysfs attribute will remove the
+		 * the eventually caller asserted constraint on that ASM */
+		dprintk("constraint deassertion\n");
+		return __cpm_remove_constraint((void*)current, CPM_ENTITY_TYPE_TASK, pasm->id);
+	}
+
+	if ( pasm->info.comp == CPM_COMPOSITION_ADDITIVE ) {
+		dprintk("additive constraint assertion\n");
+		range.lower = value;
+		range.upper = pasm->info.max;
+		range.type = CPM_ASM_TYPE_LBOUND;
+	} else {
+		dprintk("restrictive constraint assertion\n");
+		range.lower = pasm->info.min;
+		range.upper = value;
+		range.type = CPM_ASM_TYPE_UBOUND;
+	}
+
+	if ( range.lower > range.upper ) {
+		entity_name = __cpm_entity_name((void*)current, CPM_ENTITY_TYPE_TASK);
+		eprintk("out-of-range constraint asserted by [%s] on ASM [%s]\n",
+				entity_name, pasm->info.name);
+		return count;
+	}
+
+	/* Try to add the contraints */
+	__cpm_update_constraint((void*)current, CPM_ENTITY_TYPE_TASK, pasm->id, &range);
+
 	return count;
 }
 
@@ -1253,11 +1394,6 @@ static int cpm_sysfs_fsc_export(void)
 
 	return 0;
 
-out_sysfs_fsc_asm_nomem:
-
-out_sysfs_fsc_new_nomem:
-
-	return result;
 }
 
 static int cpm_sysfs_fsc_update(void)
@@ -1337,7 +1473,7 @@ int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
 	int result = 0;
 	u8 i;
 
-	// Check if the device is already registerd
+	/* Check if the device is already registerd */
 	pcd = find_device_block(dev);
 	if ( pcd != 0 ) {
 		dprintk("device [%s] already registered\n", dev_name(dev));
@@ -1346,7 +1482,7 @@ int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
 
 	dprintk("registering new device [%s]...\n", dev_name(dev));
 
-	// add device notifier block
+	/* add device notifier block */
 	pcd = kzalloc(sizeof(struct cpm_dev_core), GFP_KERNEL);
         if (!pcd) {
 		dprintk("out-of-mem on cpm_dev_core allocation\n");
@@ -1389,7 +1525,12 @@ int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
 		dprintk("added DWR [%s:%s] with %d ASMs\n",
 				dev_name(dev), pdwr->name, pdwr->asms_count);
 	}
-	
+
+	/* Init ASM list for this device */
+	INIT_LIST_HEAD(&(pcd->asm_list));
+
+	/* TODO Fill into the ASM list */
+
 	// copy the DDP handler callback reference
 	pcd->dev_info.nb.notifier_call = data->notifier_callback;
 
@@ -1481,21 +1622,410 @@ int cpm_unregister_device(struct device *dev)
 }
 EXPORT_SYMBOL(cpm_unregister_device);
 
-int cpm_add_constraint(struct device *dev, cpm_id asm_id, struct cpm_range * range)
+
+/*
+ * Gieven an FSC check if is valid w.r.t. the specified ASM's ddp_range
+ * return 0 on OK, -EINVAL otherwise
+ */
+static int cpm_verify_fsc_on_asm(struct cpm_fsc_core *fsc, cpm_id asm_id)
 {
+	int i, result;
+	struct cpm_asm_range *pasm;
+	struct cpm_range ddp_range;
+
+	dprintk("cpm_verify_fsc_on_asm - FSC%02d, ASM [%s]...\n",
+			fsc->info.id,
+			platform[asm_id].info.name);
+
+	/* Check if the specified FSC has a range for the ASM to be verified */
+	pasm = fsc->info.asms;
+	for (i=0; i<fsc->info.asms_count; i++) {
+		if (pasm->id == asm_id) {
+			break;
+		}
+		pasm++;
+	}
+
+	if (i==fsc->info.asms_count) {
+		/* no ASM ranges for this FSC */
+		dprintk("cpm_verify_fsc_on_asm - no ranges for the required ASM\n");
+		return 0;
+	}
+
+	ddp_range = platform[asm_id].ddp_range;
+
+	result = cpm_merge_range(&ddp_range, &pasm->range);
+	if ( result ) {
+		dprintk("cpm_verify_fsc_on_asm - ASM [%s] not merge\n",
+				platform[pasm->id].info.name);
+		result = -EINVAL;
+	}
+
+	dprintk("cpm_verify_fsc_on_asm - ASM [%s] merge\n",
+			platform[pasm->id].info.name);
+
+	return 0;
+
+}
+
+/*
+ * Given an FSC check if is valid w.r.t. ddp_ranges of its ASM
+ * return 0 on OK, -EINVAL otherwise
+ */
+static int cpm_verify_fsc(struct cpm_fsc_core *fsc)
+{
+	int i, result;
+	struct cpm_asm_range *pasm;
+	struct cpm_range ddp_range;
+
+	dprintk("cpm_verify_fsc - FSC%02d...\n", fsc->info.id);
+
+	pasm = fsc->info.asms;
+	for (i=0; i<fsc->info.asms_count; i++) {
+
+		ddp_range = platform[pasm->id].ddp_range;
+
+		result = cpm_merge_range(&ddp_range, &pasm->range);
+		if ( result ) {
+			dprintk("cpm_verify_fsc - ASM [%s] not merge\n",
+					platform[pasm->id].info.name);
+			return -EINVAL;
+		}
+
+		dprintk("cpm_verify_fsc - ASM [%s] merge\n",
+				platform[pasm->id].info.name);
+		pasm++;
+	}
+
 	return 0;
 }
-EXPORT_SYMBOL(cpm_add_constraint);
 
-int cpm_update_constraint(struct device *dev, cpm_id asm_id, struct cpm_range * range)
+/*
+ * Find next valid FSC, starting from that following the specified one.
+ * In case of a constraint addition (e.g. shrinking of the solution space) the
+ * eventually next valid FSC must follow the current one selected in the
+ * ordered FSC list
+ */
+
+static struct cpm_fsc_core *cpm_find_next_valid_fsc(struct cpm_fsc_pointer *pfscp)
 {
+	struct list_head *pos;
+	struct cpm_fsc_core *pfscc;
+	int result;
+
+	/* Scan FSC starting from last valid FSC (current FSC) */
+	for (pos = pfscp->node.next; prefetch(pos->next), pos != &fsc_ordered_list; pos = pos->next) {
+		pfscp = container_of(pos, struct cpm_fsc_pointer, node);
+		pfscc = container_of(pfscp->fsc, struct cpm_fsc_core, info);
+
+		result = cpm_verify_fsc(pfscc);
+		if ( !result ) {
+			dprintk("next valid FSC @ [%s]\n", pfscc->name);
+			return pfscc;
+		}
+
+		dprintk("FSC [%s] not valid, checking next...\n", pfscc->name);
+	}
+
 	return 0;
+
+}
+
+/*
+ * Find first valid FSC, starting from the cpm_fsc_ordered list.
+ */
+static struct cpm_fsc_core *cpm_find_valid_fsc(void) {
+	struct cpm_fsc_pointer *pcfp;
+	struct cpm_fsc_core *pfscc;
+	int result;
+
+	list_for_each_entry(pcfp, &fsc_ordered_list, node) {
+		pfscc = container_of(pcfp->fsc, struct cpm_fsc_core, info);
+
+		result = cpm_verify_fsc(pfscc);
+		if ( !result ) {
+			dprintk("first valid FSC @ [%s]\n", pfscc->name);
+			return pfscc;
+		}
+
+		dprintk("FSC [%s] not valid, checking next...\n", pfscc->name);
+	}
+
+	return 0;
+}
+
+static int cpm_aggregate_constraints(cpm_id asm_id, struct cpm_range *range)
+{
+	struct cpm_fsc_core *pfscc;
+	int result;
+
+	dprintk("aggregating constraints for ASM [%s]...\n", platform[asm_id].info.name);
+
+	if ( platform[asm_id].info.comp == CPM_COMPOSITION_ADDITIVE ) {
+
+		dprintk("additive contraint aggregation\n");
+
+		/* Look for a feasible FSC according to the new range,
+		 * which is obtained by adding the cur_range lower bound
+		 * to the new one.
+		 */
+		platform[asm_id].ddp_range = platform[asm_id].cur_range;
+		platform[asm_id].ddp_range.lower += range->lower;
+
+	} else {
+
+		/* Current constraint is more restrictive than new one */
+		if ( platform[asm_id].cur_range.upper <= range->upper ) {
+			dprintk("new constraint don't invalidate current FSC\n");
+			return 0;
+		}
+
+		dprintk("restrictive contraint aggregation\n");
+
+		/* Otherwise look for a feasible FSC according to the new
+		 * range, which is obtained by merge of cur_range and the new
+		 * one.
+		 */
+		platform[asm_id].ddp_range = platform[asm_id].cur_range;
+		result = cpm_merge_range(&(platform[asm_id].ddp_range), range);
+		if (result) {
+			eprintk("BUG, unexpected constraints un-merge\n");
+			return -EINVAL;
+		}
+
+	}
+
+	if ( pcfp ) {
+		/* Scan forward for next valid FSC */
+		dprintk("search for next valid FSC...\n");
+		pfscc = cpm_find_next_valid_fsc(pcfp);
+	} else {
+		/* Search the first FSC */
+		dprintk("search for first valid FSC...\n");
+		pfscc = cpm_find_valid_fsc();
+	}
+
+	if ( !pfscc ) {
+		eprintk("no valid FSC found\n");
+		return -EINVAL;
+	}
+
+	iprintk("new FSC [%s] found\n", pfscc->name);
+
+	/* Saving the ddp_range into current ones */
+	platform[asm_id].cur_range = platform[asm_id].ddp_range;
+
+	return 0;
+}
+
+static int cpm_verify_constraint(cpm_id asm_id, struct cpm_range *range)
+{
+
+	/* Check if the required ASM exist */
+	if ( asm_id>=cpm_asm_count ) {
+		eprintk("constraint assert failed, ASM [%d] not existing\n", asm_id);
+		return -EEXIST;
+	}
+
+	if ( platform[asm_id].info.comp == CPM_COMPOSITION_ADDITIVE ) {
+
+		/* GiB (aka additive) constraints can only be lower bounded */
+		if ( likely(range->type == CPM_ASM_TYPE_LBOUND ) )
+			return 0;
+
+		if ( range->type == CPM_ASM_TYPE_UBOUND ) {
+			eprintk("upper bound asserted on GiB ASM\n");
+			return -EINVAL;
+		}
+
+		/* Trasform all others in a LB */
+		range->type = CPM_ASM_TYPE_LBOUND;
+
+		if ( platform[asm_id].info.max <
+			(platform[asm_id].cur_range.lower + range->lower) ) {
+			eprintk("constraint exceeding ASM platform's ranges\n");
+			return -EINVAL;
+		}
+
+	} else {
+
+		/* LiB (aka restrictive) constraints can only be upper bounded */
+		if ( likely(range->type == CPM_ASM_TYPE_UBOUND ) )
+			return 0;
+
+		if ( range->type == CPM_ASM_TYPE_LBOUND ) {
+			eprintk("lower bound asserted on LiB ASM\n");
+			return -EINVAL;
+		}
+
+		/* Trasform all others in a LB */
+		range->type = CPM_ASM_TYPE_UBOUND;
+
+		if ( range->upper < platform[asm_id].info.min ) {
+			eprintk("constraint exceeding ASM platform's ranges\n");
+			return -EINVAL;
+		}
+
+	}
+
+	return 0;
+}
+
+static int __cpm_update_constraint(void *entity, u8 type, cpm_id asm_id, struct cpm_range *range)
+{
+	struct cpm_constraint *pconstr;
+	char str[64];
+	int result;
+	const char *entity_name;
+
+	entity_name = __cpm_entity_name(entity, type);
+
+
+	/* Sanity check the required constraint */
+	result = cpm_verify_constraint(asm_id, range);
+	if ( result ) {
+		dprintk("verify failed on constraint assert\n");
+		return result;
+	}
+
+	cpm_sysfs_print_range(str, 64, range);
+	iprintk("[%s] constraint assert on %d:%s %s\n",
+			entity_name, asm_id,
+			platform[asm_id].info.name,
+			str);
+
+	/* Trying constraints aggregation */
+	result = cpm_aggregate_constraints(asm_id, range);
+	if ( result ) {
+		/* No valid FSC found: constraint sould be rejected */
+		return result;
+	}
+
+	/* Check if the entity has already asserted a constraint for the ASM */
+	list_for_each_entry(pconstr, &platform[asm_id].constraints, node) {
+		if ( entity == pconstr->entity.ptr ) {
+			dprintk("already asserted...\n");
+			break;
+		}
+	}
+
+	/* Allocate a new constraint for this device if necessary */
+	if ( &pconstr->node == &platform[asm_id].constraints ) {
+
+		dprintk("allocate a new constraint\n");
+		pconstr = (struct cpm_constraint*)kzalloc(sizeof(struct cpm_constraint), GFP_KERNEL);
+		if ( !pconstr ) {
+			eprintk("out-of-mem on new contraint allocation\n");
+			result = -ENOMEM;
+			goto out_constr_nomem;
+		}
+
+	}
+
+	/* Update the constraints values */
+	pconstr->entity.type = type;
+	pconstr->entity.ptr = entity;
+	pconstr->range = *range;
+
+	/* Add the constraint to the list for this ASM */
+	list_add(&pconstr->node, &platform[asm_id].constraints);
+
+	/* Start DDP */
+	iprintk("New FSC found, starting DDP...\n");
+	/* TODO */
+
+	return 0;
+
+out_constr_nomem:
+
+	return result;
+
+}
+
+static int cpm_device_registered(struct device *dev)
+{
+	struct cpm_dev_core *pcd;
+
+	/* Check if the device is already registerd */
+	pcd = find_device_block(dev);
+	if ( !pcd ) {
+		dprintk("constraint assert failed, device [%s] not registerd\n", dev_name(dev));
+		return -EEXIST;
+	}
+
+	return 0;
+}
+
+int cpm_update_constraint(struct device *dev, cpm_id asm_id, struct cpm_range *range)
+{
+	int result;
+
+	result = cpm_device_registered(dev);
+	if ( result )
+		return result;
+
+	return __cpm_update_constraint((void*)dev, CPM_ENTITY_TYPE_DRIVER, asm_id, range);
+
 }
 EXPORT_SYMBOL(cpm_update_constraint);
 
+static int __cpm_remove_constraint(void *entity, u8 type, cpm_id asm_id)
+{
+	struct cpm_constraint *pconstr;
+	const char *entity_name;
+	char str[64];
+
+	entity_name = __cpm_entity_name(entity, type);
+
+	/* Check if the required ASM exist */
+	if ( asm_id>=cpm_asm_count ) {
+		eprintk("constraint assert failed, ASM [%d] not existing\n", asm_id);
+		return -EEXIST;
+	}
+
+	/* Check if the entity has asserted a constraint for the ASM */
+	list_for_each_entry(pconstr, &platform[asm_id].constraints, node) {
+		if ( entity == pconstr->entity.ptr ) {
+			cpm_sysfs_print_range(str, 64, &pconstr->range);
+			iprintk("[%s] releasing constraint on %d:%s %s\n",
+				entity_name, asm_id,
+				platform[asm_id].info.name,
+				str);
+			break;
+		}
+	}
+
+	/* Remove the constraint for this entity only if necessary */
+	if ( &pconstr->node == &platform[asm_id].constraints ) {
+		return 0;
+	}
+
+	/* Removing the constraint from the list for this ASM */
+	list_del(&pconstr->node);
+
+	/* Releasing object */
+	kfree(pconstr);
+
+	/* Looking for new FSC */
+	/* TODO */
+
+	/* Start DDP */
+	iprintk("New FSC found, starting DDP...\n");
+	/* TODO */
+
+	return 0;
+}
+
 int cpm_remove_constraint(struct device *dev, cpm_id asm_id)
 {
-	return 0;
+	int result;
+
+	result = cpm_device_registered(dev);
+	if ( result )
+		return result;
+
+	return __cpm_remove_constraint((void*)dev, CPM_ENTITY_TYPE_DRIVER, asm_id);
+
 }
 EXPORT_SYMBOL(cpm_remove_constraint);
 

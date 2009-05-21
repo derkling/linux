@@ -23,6 +23,9 @@
 #define TRUE	1
 #define FALSE	(!TRUE)
 
+#define MAX(a, b) ((u32)(a) > (u32)(b) ? (a) : (b))
+
+
 // The maximum lenght of text lables (e.g. device/dwr/fsc names, ...)
 #define CPM_NAME_LEN	12
 
@@ -88,7 +91,7 @@ struct cpm_asm {
 #define CPM_COMPOSITION_ADDITIVE	0
 #define CPM_COMPOSITION_RESTRICTIVE	1
 	u8 comp:1;
-	float weight;			/* the policy defined weitght for this ASM */
+	u8 weight;			/* the policy defined weitght for this ASM [0-100] */
 	u32 min;			/* min feasible value */
 	u32 max;			/* max feasible value */
 };
@@ -203,7 +206,7 @@ int cpm_merge_range(struct cpm_range *first, struct cpm_range *second);
 /*
  * Compute the weight of a range on the specified ASM
  */
-int cpm_weight_range(struct cpm_range *range, cpm_id asm_id, float *weight);
+int cpm_weight_range(struct cpm_range *range, cpm_id asm_id, u32 *weight);
 
 
 /*********************************************************************
@@ -227,7 +230,12 @@ struct cpm_policy {
 	  * a new sorted FSC list.
 	  * The sorted list has to be computed asynchronously (e.g. using a
 	  * tasklet) and once ready notified to the core using the provided
-	  * cpm_set_orderet_fsc_list */
+	  * cpm_set_orderet_fsc_list.
+	  *
+	  * A policy should return 0 on notification success; otherwise
+	  * a -EAGAIN is expected and the core will try to request ordering
+	  * sometime later.
+	  */
 	int (*sort_fsc_list)(struct list_head *fsc_list);
 #define CPM_DDP_DONE	NOTIFY_DONE
 #define CPM_DDP_OK	NOTIFY_OK
@@ -244,7 +252,7 @@ int cpm_register_policy(struct cpm_policy *policy);
  * Define the ordered FSC list to use for validation and selection.
  * This method will return a list of cpm_fsc_pointer's elements.
  */
-int cpm_set_ordered_fsc_list(struct list_head *ordered_fsc_list);
+int cpm_set_ordered_fsc_list(struct list_head *fscpl_head);
 
 
 
@@ -296,11 +304,6 @@ int cpm_register_device(struct device *dev, struct cpm_dev_data *data);
  * Unregister a device and release all its data.
  */
 int cpm_unregister_device(struct device *dev);
-
-/**
- * Add a new constraint on the specified ASM.
- */
-int cpm_add_constraint(struct device *dev, cpm_id asm_id, struct cpm_range * range);
 
 /**
  * Update a constraint on the specified ASM.
