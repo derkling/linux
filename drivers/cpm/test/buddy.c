@@ -32,12 +32,14 @@
 #define NUMBEROF_CPM_BUDDIES	2
 
 /* define a platform ASM */
-#define CPM_PLATFORM_ASM(_name, _type, _mode, _comp)	\
-	{						\
-		.name = _name,				\
-		.type = _type,				\
-		.userw = _mode,			\
-		.comp = _comp,				\
+#define CPM_PLATFORM_ASM(_name, _type, _mode, _comp, _min, _max)	\
+	{								\
+		.name = _name,						\
+		.type = _type,						\
+		.userw = _mode,						\
+		.comp = _comp,						\
+		.min = _min,						\
+		.max = _max,						\
 	}
 
 /* initialize ASMs of a DWR */
@@ -66,10 +68,10 @@ static void cpm_buddy_dev_release(struct device *dev);
 
 /*--- Platform ASMs ---*/
 struct cpm_asm cpm_platform_asm[] = {
-	[0] = CPM_PLATFORM_ASM("ASM1", CPM_TYPE_LIB, CPM_USER_RO, CPM_COMPOSITION_RESTRICTIVE),
-	[1] = CPM_PLATFORM_ASM("ASM2", CPM_TYPE_GIB, CPM_USER_RW, CPM_COMPOSITION_ADDITIVE),
-	[2] = CPM_PLATFORM_ASM("ASM3", CPM_TYPE_LIB, CPM_USER_RW, CPM_COMPOSITION_RESTRICTIVE),
-	[3] = CPM_PLATFORM_ASM("ASM4", CPM_TYPE_GIB, CPM_USER_RO, CPM_COMPOSITION_RESTRICTIVE),
+	[0] = CPM_PLATFORM_ASM("ASM0", CPM_TYPE_LIB, CPM_USER_RW, CPM_COMPOSITION_RESTRICTIVE, 0, 100),
+	[1] = CPM_PLATFORM_ASM("ASM1", CPM_TYPE_LIB, CPM_USER_RW, CPM_COMPOSITION_RESTRICTIVE, 0, 50),
+	[2] = CPM_PLATFORM_ASM("ASM2", CPM_TYPE_GIB, CPM_USER_RW, CPM_COMPOSITION_ADDITIVE, 0, 40),
+	[3] = CPM_PLATFORM_ASM("ASM3", CPM_TYPE_GIB, CPM_USER_RO, CPM_COMPOSITION_ADDITIVE, 0, 50),
 };
 
 struct cpm_platform_data cpm_platform_data = {
@@ -98,21 +100,26 @@ int cpm_buddy_callback(struct notifier_block *nb, unsigned long step, void *data
 
 /*--- DWRs definitions ---*/
 struct cpm_asm_range buddy1_dwr0_ranges[] = {
-	DEV_DWR_ASM(0, 20, 50, CPM_ASM_TYPE_RANGE),
-	DEV_DWR_ASM(1, 45, 70, CPM_ASM_TYPE_RANGE)	
+	DEV_DWR_ASM(0, 40, 60, CPM_ASM_TYPE_RANGE),
+	DEV_DWR_ASM(1, 30, 40, CPM_ASM_TYPE_RANGE),
 };
 struct cpm_asm_range buddy1_dwr1_ranges[] = {
-	DEV_DWR_ASM(0, 50, 70, CPM_ASM_TYPE_RANGE),
-	DEV_DWR_ASM(2, 0, 30, CPM_ASM_TYPE_RANGE)
+	DEV_DWR_ASM(0, 30, 40, CPM_ASM_TYPE_RANGE),
+	DEV_DWR_ASM(1, 20, 30, CPM_ASM_TYPE_RANGE),
 };
 struct cpm_asm_range buddy1_dwr2_ranges[] = {
-	DEV_DWR_ASM(1, 0, 45, CPM_ASM_TYPE_RANGE),
-	DEV_DWR_ASM(2, 30, 100, CPM_ASM_TYPE_RANGE)
+	DEV_DWR_ASM(0, 15, 30, CPM_ASM_TYPE_RANGE),
+	DEV_DWR_ASM(1, 10, 20, CPM_ASM_TYPE_RANGE),
+};
+struct cpm_asm_range buddy1_dwr3_ranges[] = {
+	DEV_DWR_ASM(0, 5, 15, CPM_ASM_TYPE_RANGE),
+	DEV_DWR_ASM(1, 5, 10, CPM_ASM_TYPE_RANGE),
 };
 struct cpm_dev_dwr buddy1_dwrs_list[] = {
 	DEV_DWR(&buddy1.dev, 0, "dwr0", buddy1_dwr0_ranges, ARRAY_SIZE(buddy1_dwr0_ranges)),
 	DEV_DWR(&buddy1.dev, 1, "dwr1", buddy1_dwr1_ranges, ARRAY_SIZE(buddy1_dwr1_ranges)),
 	DEV_DWR(&buddy1.dev, 2, "dwr2", buddy1_dwr2_ranges, ARRAY_SIZE(buddy1_dwr2_ranges)),
+	DEV_DWR(&buddy1.dev, 3, "dwr3", buddy1_dwr3_ranges, ARRAY_SIZE(buddy1_dwr3_ranges)),
 };
 static struct cpm_dev_data buddy1_data = {
 	.notifier_callback = cpm_buddy_callback,
@@ -121,21 +128,37 @@ static struct cpm_dev_data buddy1_data = {
 };
 
 struct cpm_asm_range buddy2_dwr0_ranges[] = {
-	DEV_DWR_ASM(0, 22, 52, CPM_ASM_TYPE_RANGE),
-	DEV_DWR_ASM(2, 47, 72, CPM_ASM_TYPE_RANGE)	
+	DEV_DWR_ASM(0, 35, 55, CPM_ASM_TYPE_RANGE),
+	DEV_DWR_ASM(1, 15, 25, CPM_ASM_TYPE_RANGE),
 };
 struct cpm_asm_range buddy2_dwr1_ranges[] = {
-	DEV_DWR_ASM(1, 52, 72, CPM_ASM_TYPE_RANGE),
-	DEV_DWR_ASM(2, 2, 32, CPM_ASM_TYPE_RANGE)
+	DEV_DWR_ASM(0, 20, 35, CPM_ASM_TYPE_RANGE),
+	DEV_DWR_ASM(1,  5, 15, CPM_ASM_TYPE_RANGE),
 };
 struct cpm_asm_range buddy2_dwr2_ranges[] = {
-	DEV_DWR_ASM(1, 2, 47, CPM_ASM_TYPE_RANGE),
-	DEV_DWR_ASM(3, 32, 102, CPM_ASM_TYPE_RANGE)
+	DEV_DWR_ASM(0, 5, 20, CPM_ASM_TYPE_RANGE),
+	DEV_DWR_ASM(1, 2,  5, CPM_ASM_TYPE_RANGE),
+};
+struct cpm_asm_range buddy2_dwr3_ranges[] = {
+	DEV_DWR_ASM(0, 25, 40, CPM_ASM_TYPE_RANGE),
+	DEV_DWR_ASM(2, 20, 30, CPM_ASM_TYPE_RANGE),
+};
+struct cpm_asm_range buddy2_dwr4_ranges[] = {
+	DEV_DWR_ASM(0, 40, 50, CPM_ASM_TYPE_RANGE),
+	DEV_DWR_ASM(2, 10, 20, CPM_ASM_TYPE_RANGE),
+};
+struct cpm_asm_range buddy2_dwr5_ranges[] = {
+	DEV_DWR_ASM(0, 50, 60, CPM_ASM_TYPE_RANGE),
+	DEV_DWR_ASM(2,  0, 10, CPM_ASM_TYPE_RANGE),
 };
 struct cpm_dev_dwr buddy2_dwrs_list[] = {
 	DEV_DWR(&buddy2.dev, 0, "dwr0", buddy2_dwr0_ranges, ARRAY_SIZE(buddy2_dwr0_ranges)),
 	DEV_DWR(&buddy2.dev, 1, "dwr1", buddy2_dwr1_ranges, ARRAY_SIZE(buddy2_dwr1_ranges)),
 	DEV_DWR(&buddy2.dev, 2, "dwr2", buddy2_dwr2_ranges, ARRAY_SIZE(buddy2_dwr2_ranges)),
+	DEV_DWR(&buddy2.dev, 3, "dwr3", buddy2_dwr3_ranges, ARRAY_SIZE(buddy2_dwr3_ranges)),
+	DEV_DWR(&buddy2.dev, 4, "dwr4", buddy2_dwr4_ranges, ARRAY_SIZE(buddy2_dwr4_ranges)),
+	DEV_DWR(&buddy2.dev, 5, "dwr5", buddy2_dwr5_ranges, ARRAY_SIZE(buddy2_dwr5_ranges)),
+
 };
 static struct cpm_dev_data buddy2_data = {
 	.notifier_callback = cpm_buddy_callback,
