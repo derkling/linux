@@ -37,6 +37,11 @@ config CPM_POLICY_SAME
 	help
 	  If you say...
 
+config CPM_POLICY_PERF
+        tristate "Enable policy performance"
+        help
+          If you say...
+
 choice
 	prompt "Default CPM governor"
 	default CPM_DEFAULT_GOV_EXHAUSTIVE
