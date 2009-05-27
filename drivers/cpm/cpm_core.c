@@ -166,6 +166,10 @@ static short unsigned cpm_enabled = 0;
  * a constraint update require to seach for a new one */
 static short unsigned cpm_fsc_list_outdated = 1;
 
+/* This value is asserted once a DDP should be triggered
+ * (e.g. FSC not changed but shrinked) */
+static short unsigned cpm_ddp_required = 0;
+
 /* The core workqueue */
 struct workqueue_struct *cpm_wq = 0;
 EXPORT_SYMBOL(cpm_wq);
@@ -510,7 +514,7 @@ int cpm_weight_range(struct cpm_range *range, cpm_id asm_id, u32 *weight)
 }
 EXPORT_SYMBOL(cpm_weight_range);
 
-static ssize_t __cpm_entity_name(void *ptr, u8 type, const char *buf, ssize_t count)
+static ssize_t __cpm_entity_name(void *ptr, u8 type, char *buf, ssize_t count)
 {
 
 	if ( type == CPM_ENTITY_TYPE_DRIVER ) {
@@ -788,6 +792,7 @@ int cpm_register_policy(struct cpm_policy *cp) {
 EXPORT_SYMBOL(cpm_register_policy);
 
 static int cpm_update_fsc(void);
+static int cpm_notify_new_fsc(struct cpm_fsc_pointer *pnewfscp);
 int cpm_set_ordered_fsc_list(struct list_head *fscpl_head) {
 	struct list_head old_fsc_ordered_list;
 	struct cpm_fsc_pointer *pcfp;
@@ -819,6 +824,12 @@ int cpm_set_ordered_fsc_list(struct list_head *fscpl_head) {
 	result = cpm_update_fsc();
 	if ( result ) {
 		eprintk("FSC update failed\n");
+	}
+
+	dprintk("if required, run a DDP...\n");
+	result = cpm_notify_new_fsc(pcfp);
+	if ( result ) {
+		eprintk("DDP failed\n");
 	}
 
 	return 0;
@@ -1267,7 +1278,8 @@ static ssize_t cpm_sysfs_core_asms_store(struct kobject *kobj, struct kobj_attri
 		/* An empty write on sysfs attribute will remove the
 		 * the eventually caller asserted constraint on that ASM */
 		dprintk("constraint deassertion\n");
-		return __cpm_remove_constraint((void*)current, CPM_ENTITY_TYPE_TASK, pasm->id);
+		__cpm_remove_constraint((void*)current, CPM_ENTITY_TYPE_TASK, pasm->id);
+		return count;
 	}
 
 	if ( pasm->info.comp == CPM_COMPOSITION_ADDITIVE ) {
@@ -1576,7 +1588,7 @@ int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
         srcu_notifier_chain_register(&cpm_ddp_notifier_list, &((pcd->dev_info).nb));
 
         // add into device chain
-        list_add(&(pcd->dev_info.node), &dev_list);
+        list_add_tail(&(pcd->dev_info.node), &dev_list);
 	cpm_dev_count++;
 	cpm_fsc_list_outdated = 1;
 
@@ -1717,8 +1729,19 @@ static int cpm_verify_constraint(cpm_id asm_id, struct cpm_range *range)
 		return -EEXIST;
 	}
 
+	/* Verify ranges */
+	if ( unlikely(range->lower<platform[asm_id].info.min) ) {
+		dprintk("lower bound exceeding ASM range\n");
+		return -EINVAL;
+	}
+	if ( unlikely(range->upper>platform[asm_id].info.max) ) {
+		dprintk("upper bound exceeding ASM range\n");
+		return -EINVAL;
+	}
+
 	switch( platform[asm_id].info.comp ) {
 	case CPM_COMPOSITION_ADDITIVE:
+
 
 		/* GiB (aka additive) constraints can only be lower bounded */
 		if ( likely(range->type == CPM_ASM_TYPE_LBOUND ) )
@@ -1783,8 +1806,9 @@ static int cpm_check_fsc(cpm_id asm_id, struct cpm_range *range)
 	int i, result;
 	struct cpm_asm_range *pasm;
 	struct cpm_range fsc_range;
+	char str[64];
 
-	/* Check is current FSC has a range on the specified ASM */
+	/* Check if current FSC has a range on the specified ASM */
 	if ( !pcfp ) {
 		wprintk("no current FSC defined, while expected\n");
 		return 0;
@@ -1803,6 +1827,14 @@ static int cpm_check_fsc(cpm_id asm_id, struct cpm_range *range)
 
 	/* Checking if the FSC merge with the new range */
 	fsc_range = pasm->range;
+
+#ifdef CPM_DEBUG_CORE
+	cpm_sysfs_print_range(str, 32, &fsc_range);
+	cpm_sysfs_print_range(str+32, 32, range);
+	dprintk("check if current FSC's ASM range [%s] is compatible with new range [%s]\n",
+			str, str+32);
+#endif	
+
 	result = cpm_merge_range(&fsc_range, range);
 	if ( result ) {
 		/* empty merge */
@@ -1813,7 +1845,8 @@ static int cpm_check_fsc(cpm_id asm_id, struct cpm_range *range)
 	if ( cpm_range_differ(&fsc_range, &pasm->range) ) {
 		/* the range will modify the FSC */
 		dprintk("ASM range shrinks current FSC\n");
-		return -EINVAL;
+		cpm_ddp_required = 1;
+		return 0;
 	}
 
 	return 0;
@@ -1827,12 +1860,11 @@ static int cpm_check_fsc(cpm_id asm_id, struct cpm_range *range)
 static u32 cpm_aggregate(struct cpm_constraint *pconstr, cpm_id asm_id)
 {
 	struct cpm_constraint *pc;
-	u32 value;
+	u32 value = 0;
 
 	switch( platform[asm_id].info.comp ) {
 	case CPM_COMPOSITION_ADDITIVE:
 
-		value = 0;
 		list_for_each_entry(pc, &platform[asm_id].constraints, node) {
 
 			dprintk("Node: %p, prev %p, next %p\n",
@@ -1859,6 +1891,7 @@ static u32 cpm_aggregate(struct cpm_constraint *pconstr, cpm_id asm_id)
 
 			value = MIN(value, pc->range.upper);
 		}
+		value = MIN(value, platform[asm_id].info.max);
 		break;
 
 	}
@@ -1977,6 +2010,7 @@ static int cpm_aggregate_constraint(struct cpm_constraint *pconstr, cpm_id asm_i
 	}
 
 	/* Space shrinking - verifying if the new ddp_range invalidate current FSC */
+	cpm_ddp_required = 0;
 	result = cpm_check_fsc(asm_id, &platform[asm_id].ddp_range);
 	if ( result ) {
 		nprintk("solution space shrinking - %s %s constraint invalidate current FSC\n",
@@ -1987,7 +2021,7 @@ static int cpm_aggregate_constraint(struct cpm_constraint *pconstr, cpm_id asm_i
 		return 0;
 	}
 
-	dprintk("solution space shrinking - %s %s constraint don't invalidate current FSC\n",
+	dprintk("solution space shrinking - %s %s constraint doesn't invalidate current FSC\n",
 		pconstr ? "update" : "new",
 		(platform[asm_id].info.comp == CPM_COMPOSITION_ADDITIVE) ?
 		"additive" : "restrictive");
@@ -2107,10 +2141,17 @@ static struct cpm_fsc_pointer *cpm_find_next_valid_fsc(void)
 static int cpm_notify_new_fsc(struct cpm_fsc_pointer *pnewfscp)
 {
 
+	if ( !cpm_ddp_required ) {
+		dprintk("no need to run a DDP\n");
+		return 0;
+	}
+
 	dprintk("starting DDP for new FSC [%s]...\n",
 			container_of(pnewfscp->fsc, struct cpm_fsc_core, info)->name );
 
 	/* TODO */
+
+	cpm_ddp_required = 0;
 
 	return 0;
 }
@@ -2136,6 +2177,7 @@ static int cpm_update_fsc(void)
 			container_of(pnewfscp->fsc, struct cpm_fsc_core, info)->name);
 
 	/* Start DDP */
+	cpm_ddp_required = 1;
 	result = cpm_notify_new_fsc(pnewfscp);
 	if ( result ) {
 		eprintk("not-agreement on new FSC activation\n");
@@ -2161,6 +2203,10 @@ static int cpm_add_constraint(void *entity, u8 type, cpm_id asm_id, struct cpm_r
 
 	/* Saving the ddp_range into current ones */
 	platform[asm_id].cur_range = platform[asm_id].ddp_range;
+	cpm_sysfs_print_range(str, 64, &platform[asm_id].cur_range);
+	dprintk("updated current ASM [%s] range (%s)\n",
+			platform[asm_id].info.name, str);
+
 
 	/* Check if the entity has already asserted a constraint for the ASM */
 	list_for_each_entry(pconstr, &platform[asm_id].constraints, node) {
@@ -2176,10 +2222,9 @@ static int cpm_add_constraint(void *entity, u8 type, cpm_id asm_id, struct cpm_r
 	/* Allocate a new constraint for this device if necessary */
 	if ( &pconstr->node == &platform[asm_id].constraints ) {
 
-		dprintk("allocate a new constraint for [%s] (%d)\n",
-				entity_name,
-				range->type == CPM_ASM_TYPE_LBOUND ?
-					range->lower : range->upper);
+
+		dprintk("allocate a new constraint for [%s] (%s)\n",
+				entity_name, str+32);
 		pconstr = (struct cpm_constraint*)kzalloc(sizeof(struct cpm_constraint), GFP_KERNEL);
 		if ( !pconstr ) {
 			eprintk("out-of-mem on new constraint allocation\n");
@@ -2253,6 +2298,15 @@ static int __cpm_update_constraint(void *entity, u8 type, cpm_id asm_id, struct 
 	/* Check if a new FSC must be searched */
 	result = cpm_update_fsc();
 	if ( result ) {
+		/* Resetting ddp_range to current value for next search */
+		platform[asm_id].ddp_range = platform[asm_id].cur_range;
+		return result;
+	}
+
+	/* Trigger DDP if necessary */
+	result = cpm_notify_new_fsc(pcfp);
+	if ( result ) {
+		wprintk("DDP failed\n");
 		return result;
 	}
 
@@ -2288,6 +2342,7 @@ static int __cpm_remove_constraint(void *entity, u8 type, cpm_id asm_id)
 	struct cpm_constraint *pconstr;
 	char entity_name[32];
 	char str[64];
+	int result;
 
 	__cpm_entity_name(entity, type, entity_name, 32);
 
@@ -2300,32 +2355,77 @@ static int __cpm_remove_constraint(void *entity, u8 type, cpm_id asm_id)
 	/* Check if the entity has asserted a constraint for the ASM */
 	list_for_each_entry(pconstr, &platform[asm_id].constraints, node) {
 		if ( entity == pconstr->entity.ptr ) {
-			cpm_sysfs_print_range(str, 64, &pconstr->range);
-			iprintk("[%s] releasing constraint on %d:%s %s\n",
-				entity_name, asm_id,
-				platform[asm_id].info.name,
-				str);
 			break;
 		}
 	}
 
 	/* Remove the constraint for this entity only if necessary */
 	if ( &pconstr->node == &platform[asm_id].constraints ) {
+		wprintk("entity deasserting un-registered constraint\n");
 		return 0;
 	}
 
+	cpm_sysfs_print_range(str, 64, &pconstr->range);
+	iprintk("[%s] releasing constraint on %d:%s %s\n",
+			entity_name, asm_id,
+			platform[asm_id].info.name,
+			str);
+
 	/* Removing the constraint from the list for this ASM */
 	list_del(&pconstr->node);
+	
+	/* Update ddp_range according to the type of the required new range */
+	switch( platform[asm_id].info.comp ) {
 
-	/* Releasing object */
+	case CPM_COMPOSITION_ADDITIVE:
+
+		platform[asm_id].ddp_range.lower = cpm_aggregate(0, asm_id);
+		platform[asm_id].ddp_range.type = CPM_ASM_TYPE_LBOUND;
+
+		/* Removing an additive constraint will relax the space for
+		 * sure */
+		cpm_relaxed = 1;
+
+		break;
+
+	case CPM_COMPOSITION_RESTRICTIVE:
+
+		platform[asm_id].ddp_range.upper = cpm_aggregate(0, asm_id);
+		platform[asm_id].ddp_range.type = CPM_ASM_TYPE_UBOUND;
+
+		/* Checking if removing this restrictive constraint relax
+		 * the space */
+		if ( platform[asm_id].ddp_range.upper > pconstr->range.upper ) {
+			cpm_relaxed = 1;
+		}
+
+		break;
+	}
+
+	/* Space relaxing - always invalidate current FSC */
+	if ( cpm_relaxed ) {
+		nprintk("solution space relaxing - constraint removal may invalidate current FSC\n");
+		cpm_fsc_outdated = 1;
+	} else {
+		dprintk("constraint removal don't invalidate current FSC\n");
+	}
+
+	/* Releasing constraint memory */
 	kfree(pconstr);
 
-	/* Looking for new FSC */
-	/* TODO */
+	/* Update FSC if needed */
+	result = cpm_update_fsc();
+	if ( result ) {
+		/* A constraint release should always have a feasible FSC */
+		eprintk("system corruption: constraint release producing unsafe state\n");
+		/* TODO maybe reset CPM */
+	}
 
-	/* Start DDP */
-	iprintk("New FSC found, starting DDP...\n");
-	/* TODO */
+	/* Saving the ddp_range into current ones */
+	platform[asm_id].cur_range = platform[asm_id].ddp_range;
+	cpm_sysfs_print_range(str, 64, &platform[asm_id].cur_range);
+	dprintk("updated current ASM [%s] range (%s)\n",
+			platform[asm_id].info.name, str);
 
 	return 0;
 }
