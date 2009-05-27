@@ -337,14 +337,17 @@ int cpm_merge_range(struct cpm_range *first, struct cpm_range *second) {
 				break;
 			case CPM_ASM_TYPE_LBOUND:
 				if ( cpm_verify_range(first, second->lower) == CPM_RANGE_ERROR ) {
-					ret = -EINVAL;
+					if ( first->upper < second->lower)
+						ret = -EINVAL;
 				} else {
 					first->lower = second->lower;
 				}
 				break;
 			case CPM_ASM_TYPE_UBOUND:
 				if ( cpm_verify_range(first, second->upper) == CPM_RANGE_ERROR ) {
-					ret = -EINVAL;
+					if ( first->lower > second->upper )
+						ret = -EINVAL;
+
 				} else {
 					first->upper = second->upper;
 				}
