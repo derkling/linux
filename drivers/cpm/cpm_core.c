@@ -94,6 +94,7 @@ struct cpm_fsc_core {
 	struct attribute_group asms_group;  	/* The ASMs of this FSC */
 	struct attribute_group dwrs_group;	/* The DWRs of this FSC */
 	char name[CPM_NAME_LEN];		/* The name of this FSC */
+	struct kobject *kobj;			/* The kobj for the FSC folder */
 #endif
 };
 
@@ -1414,6 +1415,30 @@ out_sysfs_asm_nomem:
 
 }
 
+static int cpm_sysfs_fsc_current_export(struct cpm_fsc_core *pcfsc)
+{
+	int result;
+
+	if ( cpm_fscs_kobj ) {
+		dprintk("removing old link\n");
+		sysfs_remove_link(cpm_fscs_kobj, "current");
+	}
+
+	if ( !pcfsc->kobj ) {
+		eprintk("no kobject initialized for target FSC\n");
+		return -EINVAL;
+	}
+
+	dprintk("updating link to current FSC\n");
+	result = sysfs_create_link(cpm_fscs_kobj, pcfsc->kobj, "current");
+	if ( result ) {
+		eprintk("exporting current FSC link failed\n");
+		return result;
+	}
+
+	return 0;
+}
+
 static int cpm_sysfs_fsc_export(void)
 {
 	int result = 0;
@@ -1429,12 +1454,19 @@ static int cpm_sysfs_fsc_export(void)
 		/* create the asms group for this FSC */
 		snprintf(pcfsc->name, CPM_NAME_LEN, "FSC%02u", pcfsc->info.id);
 
+		/* create the FSC folder kobject under /sys/kernel/fscf */
+		pcfsc->kobj = kobject_create_and_add(pcfsc->name, cpm_fscs_kobj);
+		if (!pcfsc->kobj) {
+			eprintk("out-of-memory on \"cpm/fscs/%s\" sysfs interface creation\n",
+					pcfsc->name);
+			return -ENOMEM;
+		}
+
 		/* exporting ASMs for this FSC */
 		result = cpm_sysfs_asms_export(pcfsc->info.asms,
 				pcfsc->info.asms_count,
-				pcfsc->name,
-				&(pcfsc->asms_group),
-				cpm_fscs_kobj);
+				0, &(pcfsc->asms_group),
+				pcfsc->kobj);
 
 		/* exporting DWRs for this FSC */
 		//TODO
@@ -2140,6 +2172,7 @@ static struct cpm_fsc_pointer *cpm_find_next_valid_fsc(void)
  */
 static int cpm_notify_new_fsc(struct cpm_fsc_pointer *pnewfscp)
 {
+	struct cpm_fsc_core *pfscc;
 
 	if ( !cpm_ddp_required ) {
 		dprintk("no need to run a DDP\n");
@@ -2150,6 +2183,9 @@ static int cpm_notify_new_fsc(struct cpm_fsc_pointer *pnewfscp)
 			container_of(pnewfscp->fsc, struct cpm_fsc_core, info)->name );
 
 	/* TODO */
+
+	pfscc = container_of(pnewfscp->fsc, struct cpm_fsc_core, info);
+	cpm_sysfs_fsc_current_export(pfscc);
 
 	cpm_ddp_required = 0;
 
