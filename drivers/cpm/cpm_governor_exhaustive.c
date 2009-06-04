@@ -221,6 +221,7 @@ int __build_fsc_list_exhaustive(struct list_head *l_dev, u8 ndev)
 		if (merge_res != -EINVAL){
 			/*current DWR must be added to DWRs that map on current FSC*/
 			curr_dwr[ndev].dwr = &dev->dwrs[idwr];
+			curr_dwr[ndev].cdev = dev;
 			/*if this is the last device a NEW FSC has been found*/
 			dprintk("next:%p head:%p\n",l_dev->next,h_dev);
 			if (ndev == tot_dev-1){
