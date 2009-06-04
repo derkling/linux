@@ -169,10 +169,31 @@ static struct cpm_dev_data buddy2_data = {
 int cpm_buddy_callback(struct notifier_block *nb, unsigned long step, void *data)
 {
 	struct cpm_dev *pcdev = (struct cpm_dev*)container_of(nb, struct cpm_dev, nb);
+	int result = NOTIFY_OK;
 
-	dev_info(pcdev->dev, "device callback\n");
+	switch(step) {
+	case CPM_EVENT_NEW_CONSTRAINT:
+		dev_info(pcdev->dev, "new constraint notification\n");
+		result = NOTIFY_DONE;
+		break;
+	case CPM_EVENT_DO_CHANGE:
+		dev_info(pcdev->dev, "DDP do-change: new DWR [%d] authorized\n", *(cpm_id*)data);
+		break;
+	case CPM_EVENT_ABORT:
+		dev_info(pcdev->dev, "DDP abort\n");
+		break;
+	case CPM_EVENT_PRE_CHANGE:
+		dev_info(pcdev->dev, "DDP pre-change, going to switch to DWR [%d]...\n", *(cpm_id*)data);
+		break;
+	case CPM_EVENT_POST_CHANGE:
+		dev_info(pcdev->dev, "DDP post-change, switch to DWR [%d] complite\n", *(cpm_id*)data);
+		break;
+	default:
+		dev_warn(pcdev->dev, "unexpected notification, returning OK (0)\n");
+		result = NOTIFY_BAD;
+	}
 
-	return 0;
+	return result;
 }
 
 
