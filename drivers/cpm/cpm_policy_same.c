@@ -77,8 +77,24 @@ int sort_fsc_list_same(struct list_head *fsc_list)
 
 int ddp_handler_same(unsigned long phase, void *data)
 {
-	dprintk("ddp_handler returning CPM_DDP_OK");
-	return CPM_DDP_OK;
+
+	switch(phase) {
+	case CPM_EVENT_NEW_CONSTRAINT:
+		dprintk("new constraint notification: authorized\n");
+		break;
+	case CPM_EVENT_FSC_FOUND:
+		dprintk("next FSC notification: authorized\n");
+		break;
+	case CPM_EVENT_PRE_CHANGE:
+		dprintk("DDP pre-change notification\n");
+		break;
+	case CPM_EVENT_POST_CHANGE:
+		dprintk("DDP post-change notification\n");
+		break;
+	default:
+		dprintk("unexpected notification, returning OK (0)\n");
+	}
+	return 0;
 }
 
 

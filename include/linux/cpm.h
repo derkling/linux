@@ -218,6 +218,30 @@ struct cpm_fsc_pointer {
 };
 
 /**
+ * A CMP Entity can be either a task or a device and define the owner of a
+ * constraint asserted.
+ */
+struct cpm_entity {
+	union {
+		struct task_struct *task;
+		struct device *dev;
+		void *ptr;
+	};
+#define CPM_ENTITY_TYPE_DRIVER	0
+#define CPM_ENTITY_TYPE_TASK	1
+	u8 type:1;			/* The entity type */
+};
+
+/**
+ * The data that are passed to a policy with the notification of a
+ * CPM_EVENT_NEW_CONSTRAINT using its ddp_handler
+ */
+struct cpm_policy_notify_data {
+	struct cpm_entity entity;
+	struct cpm_range range;
+};
+
+/**
  * A CPM Policy
  *
  * Basically define a FSCs ordering strategy and a system
@@ -237,10 +261,13 @@ struct cpm_policy {
 	  * sometime later.
 	  */
 	int (*sort_fsc_list)(struct list_head *fsc_list);
-#define CPM_DDP_DONE	NOTIFY_DONE
-#define CPM_DDP_OK	NOTIFY_OK
-#define CPM_DDP_BAD	NOTIFY_BAD
-	int (*ddp_handler)(unsigned long, void *);
+	/*
+	 * 'data''s content depende on event type:
+	 * CPM_EVENT_NEW_CONSTRAINT: struct cpm_policy_notify_data*
+	 * CPM_EVENT_FSC_FOUND: struct cpm_fsc_pointer*
+	 * return 0 on success, non null otherwise
+	 */
+	int (*ddp_handler)(unsigned long event, void *data);
 };
 
 /**

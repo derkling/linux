@@ -146,8 +146,8 @@ int sort_fsc_list_performance(struct list_head *fsc_list)
 
 int ddp_handler_performance(unsigned long phase, void *data)
 {
-	dprintk("ddp_handler returning CPM_DDP_OK\n");
-	return CPM_DDP_OK;
+	dprintk("ddp_handler returning OK (0)\n");
+	return 0;
 }
 
 
