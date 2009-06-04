@@ -50,17 +50,6 @@ struct cpm_dev_sysfs {
 	/* TODO add entries for statistics */
 };
 
-struct cpm_entity {
-	union {
-		struct task_struct *task;
-		struct device *dev;
-		void *ptr;
-	};
-#define CPM_ENTITY_TYPE_DRIVER	0
-#define CPM_ENTITY_TYPE_TASK	1
-	u8 type:1;			/* The entity type */
-};
-
 struct cpm_constraint {
 	struct cpm_entity entity;	/* The entity asserting the constraint */
 	struct cpm_range range;		/* The asserted constraint */
@@ -2138,32 +2127,6 @@ static struct cpm_fsc_pointer *__cpm_find_next_valid_fsc(struct list_head *pos)
 
 }
 
-static struct cpm_fsc_pointer *cpm_find_next_valid_fsc(void)
-{
-	struct cpm_fsc_pointer *pnewfscp;
-
-	if ( !cpm_relaxed && pcfp ) {
-		/* Scan forward for next valid FSC */
-		dprintk("search for next valid FSC...\n");
-		pnewfscp = __cpm_find_next_valid_fsc(&pcfp->node);
-
-	} else {
-		/* Search the first FSC */
-		dprintk("search for first valid FSC...\n");
-		pnewfscp = __cpm_find_next_valid_fsc(&fsc_ordered_list);
-	}
-
-	if ( !pnewfscp ) {
-		eprintk("no valid FSC found\n");
-		return 0;
-	}
-
-	iprintk("new FSC [%s] found\n", container_of(pnewfscp->fsc, struct cpm_fsc_core, info)->name);
-
-	return pnewfscp;
-
-}
-
 /*
  * DDP on the required FSC.
  * All subscribed device will be notified about the new FSC which has been
@@ -2172,7 +2135,6 @@ static struct cpm_fsc_pointer *cpm_find_next_valid_fsc(void)
  */
 static int cpm_notify_new_fsc(struct cpm_fsc_pointer *pnewfscp)
 {
-	struct cpm_fsc_core *pfscc;
 
 	if ( !cpm_ddp_required ) {
 		dprintk("no need to run a DDP\n");
@@ -2184,39 +2146,104 @@ static int cpm_notify_new_fsc(struct cpm_fsc_pointer *pnewfscp)
 
 	/* TODO */
 
-	pfscc = container_of(pnewfscp->fsc, struct cpm_fsc_core, info);
-	cpm_sysfs_fsc_current_export(pfscc);
-
 	cpm_ddp_required = 0;
 
 	return 0;
 }
 
+/*
+ * Find the next valid FSC, (eventually) authorized by the running policy.
+ */
+static struct cpm_fsc_pointer *cpm_find_next_valid_fsc(struct list_head *pnode)
+{
+	int result = 0; /* Must be NULL at firt loop run */
+	struct cpm_fsc_pointer *pnewfscp = 0;
+
+	do {
+
+		/* Find next valid FSC */
+		pnewfscp = __cpm_find_next_valid_fsc(pnode);
+		if ( !pnewfscp ) {
+			break;
+		}
+
+		if ( !policy ) {
+			dprintk("policy not registerd, unable to verify FSC with policy\n");
+			break;
+		}
+
+		/* Asking */
+		result = policy->ddp_handler(CPM_EVENT_FSC_FOUND, (void*)pnewfscp);
+		if ( result ) {
+			nprintk("FSC found but not authorized by policy\n");
+		}
+
+		pnode = &pnewfscp->node;
+
+	} while( pnewfscp && result );
+
+	if ( pnewfscp ) {
+		iprintk("new FSC [%s] found\n", container_of(pnewfscp->fsc,
+					struct cpm_fsc_core, info)->name);
+	} else {
+		eprintk("no valid FSC found\n");
+	}
+
+	return pnewfscp;
+
+}
+
+/*
+ * If current FSC is marked outdated, look for another valid FSC and ask
+ * agreement to registered devices.
+ */
 static int cpm_update_fsc(void)
 {
+	struct list_head *pnode;
 	struct cpm_fsc_pointer *pnewfscp;
-	int result;
+	struct cpm_fsc_core *pfscc;
+	int result = 0; /* Must be NULL at first loop run */
 
+	/* Checking the need to update the FSC */
 	if ( !cpm_fsc_outdated ) {
 		dprintk("no need to update FSC\n");
 		return 0;
 	}
 
-	/* Look for a valid FSC matching the new constraints */
-	pnewfscp = cpm_find_next_valid_fsc();
-	if ( !pnewfscp ) {
-		eprintk("no valid FSC found matching new constraints\n");
-		return -EINVAL;
+	/* Initializing the FSC to start the search from */
+	if ( cpm_relaxed || !pcfp ) {
+		/* Search starts from the first FSC */
+		dprintk("search for first valid FSC...\n");
+		pnode = &fsc_ordered_list;
+	} else {
+		/* Search forward for next valid FSC */
+		dprintk("search for next valid FSC...\n");
+		pnode = &pcfp->node;
+
 	}
 
-	iprintk("new valid FSC [%s] found, starting DDP...\n",
-			container_of(pnewfscp->fsc, struct cpm_fsc_core, info)->name);
+	/* Searching the FSC */
+	do {
+		/* Find next valid FSC */
+		pnewfscp = cpm_find_next_valid_fsc(pnode);
+		if ( !pnewfscp ) {
+			break;
+		}
 
-	/* Start DDP */
-	cpm_ddp_required = 1;
-	result = cpm_notify_new_fsc(pnewfscp);
-	if ( result ) {
-		eprintk("not-agreement on new FSC activation\n");
+		/* Start DDP */
+		cpm_ddp_required = 1;
+		result = 0;
+		result = cpm_notify_new_fsc(pnewfscp);
+		if ( result ) {
+			eprintk("not-agreement on new FSC activation\n");
+		}
+
+	} while (result && pnewfscp);
+	/* Exit on DDP agreement or no more FSC availables */
+
+	if ( !pnewfscp ) {
+		nprintk("unable to find a%sfeasible FSC\n",
+				result ? " " : "n agreement on a ");
 		return -EINVAL;
 	}
 
@@ -2224,8 +2251,11 @@ static int cpm_update_fsc(void)
 	pcfp = pnewfscp;
 	cpm_fsc_outdated = 0;
 
-	return 0;
+	/* Update sysfs interface */
+	pfscc = container_of(pnewfscp->fsc, struct cpm_fsc_core, info);
+	cpm_sysfs_fsc_current_export(pfscc);
 
+	return 0;
 }
 
 static int cpm_add_constraint(void *entity, u8 type, cpm_id asm_id, struct cpm_range *range)
@@ -2244,20 +2274,19 @@ static int cpm_add_constraint(void *entity, u8 type, cpm_id asm_id, struct cpm_r
 			platform[asm_id].info.name, str);
 
 
+	cpm_sysfs_print_range(str+32, 32, range);
 	/* Check if the entity has already asserted a constraint for the ASM */
 	list_for_each_entry(pconstr, &platform[asm_id].constraints, node) {
-		cpm_sysfs_print_range(str, 32, &pconstr->range);
-		cpm_sysfs_print_range(str+32, 32, range);
 		if ( entity == pconstr->entity.ptr ) {
+			cpm_sysfs_print_range(str, 32, &pconstr->range);
 			dprintk("replacing constraint for [%s] (%s => %s)\n",
-				entity_name, str, str+32);
+					entity_name, str, str+32);
 			break;
 		}
 	}
 
 	/* Allocate a new constraint for this device if necessary */
 	if ( &pconstr->node == &platform[asm_id].constraints ) {
-
 
 		dprintk("allocate a new constraint for [%s] (%s)\n",
 				entity_name, str+32);
@@ -2297,6 +2326,7 @@ static int __cpm_update_constraint(void *entity, u8 type, cpm_id asm_id, struct 
 	int result;
 	u8 replace_constraint = 0;
 	char entity_name[32];
+	struct cpm_policy_notify_data cpnd;
 
 	__cpm_entity_name(entity, type, entity_name, 32);
 
@@ -2305,6 +2335,19 @@ static int __cpm_update_constraint(void *entity, u8 type, cpm_id asm_id, struct 
 	if ( result ) {
 		dprintk("constraint assert sanity check failed, aborting\n");
 		return result;
+	}
+
+	/* Notify policy about new constraint and ask authorization */
+	if ( policy ) {
+		cpnd.entity.ptr = entity;
+		cpnd.entity.type = type;
+		cpnd.range = *range;
+
+		result = policy->ddp_handler(CPM_EVENT_NEW_CONSTRAINT, (void*)&cpnd);
+		if ( result ) {
+			nprintk("constraint assertion denied by policy\n");
+			return result;
+		}
 	}
 
 	/* Check if the entity has already asserted a constraint for the ASM */
