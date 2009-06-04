@@ -116,7 +116,7 @@ static void performance_ordering(struct work_struct *work)
 
 	}
 	
-	dprintk("ordered fsc list");
+	dprintk("ordered fsc list\n");
 	print_ord_fscs(&ordered_fscs);
 	dprintk("calling cpm_set_ordered_fsc_list\n");
 	

@@ -67,14 +67,14 @@ u8 tot_fsc = 0;
  *********************************************************************/
 
 #define dprintk(msg...) cpm_debug_printk(CPM_DEBUG_CORE, \
-						"cpm-gov-exh ", msg)
+						"cpm-gov-exh", msg)
 
-#define iprintk(msg...) pr_info("cpm-gov-exh: " msg)
+#define iprintk(msg...) pr_info("cpm-gov-exh" msg)
 
-#define eprintk(msg...) pr_err("cpm-gov-exh " msg)
+#define eprintk(msg...) pr_err("cpm-gov-exh" msg)
 
 /*debug print ranges strored during fsc search*/
-void print_g_rgs(){
+void print_g_rgs(void){
         struct cpm_gov_asm_range *p = 0, *pold = 0;
 	struct cpm_range pr;
 	list_for_each_entry(p,l_ranges,node){
@@ -90,7 +90,7 @@ void print_g_rgs(){
 }
 
 /*debug print an fsc list*/
-void print_fscs(){
+void print_fscs(void){
 	struct cpm_fsc *p = 0;
 	int i = 0;
 	struct cpm_asm_range r;

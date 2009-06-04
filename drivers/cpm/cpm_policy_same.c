@@ -24,11 +24,11 @@ struct list_head *original_fscs = 0;
  *********************************************************************/
 
 #define dprintk(msg...) cpm_debug_printk(CPM_DEBUG_CORE, \
-						"cpm-policy-same ", msg)
+						"cpm-policy-same", msg)
 
-#define iprintk(msg...) pr_info("cpm-policy-same " msg)
+#define iprintk(msg...) pr_info("cpm-policy-same" msg)
 
-#define eprintk(msg...) pr_err("cpm-policy-same " msg)
+#define eprintk(msg...) pr_err("cpm-policy-same" msg)
 
 
 static void dummy_ordering(struct work_struct *work)
@@ -53,7 +53,6 @@ static void dummy_ordering(struct work_struct *work)
 	cpm_set_ordered_fsc_list(&ordered_fscs);
 	original_fscs =  0;
 
-	return;
 }
 
 
@@ -100,7 +99,6 @@ static int __init cpm_policy_same_init(void)
 
 static void __exit cpm_policy_same_exit(void)
 {
-	return; 
 }
 
 
