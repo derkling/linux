@@ -266,6 +266,10 @@ struct cpm_policy {
 	 * 'data''s content depende on event type:
 	 * CPM_EVENT_NEW_CONSTRAINT: struct cpm_policy_notify_data*
 	 * CPM_EVENT_FSC_FOUND: struct cpm_fsc_pointer*
+	 * CPM_EVENT_PRE_CHANGE: struct cpm_fsc_pointer*
+	 * 	distributed agreement on switching to the specified FSC
+	 * CPM_EVENT_POST_CHAGNE: struct cpm_fsc_pointer* or NULL
+	 * 	the specified FSC has been activated or has been aborted
 	 * return 0 on success, non null otherwise
 	 */
 	int (*ddp_handler)(unsigned long event, void *data);
@@ -297,6 +301,12 @@ int cpm_set_ordered_fsc_list(struct list_head *fscpl_head);
  * Every device should provide such a function that will be called back by the
  * core during the DDP stages.
  */
+#define CPM_EVENT_NEW_CONSTRAINT	0
+#define CPM_EVENT_FSC_FOUND		1
+#define CPM_EVENT_DO_CHANGE		2
+#define CPM_EVENT_ABORT			3
+#define CPM_EVENT_PRE_CHANGE		4
+#define CPM_EVENT_POST_CHANGE		5
 typedef int (*ddp_callback)(struct notifier_block *, unsigned long, void *);
 
 
@@ -304,11 +314,6 @@ typedef int (*ddp_callback)(struct notifier_block *, unsigned long, void *);
  * Device specific data for CPM registration.
  */
 struct cpm_dev_data {
-#define CPM_EVENT_NEW_CONSTRAINT	0
-#define CPM_EVENT_FSC_FOUND		1
-#define	CPM_EVENT_DO_CHANGE		2
-#define CPM_EVENT_PRE_CHANGE		3
-#define CPM_EVENT_POST_CHANGE		4
 	ddp_callback notifier_callback;	/* The device's DDP callback */
 	struct cpm_dev_dwr *dwrs;	/* The DWR's array for the subscribing device */
 	u8 dwrs_count;			/* The number of DWR int the 'dwrs' array */

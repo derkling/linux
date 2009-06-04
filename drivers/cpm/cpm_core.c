@@ -1693,54 +1693,6 @@ int cpm_unregister_device(struct device *dev)
 }
 EXPORT_SYMBOL(cpm_unregister_device);
 
-
-#if 0
-/*
- * Gieven an FSC check if is valid w.r.t. the specified ASM's ddp_range
- * return 0 on OK, -EINVAL otherwise
- */
-static int cpm_verify_fsc_on_asm(struct cpm_fsc_core *fsc, cpm_id asm_id)
-{
-	int i, result;
-	struct cpm_asm_range *pasm;
-	struct cpm_range ddp_range;
-
-	dprintk("cpm_verify_fsc_on_asm - FSC%02d, ASM [%s]...\n",
-			fsc->info.id,
-			platform[asm_id].info.name);
-
-	/* Check if the specified FSC has a range for the ASM to be verified */
-	pasm = fsc->info.asms;
-	for (i=0; i<fsc->info.asms_count; i++) {
-		if (pasm->id == asm_id) {
-			break;
-		}
-		pasm++;
-	}
-
-	if (i==fsc->info.asms_count) {
-		/* no ASM ranges for this FSC */
-		dprintk("cpm_verify_fsc_on_asm - no ranges for the required ASM\n");
-		return 0;
-	}
-
-	ddp_range = platform[asm_id].ddp_range;
-
-	result = cpm_merge_range(&ddp_range, &pasm->range);
-	if ( result ) {
-		dprintk("cpm_verify_fsc_on_asm - ASM [%s] not merge\n",
-				platform[pasm->id].info.name);
-		result = -EINVAL;
-	}
-
-	dprintk("cpm_verify_fsc_on_asm - ASM [%s] merge\n",
-			platform[pasm->id].info.name);
-
-	return 0;
-
-}
-#endif
-
 static int cpm_verify_constraint(cpm_id asm_id, struct cpm_range *range)
 {
 
@@ -2382,12 +2334,14 @@ static int __cpm_update_constraint(void *entity, u8 type, cpm_id asm_id, struct 
 		return result;
 	}
 
+#if 0
 	/* Trigger DDP if necessary */
 	result = cpm_notify_new_fsc(pcfp);
 	if ( result ) {
 		wprintk("DDP failed\n");
 		return result;
 	}
+#endif
 
 	/* Keet track of the new constraint */
 	result = cpm_add_constraint(entity, type, asm_id, range);
