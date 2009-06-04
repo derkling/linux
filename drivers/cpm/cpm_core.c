@@ -2079,6 +2079,95 @@ static struct cpm_fsc_pointer *__cpm_find_next_valid_fsc(struct list_head *pos)
 
 }
 
+static int __cpm_notifier_call_chain(struct notifier_block **nl,
+		unsigned long val, struct cpm_fsc *pfsc)
+{
+	int result = NOTIFY_DONE;
+	struct notifier_block *nb, *next_nb;
+	struct cpm_dev *pdev;
+	struct cpm_fsc_dwr *pfdwr;
+	int count;
+
+        nb = rcu_dereference(*nl);
+	pfdwr = pfsc->dwrs;
+	count = 0;
+
+	/* Looping on the registered device's list */
+        while (nb) {
+
+                next_nb = rcu_dereference(nb->next);
+
+		/* Current device to notify */
+		pdev = container_of(nb, struct cpm_dev, nb);
+		dprintk("notifying device [%s]\n", dev_name(pdev->dev));
+
+		/* Looking for the FSC's DWR for current device */
+		/* Note that the governor should produce a DWR list */
+		while ( pfdwr->cdev != pdev ) {
+			dprintk("cur dev [%s] differ from dwr dev [%s]\n",
+					dev_name(pfdwr->cdev->dev),
+					dev_name(pdev->dev));
+			pfdwr++;
+			count++;
+		}
+
+		/* NOTE: it could happen that a governor return an FSC's DWR
+		 * list not ordered according to the registered devices list.
+		 * In this case we could wrap around the DWR list: start
+		 * search from start one more time for safety */
+		if ( count == pfsc->dwrs_count ) {
+
+			nprintk("unordered DWR list for this DWR\n");
+
+			/* Restart search from beginning */
+			pfdwr = pfsc->dwrs;
+			count = 0;
+			while ( pfdwr->cdev != pdev ) {
+				dprintk("cur dev [%s] differ from dwr dev [%s]\n",
+					dev_name(pfdwr->cdev->dev),
+					dev_name(pdev->dev));
+				pfdwr++;
+				count++;
+			}
+
+			if ( count == pfsc->dwrs_count ) {
+				eprintk("no FSC's DWR defined for this device [%s]\n", dev_name(pdev->dev));
+				nb = next_nb;
+				continue;
+			}
+		}
+
+		/* Notify DWR's ID to current device */
+                result = nb->notifier_call(nb, val, (void*)&pfdwr->dwr->id);
+
+                if ((result & NOTIFY_STOP_MASK) == NOTIFY_STOP_MASK) {
+			dprintk("notification terminated by device [%s]\n", dev_name(pdev->dev));
+                        break;
+		}
+
+		pfdwr++;
+		count++;
+                nb = next_nb;
+        }
+
+	return result;
+
+}
+
+static int cpm_notifier_call_chain(struct srcu_notifier_head *nh,
+		unsigned long event, struct cpm_fsc_pointer *pnewfscp)
+{
+	int result;
+	int idx;
+
+	idx = srcu_read_lock(&nh->srcu);
+	result = __cpm_notifier_call_chain(&nh->head, event, pnewfscp->fsc);
+	srcu_read_unlock(&nh->srcu, idx);
+	return result;
+
+}
+
+
 /*
  * DDP on the required FSC.
  * All subscribed device will be notified about the new FSC which has been
@@ -2087,6 +2176,7 @@ static struct cpm_fsc_pointer *__cpm_find_next_valid_fsc(struct list_head *pos)
  */
 static int cpm_notify_new_fsc(struct cpm_fsc_pointer *pnewfscp)
 {
+	int result;
 
 	if ( !cpm_ddp_required ) {
 		dprintk("no need to run a DDP\n");
@@ -2096,9 +2186,43 @@ static int cpm_notify_new_fsc(struct cpm_fsc_pointer *pnewfscp)
 	dprintk("starting DDP for new FSC [%s]...\n",
 			container_of(pnewfscp->fsc, struct cpm_fsc_core, info)->name );
 
-	/* TODO */
+	/* Looking for devices distributed agreement */
+	result = cpm_notifier_call_chain(&cpm_ddp_notifier_list, CPM_EVENT_DO_CHANGE, pnewfscp);
+	if ( result ) {
+		nprintk("DDP failed, not agreement on selected FSC\n");
+
+		/* Notify not agreement to each device */
+		cpm_notifier_call_chain(&cpm_ddp_notifier_list, CPM_EVENT_ABORT, 0);
+		return result;
+	}
+
+	dprintk("distributed agreement on new FSC [%s]\n",
+			container_of(pnewfscp->fsc, struct cpm_fsc_core, info)->name );
+
+	/* Notify distributed agreement to policy */
+	if ( policy ) {
+		policy->ddp_handler(CPM_EVENT_PRE_CHANGE, (void*)pnewfscp);
+	}
+
+	/* Require change to devices */
+	result = cpm_notifier_call_chain(&cpm_ddp_notifier_list, CPM_EVENT_PRE_CHANGE, pnewfscp);
+	if ( unlikely(result) ) {
+		eprintk("pre-change failed, some device aborted change request\n");
+	}
+
+	/* Synking devices after FSC change */
+	result = cpm_notifier_call_chain(&cpm_ddp_notifier_list, CPM_EVENT_POST_CHANGE, pnewfscp);
+	if ( unlikely(result) ) {
+		eprintk("post-change failed, some device aborted change request\n");
+	}
+
+	if ( policy ) {
+		policy->ddp_handler(CPM_EVENT_POST_CHANGE,  (void*)pnewfscp);
+	}
 
 	cpm_ddp_required = 0;
+
+	dprintk("DDP completed\n");
 
 	return 0;
 }
