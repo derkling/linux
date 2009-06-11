@@ -1553,7 +1553,7 @@ int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
 
 	dprintk("registering new device [%s]...\n", dev_name(dev));
 
-	/* add device notifier block */
+	/* add core cpm device */
 	pcd = kzalloc(sizeof(struct cpm_dev_core), GFP_KERNEL);
         if (!pcd) {
 		dprintk("out-of-mem on cpm_dev_core allocation\n");
@@ -2154,6 +2154,10 @@ static int __cpm_notifier_call_chain(struct notifier_block **nl,
 
 }
 
+/*
+ * Notify all devices about the specified new FSC.
+ * Return 0 on agreement, non-null otherwise.
+ */
 static int cpm_notifier_call_chain(struct srcu_notifier_head *nh,
 		unsigned long event, struct cpm_fsc_pointer *pnewfscp)
 {
@@ -2163,7 +2167,11 @@ static int cpm_notifier_call_chain(struct srcu_notifier_head *nh,
 	idx = srcu_read_lock(&nh->srcu);
 	result = __cpm_notifier_call_chain(&nh->head, event, pnewfscp->fsc);
 	srcu_read_unlock(&nh->srcu, idx);
-	return result;
+
+	if ( result & NOTIFY_BAD )
+		return result;
+
+	return 0;
 
 }
 
@@ -2192,7 +2200,7 @@ static int cpm_notify_new_fsc(struct cpm_fsc_pointer *pnewfscp)
 		nprintk("DDP failed, not agreement on selected FSC\n");
 
 		/* Notify not agreement to each device */
-		cpm_notifier_call_chain(&cpm_ddp_notifier_list, CPM_EVENT_ABORT, 0);
+		cpm_notifier_call_chain(&cpm_ddp_notifier_list, CPM_EVENT_ABORT, pcfp);
 		return result;
 	}
 
