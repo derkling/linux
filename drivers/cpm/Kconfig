@@ -20,11 +20,21 @@ config CPM_GOV_EXHAUST
         help
           If you say yes todo.
 
-config CPM_DEBUG
-	bool "Enable CPM debugging"
-	default n
+menuconfig CPM_DEBUG
+	bool "Enable CPM Debug Support"
+	default y
 	---help---
-	  Say Y here to enable CPM debugging
+	  Say Y here to enable CPM Debug Support
+
+if CPM_DEBUG
+
+config CPM_DEBUG_GOV
+	bool "Enable CPM Governor Debugging"
+	default n
+	--help---
+	  Say Y here to enable CPM Governor Debug Support
+
+endif
 
 config CPM_SYSFS
         bool "Enable SYSFS interface"

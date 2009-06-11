@@ -27,7 +27,7 @@
 #include <linux/init.h>
 #include <linux/list.h>
 #include <linux/cpm.h>
-
+#include <linux/time.h>
 
 /* cpm_gov_asm_range - the type for ranges of candidate FSCs during search*/
 struct cpm_gov_asm_range{
@@ -59,22 +59,35 @@ LIST_HEAD(__fsc_list);
 /*The number of FSCs found*/
 u8 tot_fsc = 0;
 
+/*VARs for TESTING*/
+u32 test_comp = 0;
+struct timespec start, end, delta;
 
-
+struct cpm_fsc *debug_fsc = 0;
 
 /*********************************************************************
  *                     UNIFIED DEBUG HELPERS                         *
  *********************************************************************/
 
+#ifdef CONFIG_CPM_DEBUG_GOV
+
 #define dprintk(msg...) cpm_debug_printk(CPM_DEBUG_CORE, \
-						"cpm-gov-exh", msg)
+						"cpm-gov-exh ", msg)
 
-#define iprintk(msg...) pr_info("cpm-gov-exh" msg)
+#define iprintk(msg...) pr_info("cpm-gov-exh: " msg)
 
-#define eprintk(msg...) pr_err("cpm-gov-exh" msg)
+#define eprintk(msg...) pr_err("cpm-gov-exh " msg)
+
+#else 
+
+#define dprintk(msg...) do { } while(0)
+#define iprintk(msg...) do { } while(0)
+#define eprintk(msg...) do { } while(0)
+
+#endif
 
 /*debug print ranges strored during fsc search*/
-void print_g_rgs(void){
+void print_g_rgs(){
         struct cpm_gov_asm_range *p = 0, *pold = 0;
 	struct cpm_range pr;
 	list_for_each_entry(p,l_ranges,node){
@@ -90,7 +103,7 @@ void print_g_rgs(void){
 }
 
 /*debug print an fsc list*/
-void print_fscs(void){
+void print_fscs(){
 	struct cpm_fsc *p = 0;
 	int i = 0;
 	struct cpm_asm_range r;
@@ -129,6 +142,7 @@ int __build_fsc_list_exhaustive(struct list_head *l_dev, u8 ndev)
 
 	/*iterate on dwrs of the current level device*/
 	for (idwr = 0 ; idwr < ndwr ; idwr++){
+		test_comp++;	//increase # of compares
 		dprintk("analizyng dwr:%2hu of dev:%2hu\n", idwr, ndev);
 		merge_res = 0;
 		dwrs = dev->dwrs[idwr];
@@ -221,7 +235,6 @@ int __build_fsc_list_exhaustive(struct list_head *l_dev, u8 ndev)
 		if (merge_res != -EINVAL){
 			/*current DWR must be added to DWRs that map on current FSC*/
 			curr_dwr[ndev].dwr = &dev->dwrs[idwr];
-			curr_dwr[ndev].cdev = dev;
 			/*if this is the last device a NEW FSC has been found*/
 			dprintk("next:%p head:%p\n",l_dev->next,h_dev);
 			if (ndev == tot_dev-1){
@@ -244,7 +257,7 @@ int __build_fsc_list_exhaustive(struct list_head *l_dev, u8 ndev)
 					new_fsc->asms[i] = g_rgs->normal_range;
 					i++;
 				}
-				dprintk("ranges copied into fsc:%hu",i);
+				dprintk("ranges copied into fsc:%hu\n",i);
 				dprintk("copy dwr that bind to the new FSC\n");
 				new_fsc->asms_count = tot_grgs;
 				for (i=0; i < tot_dev; i++){
@@ -329,12 +342,30 @@ int build_fsc_list_exhaustive(struct list_head *dev_list, u8 ndev)
 
 	/*Call to recursive function for DWRS COMBINATION TREE exploration*/
 	dprintk("starting recursive searching\n");
+
+	/*reset testing counters*/
+	test_comp = 0;
+	start = current_kernel_time();
+	printk(KERN_INFO "cpm-gov_exh: START TIME %ld %ld\n",start.tv_sec,start.tv_nsec);	
+	
 	__build_fsc_list_exhaustive(dev_list, 0);	
+	
+	end = current_kernel_time();
+        printk(KERN_INFO "cpm-gov_exh: END TIME %ld %ld\n",end.tv_sec,end.tv_nsec);       
+
+	delta = timespec_sub(end, start);
+	
+	printk(KERN_INFO "cpm-gov-exh: END STATS dev:%hu comp:%hu fsc:%hu sec:%lo nsec:%ld\n",ndev,test_comp,tot_fsc,delta.tv_sec,delta.tv_nsec);		
 	
 	if (list_empty(&__fsc_list)){
 		dprintk("empty fsc list returned\n");
 		return -EINVAL;
 	}
+
+	list_for_each_entry(debug_fsc, &__fsc_list,node){
+		dprintk("fsc id:%hu\n", debug_fsc->id);	
+	}
+
 
 	dprintk("fsc list returned\n");
 	print_fscs();			
