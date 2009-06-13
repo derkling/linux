@@ -82,14 +82,17 @@ struct cpm_fsc_core {
 #ifdef CONFIG_CPM_SYSFS
 	struct attribute_group asms_group;  	/* The ASMs of this FSC */
 	struct attribute_group dwrs_group;	/* The DWRs of this FSC */
-	char name[CPM_NAME_LEN];		/* The name of this FSC */
-	struct kobject *kobj;			/* The kobj for the FSC folder */
+	//char name[CPM_NAME_LEN];		/* The name of this FSC */
+	struct kobject kobj;			/* The kobj for the FSC folder */
 #endif
 };
 
 /* cpm_dev_ktype - the ktype of each device registerd to CPM */
 struct kobj_type cpm_dev_ktype;
-struct sysfs_ops cpm_dev_ops;
+/* cpm_fsc_ktype - the ktype of each FSC identified by CPM */
+struct kobj_type cpm_fsc_ktype;
+/* cpm_sysfs_ops - a generic sysfs ops dispatcher */
+struct sysfs_ops cpm_sysfs_ops;
 
 /* Platform defined ASMs */
 static struct cpm_asm_core *platform = 0;
@@ -110,17 +113,23 @@ static struct cpm_policy *policy = 0;
 /* The list of devices subscribed to some ASM */
 static LIST_HEAD(dev_list);
 
+/* The device list mutex */
+static DEFINE_MUTEX(dev_mutex);
+
 /* The list of active constraints */
 static LIST_HEAD(constraint_list);
 
-/* The existing FSC */
+/* The existing FSC list */
 static LIST_HEAD(fsc_list);
+
+/* The FSC's list mutex */
+static DEFINE_MUTEX(fsc_mutex);
 
 /* The count of FSC in the fsc_list */
 static unsigned int fsc_count = 0;
 
 /* The current selected FSC */
-static struct cpm_fsc_pointer *pcfp = 0;
+static struct cpm_fsc_pointer *current_fsc = 0;
 
 /* The FSC list is marked outdated when a constraint update require to
  * seach for a new one */
@@ -129,9 +138,6 @@ static short unsigned cpm_fsc_outdated = 1;
 /* This is set when a constraint has been relaxed and thus FSC must be
  * searched starting from the head of the ordered FSC list */
 static short unsigned cpm_relaxed = 1;
-
-/* The FSC's list mutex */
-static DEFINE_MUTEX(fsc_mutex);
 
 /* The ordered FSC list to use for valid FSC selection during a DDP */
 static LIST_HEAD(fsc_ordered_list);
@@ -538,7 +544,7 @@ int cpm_register_platform_asms(struct cpm_platform_data *cpd) {
 	struct cpm_asm *pasm;
 
 	if (!cpd) {
-		eprintk("invalid platform data");
+		eprintk("invalid platform data\n");
 		return -EINVAL;
 	}
 
@@ -546,7 +552,7 @@ int cpm_register_platform_asms(struct cpm_platform_data *cpd) {
 
 	// NOTE platform data can be defined only one time
 	if (platform) {
-		eprintk("platform data already defined");
+		eprintk("platform data already defined\n");
 		result = -EBUSY;
 		goto cpm_plat_asm_exist;
 	}
@@ -614,13 +620,12 @@ static void cpm_work_update_fsc(struct work_struct *work)
 
 	dprintk("START: FSC update workqueue, governor [%s]\n", governor->name);
 	result = governor->build_fsc_list(&dev_list, cpm_dev_count);
-	if (result) {
+	if ( result ) {
 		eprintk("rebuild FSCs failed\n");
-	} else {
-		cpm_fsc_list_outdated = 1;
+		/* TODO: Switch to Best-Effort approach */
 	}
+	dprintk("END: FSC update workqueue\n");
 
-	iprintk("END: FSC update workqueue\n");
 }
 
 DECLARE_WORK(cpm_work_governor, cpm_work_update_fsc);
@@ -628,27 +633,52 @@ DECLARE_WORK(cpm_work_governor, cpm_work_update_fsc);
 static int cpm_update_governor(void) {
 	int result = 0;
 
+	if ( !cpm_fsc_list_outdated ) {
+		nprintk("FSC list is up-to-date, aborting governor call\n");
+		return 0;
+	}
+
 	/* return immediatly if CPM is disabled */
-	if (!cpm_enabled) {
+	if ( unlikely(!cpm_enabled) ) {
 		dprintk("CPM disabled: governor update disabled\n");
 		return 0;
 	}
 
 	/* a permission error is returned if the goeverno has not bee
 	 * configured */
-	if (!governor) {
+	if ( unlikely(!governor) ) {
 		eprintk("governor not configured: update failed\n");
 		return -EPERM;
 	}
 
 	/* let the governor do the job... */
-	dprintk("schedling governor call work_queue\n");
 	result = queue_work(cpm_wq, &cpm_work_governor);
 	if (!result) {
 		eprintk("queuing new governor work failed\n");
 	}
 
 	return result;
+
+}
+
+static int cpm_sysfs_fsc_unexport(void);
+int cpm_invalidate_fsc(void)
+{
+	dprintk("invalidating FSC list...\n");
+
+	dprintk("%s, waiting for fsc_mutex...\n", __FUNCTION__);
+	mutex_lock(&fsc_mutex);
+
+	/* Notify governor about FSC being invalidated */
+	cpm_fsc_list_outdated = 1;
+	cpm_update_governor();
+
+	/* Cleaning-up the FSC's sysfs interface */
+	cpm_sysfs_fsc_unexport();
+
+	mutex_unlock(&fsc_mutex);
+
+	return 0;
 
 }
 
@@ -659,13 +689,16 @@ int cpm_register_governor(struct cpm_governor *cg) {
 		return -EINVAL;
 	}
 
-	// TODO use MUTEX
+	/* TODO use MUTEX */
 
-	// TODO add governor list support?!?
+	/* TODO add governor list support?!? */
 	governor = cg;
-	
+
 	dprintk("new governor [%s] registered\n",
 		(cg->name[0]) ? cg->name : "UNNAMED");
+
+	/* Force FSC list rebuilding */
+	cpm_invalidate_fsc();
 
 	return 0;
 }
@@ -688,73 +721,49 @@ int cpm_update_policy(void)
 		return -EINVAL;
 	}
 
-	dprintk("updating current FSC...\n");
-	result = cpm_update_fsc();
-	if ( result ) {
-		eprintk("FSC update failed\n");
-	}
-
 	return 0;
 }
 
-static int cpm_sysfs_fsc_update(void);
+static int cpm_sysfs_fsc_export(void);
 int cpm_set_fsc_list(struct list_head *new_fsc_list)
 {
-	struct list_head old_fsc_list;
 	struct list_head *node;
 
-	if ( list_empty(new_fsc_list) ) {
+	dprintk("%s, waiting for fsc_mutex...\n", __FUNCTION__);
+	mutex_lock(&fsc_mutex);
+	//NOTE this mutex will be released once the policy has 
+
+	/* The governor has updated the FSC list */
+	cpm_fsc_list_outdated = 0;
+
+	if ( unlikely(list_empty(new_fsc_list)) ) {
 		eprintk("empty FSC list: falling back to best-effort policy\n");
 		//TODO disable CPM and fall-back to best-effort policy with
 		//only constraints aggretation and notification...
 		//Unitl either:
 		// - device base change (remove some device)
+		mutex_unlock(&fsc_mutex);
 		return 0;
 	}
-
-
-	mutex_lock(&fsc_mutex);
-
-	/* saving a ref to old FSC list*/
-	list_replace_init(&fsc_list, &old_fsc_list);
 
 	/* updating current FSC list */
 	list_replace_init(new_fsc_list, &fsc_list);
 
-	/* Update the FSC count */
+	/* updating the FSC count */
 	fsc_count = 0;
 	list_for_each(node, &fsc_list) {
 		fsc_count++;
 	}
-
-	cpm_fsc_list_outdated = 0;
-
-	mutex_unlock(&fsc_mutex);
-
+	
 	dprintk("new FSC list received, [%d] entry\n", fsc_count);
 
-	/* Updating ordered FSC list */
+	/* updating ordered FSC list */
 	cpm_update_policy();
 
-#ifdef CONFIG_CPM_SYSFS
-	/* release sysfs kobj */
-	eprintk("TODO: implement sysfs FSC kobjects release\n");
-#else
-	struct cpm_fsc *pfsc;
-
-	/* clean-up old list */
-	list_for_each(node, old_fsc_list) {
-		/* get pointer to contained fsc struct */
-		pfsc = list_entry(node, struct cpm_fsc, node);
-		/* remove this node from the list */
-		list_del(node);
-		/* release memory */
-		kfree(pfsc);
-	}
-#endif
-
 	dprintk("Updating FSC sysfs interface\n");
-	cpm_sysfs_fsc_update();
+	cpm_sysfs_fsc_export();
+
+	mutex_unlock(&fsc_mutex);
 
 	return 0;
 
@@ -771,11 +780,14 @@ int cpm_register_policy(struct cpm_policy *cp) {
 	if (!cp)
 		return -EINVAL;
 
-	//TODO use mutex
+	/* TODO use mutex */
 	policy = cp;
 
 	dprintk("new policy [%s] registered\n",
 		(cp->name[0]) ? cp->name : "UNNAMED");
+
+	/* updating ordered FSC list if required */
+	cpm_update_policy();
 
 	return 0;
 }
@@ -785,7 +797,8 @@ static int cpm_update_fsc(void);
 static int cpm_notify_new_fsc(struct cpm_fsc_pointer *pnewfscp);
 int cpm_set_ordered_fsc_list(struct list_head *fscpl_head) {
 	struct list_head old_fsc_ordered_list;
-	struct cpm_fsc_pointer *pcfp;
+	struct cpm_fsc_pointer *pofsc;
+	struct cpm_fsc_pointer *pnext;
 	int result;
 
 	if (!fscpl_head) {
@@ -801,25 +814,27 @@ int cpm_set_ordered_fsc_list(struct list_head *fscpl_head) {
 
 	mutex_unlock(&fsc_ordered_mutex);
 
-	/* Clean-up old list */
-	list_for_each_entry(pcfp, &old_fsc_ordered_list, node) {
-		dprintk("releasing cpm_fsc_pointer\n");
-		list_del(&pcfp->node);
-		kfree(pcfp);
-	}
+	dprintk("new FSC ordered list registered\n");
 
-	dprintk("new FSCs ordered list registered\n");
-
-	dprintk("updating current FSC...\n");
+	/* updating current fsc */
+	cpm_fsc_outdated = 1;
 	result = cpm_update_fsc();
 	if ( result ) {
 		eprintk("FSC update failed\n");
 	}
 
-	dprintk("if required, run a DDP...\n");
-	result = cpm_notify_new_fsc(pcfp);
+	/* if required, run a DDP */
+	result = cpm_notify_new_fsc(current_fsc);
 	if ( result ) {
 		eprintk("DDP failed\n");
+	}
+
+	/* Clean-up old list */
+	dprintk("cleaning-up old ordered FSC list\n");
+	list_for_each_entry_safe(pofsc, pnext, &old_fsc_ordered_list, node) {
+dprintk(".\n");
+		list_del(&pofsc->node);
+		kfree(pofsc);
 	}
 
 	return 0;
@@ -892,10 +907,53 @@ static int cpm_sysfs_print_range(char *buf, ssize_t size, struct cpm_range *rang
 
 static void cpm_sysfs_dev_release(struct kobject *kobj)
 {
-	dprintk("TODO, cpm_sysfs_dev_release [%s]\n", kobj->name);
+	struct cpm_dev_core *pcd;
+	struct cpm_dev_dwr *pdwr;
+	u8 i;
+
+	dprintk("cpm_sysfs_dev_release [%s]\n", kobj->name);
+	
+	if ( strcmp(kobj->name, "cpm") == 0 ) {
+
+		/* Releasing all core device data */
+		pcd = container_of(kobj, struct cpm_dev_core, sysfs.cpm);
+
+		dprintk	("cleaning-up all device [%s] memory\n", dev_name(pcd->dev_info.dev));
+
+		/* releasing attributes for each DWR */
+		for (pdwr = pcd->dev_info.dwrs, i=0; i<pcd->dev_info.dwrs_count; pdwr++, i++) {
+			kfree(pdwr->asms_group.attrs);
+			kfree(pdwr->asms);
+
+		}
+		kfree(pcd->dev_info.dwrs);
+		kfree(pcd);
+
+	}
+
 }
 
-static ssize_t cpm_sysfs_dev_show(struct kobject * kobj, struct attribute *attr,
+static void cpm_sysfs_fsc_release(struct kobject *kobj)
+{
+	struct cpm_fsc_core *pcfsc;
+
+dprintk("(TODO) cleaning-up all FSC memory\n");
+
+#if 0
+	pcfsc = container_of(kobj, struct cpm_fsc_core, kobj);	
+	dprintk("cleaning-up all FSC [%s] memory\n", pcfsc->kobj.name);
+
+	/* cleaning-up FSC's ASMs attributes */
+	kfree(&pcfsc->asms_group.attrs);
+dprintk("a\n");
+	/* releasing FSC memory */
+	kfree(pcfsc);
+dprintk("b\n");
+#endif
+
+}
+
+static ssize_t cpm_sysfs_show(struct kobject * kobj, struct attribute *attr,
 		char *buf) {
 	struct kobj_attribute *kattr;
 	ssize_t ret = -EIO;
@@ -907,7 +965,7 @@ static ssize_t cpm_sysfs_dev_show(struct kobject * kobj, struct attribute *attr,
 	return ret;
 }
 
-static ssize_t cpm_sysfs_dev_store(struct kobject *kobj, struct attribute *attr,
+static ssize_t cpm_sysfs_store(struct kobject *kobj, struct attribute *attr,
 		const char *buf, size_t count)
 {
 	struct kobj_attribute *kattr;
@@ -940,16 +998,6 @@ static int cpm_sysfs_dev_init(struct cpm_dev_core *pcd)
 			"constraints");
 
 	return result;
-}
-
-static int cpm_sysfs_dev_remove(struct cpm_dev_core *pcd)
-{
-
-	kobject_put(&((pcd->sysfs).cpm));
-	kobject_put(&((pcd->sysfs).dwrs));
-	kobject_put(&((pcd->sysfs).constraints));
-
-	return 0;
 }
 
 static ssize_t cpm_asm_show(struct kobject *kobj,
@@ -1017,7 +1065,7 @@ static ssize_t cpm_dwr_show(struct kobject *kobj,
 /*
  * Initialize and export to sysfs device's DWRs attributes
  */
-static int cpm_sysfs_dwr_setup(struct cpm_dev_core *pcd) {
+static int cpm_sysfs_dev_export(struct cpm_dev_core *pcd) {
 	struct cpm_dev_dwr *pdwr;
 	struct cpm_asm_range *pasm;
 	struct attribute **pattrs;
@@ -1079,23 +1127,32 @@ crd_exit_nomem_dwr:
 
 }
 
-static int cpm_sysfs_dwr_remove(struct cpm_dev_core *pcd)
+static int cpm_sysfs_dev_unexport(struct cpm_dev_core *pcd)
 {
 	struct cpm_dev_dwr *pdwr;
 	u8 i;
 
 	/* releasing attributes for each DWR */
 	for (pdwr = pcd->dev_info.dwrs, i=0; i<pcd->dev_info.dwrs_count; pdwr++, i++) {
-		dprintk("1\n");
+dprintk("1\n");
 		sysfs_remove_group(&(pcd->sysfs.dwrs), &(pdwr->asms_group));
-		dprintk("2\n");
-		kfree(pdwr->asms_group.attrs);
+dprintk("2\n"); 
+		//THIS MUST GO ON RELEASE METHOD
+		//kfree(pdwr->asms_group.attrs);
 	}
-	dprintk("3\n");
-	cpm_sysfs_dev_remove(pcd);
+
+	/* Releasing folders kobjects */
+dprintk("3\n");
+	kobject_put(&((pcd->sysfs).constraints));
+	kobject_put(&((pcd->sysfs).dwrs));
+	kobject_put(&((pcd->sysfs).cpm));
 
 	return 0;
+
 }
+
+
+
 
 /*--- CPM Core SYSFS interface ---*/
 
@@ -1120,7 +1177,7 @@ static ssize_t cpm_sysfs_core_store(struct kobject *kobj, struct kobj_attribute 
 		if (cpm_enabled) {
 			iprintk("CPM enabled\n");
 			if ( cpm_fsc_list_outdated ) {
-				cpm_update_governor();
+				cpm_invalidate_fsc();
 			}
 		} else {
 			iprintk("CPM disabled\n");
@@ -1193,13 +1250,21 @@ static int __init cpm_sysfs_init(void)
 	if (retval) {
 		eprintk("setting-up core sysfs interface FAILED\n");
 	}
+	
+	/* Setting up generic sysfs operations */
+	cpm_sysfs_ops.show = cpm_sysfs_show;
+	cpm_sysfs_ops.store = cpm_sysfs_store;
 
 	/* Setting up ktype for <devices>/cpm and its folders */
-	cpm_dev_ops.show = cpm_sysfs_dev_show;
-	cpm_dev_ops.store = cpm_sysfs_dev_store;
 	cpm_dev_ktype.release = cpm_sysfs_dev_release;
-	cpm_dev_ktype.sysfs_ops = &cpm_dev_ops;
+	cpm_dev_ktype.sysfs_ops = &cpm_sysfs_ops;
 	cpm_dev_ktype.default_attrs = NULL;
+
+	/* Setting up ktype for <cpm>/fscs and its folders */
+	cpm_fsc_ktype.release = cpm_sysfs_fsc_release;
+	cpm_fsc_ktype.sysfs_ops = &cpm_sysfs_ops;
+	cpm_fsc_ktype.default_attrs = NULL;
+
 
 	dprintk("sysfs interface initialized\n");
 
@@ -1355,7 +1420,8 @@ struct attribute_group current_fsc_group;
  * cpm_sysfs_export_asms - export the specified ASMs via sysfs
  * @pasm - the array of ASMs to export
  * @asms_count - the number of elements in the array
- * @name - the name of this group
+ * @name - the name of this group, if NULL attributes will be created under
+ * the specified kobj
  * @attr_group - the group of attributes to use for the export
  * @kobj - the parent kobject under witch this group will be exported
  */
@@ -1409,17 +1475,19 @@ static int cpm_sysfs_fsc_current_export(struct cpm_fsc_core *pcfsc)
 	int result;
 
 	if ( cpm_fscs_kobj ) {
-		dprintk("removing old link\n");
+		dprintk("removing old current FSC link\n");
 		sysfs_remove_link(cpm_fscs_kobj, "current");
 	}
 
+/* FIXME we should ensure the kobj has been initialized, but it should be by
+ * the initialization code
 	if ( !pcfsc->kobj ) {
 		eprintk("no kobject initialized for target FSC\n");
 		return -EINVAL;
 	}
-
+*/
 	dprintk("updating link to current FSC\n");
-	result = sysfs_create_link(cpm_fscs_kobj, pcfsc->kobj, "current");
+	result = sysfs_create_link(cpm_fscs_kobj, &pcfsc->kobj, "current");
 	if ( result ) {
 		eprintk("exporting current FSC link failed\n");
 		return result;
@@ -1428,11 +1496,28 @@ static int cpm_sysfs_fsc_current_export(struct cpm_fsc_core *pcfsc)
 	return 0;
 }
 
+static int cpm_sysfs_fsc_current_unexport(void)
+{
+	if ( cpm_fscs_kobj ) {
+		dprintk("removing old current FSC link\n");
+		sysfs_remove_link(cpm_fscs_kobj, "current");
+	}
+
+	return 0;
+}
+
+
+
 static int cpm_sysfs_fsc_export(void)
 {
 	int result = 0;
 	unsigned short i;
 	struct cpm_fsc_core *pcfsc;
+
+	if ( unlikely(!cpm_fscs_kobj) ) {
+		eprintk("Unable to export FSC list, sysfs not initialized\n");
+		return -ENOENT;
+	}
 
 	dprintk("exporting new FSC list...\n");
 
@@ -1441,21 +1526,31 @@ static int cpm_sysfs_fsc_export(void)
 	list_for_each_entry(pcfsc, &fsc_list, info.node) {
 
 		/* create the asms group for this FSC */
-		snprintf(pcfsc->name, CPM_NAME_LEN, "FSC%02u", pcfsc->info.id);
+		//snprintf(pcfsc->name, CPM_NAME_LEN, "FSC%02u", pcfsc->info.id);
 
 		/* create the FSC folder kobject under /sys/kernel/fscf */
+		
+		result = kobject_init_and_add(&pcfsc->kobj, &cpm_fsc_ktype, cpm_fscs_kobj, "FSC%02u", pcfsc->info.id);
+		if ( result ) {
+			eprintk("failure on \"cpm/fscs/FSC%02u\" sysfs interface creation\n",
+					pcfsc->info.id);
+			return result;
+		}
+
+		/*
 		pcfsc->kobj = kobject_create_and_add(pcfsc->name, cpm_fscs_kobj);
 		if (!pcfsc->kobj) {
 			eprintk("out-of-memory on \"cpm/fscs/%s\" sysfs interface creation\n",
 					pcfsc->name);
 			return -ENOMEM;
 		}
+		*/
 
 		/* exporting ASMs for this FSC */
 		result = cpm_sysfs_asms_export(pcfsc->info.asms,
 				pcfsc->info.asms_count,
 				0, &(pcfsc->asms_group),
-				pcfsc->kobj);
+				&pcfsc->kobj);
 
 		/* exporting DWRs for this FSC */
 		//TODO
@@ -1467,28 +1562,50 @@ static int cpm_sysfs_fsc_export(void)
 
 }
 
-static int cpm_sysfs_fsc_update(void)
+/*
+ * This must be called by holding the fsc_mutex
+ */
+static int cpm_sysfs_fsc_unexport(void)
 {
-	int result;
+	struct cpm_fsc_core *pcfsc;
+	struct cpm_fsc_core *pnext;
 
-	/* Cleaning up existing FSC lists */
-	//TODO
-
-	/* Export new FSC list */
-	result = cpm_sysfs_fsc_export();
-	if ( result ) {
-		eprintk("exporting FSCs failed\n");
-		goto out_sysfs_fsc_export;
+	
+	if ( list_empty(&fsc_list) ) {
+		dprintk("empty FSC list, no need to unexport sysfs\n");
+		return 0;
 	}
 
-	return 0;
+	cpm_sysfs_fsc_current_unexport();
 
-out_sysfs_fsc_export:
+	dprintk("Cleaning-up FSC sysfs interface...\n");
 
-	return result;
+	list_for_each_entry_safe(pcfsc, pnext, &fsc_list, info.node) {
+
+		/* remove this node from the list */
+		list_del(&pcfsc->info.node);
+
+//dprintk("i\n");
+		/* unexporting ASMs for this FSC */
+		sysfs_remove_group(&pcfsc->kobj, &pcfsc->asms_group);
+
+//dprintk("j\n");
+		/* releasing the FSC entry*/
+		kobject_put(&pcfsc->kobj);
+
+//dprintk("k\n");
+		fsc_count--;
+	}
+
+dprintk("FSC count sould be: %d\n", fsc_count);
+if ( list_empty(&fsc_list) ) {
+	dprintk("FSC list is now empty\n");
+} else {
+	dprintk("FSC list not yet empty\n");
 }
 
-
+	return 0;
+}
 
 #else
 
@@ -1497,12 +1614,12 @@ static int __init cpm_sysfs_init(void)
 	return 0;
 }
 
-static int cpm_sysfs_dwr_setup(struct cpm_dev_core *pcd)
+static int cpm_sysfs_dev_export(struct cpm_dev_core *pcd)
 {
 	return 0;
 }
 
-static int cpm_sysfs_dwr_release(struct cpm_dev_core *pcd)
+static int cpm_sysfs_dev_unexport(struct cpm_dev_core *pcd)
 {
 	return 0;
 }
@@ -1609,17 +1726,18 @@ int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
         srcu_notifier_chain_register(&cpm_ddp_notifier_list, &((pcd->dev_info).nb));
 
         // add into device chain
+	mutex_lock(&dev_mutex);
         list_add_tail(&(pcd->dev_info.node), &dev_list);
 	cpm_dev_count++;
-	cpm_fsc_list_outdated = 1;
+	mutex_unlock(&dev_mutex);
 
 	/* Setting-up sysfs interface */
-	cpm_sysfs_dwr_setup(pcd);
-
-	/* Notify governor */
-	cpm_update_governor();
+	cpm_sysfs_dev_export(pcd);
 
         dprintk("new device [%s] successfully registerd\n", dev_name(dev));
+
+	/* Notify governor */
+	cpm_invalidate_fsc();
 	
 	return 0;
 
@@ -1641,34 +1759,28 @@ EXPORT_SYMBOL(cpm_register_device);
 
 static int __cpm_unregister_device(struct cpm_dev_core *pcd)
 {
-	struct cpm_dev_dwr *pdwr;
-	u8 i;
 
-	dprintk("a\n");
-	cpm_sysfs_dwr_remove(pcd);
-
-	dprintk("b\n");
-	cpm_dev_count--;
-	list_del(&(pcd->dev_info.node));
-
-	dprintk("c\n");
+	/* Removing the device from the norification chain */
 	srcu_notifier_chain_unregister(&cpm_ddp_notifier_list, &((pcd->dev_info).nb));
 
-	dprintk("d\n");
-	for (pdwr = pcd->dev_info.dwrs, i=0; i<pcd->dev_info.dwrs_count; pdwr++, i++) {
-		kfree(pdwr->asms);
-	}
+	mutex_lock(&dev_mutex);
 
-	dprintk("e\n");
-	kfree(pcd->dev_info.dwrs);
+	/* Removing the device from the list */
+	list_del(&(pcd->dev_info.node));
+	cpm_dev_count--;
 
-	dprintk("f\n");
-	kfree(pcd);
+	mutex_unlock(&dev_mutex);
 
-	/* Notify governor */
-	cpm_fsc_list_outdated = 1;
-	cpm_update_governor();
+	/* Clean-up device's sysfs interface */
+	cpm_sysfs_dev_unexport(pcd);
 
+	/* Cleaning-up the FSC's sysfs interface */
+// This is better located within the cpm_update_governor method...
+// If the FSC list is outdated, before letting the governor to build the new
+// FSC list we clean un the sysfs interface with the old list
+//	cpm_sysfs_fsc_unexport();
+
+	cpm_invalidate_fsc();
 
 	return 0;
 
@@ -1782,19 +1894,19 @@ static int cpm_check_fsc(cpm_id asm_id, struct cpm_range *range)
 	char str[64];
 
 	/* Check if current FSC has a range on the specified ASM */
-	if ( !pcfp ) {
+	if ( !current_fsc ) {
 		wprintk("no current FSC defined, while expected\n");
 		return 0;
 	}
-	pasm = pcfp->fsc->asms;
-	for (i=0; i<pcfp->fsc->asms_count; i++) {
+	pasm = current_fsc->fsc->asms;
+	for (i=0; i<current_fsc->fsc->asms_count; i++) {
 		if ( pasm->id == asm_id )
 			break;
 		pasm++;
 	}
-	if ( i==pcfp->fsc->asms_count ) {
+	if ( i==current_fsc->fsc->asms_count ) {
 		dprintk("no ASM range on current FSC for [%s]\n",
-				container_of(pcfp->fsc, struct cpm_fsc_core, info)->name);
+				container_of(current_fsc->fsc, struct cpm_fsc_core, info)->kobj.name);
 		return -EINVAL;
 	}
 
@@ -2068,11 +2180,11 @@ static struct cpm_fsc_pointer *__cpm_find_next_valid_fsc(struct list_head *pos)
 
 		result = cpm_verify_fsc(pfscc);
 		if ( !result ) {
-			dprintk("next valid FSC @ [%s]\n", pfscc->name);
+			dprintk("next valid FSC @ [%s]\n", pfscc->kobj.name);
 			return pfscp;
 		}
 
-		dprintk("FSC [%s] not valid, checking next...\n", pfscc->name);
+		dprintk("FSC [%s] not valid, checking next...\n", pfscc->kobj.name);
 	}
 
 	return 0;
@@ -2090,6 +2202,11 @@ static int __cpm_notifier_call_chain(struct notifier_block **nl,
 
         nb = rcu_dereference(*nl);
 	pfdwr = pfsc->dwrs;
+	if ( unlikely(!pfdwr->cdev) ) {
+		eprintk("missing device definition from governor\n");
+		return -EINVAL;
+	}
+
 	count = 0;
 
 	/* Looping on the registered device's list */
@@ -2116,7 +2233,6 @@ static int __cpm_notifier_call_chain(struct notifier_block **nl,
 		 * In this case we could wrap around the DWR list: start
 		 * search from start one more time for safety */
 		if ( count == pfsc->dwrs_count ) {
-
 			nprintk("unordered DWR list for this DWR\n");
 
 			/* Restart search from beginning */
@@ -2129,7 +2245,6 @@ static int __cpm_notifier_call_chain(struct notifier_block **nl,
 				pfdwr++;
 				count++;
 			}
-
 			if ( count == pfsc->dwrs_count ) {
 				eprintk("no FSC's DWR defined for this device [%s]\n", dev_name(pdev->dev));
 				nb = next_nb;
@@ -2139,7 +2254,6 @@ static int __cpm_notifier_call_chain(struct notifier_block **nl,
 
 		/* Notify DWR's ID to current device */
                 result = nb->notifier_call(nb, val, (void*)&pfdwr->dwr->id);
-
                 if ((result & NOTIFY_STOP_MASK) == NOTIFY_STOP_MASK) {
 			dprintk("notification terminated by device [%s]\n", dev_name(pdev->dev));
                         break;
@@ -2192,7 +2306,7 @@ static int cpm_notify_new_fsc(struct cpm_fsc_pointer *pnewfscp)
 	}
 
 	dprintk("starting DDP for new FSC [%s]...\n",
-			container_of(pnewfscp->fsc, struct cpm_fsc_core, info)->name );
+			container_of(pnewfscp->fsc, struct cpm_fsc_core, info)->kobj.name );
 
 	/* Looking for devices distributed agreement */
 	result = cpm_notifier_call_chain(&cpm_ddp_notifier_list, CPM_EVENT_DO_CHANGE, pnewfscp);
@@ -2200,12 +2314,12 @@ static int cpm_notify_new_fsc(struct cpm_fsc_pointer *pnewfscp)
 		nprintk("DDP failed, not agreement on selected FSC\n");
 
 		/* Notify not agreement to each device */
-		cpm_notifier_call_chain(&cpm_ddp_notifier_list, CPM_EVENT_ABORT, pcfp);
+		cpm_notifier_call_chain(&cpm_ddp_notifier_list, CPM_EVENT_ABORT, current_fsc);
 		return result;
 	}
 
 	dprintk("distributed agreement on new FSC [%s]\n",
-			container_of(pnewfscp->fsc, struct cpm_fsc_core, info)->name );
+			container_of(pnewfscp->fsc, struct cpm_fsc_core, info)->kobj.name );
 
 	/* Notify distributed agreement to policy */
 	if ( policy ) {
@@ -2268,7 +2382,7 @@ static struct cpm_fsc_pointer *cpm_find_next_valid_fsc(struct list_head *pnode)
 
 	if ( pnewfscp ) {
 		iprintk("new FSC [%s] found\n", container_of(pnewfscp->fsc,
-					struct cpm_fsc_core, info)->name);
+					struct cpm_fsc_core, info)->kobj.name);
 	} else {
 		eprintk("no valid FSC found\n");
 	}
@@ -2294,15 +2408,17 @@ static int cpm_update_fsc(void)
 		return 0;
 	}
 
+	dprintk("updating current FSC...\n");
+
 	/* Initializing the FSC to start the search from */
-	if ( cpm_relaxed || !pcfp ) {
+	if ( cpm_relaxed || !current_fsc ) {
 		/* Search starts from the first FSC */
 		dprintk("search for first valid FSC...\n");
 		pnode = &fsc_ordered_list;
 	} else {
 		/* Search forward for next valid FSC */
 		dprintk("search for next valid FSC...\n");
-		pnode = &pcfp->node;
+		pnode = &current_fsc->node;
 
 	}
 
@@ -2332,7 +2448,7 @@ static int cpm_update_fsc(void)
 	}
 
 	/* Update new system FSC */
-	pcfp = pnewfscp;
+	current_fsc = pnewfscp;
 	cpm_fsc_outdated = 0;
 
 	/* Update sysfs interface */
@@ -2466,14 +2582,14 @@ static int __cpm_update_constraint(void *entity, u8 type, cpm_id asm_id, struct 
 		return result;
 	}
 
-#if 0
 	/* Trigger DDP if necessary */
-	result = cpm_notify_new_fsc(pcfp);
+	/* NOTE This is required to forward notifications on new constraints that
+	 * don't invalidate current FSC but shrink or relax the space */
+	result = cpm_notify_new_fsc(current_fsc);
 	if ( result ) {
 		wprintk("DDP failed\n");
 		return result;
 	}
-#endif
 
 	/* Keet track of the new constraint */
 	result = cpm_add_constraint(entity, type, asm_id, range);
