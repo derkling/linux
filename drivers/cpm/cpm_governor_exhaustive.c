@@ -44,8 +44,15 @@ struct list_head *h_dev = 0;
 /*total number of cpm_dev*/
 u8 tot_dev = 0;
 
+
+
 /*The head of cpm_gov_asm_list*/
+#define l_ranges (&new_list_head)
+#ifdef l_ranges
+LIST_HEAD(new_list_head);
+#else
 struct list_head *l_ranges = 0;
+#endif
 
 /*total ranges of candidate FSC*/
 int tot_grgs = 0;
@@ -90,9 +97,11 @@ struct cpm_fsc *debug_fsc = 0;
 void print_g_rgs(void){
         struct cpm_gov_asm_range *p = 0, *pold = 0;
 	struct cpm_range pr;
+	dprintk("head: %p, prev: %p, next: %p\n", l_ranges, l_ranges->prev, l_ranges->next);
 	list_for_each_entry(p,l_ranges,node){
 		pr = p->normal_range.range;
-		dprintk("dev:%2p id:%2hu t:%1hu l:%3hu u:%3hu\n",\
+		dprintk("node: %p, nn: %p, np: %p, dev:%2p id:%2hu t:%1hu l:%3hu u:%3hu\n",
+			&p->node, p->node.next, p->node.prev,
 			p->dev,p->normal_range.id,pr.type,pr.lower,pr.upper);
 		list_for_each_entry(pold,&p->old,old){
 			pr = pold->normal_range.range;
@@ -219,7 +228,7 @@ int __build_fsc_list_exhaustive(struct list_head *l_dev, u8 ndev)
                                         INIT_LIST_HEAD(&(new_g_rg->node));
                                         INIT_LIST_HEAD(&(new_g_rg->old));
                                         new_g_rg->dev = dev;
-					list_add(&new_g_rg->node,&g_rgs->node);
+					list_add(&new_g_rg->node, l_ranges);
 					tot_grgs++;
 					dprintk("adding range t:%1hu l:%3hu u:%3hu\n",\
 						new_g_rg->normal_range.range.type,new_g_rg->normal_range.range.lower,\
@@ -328,18 +337,20 @@ int build_fsc_list_exhaustive(struct list_head *dev_list, u8 ndev)
 	tot_fsc = 0;	
 	
 	/*Array allocation for DWRs-FSC mapping*/
-	curr_dwr = (struct cpm_fsc_dwr *)kzalloc(sizeof(struct cpm_fsc_dwr *)*ndev,GFP_KERNEL);
+	curr_dwr = (struct cpm_fsc_dwr *)kzalloc(sizeof(struct cpm_fsc_dwr)*ndev,GFP_KERNEL);
 	if (!curr_dwr){
 		eprintk("out-of-mem on cpm_fsc_dwr allocation\n");
 		return -ENOMEM;
 	}
-		
+
+#ifndef l_ranges
 	l_ranges = (struct list_head *)kzalloc(sizeof(struct list_head),GFP_KERNEL);
 	if(!l_ranges){
 		eprintk("out-of-mem on list_head allocation\n");
 		return -ENOMEM;
 	}
 	INIT_LIST_HEAD(l_ranges);
+#endif
 
 	/*Call to recursive function for DWRS COMBINATION TREE exploration*/
 	dprintk("starting recursive searching\n");
@@ -376,7 +387,9 @@ int build_fsc_list_exhaustive(struct list_head *dev_list, u8 ndev)
 	h_dev = 0;
 	tot_dev = 0;		
 	kfree(curr_dwr);
+#ifndef l_ranges
 	kfree(l_ranges);
+#endif
 	return 0;
 }
 
