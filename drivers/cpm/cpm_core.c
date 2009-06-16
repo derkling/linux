@@ -1120,7 +1120,8 @@ static void cpm_sysfs_core_release(struct kobject *kobj)
 {
 	/*struct cpm_core_data *pcd;*/
 
-	dprintk("sysfs - (TODO) cleaning-up all cpm core memory\n");
+	dprintk("sysfs [%s] - (TODO) cleaning-up all cpm core memory\n",
+			kobject_name(kobj));
 
 }
 
@@ -1128,27 +1129,66 @@ static void cpm_sysfs_plat_release(struct kobject *kobj)
 {
 	/*struct cpm_platform_core *ppc;*/
 
-	dprintk("sysfs - (TODO) cleaning-up all platform data memory\n");
+	dprintk("sysfs [%s] - (TODO) cleaning-up all platform data memory\n",
+			kobject_name(kobj));
 
 }
 
 static void cpm_sysfs_fsc_release(struct kobject *kobj)
 {
-	/*struct cpm_fsc_core *pcfsc;*/
+	struct cpm_fsc_data *fscs;
+	struct cpm_fsc_core *pcfsc, *pncfsc;
+	struct cpm_fsc_pointer *pofsc, *pnofsc;
 
-	dprintk("sysfs - (TODO) cleaning-up all FSC memory\n");
+	dprintk("sysfs [%s] - cpm_sysfs_fsc_release\n", kobject_name(kobj));
 
-#if 0
-	pcfsc = container_of(kobj, struct cpm_fsc_core, kobj);	
-	dprintk("cleaning-up all FSC [%s] memory\n", pcfsc->kobj.name);
+	if ( strcmp(kobject_name(kobj), "fscs") == 0 ) {
 
-	/* cleaning-up FSC's ASMs attributes */
-	kfree(&pcfsc->asms_group.attrs);
-dprintk("a\n");
-	/* releasing FSC memory */
-	kfree(pcfsc);
-dprintk("b\n");
-#endif
+		dprintk	("sysfs - cleaning-up all FSCs list memory\n");
+
+		fscs = container_of(kobj, struct cpm_fsc_data, kobj);
+
+		/* Cleaning-up ordered FSC list */
+		list_for_each_entry_safe(pofsc, pnofsc, &fscs->ordered, node) {
+
+			dprintk("sysfs - cleaning-up ordered fsc [FSC%02d]\n",
+					pofsc->fsc->id);
+
+			list_del(&pofsc->node);
+			kfree(pofsc);
+		}
+
+		/* Cleaning-up all existing FSC */
+		list_for_each_entry_safe(pcfsc, pncfsc, &fscs->found, info.node) {
+
+			dprintk("sysfs - cleaning-up fsc [FSC%02d]\n", pcfsc->info->id);
+
+			/* Cleaning-up cpm_fsc data */
+			if ( pcfsc->info.asms )
+				kfree(pcfsc->info.asms);
+			if ( pcfsc->info.dwrs )
+				kfree(pcfsc->info.dwrs);
+			if ( pcfsc->info.gov_data )
+				kfree(pcfsc->info.gov_data);
+			if ( pcfsc->info.pol_data )
+				kfree(pcfsc->info.pol_data);
+			if ( pcfsc->asms_group.attrs )
+				kfree(pcfsc->asms_group.attrs);
+			if ( pcfsc->dwrs_group.attrs )
+				kfree(pcfsc->dwrs_group.attrs);
+
+			/* Removing list entry */
+			list_del(&pcfsc->info.node);
+
+			/* Cleaning-up FSC */
+			kfree(pcfsc);
+
+		}
+
+		/* Cleaning-up cpm_fsc_data */
+		kfree(fscs);
+
+	}
 
 }
 
@@ -1159,14 +1199,14 @@ static void cpm_sysfs_dev_release(struct kobject *kobj)
 	struct cpm_dev_dwr *pdwr;
 	u8 i;
 
-	dprintk("cpm_sysfs_dev_release [%s]\n", kobject_name(kobj));
+	dprintk("sysfs [%s] - cpm_sysfs_dev_release\n", kobject_name(kobj));
 	
 	if ( strcmp(kobject_name(kobj), "cpm") == 0 ) {
 
 		/* Releasing all core device data */
 		pcd = container_of(kobj, struct cpm_dev_core, sysfs.cpm);
 
-		dprintk	("cleaning-up all device [%s] memory\n", dev_name(pcd->dev_info.dev));
+		dprintk	("sysfs - cleaning-up all device [%s] memory\n", dev_name(pcd->dev_info.dev));
 
 		/* releasing attributes for each DWR */
 		for (pdwr = pcd->dev_info.dwrs, i=0; i<pcd->dev_info.dwrs_count; pdwr++, i++) {
