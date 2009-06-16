@@ -258,7 +258,7 @@ static int __init cpm_buddy_init(void) {
 		goto out_platform;
 	}
 
-	printk(KERN_INFO "cpm_buddy: registering testing devices...\n");
+	printk(KERN_INFO "cpm_buddy: registering testing devices to cpm...\n");
 
 	ret = cpm_register_device(&(buddy1.dev), &buddy1_data);
 	if ( unlikely(ret<0) ) {

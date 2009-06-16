@@ -16,7 +16,7 @@
 #include <linux/cpm.h>
 
 
-struct list_head *original_fscs = 0;
+
 
 
 /*********************************************************************
@@ -31,46 +31,40 @@ struct list_head *original_fscs = 0;
 #define eprintk(msg...) pr_err("cpm-policy-same" msg)
 
 
-static void dummy_ordering(struct work_struct *work)
+int sort_fsc_list_same(struct list_head *fsc_list)
 {
-	LIST_HEAD(ordered_fscs);
-	struct cpm_fsc_pointer *newp = 0; 
+	struct cpm_fsc_pointer *pnode = 0;
+	struct cpm_fsc_pointer *pnext = 0;
 	struct cpm_fsc *fscs = 0;
+	LIST_HEAD(ordered_fscs);
+	int result = 0;
 
 	dprintk("starting list creation\n");
 
-	list_for_each_entry(fscs, original_fscs, node){
-		newp = kzalloc(sizeof(struct cpm_fsc_pointer),GFP_KERNEL);
-		if (!newp){
+	list_for_each_entry(fscs, fsc_list, node) {
+		pnode = kzalloc(sizeof(struct cpm_fsc_pointer), GFP_KERNEL);
+		if ( unlikely(!pnode) ) {
 			eprintk("out-of-mem on cpm_fsc_pointer\n");
-			return;
+			result = -ENOMEM;
+			goto out_sort_nomem;
 		}
-		newp->fsc = fscs;
-		INIT_LIST_HEAD(&newp->node);
-		list_add(&newp->node,&ordered_fscs);
+		pnode->fsc = fscs;
+		list_add(&pnode->node, &ordered_fscs);
 	}
+
 	dprintk("calling cpm_set_ordered_fsc_list\n");
 	cpm_set_ordered_fsc_list(&ordered_fscs);
-	original_fscs =  0;
-
-}
-
-
-static DECLARE_WORK(cpm_work_policy,dummy_ordering);
-
-
-int sort_fsc_list_same(struct list_head *fsc_list)
-{
-	int result = 0;	
-
-	original_fscs = fsc_list;
-
-	dprintk("queuing work\n");
-	result = queue_work(cpm_wq,&cpm_work_policy);
-	if (!result)
-		return -EAGAIN;
 
 	return 0;
+
+out_sort_nomem:
+	
+	list_for_each_entry_safe(pnode, pnext, &ordered_fscs, node) {
+		list_del(&pnode->node);
+		kfree(pnode);
+	}
+
+	return result;
 
 } 
 

@@ -41,13 +41,16 @@ void print_ord_fscs(struct list_head *list){
 }
 
 
-static void performance_ordering(struct work_struct *work)
+static int performance_ordering(void)
 {
 	LIST_HEAD(ordered_fscs);
-	struct cpm_fsc_pointer *newp = 0, *p = 0; 
+	struct cpm_fsc_pointer *pnode = 0;
+	struct cpm_fsc_pointer *p = 0;
 	struct cpm_fsc *fscs = 0;
 	u32 tot_weight = 0, weight = 0, i = 0;
 	int err = 0;
+	int result = 0;
+
 
 	dprintk("starting ordered list creation\n");
 
@@ -62,7 +65,8 @@ static void performance_ordering(struct work_struct *work)
 						fscs->asms[i].id,&weight);
 			if (err){
 				eprintk("error on FSC weight evaluation\n");
-				return;
+				result = -EINVAL;
+				goto out_sort_nomem;
 			}
 			else{
 				tot_weight += weight;
@@ -79,24 +83,26 @@ static void performance_ordering(struct work_struct *work)
 		fscs->pol_data = kzalloc(sizeof(u8),GFP_KERNEL);
 		if (!fscs->pol_data){
 			eprintk("out-of-mem on u8\n");
-			return;
+			result = -ENOMEM;
+			goto out_sort_nomem;
 		}else{
 			dprintk("copying weight\n");
 			*((u8*)(fscs->pol_data)) = tot_weight;
 		}
 
 		/*allocate and initialize element for pointer list*/
-		newp = kzalloc(sizeof(struct cpm_fsc_pointer),GFP_KERNEL);
-		if (!newp){
+		pnode = kzalloc(sizeof(struct cpm_fsc_pointer),GFP_KERNEL);
+		if (!pnode){
 			eprintk("out-of-mem on cpm_fsc_pointer\n");
-			return;
+			result = -ENOMEM;
+			goto out_sort_nomem;
 		}
-		newp->fsc = fscs;
-		INIT_LIST_HEAD(&newp->node);
+		pnode->fsc = fscs;
+		INIT_LIST_HEAD(&pnode->node);
 
 		/*list empty: simply add*/
 		if (list_empty(&ordered_fscs)){
-			list_add(&newp->node,&ordered_fscs);
+			list_add(&pnode->node,&ordered_fscs);
 		}
 		else{
 			/*position search*/
@@ -107,10 +113,10 @@ static void performance_ordering(struct work_struct *work)
 			}
 			if (*((u8*)(p->fsc->pol_data)) > tot_weight){
 				/*add in found position*/
-				list_add_tail(&newp->node,&(p->node));
+				list_add_tail(&pnode->node,&(p->node));
 			}else{
 				/*add at the end of the list*/
-				list_add(&newp->node,&(p->node));
+				list_add(&pnode->node,&(p->node));
 			}
 		}
 
@@ -122,25 +128,31 @@ static void performance_ordering(struct work_struct *work)
 	
 	cpm_set_ordered_fsc_list(&ordered_fscs);
 	original_fscs =  0;
-	return;
+	return 0;
+
+out_sort_nomem:
+	
+	list_for_each_entry_safe(pnode, p, &ordered_fscs, node) {
+		list_del(&pnode->node);
+		kfree(pnode->fsc->pol_data);
+		kfree(pnode);
+	}
+
+	return result;
+
+
+
 }
-
-
-static DECLARE_WORK(cpm_work_policy,performance_ordering);
-
 
 int sort_fsc_list_performance(struct list_head *fsc_list)
 {
-	int result;	
+	int result = 0;	
 
 	original_fscs = fsc_list;
 
-	dprintk("queuing work\n");
-	result = queue_work(cpm_wq,&cpm_work_policy);
-	if (!result)
-		return -EAGAIN;
+	result = performance_ordering();
 
-	return 0;
+	return result;
 } 
 
 
