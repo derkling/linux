@@ -118,7 +118,7 @@ struct cpm_dev_dwr {
  */
 struct cpm_fsc_dwr {
 	struct cpm_dev_dwr *dwr;	/* a DWR mapping to an FSC */
-	struct cpm_dev *cdev;		/* array of devices corresponding to the DWR in dwrs field */
+	struct cpm_dev *cdev;		/* the devices corresponding to the DWR */
 	/* add any other FSC-DWR specific data */
 };
 
