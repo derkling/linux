@@ -2428,7 +2428,7 @@ static int cpm_notify_new_fsc(struct cpm_fsc_pointer *pnewfscp)
 	dprintk("starting DDP for new FSC [%s]...\n", kobject_name(&pcfsc->kobj) );
 
 	/* Looking for devices distributed agreement */
-	result = cpm_notifier_call_chain(&cpm.ddp.notifier_list, CPM_EVENT_DO_CHANGE, pnewfscp);
+	result = cpm_notifier_call_chain(&cpm.ddp.notifier_list, CPM_EVENT_PRE_CHANGE, pnewfscp);
 	if ( result ) {
 		nprintk("DDP failed, not agreement on selected FSC\n");
 
@@ -2445,7 +2445,7 @@ static int cpm_notify_new_fsc(struct cpm_fsc_pointer *pnewfscp)
 	}
 
 	/* Require change to devices */
-	result = cpm_notifier_call_chain(&cpm.ddp.notifier_list, CPM_EVENT_PRE_CHANGE, pnewfscp);
+	result = cpm_notifier_call_chain(&cpm.ddp.notifier_list, CPM_EVENT_DO_CHANGE, pnewfscp);
 	if ( unlikely(result) ) {
 		eprintk("pre-change failed, some device aborted change request\n");
 	}
