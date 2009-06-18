@@ -23,5 +23,17 @@ config CPM_GOVTEST
 	  Say M to enable the generation of a governor test module.
 	  The module will be called cpm_govtest.ko
 
+config CPM_BANDWIDTH
+        tristate "bandwidth test driver"
+        depends on EXPERIMENTAL
+        help
+          If you say yes todo.
+
+config CPM_ALSA
+        tristate "alsa buffer test driver" 
+        depends on EXPERIMENTAL
+        help
+          If you say yes todo. 
+
 endif # CPM_TESTING
 
