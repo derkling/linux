@@ -117,6 +117,8 @@ struct cpm_platform_core {
 	unsigned int count;		/* The number of available ASMs */
 	struct mutex mux;		/* The ASMs data mutex */
 	struct kobject kobj;		/* <asms> = <cpm>/asms */
+	struct kobj_attribute constr_kattr;	/* the sysfs attribute to read constratints from sysfs */
+	struct kobj_attribute weight_kattr;	/* the sysfs attribute to read policy weights from sysfs */
 	struct attribute_group group;   /* ASMSs group */
 };
 
@@ -168,7 +170,7 @@ static int cpm_sysfs_print_range(char *buf, ssize_t size, struct cpm_range *rang
 static int __cpm_update_constraint(void *entity, u8 type, cpm_id asm_id, struct cpm_range *range);
 static int __cpm_remove_constraint(void *entity, u8 type, cpm_id asm_id);
 
-
+#define asm_id_is_valid(_id) (_id<plat.count)
 
 /*********************************************************************
  *                     CORE DATA                                     *
@@ -609,7 +611,6 @@ static const char *cpm_entity_name(struct cpm_entity *entity)
 /******************************************************************************
  *   CPM PLATFORM                                                             *
  ******************************************************************************/
-
 
 int cpm_register_platform_asms(struct cpm_platform_data *cpd)
 {
@@ -1073,20 +1074,11 @@ int cpm_set_ordered_fsc_list(struct list_head *nofl)
 
 	/* updating current fsc */
 	fscs->updated = 0;
+	fscs->curr = 0;
 	result = cpm_update_fsc();
 	if ( result ) {
 		eprintk("FSC update failed\n");
 	}
-
-#if 0
-/* THIS IS NOT REQUIRED, the cpm_update_fsc will search for a new FSC and run a DDP */
-	/* if required, run a DDP */
-	result = cpm_notify_new_fsc(current_fsc);
-	if ( result ) {
-		eprintk("DDP failed\n");
-	}
-
-#endif
 
 	return 0;
 }
@@ -1162,7 +1154,7 @@ static void cpm_sysfs_fsc_release(struct kobject *kobj)
 		/* Cleaning-up all existing FSC */
 		list_for_each_entry_safe(pcfsc, pncfsc, &fscs->found, info.node) {
 
-			dprintk("sysfs - cleaning-up fsc [FSC%02d]\n", pcfsc->info->id);
+			dprintk("sysfs - cleaning-up fsc [FSC%02d]\n", pcfsc->info.id);
 
 			/* Cleaning-up cpm_fsc data */
 			if ( pcfsc->info.asms )
@@ -1280,20 +1272,20 @@ static int cpm_sysfs_print_range(char *buf, ssize_t size, struct cpm_range *rang
 		break;
 	case CPM_ASM_TYPE_RANGE:
 		if ( range->lower < range->upper ) {
-			count = snprintf(buf, size, "R %u %u",
+			count = snprintf(buf, size, "R %4u %4u",
 					range->lower,
 					range->upper);
 		} else {
-			count = snprintf(buf, size, "S %u",
+			count = snprintf(buf, size, "S %4u",
 					range->lower);
 		}
 		break;
 	case CPM_ASM_TYPE_LBOUND:
-		count = snprintf(buf, size, "LB %u",
+		count = snprintf(buf, size, "LB %4u",
 			range->lower);
 		break;
 	case CPM_ASM_TYPE_UBOUND:
-		count = snprintf(buf, size, "UB %u",
+		count = snprintf(buf, size, "UB %4u",
 			range->upper);
 		break;
 	}
@@ -1313,26 +1305,29 @@ static ssize_t cpm_asm_show(struct kobject *kobj,
 			asm_range->id,
 			plat.asms[asm_range->id].info.name);
 
+	count += sprintf(buf+count, " %c",
+		plat.asms[asm_range->id].info.userw ? 'w' : '-');
+
 	switch(asm_range->range.type) {
 	case CPM_ASM_TYPE_UNBOUNDED:
 		count += sprintf(buf+count, " UnB\n");
 		break;
 	case CPM_ASM_TYPE_RANGE:
 		if ( asm_range->range.lower < asm_range->range.upper ) {
-			count += sprintf(buf+count, " R %u %u\n",
+			count += sprintf(buf+count, " R %4u %4u\n",
 				asm_range->range.lower,
 				asm_range->range.upper);
 		} else {
-			count += sprintf(buf+count, " S %u\n",
+			count += sprintf(buf+count, " S %4u\n",
 				asm_range->range.lower);
 		}
 		break;
 	case CPM_ASM_TYPE_LBOUND:
-		count += sprintf(buf+count, " LB %u\n",
+		count += sprintf(buf+count, " LB %4u\n",
 			asm_range->range.lower);
 		break;
 	case CPM_ASM_TYPE_UBOUND:
-		count += sprintf(buf+count, " UB %u\n",
+		count += sprintf(buf+count, " UB %4u\n",
 			asm_range->range.upper);
 		break;
 	}
@@ -1497,11 +1492,14 @@ static ssize_t cpm_sysfs_core_asms_show(struct kobject *kobj, struct kobj_attrib
 
 	pcasm = container_of(attr, struct cpm_asm_core, kattr);
 
-	count = sprintf(buf, "%u:%s %c %c %u %u", pcasm->id, pcasm->info.name,
+	count = sprintf(buf, "%02u:%-10s %c %c %6u %6u", pcasm->id, pcasm->info.name,
 			(pcasm->info.type == CPM_TYPE_LIB) ? 'L' : 'G',
 			(pcasm->info.comp == CPM_COMPOSITION_ADDITIVE) ? 'A' : 'R',
 			pcasm->info.min,
 			pcasm->info.max);
+
+	count += sprintf(buf+count, " %c",
+				pcasm->info.userw ? 'w' : '-');
 
 	switch(pcasm->cur_range.type) {
 	case CPM_ASM_TYPE_UNBOUNDED:
@@ -1509,20 +1507,20 @@ static ssize_t cpm_sysfs_core_asms_show(struct kobject *kobj, struct kobj_attrib
 		break;
 	case CPM_ASM_TYPE_RANGE:
 		if ( pcasm->cur_range.lower < pcasm->cur_range.upper ) {
-			count += sprintf(buf+count, " R %u %u\n",
+			count += sprintf(buf+count, " R %6u %6u\n",
 				pcasm->cur_range.lower,
 				pcasm->cur_range.upper);
 		} else {
-			count += sprintf(buf+count, " S %u\n",
+			count += sprintf(buf+count, " S %6u\n",
 				pcasm->cur_range.lower);
 		}
 		break;
 	case CPM_ASM_TYPE_LBOUND:
-		count += sprintf(buf+count, " LB %u\n",
+		count += sprintf(buf+count, " LB %6u\n",
 				pcasm->cur_range.lower);
 		break;
 	case CPM_ASM_TYPE_UBOUND:
-		count += sprintf(buf+count, " UB %u\n",
+		count += sprintf(buf+count, " UB %6u\n",
 				pcasm->cur_range.upper);
 		break;
 	}
@@ -1530,23 +1528,56 @@ static ssize_t cpm_sysfs_core_asms_show(struct kobject *kobj, struct kobj_attrib
 	return count;
 }
 
-static ssize_t cpm_sysfs_core_asms_store(struct kobject *kobj, struct kobj_attribute *attr,
+static ssize_t cpm_sysfs_core_asms_constr_store(struct kobject *kobj, struct kobj_attribute *attr,
 		const char *buf, size_t count)
 {
-	int value;
+	int asm_id = 0;
+	int value = 0;
+	int result = 0;
 	struct cpm_asm_core *pasm;
 	struct cpm_range range;
 	char entity_name[32];
 
-	pasm = container_of(attr, struct cpm_asm_core, kattr);
+
+	__cpm_entity_name((void*)current, CPM_ENTITY_TYPE_TASK, entity_name, 32);
+
+	dprintk("constraint assertion from task [%s]\n", entity_name);
 
 	/* Getting user value */
-	if ( !sscanf(buf, "%du", &value) ) {
+	result = sscanf(buf, "%d:%d", &asm_id, &value);
+	if ( unlikely(!result) ) {
+		eprintk("invalid format on ASMs constraint (task [%s])\n",
+				entity_name);
+		return -EINVAL;
+	}
+
+	dprintk("result: %d, asm_id: %d, value: %d\n", result, asm_id, value);
+
+	mutex_lock(&plat.mux);
+
+	if ( unlikely(!asm_id_is_valid(asm_id)) ) {
+		eprintk("invalid id on ASMs constraint (task [%s])\n",
+				entity_name);
+		result = -EINVAL;
+		goto out;
+	}
+
+	pasm = &plat.asms[asm_id];
+
+	/* Checking if the required ASM can be configured from user-space */
+	if ( unlikely(!pasm->info.userw)) {
+		eprintk("forbidden constraint assertion on ASMs [%s] from user-space (task [%s])\n",
+				pasm->info.name, entity_name);
+		result = -EPERM;
+		goto out;
+	}
+
+	if ( result == 1 ) {
 		/* An empty write on sysfs attribute will remove the
 		 * the eventually caller asserted constraint on that ASM */
 		dprintk("constraint deassertion\n");
-		__cpm_remove_constraint((void*)current, CPM_ENTITY_TYPE_TASK, pasm->id);
-		return count;
+		result = __cpm_remove_constraint((void*)current, CPM_ENTITY_TYPE_TASK, asm_id);
+		goto out;
 	}
 
 	if ( pasm->info.comp == CPM_COMPOSITION_ADDITIVE ) {
@@ -1562,16 +1593,86 @@ static ssize_t cpm_sysfs_core_asms_store(struct kobject *kobj, struct kobj_attri
 	}
 
 	if ( range.lower > range.upper ) {
-		__cpm_entity_name((void*)current, CPM_ENTITY_TYPE_TASK, entity_name, 32);
 		eprintk("out-of-range constraint asserted by [%s] on ASM [%s]\n",
 				entity_name, pasm->info.name);
-		return count;
+		result = -EINVAL;
+		goto out;
 	}
 
 	/* Try to add the constraints */
-	__cpm_update_constraint((void*)current, CPM_ENTITY_TYPE_TASK, pasm->id, &range);
+	result = __cpm_update_constraint((void*)current, CPM_ENTITY_TYPE_TASK, asm_id, &range);
 
-	return count;
+out:
+
+	mutex_unlock(&plat.mux);
+
+	if (result)
+		dprintk("%s: status %d\n", __func__, result);
+
+	return result ? : count;
+
+}
+
+static ssize_t cpm_sysfs_core_asms_weight_store(struct kobject *kobj, struct kobj_attribute *attr,
+		const char *buf, size_t count)
+{
+	int asm_id = 0;
+	int value = 0;
+	int result = 0;
+
+	dprintk("new ASM weight assertion\n");
+
+	/* Getting user value */
+	result = sscanf(buf, "%d:%d", &asm_id, &value);
+	if ( unlikely(!result || result<2) ) {
+		eprintk("invalid ASM weight format\n");
+		return -EINVAL;
+	}
+
+	dprintk("result: %d, asm_id: %d, value: %d\n", result, asm_id, value);
+
+	mutex_lock(&plat.mux);
+
+	if ( unlikely(!asm_id_is_valid(asm_id)) ) {
+		eprintk("invalid id on ASMs constraint\n");
+		result = -EINVAL;
+		goto out;
+	}
+
+	/* weight normalization in range [-100:+100] */
+	if ( value>=0 )
+		value = (value<100) ? value : 100;
+	else
+		value = (value>-100) ? value : -100;
+
+	/* Check if value has changed */
+	if ( plat.asms[asm_id].info.weight == value ) {
+		dprintk("ASM weight [%d] not changed for ASM [%s]\n",
+				value, plat.asms[asm_id].info.name);
+		result = 0;
+		goto out;
+	}
+
+	/* update weight and notify policy */
+	plat.asms[asm_id].info.weight = value;
+	result = cpm_update_policy();
+	if ( result ) {
+		dprintk("policy update on weight change failed\n");
+		result = 0;
+		goto out;
+	}
+
+	dprintk("configured weight [%d] for ASM [%s]\n",
+			plat.asms[asm_id].info.weight,
+			plat.asms[asm_id].info.name);
+out:
+
+	mutex_unlock(&plat.mux);
+
+	if (result)
+		dprintk("%s: status %d\n", __func__, result);
+
+	return result ? : count;
 }
 
 static int cpm_sysfs_core_asms_init(void)
@@ -1583,7 +1684,9 @@ static int cpm_sysfs_core_asms_init(void)
 
 	dprintk("exporting platform ASMs...\n");
 
-	plat.group.attrs  = pattrs = (struct attribute **)kzalloc(((plat.count)+1)*sizeof(struct attribute *), GFP_KERNEL);
+	/* Make room for all ASMs, constraint and weight attirbutes; moreover
+	 * a last one attributed is required to be empty initialized */
+	plat.group.attrs  = pattrs = (struct attribute **)kzalloc(((plat.count)+3)*sizeof(struct attribute *), GFP_KERNEL);
 	if ( !pattrs ) {
 		dprintk("out-of-mem on platform_asms_group.attrs allocation\n");
 		result = -ENOMEM;
@@ -1592,15 +1695,15 @@ static int cpm_sysfs_core_asms_init(void)
 
 	pcasm = plat.asms;
 	for (i=0; i<plat.count; i++) {
-	
-		if ( pcasm->info.userw == CPM_USER_RW) {
-			CPM_KATTR_RW(&(pcasm->kattr), pcasm->info.name, cpm_sysfs_core_asms_show, cpm_sysfs_core_asms_store);
-		} else {
-			CPM_KATTR_RO(&(pcasm->kattr), pcasm->info.name, cpm_sysfs_core_asms_show);
-		}
+		CPM_KATTR_RO(&(pcasm->kattr), pcasm->info.name, cpm_sysfs_core_asms_show);
 		CPM_ADD_ATTR(pattrs, pcasm->kattr);
 		pcasm++;
 	}
+
+	/* add constraint and weight attribute */
+	CPM_ADD_ATTR(pattrs, plat.constr_kattr);
+	CPM_ADD_ATTR(pattrs, plat.weight_kattr);
+
 	/* complete attribute group definition */
 	(*pattrs) = NULL;
 
@@ -2848,7 +2951,7 @@ static int __cpm_remove_constraint(void *entity, u8 type, cpm_id asm_id)
 	/* Check if the required ASM exist */
 	if ( asm_id>=plat.count ) {
 		eprintk("constraint assert failed, ASM [%d] not existing\n", asm_id);
-		return -EEXIST;
+		return -EINVAL;
 	}
 
 	/* Check if the entity has asserted a constraint for the ASM */
@@ -3001,6 +3104,18 @@ static int __init cpm_sysfs_init(void)
 	cpm_plat_ktype.release = cpm_sysfs_plat_release;
 	cpm_plat_ktype.sysfs_ops = &cpm_sysfs_ops;
 	cpm_plat_ktype.default_attrs = NULL;
+
+	/* Initializing ASMs constraint asserts attributes */
+	plat.constr_kattr.attr.name = "constraint";
+	plat.constr_kattr.attr.mode = 0222;
+	plat.constr_kattr.show = NULL;
+	plat.constr_kattr.store = cpm_sysfs_core_asms_constr_store;
+
+	/* Initializing ASMs policy weight asserts attributes */
+	plat.weight_kattr.attr.name = "weight";
+	plat.weight_kattr.attr.mode = 0220;
+	plat.weight_kattr.show = NULL;
+	plat.weight_kattr.store = cpm_sysfs_core_asms_weight_store;
 
 	/* Setting up ktype for <kernel>/cpm/fscs and its folders */
 	cpm_fsc_ktype.release = cpm_sysfs_fsc_release;

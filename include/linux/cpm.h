@@ -27,7 +27,7 @@
 
 
 // The maximum lenght of text lables (e.g. device/dwr/fsc names, ...)
-#define CPM_NAME_LEN	12
+#define CPM_NAME_LEN	32
 
 // The maximum number of DWR each device can have
 #define CPM_DEV_MAX_DWR	16
@@ -91,7 +91,7 @@ struct cpm_asm {
 #define CPM_COMPOSITION_ADDITIVE	0
 #define CPM_COMPOSITION_RESTRICTIVE	1
 	u8 comp:1;
-	u8 weight;			/* the policy defined weitght for this ASM [0-100] */
+	s8 weight;			/* the policy defined weitght for this ASM [-100:+100] */
 	u32 min;			/* min feasible value */
 	u32 max;			/* max feasible value */
 };
