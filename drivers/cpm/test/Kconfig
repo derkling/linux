@@ -16,5 +16,12 @@ config CPM_BUDDY
 	help
 	  If you say yes todo.
 
+config CPM_GOVTEST
+	tristate "governor test driver"
+	depends on EXPERIMENTAL
+	help
+	  Say M to enable the generation of a governor test module.
+	  The module will be called cpm_govtest.ko
+
 endif # CPM_TESTING
 
