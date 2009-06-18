@@ -160,8 +160,10 @@ static void release_cpm(void)
 	struct platform_device *pd;
 	int i;
 
+	pr_debug("cpm_govtest: unregistering cpm devices...\n");
 	pd = pdevs;
 	for (i=0; i<dc; pd++, i++) {
+		pr_debug("cpm_govtest: releasing cpm device [%s] data\n", dev_name(&pd->dev));
 		if ( cpm_unregister_device(&pd->dev) ) {
 			dev_err(&pd->dev, "cpm device data unregister failed\n");
 			continue;
@@ -169,7 +171,7 @@ static void release_cpm(void)
 		dev_info(&pd->dev, "cpm device data unregistered\n");
 	}
 	kfree(upperdev_dwrs_list);
-	kfree(upperdev_dwrs_list);
+	kfree(lowerdev_dwrs_list);
 }
 
 static void release_platform(void)
@@ -177,8 +179,10 @@ static void release_platform(void)
 	struct platform_device *pd;
 	int i;
 
+	pr_debug("cpm_govtest: releasing platform devices...\n");
 	pd = pdevs;
 	for (i=0; i<dc; pd++, i++) {
+		pr_debug("cpm_govtest: releasing platform device [%s] data\n", dev_name(&pd->dev));
 		platform_device_unregister(pd);
 		dev_info(&pd->dev, "platform device unregistered\n");
 	}
@@ -418,6 +422,8 @@ static int __init cpm_govtest_init(void)
 		goto out_all;
 	}
 
+	pr_info("cpm_govtest: successfully loaded\n");
+
 	return 0;
 
 out_all:
@@ -434,9 +440,10 @@ out_platform:
 
 static void __exit cpm_govtest_exit(void)
 {
+	pr_info("cpm_govtest: unloading module...\n");
 
-	platform_driver_unregister(&govtest_driver);
 	release_cpm();
+	platform_driver_unregister(&govtest_driver);
 	release_platform();
 
 	pr_info("cpm_govtest: driver unloaded.\n");	
