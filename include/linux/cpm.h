@@ -124,7 +124,7 @@ struct cpm_fsc_dwr {
  * A system FSC
  */
 struct cpm_fsc {
-	u8 id;				/* ID for the system's FSC */
+	u16 id;				/* ID for the system's FSC */
 	struct cpm_asm_range *asms;	/* ASM's array */
 	u8 asms_count;			/* number of ASM in the 'asms' array */
 	struct cpm_fsc_dwr *dwrs;	/* array of DWRs that maps to this FSC */

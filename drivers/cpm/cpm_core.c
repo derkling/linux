@@ -1144,7 +1144,7 @@ static void cpm_sysfs_fsc_release(struct kobject *kobj)
 		/* Cleaning-up ordered FSC list */
 		list_for_each_entry_safe(pofsc, pnofsc, &fscs->ordered, node) {
 
-			dprintk("sysfs - cleaning-up ordered fsc [FSC%02d]\n",
+			dprintk("sysfs - cleaning-up ordered fsc [FSC%05u]\n",
 					pofsc->fsc->id);
 
 			list_del(&pofsc->node);
@@ -1154,7 +1154,7 @@ static void cpm_sysfs_fsc_release(struct kobject *kobj)
 		/* Cleaning-up all existing FSC */
 		list_for_each_entry_safe(pcfsc, pncfsc, &fscs->found, info.node) {
 
-			dprintk("sysfs - cleaning-up fsc [FSC%02d]\n", pcfsc->info.id);
+			dprintk("sysfs - cleaning-up fsc [FSC%05u]\n", pcfsc->info.id);
 
 			/* Cleaning-up cpm_fsc data */
 			if ( pcfsc->info.asms )
@@ -1809,9 +1809,9 @@ static int cpm_sysfs_fscs_export(void)
 
 
 		/* create the FSC folder kobject under /sys/kernel/fscs */
-		result = kobject_init_and_add(&pcfsc->kobj, &cpm_fsc_ktype, &fscs->kobj, "FSC%02u", pcfsc->info.id);
+		result = kobject_init_and_add(&pcfsc->kobj, &cpm_fsc_ktype, &fscs->kobj, "FSC%05u", pcfsc->info.id);
 		if ( result ) {
-			eprintk("failure on \"cpm/fscs/FSC%02u\" sysfs interface creation\n",
+			eprintk("failure on \"cpm/fscs/FSC%05u\" sysfs interface creation\n",
 					pcfsc->info.id);
 			return result;
 		}
@@ -2389,7 +2389,7 @@ static int cpm_verify_fsc(struct cpm_fsc_core *fsc)
 	int count;
 #endif
 
-	dprintk("cpm_verify_fsc - FSC%02d...\n", fsc->info.id);
+	dprintk("cpm_verify_fsc - FSC%05u...\n", fsc->info.id);
 
 	pasm = fsc->info.asms;
 	for (i=0; i<fsc->info.asms_count; i++) {
