@@ -54,9 +54,8 @@
 }
 
 /* initialize a DWR (name and id) */
-#define DEV_DWR(_dev_, _id_, _name_, _asms_, _count_)		\
+#define DEV_DWR(_id_, _name_, _asms_, _count_)		\
 {					\
-	.dev = _dev_,			\
 	.id = _id_,			\
 	.name = _name_,			\
 	.asms = _asms_,			\
@@ -112,9 +111,9 @@ struct cpm_asm_range buddy1_dwr2_ranges[] = {
 	DEV_DWR_ASM(1, 10, 20, CPM_ASM_TYPE_RANGE),
 };
 struct cpm_dev_dwr buddy1_dwrs_list[] = {
-	DEV_DWR(&buddy1.dev, 0, "d0_5:15_5:15", buddy1_dwr0_ranges, ARRAY_SIZE(buddy1_dwr0_ranges)),
-	DEV_DWR(&buddy1.dev, 1, "d1_20:30_25:35", buddy1_dwr1_ranges, ARRAY_SIZE(buddy1_dwr1_ranges)),
-	DEV_DWR(&buddy1.dev, 2, "d2_25:35_10:20", buddy1_dwr2_ranges, ARRAY_SIZE(buddy1_dwr2_ranges)),
+	DEV_DWR(0, "d0_5:15_5:15", buddy1_dwr0_ranges, ARRAY_SIZE(buddy1_dwr0_ranges)),
+	DEV_DWR(1, "d1_20:30_25:35", buddy1_dwr1_ranges, ARRAY_SIZE(buddy1_dwr1_ranges)),
+	DEV_DWR(2, "d2_25:35_10:20", buddy1_dwr2_ranges, ARRAY_SIZE(buddy1_dwr2_ranges)),
 };
 static struct cpm_dev_data buddy1_data = {
 	.notifier_callback = cpm_buddy_callback,

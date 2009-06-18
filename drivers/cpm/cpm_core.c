@@ -1948,6 +1948,9 @@ int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
 		memcpy((void*)pasms, (void*)pdwr->asms, pdwr->asms_count*sizeof(struct cpm_asm_range));
 		pdwr->asms = pasms;
 
+		/* each DWR must belongs to the registering device */
+		pdwr->dev = dev;
+
 		dprintk("added DWR [%s:%s] with %d ASMs\n",
 				dev_name(dev), pdwr->name, pdwr->asms_count);
 	}
