@@ -827,6 +827,7 @@ static int cpm_update_governor(void)
 	if ( !result ) {
 		eprintk("queuing new governor's work failed\n");
 	}
+	result = 0; /* still return no-error to caller */
 
 out_gov_update:
 
@@ -1030,7 +1031,7 @@ int cpm_update_policy(void)
 	if ( !result ) {
 		eprintk("queuing new policy's work failed\n");
 	}
-
+	result = 0; /* still return no-error to caller */
 
 out_pol_update_inval:
 
