@@ -43,7 +43,7 @@
  *********************************************************************/
 
 struct cpm_asm_map {
-	cpm_id id;			/* the ID of the ASM mapped */
+	u8 id;				/* the ID of the ASM mapped */
 	struct list_head node;
 };
 
@@ -62,7 +62,7 @@ struct cpm_constraint {
 
 struct cpm_asm_core {
 	struct cpm_asm info;		/* the public accessible data */
-	cpm_id id;			/* the ASMs unique identifier */
+	u8 id;				/* the ASMs unique identifier */
 	struct cpm_range cur_range;	/* the current range for this ASM according to asserted constraints */
 	struct cpm_range ddp_range;	/* the range to use during a DDP */
 	struct cpm_range valid_range;	/* the ASM validity range according to current constraints */
@@ -73,7 +73,7 @@ struct cpm_asm_core {
 struct cpm_dev_core {
 	struct cpm_dev dev_info;	/* the public accessible data */
 	struct list_head asm_list;	/* list of cpm_asm_map that belongs to at least one DWR */
-	struct cpm_dev_sysfs sysfs;		/* the sysfs interface */
+	struct cpm_dev_sysfs sysfs;	/* the sysfs interface */
 };
 
 struct cpm_fsc_core {
@@ -167,8 +167,8 @@ static int cpm_sysfs_core_asms_init(void);
 static int cpm_sysfs_fscs_export(void);
 static int cpm_sysfs_fscs_unexport(struct cpm_fsc_data *fscs);
 static int cpm_sysfs_print_range(char *buf, ssize_t size, struct cpm_range *range);
-static int __cpm_update_constraint(void *entity, u8 type, cpm_id asm_id, struct cpm_range *range);
-static int __cpm_remove_constraint(void *entity, u8 type, cpm_id asm_id);
+static int __cpm_update_constraint(void *entity, u8 type, u8 asm_id, struct cpm_range *range);
+static int __cpm_remove_constraint(void *entity, u8 type, u8 asm_id);
 
 #define asm_id_is_valid(_id) (_id<plat.count)
 
@@ -533,7 +533,7 @@ int cpm_merge_range(struct cpm_range *first, struct cpm_range *second)
 EXPORT_SYMBOL(cpm_merge_range);
 
 
-static inline u32 __cpm_get_max(struct cpm_range *range, cpm_id asm_id)
+static inline u32 __cpm_get_max(struct cpm_range *range, u8 asm_id)
 {
 
 	if ( (range->type == CPM_ASM_TYPE_UNBOUNDED) ||
@@ -544,7 +544,7 @@ static inline u32 __cpm_get_max(struct cpm_range *range, cpm_id asm_id)
 
 }
 
-static inline u32 __cpm_get_min(struct cpm_range *range, cpm_id asm_id)
+static inline u32 __cpm_get_min(struct cpm_range *range, u8 asm_id)
 {
 
 	if ( (range->type == CPM_ASM_TYPE_UNBOUNDED) ||
@@ -558,7 +558,7 @@ static inline u32 __cpm_get_min(struct cpm_range *range, cpm_id asm_id)
 /*
  *
  */
-int cpm_weight_range(struct cpm_range *range, cpm_id asm_id, u32 *weight)
+int cpm_weight_range(struct cpm_range *range, u8 asm_id, u32 *weight)
 {
 	u32 value;
 
@@ -2055,7 +2055,7 @@ int cpm_unregister_device(struct device *dev)
 }
 EXPORT_SYMBOL(cpm_unregister_device);
 
-static int cpm_verify_constraint(cpm_id asm_id, struct cpm_range *range)
+static int cpm_verify_constraint(u8 asm_id, struct cpm_range *range)
 {
 
 	/* Check if the required ASM exist */
@@ -2137,7 +2137,7 @@ static int cpm_range_differ(struct cpm_range *range1, struct cpm_range *range2)
  * Check if current FSC is valid with respect to the specified ASM range
  * Return 0 if the FSC is valid, -EINVAL otherwise
  */
-static int cpm_check_fsc(cpm_id asm_id, struct cpm_range *range)
+static int cpm_check_fsc(u8 asm_id, struct cpm_range *range)
 {
 	int i, result;
 	struct cpm_fsc *pfsc;
@@ -2202,7 +2202,7 @@ static int cpm_check_fsc(cpm_id asm_id, struct cpm_range *range)
  * Return the lower-bound sum for additive constraint, the minmum lower-bound
  * for restrictive constratins.
  */
-static u32 cpm_aggregate(struct cpm_constraint *pconstr, cpm_id asm_id)
+static u32 cpm_aggregate(struct cpm_constraint *pconstr, u8 asm_id)
 {
 	struct cpm_constraint *pc;
 	u32 value = 0;
@@ -2254,7 +2254,7 @@ static u32 cpm_aggregate(struct cpm_constraint *pconstr, cpm_id asm_id)
  * required range.
  * If the new ddp_range invalidate the current FSC that
  */
-static int cpm_aggregate_constraint(struct cpm_constraint *pconstr, cpm_id asm_id, struct cpm_range *range)
+static int cpm_aggregate_constraint(struct cpm_constraint *pconstr, u8 asm_id, struct cpm_range *range)
 {
 	int result = 0;
 	int delta = 0;
@@ -2776,7 +2776,7 @@ static int cpm_update_fsc(void)
 	return 0;
 }
 
-static int cpm_add_constraint(void *entity, u8 type, cpm_id asm_id, struct cpm_range *range)
+static int cpm_add_constraint(void *entity, u8 type, u8 asm_id, struct cpm_range *range)
 {
 	struct cpm_constraint *pconstr;
 	char entity_name[32];
@@ -2837,7 +2837,7 @@ out_constr_nomem:
 
 }
 
-static int __cpm_update_constraint(void *entity, u8 type, cpm_id asm_id, struct cpm_range *range)
+static int __cpm_update_constraint(void *entity, u8 type, u8 asm_id, struct cpm_range *range)
 {
 	struct cpm_constraint *pconstr;
 	char str[64];
@@ -2921,7 +2921,7 @@ static int __cpm_update_constraint(void *entity, u8 type, cpm_id asm_id, struct 
 
 }
 
-int cpm_update_constraint(struct device *dev, cpm_id asm_id, struct cpm_range *range)
+int cpm_update_constraint(struct device *dev, u8 asm_id, struct cpm_range *range)
 {
 	struct cpm_dev_core *pcd;
 	int result = 0;
@@ -2942,7 +2942,7 @@ int cpm_update_constraint(struct device *dev, cpm_id asm_id, struct cpm_range *r
 }
 EXPORT_SYMBOL(cpm_update_constraint);
 
-static int __cpm_remove_constraint(void *entity, u8 type, cpm_id asm_id)
+static int __cpm_remove_constraint(void *entity, u8 type, u8 asm_id)
 {
 	struct cpm_constraint *pconstr;
 	char entity_name[32];
@@ -3035,7 +3035,7 @@ static int __cpm_remove_constraint(void *entity, u8 type, cpm_id asm_id)
 	return 0;
 }
 
-int cpm_remove_constraint(struct device *dev, cpm_id asm_id)
+int cpm_remove_constraint(struct device *dev, u8 asm_id)
 {
 	struct cpm_dev_core *pcd;
 	int result = 0;

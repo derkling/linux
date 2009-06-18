@@ -32,8 +32,6 @@
 // The maximum number of DWR each device can have
 #define CPM_DEV_MAX_DWR	16
 
-typedef u8 cpm_id;
-
 
 /*********************************************************************
  *                      CPM PLATFORM INTERFACE                       *
@@ -59,7 +57,7 @@ struct cpm_range {
  * An ASM range 
  */
 struct cpm_asm_range {
-	cpm_id id;			/* The ID of the ASM */
+	u8 id;				/* The ID of the ASM */
 	struct cpm_range range;		/* The range in the corresponding ASM */
 #ifdef CONFIG_CPM_SYSFS
 	struct kobj_attribute kattr;	/* The sysfs attribute to access this ASM data */
@@ -101,7 +99,7 @@ struct cpm_asm {
  */
 struct cpm_dev_dwr {
 	struct device *dev;		/* The device to which this DWR's belongs to */
-	cpm_id id;			/* ID for the device's DWR */
+	u8 id;				/* ID for the device's DWR */
 	char name[CPM_NAME_LEN];	/* name of a region */
 	struct cpm_asm_range *asms;	/* ASM's array */
 	u8 asms_count;			/* number of ASM in the 'asms' array */
@@ -126,7 +124,7 @@ struct cpm_fsc_dwr {
  * A system FSC
  */
 struct cpm_fsc {
-	cpm_id id;			/* ID for the system's FSC */
+	u8 id;				/* ID for the system's FSC */
 	struct cpm_asm_range *asms;	/* ASM's array */
 	u8 asms_count;			/* number of ASM in the 'asms' array */
 	struct cpm_fsc_dwr *dwrs;	/* array of DWRs that maps to this FSC */
@@ -207,7 +205,7 @@ int cpm_merge_range(struct cpm_range *first, struct cpm_range *second);
 /*
  * Compute the weight of a range on the specified ASM
  */
-int cpm_weight_range(struct cpm_range *range, cpm_id asm_id, u32 *weight);
+int cpm_weight_range(struct cpm_range *range, u8 asm_id, u32 *weight);
 
 
 /*********************************************************************
@@ -341,17 +339,17 @@ int cpm_unregister_device(struct device *dev);
 /**
  * Update a constraint on the specified ASM.
  */
-int cpm_update_constraint(struct device *dev, cpm_id asm_id, struct cpm_range * range);
+int cpm_update_constraint(struct device *dev, u8 asm_id, struct cpm_range * range);
 
 /**
  * Release a constraint on the specified ASM.
  */
-int cpm_remove_constraint(struct device *dev, cpm_id asm_id);
+int cpm_remove_constraint(struct device *dev, u8 asm_id);
 
 /*
  * Return the device's operating mode corresponding to the specified FSC.
  */
-int cpm_fsc_to_om(struct device *dev, cpm_id fsc_id, cpm_id *om_id);
+int cpm_fsc_to_om(struct device *dev, u8 fsc_id, u8 *om_id);
 
 
 /*********************************************************************

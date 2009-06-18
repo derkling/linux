@@ -136,16 +136,16 @@ int govtest_callback(struct notifier_block *nb, unsigned long step, void *data)
 		result = NOTIFY_DONE;
 		break;
 	case CPM_EVENT_DO_CHANGE:
-		dev_info(pcdev->dev, "DDP do-change: new DWR [%d] authorized\n", *(cpm_id*)data);
+		dev_info(pcdev->dev, "DDP do-change: new DWR [%d] authorized\n", *(u8*)data);
 		break;
 	case CPM_EVENT_ABORT:
 		dev_info(pcdev->dev, "DDP abort\n");
 		break;
 	case CPM_EVENT_PRE_CHANGE:
-		dev_info(pcdev->dev, "DDP pre-change, going to switch to DWR [%d]...\n", *(cpm_id*)data);
+		dev_info(pcdev->dev, "DDP pre-change, going to switch to DWR [%d]...\n", *(u8*)data);
 		break;
 	case CPM_EVENT_POST_CHANGE:
-		dev_info(pcdev->dev, "DDP post-change, switch to DWR [%d] complite\n", *(cpm_id*)data);
+		dev_info(pcdev->dev, "DDP post-change, switch to DWR [%d] complite\n", *(u8*)data);
 		break;
 	default:
 		dev_warn(pcdev->dev, "unexpected notification, returning OK (0)\n");
