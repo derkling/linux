@@ -2058,7 +2058,10 @@ static int cpm_check_fsc(cpm_id asm_id, struct cpm_range *range)
 	}
 	if ( i==pfsc->asms_count ) {
 		dprintk("no ASM range on current FSC for [%s]\n", kobject_name(&pcfsc->kobj) );
-		return -EINVAL;
+		/* since the FSC don't have a range on this ASM, it still
+		 * remain valid and the solution space will be eventually
+		 * shrinked */
+		return 0;
 	}
 
 	/* Checking if the FSC merge with the new range */
