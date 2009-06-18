@@ -64,7 +64,7 @@ struct cpm_fsc_dwr *curr_dwr = 0;
 LIST_HEAD(__fsc_list);
 
 /*The number of FSCs found*/
-u8 tot_fsc = 0;
+u16 tot_fsc = 0;
 
 /*VARs for TESTING*/
 u32 test_comp = 0;
@@ -367,7 +367,7 @@ int build_fsc_list_exhaustive(struct list_head *dev_list, u8 ndev)
 
 	delta = timespec_sub(end, start);
 
-	printk(KERN_INFO "cpm-gov-exh: END STATS dev:%hu comp:%hu fsc:%hu sec:%lo nsec:%ld\n",ndev,test_comp,tot_fsc,delta.tv_sec,delta.tv_nsec);
+	printk(KERN_INFO "cpm-gov-exh: END STATS dev:%hu comp:%hu fsc:%u sec:%lo nsec:%ld\n",ndev,test_comp,tot_fsc,delta.tv_sec,delta.tv_nsec);
 
 	if (list_empty(&__fsc_list)){
 		dprintk("empty fsc list returned\n");

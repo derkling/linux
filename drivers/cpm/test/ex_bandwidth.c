@@ -124,16 +124,16 @@ int cpm_buddy_callback(struct notifier_block *nb, unsigned long step, void *data
 		result = NOTIFY_DONE;
 		break;
 	case CPM_EVENT_DO_CHANGE:
-		dev_info(pcdev->dev, "DDP do-change: new DWR [%d] authorized\n", *(cpm_id*)data);
+		dev_info(pcdev->dev, "DDP do-change: new DWR [%d] authorized\n", *(u16*)data);
 		break;
 	case CPM_EVENT_ABORT:
 		dev_info(pcdev->dev, "DDP abort\n");
 		break;
 	case CPM_EVENT_PRE_CHANGE:
-		dev_info(pcdev->dev, "DDP pre-change, going to switch to DWR [%d]...\n", *(cpm_id*)data);
+		dev_info(pcdev->dev, "DDP pre-change, going to switch to DWR [%d]...\n", *(u16*)data);
 		break;
 	case CPM_EVENT_POST_CHANGE:
-		dev_info(pcdev->dev, "DDP post-change, switch to DWR [%d] complite\n", *(cpm_id*)data);
+		dev_info(pcdev->dev, "DDP post-change, switch to DWR [%d] complite\n", *(u16*)data);
 		break;
 	default:
 		dev_warn(pcdev->dev, "unexpected notification, returning OK (0)\n");
@@ -179,9 +179,6 @@ static int __init cpm_buddy_init_platform(void)
 
 	return 0;
 
-out_device2:
-	platform_device_unregister(&buddy1);
-
 out_device1:
 
 	return ret;
@@ -209,7 +206,7 @@ static int __init cpm_buddy_init(void) {
 	
 	printk(KERN_INFO "cpm_buddy: drivers successfully loaded.\n");
 
-	//ret = platform_driver_probe(&cpm_buddy_driver, cpm_buddy_probe);
+	ret = platform_driver_probe(&cpm_buddy_driver, cpm_buddy_probe);
 	if ( unlikely(ret<0) ) {
 		printk(KERN_ERR "cpm_buddy: platform_driver_probe failed.\n");
 		goto out_region;
@@ -218,9 +215,6 @@ static int __init cpm_buddy_init(void) {
 	return 0;
 
 out_region:
-
-out_cpm2:
-	cpm_unregister_device(&(buddy1.dev));
 
 out_cpm1:
 

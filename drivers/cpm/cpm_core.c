@@ -1798,18 +1798,17 @@ static int cpm_sysfs_fsc_current_export(struct cpm_fsc_core *pcfsc)
 static int cpm_sysfs_fscs_export(void)
 {
 	int result = 0;
-	unsigned short i;
+	u16 cfsc;
 	struct cpm_fsc_core *pcfsc;
 
 	dprintk("exporting new FSC list...\n");
 
 	/* Loop on FSCs */
-	i = 0;
+	cfsc = 1;
 	list_for_each_entry(pcfsc, &fscs->found, info.node) {
 
-
 		/* create the FSC folder kobject under /sys/kernel/fscs */
-		result = kobject_init_and_add(&pcfsc->kobj, &cpm_fsc_ktype, &fscs->kobj, "FSC%05u", pcfsc->info.id);
+		result = kobject_init_and_add(&pcfsc->kobj, &cpm_fsc_ktype, &fscs->kobj, "FSC%05u", cfsc);
 		if ( result ) {
 			eprintk("failure on \"cpm/fscs/FSC%05u\" sysfs interface creation\n",
 					pcfsc->info.id);
@@ -1824,7 +1823,7 @@ static int cpm_sysfs_fscs_export(void)
 
 		/* TODO exporting DWRs for this FSC */
 
-		i++;
+		cfsc++;
 
 	}
 
