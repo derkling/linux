@@ -456,7 +456,8 @@ int cpm_merge_range(struct cpm_range *first, struct cpm_range *second)
 		case CPM_ASM_TYPE_RANGE:
 			if ( second->lower < second->upper) {
 			/* second is a range */
-				if ( cpm_verify_range(first, second->lower) == CPM_RANGE_ERROR ) {
+				if ( cpm_verify_range(first, second->upper)
+							== CPM_RANGE_ERROR ) {
 					ret = -EINVAL;
 				} else {
 					first->lower = MAX(first->lower, second->lower);
