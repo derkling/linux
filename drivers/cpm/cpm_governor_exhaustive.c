@@ -26,7 +26,6 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/list.h>
-#include <linux/time.h>
 #include <linux/cpm.h>
 
 /* cpm_gov_asm_range - the type for ranges of candidate FSCs during search*/
@@ -68,7 +67,6 @@ u16 tot_fsc = 0;
 
 /*VARs for TESTING*/
 u32 test_comp = 0;
-struct timespec start, end, delta;
 
 struct cpm_fsc *debug_fsc = 0;
 
@@ -357,18 +355,9 @@ int build_fsc_list_exhaustive(struct list_head *dev_list, u8 ndev)
 
 	/*reset testing counters*/
 	test_comp = 0;
-	start = current_kernel_time();
-	printk(KERN_INFO "cpm-gov_exh: START TIME %ld %ld\n",start.tv_sec,start.tv_nsec);
 
 	__build_fsc_list_exhaustive(dev_list, 0);	
 	
-	end = current_kernel_time();
-        printk(KERN_INFO "cpm-gov_exh: END TIME %ld %ld\n",end.tv_sec,end.tv_nsec);
-
-	delta = timespec_sub(end, start);
-
-	printk(KERN_INFO "cpm-gov-exh: END STATS dev:%hu comp:%hu fsc:%u sec:%lo nsec:%ld\n",ndev,test_comp,tot_fsc,delta.tv_sec,delta.tv_nsec);
-
 	if (list_empty(&__fsc_list)){
 		dprintk("empty fsc list returned\n");
 		return -EINVAL;

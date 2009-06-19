@@ -753,6 +753,7 @@ static void cpm_work_update_fsc(struct work_struct *work)
 	int result = 0;
 	struct kobject *kobj;
 	struct cpm_fsc_data *_fscs;
+	struct timespec start, end, delta;
 
 	mutex_lock(&fsc_mutex);
 
@@ -777,13 +778,18 @@ static void cpm_work_update_fsc(struct work_struct *work)
 
 	mutex_unlock(&fsc_mutex);
 
-	mutex_lock(&devs.mux);
-
 	dprintk("searching_start: FSCs searching wq, governor [%s]\n", gov.curr->name);
+
+	mutex_lock(&devs.mux);
+	getrawmonotonic(&start);
 	result = gov.curr->build_fsc_list(&devs.list, devs.count);
+	getrawmonotonic(&end);
+	mutex_unlock(&devs.mux);
+
 	dprintk("searching_end\n");
 
-	mutex_unlock(&devs.mux);
+	delta = timespec_sub(end, start);
+	dprintk("EX-GOV, %03ld.%09ld\n", delta.tv_sec, delta.tv_nsec);
 
 	/* Releasing refcount */
 	kobject_put(&_fscs->kobj);
