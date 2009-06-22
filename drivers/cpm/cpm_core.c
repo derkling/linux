@@ -467,7 +467,7 @@ int cpm_merge_range(struct cpm_range *first, struct cpm_range *second)
 				break;
 
 			} else {
-			/* first is a single value */
+			/* second is a single value */
 				if ( cpm_verify_range(first, second->lower)
 							== CPM_RANGE_ERROR ) {
 					ret = -EINVAL;
@@ -480,7 +480,8 @@ int cpm_merge_range(struct cpm_range *first, struct cpm_range *second)
 			first->lower = MAX(first->lower, second->lower);
 			break;
 		case CPM_ASM_TYPE_UBOUND:
-			if ( cpm_verify_range(first, second->upper) == CPM_RANGE_ERROR ) {
+			if ( cpm_verify_range(first, second->upper)
+					== CPM_RANGE_ERROR ) {
 				ret = -EINVAL;
 			} else {
 				first->upper = second->upper;
@@ -2403,7 +2404,7 @@ static int cpm_verify_fsc(struct cpm_fsc_core *fsc)
 		ddp_range = plat.asms[pasm->id].ddp_range;
 
 #ifdef CONFIG_CPM_SYSFS
-		count = snprintf(str, 128, "Comparing, ddp_range ");
+		count = snprintf(str, 128, "comparing, ddp_range ");
 		count += cpm_sysfs_print_range(str+count, 128-count, &ddp_range);
 		count += snprintf(str+count, 128-count, ", asm_range ");
 		count += cpm_sysfs_print_range(str+count, 128-count, &pasm->range);
