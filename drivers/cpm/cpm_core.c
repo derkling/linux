@@ -489,6 +489,7 @@ int cpm_merge_range(struct cpm_range *first, struct cpm_range *second)
 			}
 			break;
 		}
+		break;
 
 	case CPM_ASM_TYPE_UBOUND:
 		switch( second->type ) {
