@@ -250,16 +250,6 @@ struct kobj_type cpm_core_ktype;
 #define dprintk(msg...) cpm_debug_printk(CPM_DEBUG_CORE, \
 						"cpm-core", msg)
 
-#define iprintk(msg...) pr_info("cpm-core: " msg)
-
-#define nprintk(msg...) pr_notice("cpm-core: " msg)
-
-#define wprintk(msg...) pr_warning("cpm-core: " msg)
-
-#define eprintk(msg...) pr_err("cpm-core: " msg)
-
-
-
 /* what part(s) of the CPM subsystem are debugged? */
 static unsigned int debug = 0xFFFF;
 
@@ -318,8 +308,18 @@ void cpm_debug_printk(unsigned int type, const char *prefix,
 	}
 }
 EXPORT_SYMBOL(cpm_debug_printk);
-
+#else
+#define dprintk(msg...) do{}while(0);
 #endif
+
+#define iprintk(msg...) pr_info("cpm-core: " msg)
+
+#define nprintk(msg...) pr_notice("cpm-core: " msg)
+
+#define wprintk(msg...) pr_warning("cpm-core: " msg)
+
+#define eprintk(msg...) pr_err("cpm-core: " msg)
+
 
 /******************************************************************************
  *   UTILITY FUNCTIONS                                                        *
@@ -792,7 +792,7 @@ static void cpm_work_update_fsc(struct work_struct *work)
 	dprintk("searching_end\n");
 
 	delta = timespec_sub(end, start);
-	dprintk("EX-GOV, %03ld.%09ld\n", delta.tv_sec, delta.tv_nsec);
+	iprintk("EX-GOV, %03ld.%09ld\n", delta.tv_sec, delta.tv_nsec);
 
 	/* Releasing refcount */
 	kobject_put(&_fscs->kobj);
@@ -2404,7 +2404,7 @@ static int cpm_verify_fsc(struct cpm_fsc_core *fsc)
 
 		ddp_range = plat.asms[pasm->id].ddp_range;
 
-#ifdef CONFIG_CPM_SYSFS
+#ifdef CONFIG_CPM_DEBUG
 		count = snprintf(str, 128, "comparing, ddp_range ");
 		count += cpm_sysfs_print_range(str+count, 128-count, &ddp_range);
 		count += snprintf(str+count, 128-count, ", asm_range ");
@@ -2536,6 +2536,7 @@ static int cpm_notify_new_fsc(struct cpm_fsc_pointer *pnewfscp)
 {
 	int result = 0;
 	struct cpm_fsc_core *pcfsc;
+	struct timespec start, end, delta;
 
 	if ( unlikely(!cpm.ddp.required) ) {
 		dprintk("no need to run a DDP\n");
@@ -2546,9 +2547,15 @@ static int cpm_notify_new_fsc(struct cpm_fsc_pointer *pnewfscp)
 	dprintk("starting DDP for new FSC [%s]...\n", kobject_name(&pcfsc->kobj) );
 
 	/* Looking for devices distributed agreement */
+	getrawmonotonic(&start);
 	result = cpm_notifier_call_chain(&cpm.ddp.notifier_list, CPM_EVENT_PRE_CHANGE, pnewfscp);
+	getrawmonotonic(&end);
+
+	delta = timespec_sub(end, start);
+
 	if ( result ) {
 		nprintk("DDP failed, not agreement on selected FSC\n");
+		iprintk("EX-DDP, not-agreement in: %d %03ld.%09ld\n", devs.count, delta.tv_sec, delta.tv_nsec);
 
 		/* Notify not agreement to each device */
 		cpm_notifier_call_chain(&cpm.ddp.notifier_list, CPM_EVENT_ABORT, fscs->curr);
@@ -2556,6 +2563,7 @@ static int cpm_notify_new_fsc(struct cpm_fsc_pointer *pnewfscp)
 	}
 
 	dprintk("distributed agreement on new FSC [%s]\n", kobject_name(&pcfsc->kobj) );
+	iprintk("EX-DDP, agreement in: %d %03ld.%09ld\n", devs.count, delta.tv_sec, delta.tv_nsec);
 
 	/* Notify distributed agreement to policy */
 	if ( likely(pol.curr) ) {
@@ -2629,11 +2637,14 @@ static struct cpm_fsc_pointer *cpm_find_next_valid_fsc(struct cpm_fsc_data *fscs
 	int result = 0; /* Must be NULL at firt loop run */
 	struct cpm_fsc_pointer *pnewfscp = 0;
 	struct cpm_fsc_core *pcfsc;
+	struct timespec start, end, delta;
 
 	do {
 		
 		/* Find next valid FSC */
+		getrawmonotonic(&start);
 		pnewfscp = __cpm_find_next_valid_fsc(fscs, pnode);
+		getrawmonotonic(&end);
 		if ( unlikely(!pnewfscp) ) {
 			break;
 		}
@@ -2653,12 +2664,18 @@ static struct cpm_fsc_pointer *cpm_find_next_valid_fsc(struct cpm_fsc_data *fscs
 
 	} while( pnewfscp && result );
 
+	delta = timespec_sub(end, start);
+
 	if ( pnewfscp ) {
 		pcfsc = container_of(pnewfscp->fsc, struct cpm_fsc_core, info);
 		iprintk("new FSC [%s] found\n", kobject_name(&pcfsc->kobj));
+		iprintk("EX-FSC, found in: %d %03ld.%09ld\n", fscs->count, delta.tv_sec, delta.tv_nsec);
 	} else {
 		eprintk("no valid FSC found\n");
+		iprintk("EX-FSC, not-found in: %d %03ld.%09ld\n", fscs->count, delta.tv_sec, delta.tv_nsec);
 	}
+
+	delta = timespec_sub(end, start);
 
 	return pnewfscp;
 
