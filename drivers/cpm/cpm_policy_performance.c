@@ -18,6 +18,11 @@
 
 struct list_head *original_fscs = 0;
 
+struct performance_data {
+	s32 weight;
+};
+
+#define get_pol_data(_fsc)((struct performance_data *)_fsc->pol_data)
 
 /*********************************************************************
  *                     UNIFIED DEBUG HELPERS                         *
@@ -35,8 +40,8 @@ struct list_head *original_fscs = 0;
 void print_ord_fscs(struct list_head *list){
 	struct cpm_fsc_pointer *p = 0;
 	list_for_each_entry(p,list,node){
-		dprintk("FSC:%2hu weight:%3hu\n",p->fsc->id,\
-					*(u8*)(p->fsc->pol_data));
+		dprintk("FSC:%2hu weight:%3d\n",p->fsc->id,\
+					*(u32*)(p->fsc->pol_data));
 	}
 }
 
@@ -47,7 +52,8 @@ static int performance_ordering(void)
 	struct cpm_fsc_pointer *pnode = 0;
 	struct cpm_fsc_pointer *p = 0;
 	struct cpm_fsc *fscs = 0;
-	u32 tot_weight = 0, weight = 0, i = 0;
+	s32 tot_weight = 0, weight = 0;
+	u32 i = 0;
 	int err = 0;
 	int result = 0;
 
@@ -70,24 +76,24 @@ static int performance_ordering(void)
 			}
 			else{
 				tot_weight += weight;
-				dprintk("fsc:%2hu id:%2hu weight:%3hu\n",\
+				dprintk("fsc:%2hu id:%2hu weight:%3d\n",\
 					fscs->id,fscs->asms[i].id,weight);
 			}
 		}
-		dprintk("fsc:%2hu TOT weight:%3hu\n",fscs->id,tot_weight);
+		dprintk("fsc:%2hu TOT weight:%3d\n",fscs->id,tot_weight);
 		
 		/*store computed weight into fsc's policy data*/
 		if (fscs->pol_data){
 			kfree(fscs->pol_data);
 		}
-		fscs->pol_data = kzalloc(sizeof(u8),GFP_KERNEL);
+		fscs->pol_data = kzalloc(sizeof(struct performance_data),GFP_KERNEL);
 		if (!fscs->pol_data){
 			eprintk("out-of-mem on u8\n");
 			result = -ENOMEM;
 			goto out_sort_nomem;
 		}else{
 			dprintk("copying weight\n");
-			*((u8*)(fscs->pol_data)) = tot_weight;
+			get_pol_data(fscs)->weight = tot_weight;
 		}
 
 		/*allocate and initialize element for pointer list*/
@@ -107,11 +113,11 @@ static int performance_ordering(void)
 		else{
 			/*position search*/
 			list_for_each_entry(p,&ordered_fscs,node){
-				if ((*((u8*)(p->fsc->pol_data)) > tot_weight)\
-				||(list_is_last((&p->node),&ordered_fscs)))
+				if ( (get_pol_data(p->fsc)->weight <  tot_weight) ||
+					list_is_last((&p->node),&ordered_fscs) )
 					break;
 			}
-			if (*((u8*)(p->fsc->pol_data)) > tot_weight){
+			if (get_pol_data(p->fsc)->weight < tot_weight){
 				/*add in found position*/
 				list_add_tail(&pnode->node,&(p->node));
 			}else{

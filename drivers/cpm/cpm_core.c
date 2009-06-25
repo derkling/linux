@@ -561,7 +561,7 @@ static inline u32 __cpm_get_min(struct cpm_range *range, u8 asm_id)
 /*
  *
  */
-int cpm_weight_range(struct cpm_range *range, u8 asm_id, u32 *weight)
+int cpm_weight_range(struct cpm_range *range, u8 asm_id, s32 *weight)
 {
 	u32 value;
 

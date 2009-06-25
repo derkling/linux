@@ -205,7 +205,7 @@ int cpm_merge_range(struct cpm_range *first, struct cpm_range *second);
 /*
  * Compute the weight of a range on the specified ASM
  */
-int cpm_weight_range(struct cpm_range *range, u8 asm_id, u32 *weight);
+int cpm_weight_range(struct cpm_range *range, u8 asm_id, s32 *weight);
 
 
 /*********************************************************************
