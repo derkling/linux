@@ -1626,7 +1626,7 @@ static ssize_t cpm_sysfs_core_asms_weight_store(struct kobject *kobj, struct kob
 		const char *buf, size_t count)
 {
 	int asm_id = 0;
-	int value = 0;
+	s32 value = 0;
 	int result = 0;
 
 	dprintk("new ASM weight assertion\n");
@@ -1640,6 +1640,18 @@ static ssize_t cpm_sysfs_core_asms_weight_store(struct kobject *kobj, struct kob
 
 	dprintk("result: %d, asm_id: %d, value: %d\n", result, asm_id, value);
 
+	/* weight sanity check */
+	if ( value>CPM_ASM_MAX_WEIGHT ) {
+		nprintk("failed asserting weight [%d] on ASM [%d], exceeding max value [%d]\n",
+				value, asm_id, CPM_ASM_MAX_WEIGHT);
+		return -EINVAL;
+	}
+	if ( value<CPM_ASM_MIN_WEIGHT ) {
+		nprintk("failed asserting weight [%d] on ASM [%d], exceeding min value [%d]\n",
+				value, asm_id, CPM_ASM_MIN_WEIGHT);
+		return -EINVAL;
+	}
+
 	mutex_lock(&plat.mux);
 
 	if ( unlikely(!asm_id_is_valid(asm_id)) ) {
@@ -1647,12 +1659,6 @@ static ssize_t cpm_sysfs_core_asms_weight_store(struct kobject *kobj, struct kob
 		result = -EINVAL;
 		goto out;
 	}
-
-	/* weight normalization in range [-100:+100] */
-	if ( value>=0 )
-		value = (value<100) ? value : 100;
-	else
-		value = (value>-100) ? value : -100;
 
 	/* Check if value has changed */
 	if ( plat.asms[asm_id].info.weight == value ) {

@@ -26,11 +26,17 @@
 #define MAX(a, b) ((u32)(a) > (u32)(b) ? (a) : (b))
 
 
-// The maximum lenght of text lables (e.g. device/dwr/fsc names, ...)
+/* The maximum lenght of text lables (e.g. device/dwr/fsc names, ...) */
 #define CPM_NAME_LEN	32
 
-// The maximum number of DWR each device can have
+/* The maximum number of DWR each device can have */
 #define CPM_DEV_MAX_DWR	16
+
+/* The maximum ASM weight */
+#define CPM_ASM_MAX_WEIGHT	 1000000
+/* The minimum ASM weight */
+#define CPM_ASM_MIN_WEIGHT	-CPM_ASM_MAX_WEIGHT
+
 
 
 /*********************************************************************
@@ -89,7 +95,8 @@ struct cpm_asm {
 #define CPM_COMPOSITION_ADDITIVE	0
 #define CPM_COMPOSITION_RESTRICTIVE	1
 	u8 comp:1;
-	s8 weight;			/* the policy defined weitght for this ASM [-100:+100] */
+	s32 weight;			/* the policy defined weight for this ASM
+					   [CPM_ASM_MIN_WEIGHT:CPM_ASM_MAX_WEIGHT] */
 	u32 min;			/* min feasible value */
 	u32 max;			/* max feasible value */
 };
