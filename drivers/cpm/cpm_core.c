@@ -792,7 +792,7 @@ static void cpm_work_update_fsc(struct work_struct *work)
 	dprintk("searching_end\n");
 
 	delta = timespec_sub(end, start);
-	iprintk("EX-GOV, %03ld.%09ld\n", delta.tv_sec, delta.tv_nsec);
+	iprintk("EX-GOV, %d %d %03ld.%09ld\n", devs.count, fscs ? fscs->count : -1, delta.tv_sec, delta.tv_nsec);
 
 	/* Releasing refcount */
 	kobject_put(&_fscs->kobj);
@@ -2546,24 +2546,19 @@ static int cpm_notify_new_fsc(struct cpm_fsc_pointer *pnewfscp)
 	pcfsc = container_of(pnewfscp->fsc, struct cpm_fsc_core, info);
 	dprintk("starting DDP for new FSC [%s]...\n", kobject_name(&pcfsc->kobj) );
 
-	/* Looking for devices distributed agreement */
 	getrawmonotonic(&start);
-	result = cpm_notifier_call_chain(&cpm.ddp.notifier_list, CPM_EVENT_PRE_CHANGE, pnewfscp);
-	getrawmonotonic(&end);
 
-	delta = timespec_sub(end, start);
+	/* Looking for devices distributed agreement */
+	result = cpm_notifier_call_chain(&cpm.ddp.notifier_list, CPM_EVENT_PRE_CHANGE, pnewfscp);
 
 	if ( result ) {
 		nprintk("DDP failed, not agreement on selected FSC\n");
-		iprintk("EX-DDP, not-agreement in: %d %03ld.%09ld\n", devs.count, delta.tv_sec, delta.tv_nsec);
-
 		/* Notify not agreement to each device */
 		cpm_notifier_call_chain(&cpm.ddp.notifier_list, CPM_EVENT_ABORT, fscs->curr);
 		return result;
 	}
 
 	dprintk("distributed agreement on new FSC [%s]\n", kobject_name(&pcfsc->kobj) );
-	iprintk("EX-DDP, agreement in: %d %03ld.%09ld\n", devs.count, delta.tv_sec, delta.tv_nsec);
 
 	/* Notify distributed agreement to policy */
 	if ( likely(pol.curr) ) {
@@ -2585,6 +2580,10 @@ static int cpm_notify_new_fsc(struct cpm_fsc_pointer *pnewfscp)
 	if ( likely(pol.curr) ) {
 		pol.curr->ddp_handler(CPM_EVENT_POST_CHANGE,  (void*)pnewfscp);
 	}
+
+	getrawmonotonic(&end);
+	delta = timespec_sub(end, start);
+	iprintk("EX-DDP, agreement in: %d %03ld.%09ld\n", devs.count, delta.tv_sec, delta.tv_nsec);
 
 	cpm.ddp.required = 0;
 
