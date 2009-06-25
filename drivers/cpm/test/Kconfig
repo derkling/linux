@@ -35,5 +35,12 @@ config CPM_ALSA
         help
           If you say yes todo. 
 
+config CPM_MP3_GSM
+        tristate "mp3 gsm alsa buffer test driver" 
+        depends on EXPERIMENTAL
+        help
+          If you say yes todo. 
+
+
 endif # CPM_TESTING
 
