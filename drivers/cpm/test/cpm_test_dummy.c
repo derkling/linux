@@ -1,5 +1,5 @@
 /*
- *  linux/drivers/cpm/test/got_test.c
+ *  drivers/cpm/test/cpm_test_dummy.c
  *
  *  Copyright (C) 2009 STMicroelectronics
  *
@@ -24,7 +24,8 @@
 
 static unsigned short dc = 2;
 module_param(dc, ushort, 0444);
-MODULE_PARM_DESC(dc, "dev_count - number of platform device to register (should be >=2 )");
+MODULE_PARM_DESC(dc, "dev_count - number of platform device to "
+		"register (should be >=2 )");
 
 static unsigned short tw = 1;
 module_param(tw, ushort, 0444);
@@ -32,15 +33,18 @@ MODULE_PARM_DESC(tw, "tree_width - number of DWR for top devices");
 
 static unsigned short fmdc = 1;
 module_param(fmdc, ushort, 0444);
-MODULE_PARM_DESC(fmdc, "full-merge_dwrs_count - number of full-merging DWRs for last device");
+MODULE_PARM_DESC(fmdc, "full-merge_dwrs_count - number of full-merging "
+		"DWRs for last device");
 
 static unsigned short cmdc = 1;
 module_param(cmdc, ushort, 0444);
-MODULE_PARM_DESC(cmdc, "cross-merge_dwrs_count - number of not-merging DWRs for last device");
+MODULE_PARM_DESC(cmdc, "cross-merge_dwrs_count - number of not-merging "
+		"DWRs for last device");
 
 static unsigned short nmdc = 1;
 module_param(nmdc, ushort, 0444);
-MODULE_PARM_DESC(nmdc, "not-merge_dwrs_count - number of not-merging DWRs for last device");
+MODULE_PARM_DESC(nmdc, "not-merge_dwrs_count - number of not-merging "
+		"DWRs for last device");
 
 /* define a platform ASM */
 #define CPM_PLATFORM_ASM(_name, _type, _mode, _comp, _min, _max)	\
@@ -66,89 +70,100 @@ MODULE_PARM_DESC(nmdc, "not-merge_dwrs_count - number of not-merging DWRs for la
 
 static void pdev_release(struct device *dev);
 
-
 /*--- Platform ASMs ---*/
-struct cpm_asm cpm_platform_asm[] =
-{
-	[0] = CPM_PLATFORM_ASM("ASM0", CPM_TYPE_LIB, CPM_USER_RW, CPM_COMPOSITION_RESTRICTIVE, 0, 100),
-	[1] = CPM_PLATFORM_ASM("ASM1", CPM_TYPE_LIB, CPM_USER_RW, CPM_COMPOSITION_RESTRICTIVE, 0, 50),
-	[2] = CPM_PLATFORM_ASM("ASM2", CPM_TYPE_GIB, CPM_USER_RW, CPM_COMPOSITION_ADDITIVE, 0, 40),
-	[3] = CPM_PLATFORM_ASM("ASM3", CPM_TYPE_GIB, CPM_USER_RO, CPM_COMPOSITION_ADDITIVE, 0, 50),
+struct cpm_asm cpm_platform_asm[] = {
+	[0] =
+	    CPM_PLATFORM_ASM("ASM0", CPM_TYPE_LIB, CPM_USER_RW,
+			     CPM_COMPOSITION_RESTRICTIVE, 0, 100),
+	[1] =
+	    CPM_PLATFORM_ASM("ASM1", CPM_TYPE_LIB, CPM_USER_RW,
+			     CPM_COMPOSITION_RESTRICTIVE, 0, 50),
+	[2] =
+	    CPM_PLATFORM_ASM("ASM2", CPM_TYPE_GIB, CPM_USER_RW,
+			     CPM_COMPOSITION_ADDITIVE, 0, 40),
+	[3] =
+	    CPM_PLATFORM_ASM("ASM3", CPM_TYPE_GIB, CPM_USER_RO,
+			     CPM_COMPOSITION_ADDITIVE, 0, 50),
 };
 
-struct cpm_platform_data cpm_platform_data =
-{
+struct cpm_platform_data cpm_platform_data = {
 	.asms = cpm_platform_asm,
 	.count = ARRAY_SIZE(cpm_platform_asm),
 };
-
 
 /*--- Platform devices ---*/
 static char pdev_name[] = "cpm_govtest";
 static struct platform_device *pdevs;
 
-int govtest_callback(struct notifier_block *nb, unsigned long step, void *data);
+static int govtest_callback(struct notifier_block *nb,
+		unsigned long step, void *data);
 
 /*--- Upper-devices DWRs definitions ---*/
-struct cpm_asm_range upperdev_dwr_ranges[] =
-{
-	DEV_DWR_ASM(0,  5, 30, CPM_ASM_TYPE_RANGE),
-	DEV_DWR_ASM(1,  5, 25, CPM_ASM_TYPE_RANGE),
+struct cpm_asm_range upperdev_dwr_ranges[] = {
+	DEV_DWR_ASM(0, 5, 30, CPM_ASM_TYPE_RANGE),
+	DEV_DWR_ASM(1, 5, 25, CPM_ASM_TYPE_RANGE),
 };
+
 /* The list of upper-devs DWRs */
 static struct cpm_dev_dwr *upperdev_dwrs_list;
-static struct cpm_dev_data upperdev_data =
-{
+static struct cpm_dev_data upperdev_data = {
 	.notifier_callback = govtest_callback,
 };
 
 /*--- Lower-device DWRs definitions ---*/
-struct cpm_asm_range lowerdev_dwr0_ranges[] =
-{
+struct cpm_asm_range lowerdev_dwr0_ranges[] = {
 	DEV_DWR_ASM(0, 10, 20, CPM_ASM_TYPE_RANGE),
 	DEV_DWR_ASM(1, 10, 15, CPM_ASM_TYPE_RANGE),
 };
-struct cpm_asm_range lowerdev_dwr1_ranges[] =
-{
+
+struct cpm_asm_range lowerdev_dwr1_ranges[] = {
 	DEV_DWR_ASM(0, 25, 35, CPM_ASM_TYPE_RANGE),
 	DEV_DWR_ASM(1, 15, 20, CPM_ASM_TYPE_RANGE),
 };
-struct cpm_asm_range lowerdev_dwr2_ranges[] =
-{
+
+struct cpm_asm_range lowerdev_dwr2_ranges[] = {
 	DEV_DWR_ASM(0, 40, 50, CPM_ASM_TYPE_RANGE),
 	DEV_DWR_ASM(1, 20, 25, CPM_ASM_TYPE_RANGE),
 };
+
 /* The list of lower-devs DWRs */
 struct cpm_dev_dwr *lowerdev_dwrs_list;
-static struct cpm_dev_data lowerdev_data =
-{
+static struct cpm_dev_data lowerdev_data = {
 	.notifier_callback = govtest_callback,
 };
 
-int govtest_callback(struct notifier_block *nb, unsigned long step, void *data)
+static int govtest_callback(struct notifier_block *nb,
+		unsigned long step, void *data)
 {
-	struct cpm_dev *pcdev = (struct cpm_dev*)container_of(nb, struct cpm_dev, nb);
+	struct cpm_dev *pcdev =
+	    (struct cpm_dev *)container_of(nb, struct cpm_dev, nb);
 	int result = NOTIFY_OK;
 
-	switch(step) {
+	switch (step) {
 	case CPM_EVENT_NEW_CONSTRAINT:
 		dev_info(pcdev->dev, "new constraint notification\n");
 		result = NOTIFY_DONE;
 		break;
 	case CPM_EVENT_DO_CHANGE:
-		dev_info(pcdev->dev, "DDP do-change: new DWR [%d] authorized\n", *(u8*)data);
+		dev_info(pcdev->dev, "DDP do-change: new DWR [%d] authorized\n",
+			 *(u8 *) data);
 		break;
 	case CPM_EVENT_ABORT:
 		dev_info(pcdev->dev, "DDP abort\n");
 		break;
 	case CPM_EVENT_PRE_CHANGE:
-		dev_info(pcdev->dev, "DDP pre-change, going to switch to DWR [%d]...\n", *(u8*)data);
+		dev_info(pcdev->dev,
+			 "DDP pre-change, going to switch to DWR [%d]...\n",
+			 *(u8 *) data);
 		break;
 	case CPM_EVENT_POST_CHANGE:
-		dev_info(pcdev->dev, "DDP post-change, switch to DWR [%d] complite\n", *(u8*)data);
+		dev_info(pcdev->dev,
+			 "DDP post-change, switch to DWR [%d] complite\n",
+			 *(u8 *) data);
 		break;
 	default:
-		dev_warn(pcdev->dev, "unexpected notification, returning OK (0)\n");
+		dev_warn(pcdev->dev,
+			 "unexpected notification, returning OK (0)\n");
 		result = NOTIFY_BAD;
 	}
 
@@ -162,10 +177,12 @@ static void release_cpm(void)
 
 	pr_debug("cpm_govtest: unregistering cpm devices...\n");
 	pd = pdevs;
-	for (i=0; i<dc; pd++, i++) {
-		pr_debug("cpm_govtest: releasing cpm device [%s] data\n", dev_name(&pd->dev));
-		if ( cpm_unregister_device(&pd->dev) ) {
-			dev_err(&pd->dev, "cpm device data unregister failed\n");
+	for (i = 0; i < dc; pd++, i++) {
+		pr_debug("cpm_govtest: releasing cpm device [%s] data\n",
+			 dev_name(&pd->dev));
+		if (cpm_unregister_device(&pd->dev)) {
+			dev_err(&pd->dev,
+				"cpm device data unregister failed\n");
 			continue;
 		}
 		dev_info(&pd->dev, "cpm device data unregistered\n");
@@ -181,22 +198,21 @@ static void release_platform(void)
 
 	pr_debug("cpm_govtest: releasing platform devices...\n");
 	pd = pdevs;
-	for (i=0; i<dc; pd++, i++) {
-		pr_debug("cpm_govtest: releasing platform device [%s] data\n", dev_name(&pd->dev));
+	for (i = 0; i < dc; pd++, i++) {
+		pr_debug("cpm_govtest: releasing platform device [%s] data\n",
+			 dev_name(&pd->dev));
 		platform_device_unregister(pd);
 		dev_info(&pd->dev, "platform device unregistered\n");
 	}
 	kfree(pdevs);
 }
 
-
 /*--- Platform device driver ---*/
-static struct platform_driver govtest_driver =
-{
-	.driver	= {
-		.name = "cpm_govtest",
-		.owner = THIS_MODULE,
-	},
+static struct platform_driver govtest_driver = {
+	.driver = {
+		   .name = "cpm_govtest",
+		   .owner = THIS_MODULE,
+		   },
 };
 
 static void pdev_release(struct device *dev)
@@ -204,11 +220,11 @@ static void pdev_release(struct device *dev)
 	dev_info(dev, "platform device release\n");
 }
 
-static int __init govtest_probe(struct platform_device * pdev)
+static int __init govtest_probe(struct platform_device *pdev)
 {
 	dev_info(&(pdev->dev), "device probed: %s\n", dev_name(&(pdev->dev)));
 
-	if ( strncmp(pdev->name, pdev_name, 11) ) {
+	if (strncmp(pdev->name, pdev_name, 11)) {
 		dev_err(&pdev->dev, "failed to probe cpm_govtest device\n");
 		return -ENODEV;
 	}
@@ -225,15 +241,15 @@ static int __init init_platform(void)
 	pr_debug("cpm_govtest: registering platform data...\n");
 
 	/* allocate memory for the required platform device */
-	pdevs = kzalloc(sizeof(struct platform_device)*dc, GFP_KERNEL);
-	if ( unlikely(!pdevs) ) {
+	pdevs = kzalloc(sizeof(struct platform_device) * dc, GFP_KERNEL);
+	if (unlikely(!pdevs)) {
 		pr_err("cpm_govtest: unable to allocate device, out-of-mem\n");
 		return -ENOMEM;
 	}
-	
+
 	/* initialize upper platform devices */
 	pd = pdevs;
-	for (i=1; i<dc; pd++, i++) {
+	for (i = 1; i < dc; pd++, i++) {
 		pd->name = pdev_name;
 		pd->id = i;
 		pd->dev.release = pdev_release;
@@ -245,13 +261,14 @@ static int __init init_platform(void)
 
 	/* register platform ASMs */
 	cpm_register_platform_asms(&cpm_platform_data);
-	pr_info("cpm_govtest: %d platform ASMs registered\n", cpm_platform_data.count);
+	pr_info("cpm_govtest: %d platform ASMs registered\n",
+		cpm_platform_data.count);
 
 	/* register platform devices */
 	pd = pdevs;
-	for (i=0; i<dc; pd++, i++) {
+	for (i = 0; i < dc; pd++, i++) {
 		ret = platform_device_register(pd);
-		if ( unlikely(ret) ) {
+		if (unlikely(ret)) {
 			dev_err(&pd->dev, "platform device register failed\n");
 			goto out_unregister;
 		}
@@ -264,7 +281,7 @@ static int __init init_platform(void)
 out_unregister:
 
 	pd--;
-	for ( ; i; pd--, i--) {
+	for (; i; pd--, i--) {
 		platform_device_unregister(pd);
 		dev_info(&pd->dev, "platform device unregistered\n");
 	}
@@ -285,15 +302,18 @@ static int __init init_cpm(void)
 	pr_debug("cpm_govtest: registering CPM data...\n");
 
 	/* allocate memory for the required cpm's upper-device data */
-	upperdev_dwrs_list = kzalloc(sizeof(struct cpm_dev_dwr)*tw, GFP_KERNEL);
-	if ( unlikely(!upperdev_dwrs_list) ) {
-		pr_err("cpm_govtest: unable to allocate upper-devices cpm data, out-of-mem\n");
+	upperdev_dwrs_list =
+	    kzalloc(sizeof(struct cpm_dev_dwr) * tw, GFP_KERNEL);
+	if (unlikely(!upperdev_dwrs_list)) {
+		pr_err
+		    ("cpm_govtest: unable to allocate upper-devices cpm data, "
+		     "out-of-mem\n");
 		return -ENOMEM;
 	}
 
 	/* initializing upper-devices data */
 	udl = upperdev_dwrs_list;
-	for (i=0; i<tw; udl++, i++) {
+	for (i = 0; i < tw; udl++, i++) {
 		udl->id = i;
 		snprintf(udl->name, CPM_NAME_LEN, "uDWR%02d", i);
 		udl->asms = upperdev_dwr_ranges;
@@ -304,9 +324,9 @@ static int __init init_cpm(void)
 
 	/* registering upper-devices (first (cd-1) pdevs) */
 	pd = pdevs;
-	for (i=0; i<dc-1; pd++, i++) {
+	for (i = 0; i < dc - 1; pd++, i++) {
 		ret = cpm_register_device(&pd->dev, &upperdev_data);
-		if ( unlikely(ret) ) {
+		if (unlikely(ret)) {
 			dev_err(&pd->dev, "cpm upper-device register failed\n");
 			goto out_unregister_upperdev;
 		}
@@ -317,9 +337,12 @@ static int __init init_cpm(void)
 
 	/* allocate memory for the required cpm's lover-device data */
 	i = fmdc + cmdc + nmdc;
-	lowerdev_dwrs_list = kzalloc(sizeof(struct cpm_dev_dwr)*i, GFP_KERNEL);
-	if ( unlikely(!lowerdev_dwrs_list) ) {
-		pr_err("cpm_govtest: unable to allocate lower-device cpm data, out-of-mem\n");
+	lowerdev_dwrs_list =
+	    kzalloc(sizeof(struct cpm_dev_dwr) * i, GFP_KERNEL);
+	if (unlikely(!lowerdev_dwrs_list)) {
+		pr_err
+		    ("cpm_govtest: unable to allocate lower-device cpm data, "
+		     "out-of-mem\n");
 		ret = -ENOMEM;
 		i = dc;
 		goto out_unregister_upperdev;
@@ -327,21 +350,20 @@ static int __init init_cpm(void)
 
 	/* initializing lower-devices data */
 	ldl = lowerdev_dwrs_list;
-	for (i=0; i<(fmdc+cmdc+nmdc); ldl++, i++) {
+	for (i = 0; i < (fmdc + cmdc + nmdc); ldl++, i++) {
 		ldl->id = i;
 		snprintf(ldl->name, CPM_NAME_LEN, "lDWR%02d", i);
-		ldl->asms = 	i <  fmdc 	? lowerdev_dwr0_ranges :
-				i < (fmdc+cmdc)	? lowerdev_dwr1_ranges :
-				lowerdev_dwr2_ranges;
+		ldl->asms = i < fmdc ? lowerdev_dwr0_ranges :
+		    i < (fmdc + cmdc) ? lowerdev_dwr1_ranges :
+		    lowerdev_dwr2_ranges;
 		ldl->asms_count = 2;
 	}
 	lowerdev_data.dwrs = lowerdev_dwrs_list;
 	lowerdev_data.dwrs_count = i;
 
-
 	/* registering the lower-device */
 	ret = cpm_register_device(&pd->dev, &lowerdev_data);
-	if ( unlikely(ret) ) {
+	if (unlikely(ret)) {
 		dev_err(&pd->dev, "cpm lower-device register failed\n");
 		goto out_unregister_lowerdev;
 	}
@@ -358,9 +380,10 @@ out_unregister_lowerdev:
 out_unregister_upperdev:
 
 	pd--;
-	for ( ; i; pd--, i--) {
-		if ( cpm_unregister_device(&pd->dev) ) {
-			dev_err(&pd->dev, "cpm device data unregister failed\n");
+	for (; i; pd--, i--) {
+		if (cpm_unregister_device(&pd->dev)) {
+			dev_err(&pd->dev,
+				"cpm device data unregister failed\n");
 			continue;
 		}
 		dev_info(&pd->dev, "cpm device data unregistered\n");
@@ -369,23 +392,22 @@ out_unregister_upperdev:
 
 	return ret;
 
-
 }
 
 static int __init sanity_check_params(void)
 {
 
-	if ( unlikely(dc<2) ) {
+	if (unlikely(dc < 2)) {
 		pr_err("device count cannot be less than 2\n");
 		return -EINVAL;
 	}
 
-	if ( unlikely(!tw) ) {
+	if (unlikely(!tw)) {
 		pr_err("top devices should have at least one DWR\n");
 		return -EINVAL;
 	}
 
-	if ( unlikely( !(fmdc+cmdc+nmdc) ) ) {
+	if (unlikely(!(fmdc + cmdc + nmdc))) {
 		pr_err("bottom device should have at least ont DWR\n");
 		return -EINVAL;
 	}
@@ -399,7 +421,7 @@ static int __init cpm_govtest_init(void)
 	int ret = 0;
 
 	ret = sanity_check_params();
-	if ( unlikely(ret) )
+	if (unlikely(ret))
 		return ret;
 
 	ret = init_platform();
@@ -417,7 +439,7 @@ static int __init cpm_govtest_init(void)
 	pr_info("cpm_govtest: cpm data initialized\n");
 
 	ret = platform_driver_probe(&govtest_driver, govtest_probe);
-	if ( unlikely(ret) ) {
+	if (unlikely(ret)) {
 		pr_err("cpm_govtest: platform_driver_probe failed\n");
 		goto out_all;
 	}
@@ -434,8 +456,8 @@ out_platform:
 
 	release_platform();
 
-	return ret;		
-			
+	return ret;
+
 }
 
 static void __exit cpm_govtest_exit(void)
@@ -446,15 +468,14 @@ static void __exit cpm_govtest_exit(void)
 	platform_driver_unregister(&govtest_driver);
 	release_platform();
 
-	pr_info("cpm_govtest: driver unloaded.\n");	
-	
+	pr_info("cpm_govtest: driver unloaded.\n");
+
 }
- 
 
 MODULE_AUTHOR("Patrick Bellasi <derkling@gmail.com>");
-MODULE_DESCRIPTION("cpm_govtest: a governor performances test driver for the CPM framework");
+MODULE_DESCRIPTION
+    ("cpm_govtest: a governor performances test driver for the CPM framework");
 MODULE_LICENSE("GPL");
 
 module_init(cpm_govtest_init);
 module_exit(cpm_govtest_exit);
-

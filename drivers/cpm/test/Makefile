@@ -1,5 +1,7 @@
-obj-$(CONFIG_CPM_BUDDY)	+= buddy.o
-obj-$(CONFIG_CPM_GOVTEST)	+= cpm_govtest.o
-obj-$(CONFIG_CPM_BANDWIDTH) += ex_bandwidth.o
-obj-$(CONFIG_CPM_ALSA) += ex_alsaplay.o
-obj-$(CONFIG_CPM_MP3_GSM) += ex_mp3gsm.o
+
+obj-$(CONFIG_CPM_TEST_DUMMY) += cpm_test_dummy.o
+
+obj-$(CONFIG_CPM_TEST_BANDWIDTH) += cpm_test_bandwidth.o
+
+obj-$(CONFIG_CPM_TEST_MP3GSM) += cpm_test_mp3gsm.o
+

@@ -3,43 +3,35 @@
 #
 
 menuconfig CPM_TESTING
-	bool "Enable Testing support"
+	bool "Testing support"
 	default n
-	---help--- 
-	  Say Y here to enable CPM support.
+	help 
+	  Say Y here to enable CPM testing code.
 	  
 if CPM_TESTING
 
-config CPM_BUDDY
-	tristate "buddy test driver"
-	depends on EXPERIMENTAL
+config CPM_TEST_DUMMY
+	tristate "Dummy test drivers"
 	help
-	  If you say yes todo.
+	  Say M to enable the generation of a dummy CPM test module.
+	  This module allows to define an arbitrary number of platform devices
+	  which are registered to CPM and can be used to test constraint
+	  assertion and distribute agreement code.
+	  
+	  The module will be called cpm_test_dummy.ko
+	  If in doubt, say M.
 
-config CPM_GOVTEST
-	tristate "governor test driver"
-	depends on EXPERIMENTAL
-	help
-	  Say M to enable the generation of a governor test module.
-	  The module will be called cpm_govtest.ko
-
-config CPM_BANDWIDTH
-        tristate "bandwidth test driver"
-        depends on EXPERIMENTAL
+config CPM_TEST_BANDWIDTH
+        tristate "Bandwidth use-case test driver"
         help
-          If you say yes todo.
+	  The module will be called cpm_test_bandwidth.ko
+          If in doubt, say M.
 
-config CPM_ALSA
-        tristate "alsa buffer test driver" 
-        depends on EXPERIMENTAL
+config CPM_TEST_MP3GSM
+        tristate "MP3-GSM alsa buffer use-case test driver" 
         help
-          If you say yes todo. 
-
-config CPM_MP3_GSM
-        tristate "mp3 gsm alsa buffer test driver" 
-        depends on EXPERIMENTAL
-        help
-          If you say yes todo. 
+	  The module will be called cpm_test_mp3gsm.ko
+          If in doubt, say M.
 
 
 endif # CPM_TESTING

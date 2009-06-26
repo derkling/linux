@@ -4,80 +4,108 @@
 
 
 menuconfig CPM
-	bool "Enable CPM support"
+	bool "CPM support"
+	depends on EXPERIMENTAL
 	default n
-	---help--- 
-	  Say Y here to enable CPM support.
+	help
+	  CPM is a framework for Constrained Power Management.
+	  This framework is an improvement over QoSPM and DPM, providing
+	  support for feasible system configuration (FSC) identification,
+	  and selection according to a choosed optimization policy and
+	  run-time system constraints asserted by both kernel- and
+	  user-land.
+
+	  For details, take a look at <file:Documentation/cpu-freq>.
+
+	  If in doubt, say N.
+
 	  
 if CPM
 
-comment "CPM governors"
-        depends on CPM
+comment "Governors"
 
-config CPM_GOV_EXHAUST
-        tristate "cpm exhaustive governor"
-        depends on EXPERIMENTAL
+config CPM_GOV_EXHAUSTIVE
+        tristate "\"Exhaustive\" governor"
+	default m
         help
-          If you say yes todo.
+          The exhaustive is a CPM governor which provide FSC identification
+	  using an exhaustive search among working regions (DWR) defined by
+	  drivers registered to the framework
+
+	  If in doubt, say M.
+
+#choice
+#	prompt "Default Governor"
+#	default CPM_DEFAULT_GOVERNOR
+#	help
+#	  This option sets which CPM governor shall be loaded at
+#	  startup. If in doubt, select 'performance'.
+#
+#config CPM_DEFAULT_GOV_EXHAUSTIVE
+#	bool "exhaustive"
+#	select CPM_GOV_EXHAUSTIVE
+#	help
+#	  Use the 'exhaustive' governor as default.
+#
+#endchoice
+
+
+comment "Policies"
+
+config CPM_POLICY_SAME
+	tristate "\"Dummy\" policy"
+	depends on CPM_TESTING 
+	default n
+	help
+	  The "dummy" policy is a CPM policy used for testing
+	  purpose only.
+
+config CPM_POLICY_PERF
+        tristate "\"Performance\" policy"
+        help
+          The "performance" policy is a CPM policy which allows to define
+	  an optimization strategy by associating a weight to each system
+	  metric (ASM) and using those values to identify a partial
+	  ordering on FSC which is optimal with respect to the defined
+	  strategy.
+
+#choice
+#	prompt "Default policy"
+#	default CPM_DEFAULT_POLICY
+#	help
+#	  This option sets which CPM policy shall be loaded at
+#	  startup. If in doubt, select 'performance'.
+#
+#config CPM_DEFAULT_POL_PERF
+#	bool "performance"
+#	select CPM_POLICY_PERF
+#	help
+#	  Use the 'performance' policy as default.
+#
+#endchoice
+
 
 menuconfig CPM_DEBUG
-	bool "Enable CPM Debug Support"
-	default y
-	---help---
-	  Say Y here to enable CPM Debug Support
+	bool "Debug Support"
+	default n
+	help
+	  Say Y here to enable CPM debugging code
 
 if CPM_DEBUG
 
-config CPM_DEBUG_GOV
-	bool "Enable CPM Governor Debugging"
+config CPM_GOVERNOR_DEBUG
+	bool "Governors Debugging"
 	default n
-	--help---
-	  Say Y here to enable CPM Governor Debug Support
+	help
+	  Say Y here to enable CPM Governors debuggin code
+
+config CPM_POLICY_DEBUG
+	bool "Policies Debugging"
+	default n
+	help
+	  Say Y here to enable CPM policies debugging code
 
 endif
-
-config CPM_SYSFS
-        bool "Enable SYSFS interface"
-	default y
-        ---help---
-          Select this to enable sysfs interface.
-
-config CPM_POLICY_SAME
-	tristate "Enable policy same"
-	help
-	  If you say...
-
-config CPM_POLICY_PERF
-        tristate "Enable policy performance"
-        help
-          If you say...
-
-choice
-	prompt "Default CPM governor"
-	default CPM_DEFAULT_GOV_EXHAUSTIVE
-	help
-	  This option sets which CPUFreq governor shall be loaded at
-	  startup. If in doubt, select 'performance'.
-
-config CPM_DEFAULT_GOV_EXHAUSTIVE
-	bool "exhaustive"
-	select CPM_GOV_EXHAUSTIVE
-	help
-	  Use the CPM governor 'exhaustive' as default.
-
-endchoice
-
-
-config CPM_GOV_EXHAUSTIVE
-	tristate "'exhaustive' governor"
-	help
-	  This CPM governor...
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called cpm_exhaustive.
-
-	  If in doubt, say Y.
-
 
 source "drivers/cpm/test/Kconfig"
 

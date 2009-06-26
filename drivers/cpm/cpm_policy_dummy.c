@@ -1,8 +1,8 @@
 /*
- * This policy dummy manages fsc ordering and returns to cpm_core a pointer to 
+ * This policy dummy manages fsc ordering and returns to cpm_core a pointer to
  * a list of cpm_fsc_pointers. Elements of the list point to registered FSCs in
  * the same order as the original list.
- *  
+ *
  * It also dummy supervises ddp process returning always CPM_DDP_OK
  *
  * Stefano Bosisio <stebosisio@gmail.com>
@@ -15,21 +15,19 @@
 #include <linux/list.h>
 #include <linux/cpm.h>
 
-
-
-
-
 /*********************************************************************
  *                     UNIFIED DEBUG HELPERS                         *
  *********************************************************************/
 
-#define dprintk(msg...) cpm_debug_printk(CPM_DEBUG_CORE, \
-						"cpm-policy-same", msg)
+#ifdef CONFIG_CPM_POLICY_DEBUG
+#define dprintk(msg...) pr_debug("cpm-policy-same" msg)
+#else
+#define dprintk(msg...) do {} while (0);
+#endif
 
 #define iprintk(msg...) pr_info("cpm-policy-same" msg)
 
 #define eprintk(msg...) pr_err("cpm-policy-same" msg)
-
 
 int sort_fsc_list_same(struct list_head *fsc_list)
 {
@@ -43,7 +41,7 @@ int sort_fsc_list_same(struct list_head *fsc_list)
 
 	list_for_each_entry(fscs, fsc_list, node) {
 		pnode = kzalloc(sizeof(struct cpm_fsc_pointer), GFP_KERNEL);
-		if ( unlikely(!pnode) ) {
+		if (unlikely(!pnode)) {
 			eprintk("out-of-mem on cpm_fsc_pointer\n");
 			result = -ENOMEM;
 			goto out_sort_nomem;
@@ -58,7 +56,7 @@ int sort_fsc_list_same(struct list_head *fsc_list)
 	return 0;
 
 out_sort_nomem:
-	
+
 	list_for_each_entry_safe(pnode, pnext, &ordered_fscs, node) {
 		list_del(&pnode->node);
 		kfree(pnode);
@@ -66,13 +64,12 @@ out_sort_nomem:
 
 	return result;
 
-} 
-
+}
 
 int ddp_handler_same(unsigned long phase, void *data)
 {
 
-	switch(phase) {
+	switch (phase) {
 	case CPM_EVENT_NEW_CONSTRAINT:
 		dprintk("new constraint notification: authorized\n");
 		break;
@@ -91,13 +88,11 @@ int ddp_handler_same(unsigned long phase, void *data)
 	return 0;
 }
 
-
 struct cpm_policy cpm_policy_same = {
-	.name		= "same policy",
-	.sort_fsc_list	= sort_fsc_list_same,
-	.ddp_handler	= ddp_handler_same,
+	.name = "same policy",
+	.sort_fsc_list = sort_fsc_list_same,
+	.ddp_handler = ddp_handler_same,
 };
-
 
 static int __init cpm_policy_same_init(void)
 {
@@ -106,15 +101,13 @@ static int __init cpm_policy_same_init(void)
 	return err;
 }
 
-
 static void __exit cpm_policy_same_exit(void)
 {
 }
 
-
 MODULE_AUTHOR("Stefano Bosisio <stebosisio@gmail.com>");
 MODULE_DESCRIPTION("'cpm_same_policy'-cpm module that dummy manage ddp process"
-		"and FSCs ordering");
+		   "and FSCs ordering");
 MODULE_LICENSE("GPL");
 
 module_init(cpm_policy_same_init);
