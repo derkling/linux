@@ -1,0 +1,67 @@
+     Constrained Power Manager (CPM) framework in the Linux(TM) kernel
+
+
+		               L i n u x    C P M
+
+
+
+
+		    Patrick Bellasi  <derkling@gmail.com>
+
+
+
+   Constrained Power Manager (CPM) is a framework to support driver's
+   local power/performances optimization policies.
+   A mechanism to efficiently exchange information both between drivers
+   and user-space allows to identify optimal syste-wide configurations.
+   This is a nice method to find an agreement between resource providers
+   and consumers and can turn out on better tradeoff between system
+   QoS and power consumption.
+
+   This framework is an evolution of QoSPM. It extend the basic idea
+   of constraint management with an efficient mechanism for the
+   identification of optimal system-wide feasible configuration.
+
+
+Contents:
+---------
+1.   Testing support
+
+
+1. Testing support
+=====================
+
+The CPM testing code is located in drivers/cpm/test.
+In this folder the file cpm_test_dummy.c can be currently found.
+
+This dummy module receives, as parameters, the number of wanted devices and the
+number of dwrs for each one of these devices. More precisely, to be loaded, the
+module requires the following parameters:
+
+dev_count -                     total number of wanted devices. These are then
+                                divided in dev_count - 1 top devices and in
+                                one last devices
+
+tree_width -                     number of identical dwrs for top devices.
+
+full_merge_dwrs_count -         number of dwrs of last device that fully merge
+                                with top devices' dwrs
+
+cross_merge_dwrs_count -        number of dwrs of last device that partially
+                                merge with top devices' dwrs
+
+not_merge_dwrs_count -          number of dwrs of last device that do not merge
+                                with top devices' dwrs
+
+
+The module can be loaded into the system and accomplish to the declaration of
+some platform ASMs and of the required devices with their DWRs. The core,
+consequently, computes the corresponding FSCs. The number of these the number of
+these is known a priori as the result of:
+
+(tree_width ^(dev_count -1)) * (full_merge_dwrs_count + cross_merge_dwrs_count)
+
+
+After dummy module's loading the user can actively interact with the framework,
+testing in this way its functionality.
+

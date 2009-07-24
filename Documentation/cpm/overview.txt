@@ -1,0 +1,131 @@
+     Constrained Power Manager (CPM) framework in the Linux(TM) kernel
+
+
+		               L i n u x    C P M
+
+
+
+
+		    Patrick Bellasi  <derkling@gmail.com>
+
+
+
+   Constrained Power Manager (CPM) is a framework to support driver's
+   local power/performances optimization policies.
+   A mechanism to efficiently exchange information both between drivers
+   and user-space allows to identify optimal syste-wide configurations.
+   This is a nice method to find an agreement between resource providers
+   and consumers and can turn out on better tradeoff between system
+   QoS and power consumption.
+
+   This framework is an evolution of QoSPM. It extend the basic idea
+   of constraint management with an efficient mechanism for the
+   identification of optimal system-wide feasible configuration.
+
+Contents:
+---------
+1.  Overview
+2.  Theoretical concepts
+2.1  ASMs
+2.2  DWRs and FSCs
+2.3  Objective function
+
+
+1. Overview
+===============
+
+Constrained Power Management (CPM) is a Linux Kernel Framework for distributed
+power management, based on the ideas introduced in Hierarchical Distributed
+Control paradigm.
+Besides this, CPM is also inspired at the already existing Quality of Service
+framework (QoSPM), and tries to solve some of its limitations.
+
+CPM provides mechanisms to manage a set of system-wide metrics, to let drivers
+and applications assert constraints on them and to find feasible system working
+point that also results optimum, according to a customizable optimization
+function. Moreover, CPM also provides mechanisms for coordination and
+communication among all the system entities, i.e. drivers and applications.
+
+This section initially recalls some ideas of Hierarchical Distributed Control
+Theory. Then the general infrastructure of CPM is presented, focusing on its
+main components and on the relation between them and those defined by the
+implemented theoretical model.
+
+
+2. Theoretical concepts
+===========================
+
+CPM has been developed following the theory of Hierarchical Distributed Control.
+However, some of the theoretical concepts have been recast in an appropriate
+manner to achieve an effiìficient implementation. In addition, during the coding
+phase, some additional assumptions have been introduced to improve the potential
+and the flexibility of the framework, also thinking about possible future
+improvements. In the following paragraphs the various choices made are explained
+and justified.
+
+2.1 ASMs
+----------
+
+They are abstract system-wide indicators that represent different aspects of the
+global Quality of Service level provided by the system.
+
+Device drivers can be interested, and eventually can influence, different
+subsets of ASMs. Through ASMs, drivers are kept informed about the global system
+state and can use these informations for taking local configuration decisions.
+Drivers can also request constraints on ASMs, e.g. when they need granted QoS
+levels.
+
+The framework provides a mechanism that allows the platform code to initialize
+all the ASMs at boot time. In this way, the definition of ASMs is demanded
+to the normal activity of system porting. The framework maintains a sufficient
+level of generality and therefore better results can be potentially achieved.
+
+2.2 DWRS and FSCs
+-------------------
+
+DWRs express the binding between devices’ operating modes and the corresponding
+required or provided Quality of Service represented by ranges on ASMs.
+
+An operating mode corresponds to a certain device configuration and this
+information is coded wihin the device driver.
+A driver can require a change on a ASM when its internal configuration changes,
+for instance when the local policy of the driver can optimize the operating
+point. In this case the driver affect the ASM.
+Similarly, a driver can be asked to change its internal configuration to satisfy
+a QoS requirement imposed by another entity (an application or another driver)
+by proposing a value on a ASM to which the driver is registered.
+
+Whenever a driver changes its internal configuration, this can result on chaning
+the DWR for that moment. DWRs are essentially static entities: they are related
+to the possible devices' configurations and, consequently, to their physical
+capabilities. It is therefore reasonable to assume that they can be statically
+known by device drivers and that they can not change at run time.
+
+A device is considered to be both influenced and able to affect all the ASMs
+that are implicitly declared through its DWRs. Due to these reasons, to ensure
+that CPM works correctly, devices must declare all their DWRs at registration
+time through specific mechanisms provided by the framework.
+DWRs are hence stored for future elaborations: like the computation of FSCs or
+the notifications during distributed agreement process.
+
+2.3 Objective function
+-----------------------
+
+The hierarchical distributed control model implemented by CPM is based on linear
+programming for the research of the optimal system-wide confiugration according
+to active constraints on ASMs.
+
+This kind of strategy requires the definition of an objective function to be
+used for choosing the system working point, which ultimetely corresponds to one
+of the FSCs. The selected FSC, besides satisfying all the asserted constraints,
+results best according to the considered metric.
+
+In linear programming an objective function is represented by an oriented vector
+that indicates the direction that improve the solution inside the constrained
+solution space. Within the implementation, we reworked this concept of
+oriented-vector into something that is both easier to implement and more
+efficient at run-time. Thus in CPM we provided the mechanism to define weights
+for each ASM and then we can use these parameters to simply assignment a weight
+to each FSC and compute a pre-ordered list of all the system feasible
+configurations.
+

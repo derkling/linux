@@ -1,0 +1,123 @@
+     Constrained Power Manager (CPM) framework in the Linux(TM) kernel
+
+
+		               L i n u x    C P M
+
+
+
+
+		    Patrick Bellasi  <derkling@gmail.com>
+
+
+
+   Constrained Power Manager (CPM) is a framework to support driver's
+   local power/performances optimization policies.
+   A mechanism to efficiently exchange information both between drivers
+   and user-space allows to identify optimal syste-wide configurations.
+   This is a nice method to find an agreement between resource providers
+   and consumers and can turn out on better tradeoff between system
+   QoS and power consumption.
+
+   This framework is an evolution of QoSPM. It extend the basic idea
+   of constraint management with an efficient mechanism for the
+   identification of optimal system-wide feasible configuration.
+
+Contents:
+---------
+1.  Introduction
+
+
+1. Introduction
+==========================
+
+Porting CPM to a new platform is quite simple, basically it require just to
+define platform specific ASM. While the core export abstract and platform
+independent ASMs which will be exposed to user-space applications, CPM gives
+also the possibility to define some platform specific ASM. These can be used in
+instance by platform drivers in order to give a better integration of CPM with
+the specific platform and eventually enanche the optimization possibilities.
+
+Exporting platform specific ASM require to just to define them and the reigster
+to the CPM core with the provided API.
+
+Each platform specific ASM is represented by a 'struct cpm_asm' of this type:
+
+struct cpm_asm {
+        char name[CPM_NAME_LEN];
+        void *data;
+#define CPM_TYPE_LIB    0
+#define CPM_TYPE_GIB    1
+        u8 type:1;
+#define CPM_USER_RO     0
+#define CPM_USER_RW     1
+        u8 userw:1;
+#define CPM_COMPOSITION_ADDITIVE        0
+#define CPM_COMPOSITION_RESTRICTIVE     1
+        u8 comp:1;
+        s32 weight;
+        u32 min;
+        u32 max;
+};
+
+where the required fiels are:
+
+name   - the name (used for debugging and sysfs interface)
+type   - the aggregation type, it can ben either:
+		LowerIsBetter, e.g. latency
+		GreaterIsBetter, e.g. bandwidth
+userw  - true if writable from user-space, i.e. exposed to applications
+comp   - the composition type, it can be either:
+		Restrictive, e.g. latency
+		Additive, e.g. bandwidth
+min    - the minimum QoS level value (e.g. CPU latency: 10us)
+max    - the maximum QoS level value (e.g. AMBA bandwidth: <= 133MB/s)
+
+
+The provided CPM_PLATFORM_ASM macro can be conveniently used to initialize
+platform-spceific ASM:
+
+/* define a platform ASM */
+#define CPM_PLATFORM_ASM(_name, _type, _mode, _comp, _min, _max)        \
+        {                                                               \
+                .name = _name,                                          \
+                .type = _type,                                          \
+                .userw = _mode,                                         \
+                .comp = _comp,                                          \
+                .min = _min,                                            \
+                .max = _max,                                            \
+        }
+
+
+In instance, the definition of four platform specific ASM is as simple as:
+
+/*--- Platform ASMs ---*/
+struct cpm_asm cpm_platform_asm[] = {
+        [0] =
+            CPM_PLATFORM_ASM("ASM0", CPM_TYPE_LIB, CPM_USER_RW,
+                             CPM_COMPOSITION_RESTRICTIVE, 0, 100),
+        [1] =
+            CPM_PLATFORM_ASM("ASM1", CPM_TYPE_LIB, CPM_USER_RW,
+                             CPM_COMPOSITION_RESTRICTIVE, 0, 50),
+        [2] =
+            CPM_PLATFORM_ASM("ASM2", CPM_TYPE_GIB, CPM_USER_RW,
+                             CPM_COMPOSITION_ADDITIVE, 0, 40),
+        [3] =
+            CPM_PLATFORM_ASM("ASM3", CPM_TYPE_GIB, CPM_USER_RO,
+                             CPM_COMPOSITION_ADDITIVE, 0, 50),
+};
+
+Such an array can be registerd to the cpm core with a call of this method:
+
+int cpm_register_platform_asms(struct cpm_platform_data *asm_data);
+
+where 'cpm_platform_data' is this struct
+
+struct cpm_platform_data {
+        struct cpm_asm *asms;
+        u8 count;
+
+};
+
+requiring just a pointer to the previously defined array and the number of
+ASM it contains.
+

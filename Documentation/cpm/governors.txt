@@ -1,0 +1,146 @@
+     Constrained Power Manager (CPM) framework in the Linux(TM) kernel
+
+
+		               L i n u x    C P M
+
+
+
+
+		    Patrick Bellasi  <derkling@gmail.com>
+
+
+
+   Constrained Power Manager (CPM) is a framework to support driver's
+   local power/performances optimization policies.
+   A mechanism to efficiently exchange information both between drivers
+   and user-space allows to identify optimal syste-wide configurations.
+   This is a nice method to find an agreement between resource providers
+   and consumers and can turn out on better tradeoff between system
+   QoS and power consumption.
+
+   This framework is an evolution of QoSPM. It extend the basic idea
+   of constraint management with an efficient mechanism for the
+   identification of optimal system-wide feasible configuration.
+
+
+Contents:
+---------
+1.   What is a CPM Governor?
+
+2.   Available governors
+2.1   Exhaustive
+
+3.   The framework interface for governors
+
+
+
+1. What Is A CPM Governor?
+==============================
+
+CPM governor modules are dedicated to FSCs identiﬁcation.
+
+A governor registers itself into cpm_core and define a function that, given a
+device drivers list, returns the corresponding FSCs identified.
+FSC identification can be required by the core: when CPM is enabled (typically
+when all device drivers have been registered afteer system boot), or when FSCs
+previously identified becomes outdated.
+This last situation can happen: when a new driver registers to the framework at
+run time, when an already present driver unregisters from it, or when a
+different governor is loaded.
+
+The cpm_core calls the governor callback for FSC identification using the
+workqueue mechanism. This allow the governo to run "in backgroud" without
+blocking the core. The governor must build a list of identified FSC starting
+from the list of drivers' defined DWR. This list at the end is returned to
+cpm core by calling a speciﬁc exported function.
+
+The choice of implementing FSCs’ identiﬁcation as an independent kernel module,
+allows more efficiency and flexibility. FCSs identiﬁcation is one of the most
+critical point, in terms of computational complexity. It can be tuned in a
+proper way trying, and inventing, different research algorithms.
+Finally, especially in an embedded system, it is possible that the set of
+registered devices never changes for the entire life of the ﬁnal product.
+In this case, thanks to the modular approach, FSCs can be statically computed
+one time and then coded into a governor that simple load them into CPM, without
+any further run-time search.
+
+
+2. Available Governors
+==========================
+
+2.1 Exhaustive
+----------------
+
+This governor performs the identiﬁcation of the FSCs starting from to the set
+of DWRs declared by registered devices using an exhaustive search.
+
+The adoption of this strategy has allowed a simple and fast implementation,
+although this approach can surely be optimized to obtain more efﬁciency.
+An exhaustive research represents the intrinsic maximum computational complexity
+of the problem and thus it is also useful for testing purposes.
+
+Operating mode each single devices are mapped on the ASMs which describe the
+global QoS level of the system. This mapping generates Device Working Regions
+(DWR) that express the idea of suitability of a local conﬁguration receiving
+or requiring  a certain level of QoS.
+In every time, the system should provide a QoS level accepted by all utilized
+devices. The valid conﬁgurations (FSCs) that describe the global QoS level are
+defined by the intersection of at least a DWR for each device.
+
+The Exhaustive Governor implements exactly the idea summarized above: it
+considers all the possible combinations of DWRs from all the devices. For each
+combination, it compares the ﬁrst two DWRs, it considers the common ASMs and
+executes the intersection of the ranges expressed on the ASMs. If it is not
+possible to merge two ranges on the same ASM it means that such DWRs do not
+overlap on the dimension expressed by the ASM; the comparison process is aborted
+and the algorithm continues with the next combination of DWRs.
+The result of a merge constitutes the candidate range of a FSC.
+Ranges expressed on ASMs which are not common to two DWRs are automatically
+selected to be part of the candidate FSC. In fact we can imagine to add to the
+DWR that do not consider such ASMs an unbounded range on those ASMs, i.e. it
+ranges from the minimum to the maximum value declared on the ASMs.
+The merge between this fictitious range and the one actually expressed on the
+other DWR will result in the latter range.
+When the comparison between the first two DWRs of a combination is completed,
+the same process is re-iterated considering the candidate ranges of the FSC
+obtained at the ﬁrst step and the next DWR of the combination. This process
+continue until all DWRs belonging to the combination have been considered.
+
+
+3. The Governor Interface in the CPM Core
+=============================================
+
+A new governor must register itself with the CPM core using the exported symbol
+'cpm_register_governor'. This action is usually accomplished at governor’s
+module initialization.
+
+The governor calls the registration function, exported by the core, passing it
+a reference to a 'struct cpm_governor', which contains the following values:
+
+governor->name			- A unique name for this governor
+governor->build_fsc_list	- The governor callback function for FSC
+					identification
+
+
+The 'governor->build_fsc_list' callback expect a reference to the current
+device's list and a parameters that define the number of registered devices.
+
+Up to now (but this is a limitation to be removed) only one governor can be
+registered to CPM framework at each point in time. So, if a governor is already
+registered the attempt of inserting a new one returns a failure.
+A further extension will provide the possibility to register more than one
+governor to possibily select at run-time e.g. using a sysfs interface (similar
+to cpufreq governors).
+
+The CPM governor can call the CPM core, to return the new list of identified
+FSCs, using the following function:
+
+int cpm_set_fsc_list(struct list head *fsc_list)
+
+After a call to 'build_fsc_list' the FSCs are identified with an asynchronous
+process during which the system continues to run, (eventually) considering the
+previously existing FSCs set.
+When the governor has completed its computation it can set up the new FSCs list
+by passing it to this function.
+After this call the core deallocates the old list and starts to use the new one.
+

@@ -1,0 +1,61 @@
+     Constrained Power Manager (CPM) framework in the Linux(TM) kernel
+
+
+		               L i n u x    C P M
+
+
+
+
+		    Patrick Bellasi  <derkling@gmail.com>
+
+
+
+   Constrained Power Manager (CPM) is a framework to support driver's
+   local power/performances optimization policies.
+   A mechanism to efficiently exchange information both between drivers
+   and user-space allows to identify optimal syste-wide configurations.
+   This is a nice method to find an agreement between resource providers
+   and consumers and can turn out on better tradeoff between system
+   QoS and power consumption.
+
+   This framework is an evolution of QoSPM. It extend the basic idea
+   of constraint management with an efficient mechanism for the
+   identification of optimal system-wide feasible configuration.
+
+
+Documents in this directory:
+----------------------------
+
+core.txt	- General description of the CPM core and
+			provided interfaces for platform code, drivers
+			and user-space
+
+governors.txt	- What are cpm governors and how to
+			implement them?
+
+index.txt	- File index, Mailing list and Links (this document)
+
+overview.txt	- An overall view on some basic concepts of this framework
+
+platform.txt	- How to support CPM in a new platform
+
+policies.txt	- What are cpm policies and how to
+			implement them?
+
+testing.txt	- How to test CPM basic features
+
+user-guide.txt	- User Guide to CPM
+
+
+
+Mailing List
+------------
+TO BE DEFINED
+
+Links
+-----
+the project website:
+
+the GIT repository:
+* TO BE DEFINED
+
