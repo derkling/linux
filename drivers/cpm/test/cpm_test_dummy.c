@@ -38,7 +38,7 @@ MODULE_PARM_DESC(fmdc, "full-merge_dwrs_count - number of full-merging "
 
 static unsigned short cmdc = 1;
 module_param(cmdc, ushort, 0444);
-MODULE_PARM_DESC(cmdc, "cross-merge_dwrs_count - number of not-merging "
+MODULE_PARM_DESC(cmdc, "cross-merge_dwrs_count - number of cross-merging "
 		"DWRs for last device");
 
 static unsigned short nmdc = 1;
@@ -46,27 +46,6 @@ module_param(nmdc, ushort, 0444);
 MODULE_PARM_DESC(nmdc, "not-merge_dwrs_count - number of not-merging "
 		"DWRs for last device");
 
-/* define a platform ASM */
-#define CPM_PLATFORM_ASM(_name, _type, _mode, _comp, _min, _max)	\
-	{								\
-		.name = _name,						\
-		.type = _type,						\
-		.userw = _mode,						\
-		.comp = _comp,						\
-		.min = _min,						\
-		.max = _max,						\
-	}
-
-/* initialize ASMs of a DWR */
-#define DEV_DWR_ASM(_ASM_ID_, _LOWER_, _UPPER_, _TYPE_) \
-{							\
-	.id = _ASM_ID_,					\
-	.range = {					\
-		.lower = _LOWER_,			\
-		.upper = _UPPER_,			\
-		.type = _TYPE_,				\
-	},						\
-}
 
 static void pdev_release(struct device *dev);
 

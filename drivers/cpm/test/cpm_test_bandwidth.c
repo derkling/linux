@@ -22,38 +22,6 @@
 #include <linux/device.h>
 #include <linux/notifier.h>
 
-/* define a platform ASM */
-#define CPM_PLATFORM_ASM(_name, _type, _mode, _comp, _min, _max)	\
-	{								\
-		.name = _name,						\
-		.type = _type,						\
-		.userw = _mode,						\
-		.comp = _comp,						\
-		.min = _min,						\
-		.max = _max,						\
-	}
-
-/* initialize ASMs of a DWR */
-#define DEV_DWR_ASM(_ASM_ID_, _LOWER_, _UPPER_, _TYPE_) \
-{							\
-	.id = _ASM_ID_,					\
-	.range = {					\
-		.lower = _LOWER_,			\
-		.upper = _UPPER_,			\
-		.type = _TYPE_,				\
-	},						\
-}
-
-/* initialize a DWR (name and id) */
-#define DEV_DWR(_dev_, _id_, _name_, _asms_, _count_)		\
-{					\
-	.dev = _dev_,			\
-	.id = _id_,			\
-	.name = _name_,			\
-	.asms = _asms_,			\
-	.asms_count = _count_,		\
-}
-
 static void cpm_buddy_dev_release(struct device *dev);
 
 /*--- Platform ASMs ---*/
@@ -98,14 +66,10 @@ struct cpm_asm_range buddy1_dwr3_ranges[] = {
 };
 
 struct cpm_dev_dwr buddy1_dwrs_list[] = {
-	DEV_DWR(&buddy1.dev, 0, "dwr0", buddy1_dwr3_ranges,
-		ARRAY_SIZE(buddy1_dwr3_ranges)),
-	DEV_DWR(&buddy1.dev, 1, "dwr1", buddy1_dwr2_ranges,
-		ARRAY_SIZE(buddy1_dwr2_ranges)),
-	DEV_DWR(&buddy1.dev, 2, "dwr2", buddy1_dwr1_ranges,
-		ARRAY_SIZE(buddy1_dwr1_ranges)),
-	DEV_DWR(&buddy1.dev, 3, "dwr3", buddy1_dwr0_ranges,
-		ARRAY_SIZE(buddy1_dwr0_ranges)),
+	DEV_DWR(0, "dwr0", buddy1_dwr3_ranges),
+	DEV_DWR(1, "dwr1", buddy1_dwr2_ranges),
+	DEV_DWR(2, "dwr2", buddy1_dwr1_ranges),
+	DEV_DWR(3, "dwr3", buddy1_dwr0_ranges),
 };
 
 static struct cpm_dev_data buddy1_data = {

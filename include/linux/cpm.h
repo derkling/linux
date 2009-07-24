@@ -60,6 +60,20 @@ struct cpm_range {
 
 };
 
+/** CPM_PLATFORM_ASM - define a platform ASM
+ * This macro can be used to simplify the definition of platform specific
+ * ASMs. It requires the initialization of the mandatory parameters only.
+ */
+#define CPM_PLATFORM_ASM(_name, _type, _mode, _comp, _min, _max)	\
+	{								\
+		.name = _name,						\
+		.type = _type,						\
+		.userw = _mode,						\
+		.comp = _comp,						\
+		.min = _min,						\
+		.max = _max,						\
+	}
+
 /**
  * struct cpm_asm_range - an ASM range
  * @id: the ID of the ASM
@@ -73,6 +87,20 @@ struct cpm_asm_range {
 	struct kobj_attribute kattr;
 	char name[CPM_NAME_LEN];
 };
+
+/* DEV_DWR_ASM - initialize ASMs of a DWR
+ * This macro can be used to simplify the definition of DWR's ASMs.
+ * It requires the initialization of the mandatory members only.
+ * */
+#define DEV_DWR_ASM(_ASM_ID_, _LOWER_, _UPPER_, _TYPE_) \
+{							\
+	.id = _ASM_ID_,					\
+	.range = {					\
+		.lower = _LOWER_,			\
+		.upper = _UPPER_,			\
+		.type = _TYPE_,				\
+	},						\
+}
 
 /**
  * struct cpm_asm_opph -
@@ -144,6 +172,19 @@ struct cpm_dev_dwr {
 	struct attribute_group asms_group;
 
 };
+
+/* DEV_DWR - initialize a DWR (name and id)
+ * This macro can be used to simplify the definition of device DWRs.
+ * It requires the initialization of the mandatory members only.
+ */
+#define DEV_DWR(_id_, _name_, _asms_)		\
+{						\
+	.id = _id_,				\
+	.name = _name_,				\
+	.asms = _asms_,				\
+	.asms_count = ARRAY_SIZE(_asms_),	\
+}
+
 
 /**
  * struct cpm_fsc_dwr -
