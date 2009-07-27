@@ -1,0 +1,139 @@
+     Constrained Power Manager (CPM) framework in the Linux(TM) kernel
+
+
+		               L i n u x    C P M
+
+
+
+
+		    Patrick Bellasi  <derkling@gmail.com>
+
+
+
+   Constrained Power Manager (CPM) is a framework to support driver's
+   local power/performances optimization policies.
+   A mechanism to efficiently exchange information both between drivers
+   and user-space allows to identify optimal syste-wide configurations.
+   This is a nice method to find an agreement between resource providers
+   and consumers and can turn out on better tradeoff between system
+   QoS and power consumption.
+
+   This framework is an evolution of QoSPM. It extend the basic idea
+   of constraint management with an efficient mechanism for the
+   identification of optimal system-wide feasible configuration.
+
+
+Contents:
+-----------
+1.   Introduction
+2.   ASM
+2.1   Constraint
+2.2   Weight
+3.   FSC
+
+
+
+1. Introduction
+-----------------
+
+CPM sysfs interface can be found in kernel/cpm where two different directories
+are present, one contains ASM related informations and the other for FSC.
+A file called 'enable' is also present, which allows to enable or disable CPM
+from the user space, by writing respectively 1 or 0 into it.
+
+If CPM is disabled, devices, governors and policies can anyway register to the
+framework but, after that, CPM does not build any FSC list, does not manage any
+constraints assertion and does not search any FSC that corresponds to the
+optimal global system working point. In other words, if CPM is disabled, the
+system works without considering it in a best effort way.
+This possibility has been mainly provided for debugging purposes, but it can be
+useful also in normal circumstances, for example at system boot where a lot of
+devices register to CPM in very short period of time. Each of these device
+registrations would cause an FSC search that will be invalidated immediately
+after with an useless load of the system. So, in this situation it is better to
+keep CPM disabled until the system initialization is completed and then to
+enable it, computing the final list of FSC only once.
+
+The two directories export informations on the homonyms entities and allow to
+interact with them. Their structure is explained in the following paragraphs.
+
+2. ASM
+--------
+
+This directory contains a file for each ASM registered by platform code to the
+system. The file name report the name given to the ASM. Inside each file can be
+found a speciﬁc string with the structure:
+
+ID:NAME TYPE COMPOSITION MINMAX PERMISSION CONSTRAINT
+
+where:
+
+ID           - the id of the ASM;
+NAME         - the name of the ASM;
+TYPE         - L or G, if the ASM is respectively lower- or greater-is-better
+COMPOSITION  - A or R for respectively additive and restrictive composition
+MINMAX       - represents the minimum and maximum values for the ASM;
+PERMISSION   - can be w is the ASM is user writeable, - otherwise;
+CONSTRAINT   - shows the constraint currently asserted on the ASM. It can be
+		UnB if the ASM is unbounded, that is when no constraints has bet
+		asserted on it yet.
+
+ASMs directory also contains two others files:
+
+2.1 Constraint
+----------------
+
+This attribute can used to assert a new constraint on an ASM, by writing in it a
+string with the following format:
+
+ID:VALUE
+
+where:
+
+ID    - ID of the ASM on which we want to assert a constraint
+VALUE - a single numeric value that represents the constraint
+
+If we are considering a LiB ASM this value will be interpreted as an upper bound
+otherwise, in a GiB case, as a lower bound.
+
+2.2 Weight
+------------
+
+This attribute allows to bind a weight to an ASM, that will be considered by
+policies for FSC ordering. Usage of this file is similar to the previous one and
+required to write of a string with this format:
+
+ID:WEIGHT
+
+where:
+
+ID    - ID of the ASM on which we want to assign a weight
+VALUE - a single numeric value that represents the wanted weight
+
+
+3. FSC
+-------
+
+This directory contains a folder or each FSC found by the current governor.
+Inside each folder is exported an attributefor each ASM on which the
+corresponding FSC is deﬁned.
+
+Each of these attributes when read retur a string with this format:
+
+ID:NAME PERMISSION TYPE RANGE
+
+where:
+
+ID         - ID of the involved ASM
+NAME       - the corresponding name
+PERMISSION - w if the ASM is user-space (aka applications') writeable,
+		'-' otherwise
+TYPE       - the kind of range asserted by the FSC on the ASM. It can be R in
+		case of range, L of U for lower and upper bound
+RANGE      - the actual value of the range defined by the considered FSC on that
+		ASM
+
+This directory contain also a link named 'current' which points to the directory
+corresponding to the FSC that has beed identified to be the system-wide optimum
+working point of the system,according to the running policy.
+

@@ -1,0 +1,131 @@
+     Constrained Power Manager (CPM) framework in the Linux(TM) kernel
+
+
+		               L i n u x    C P M
+
+
+
+
+		    Patrick Bellasi  <derkling@gmail.com>
+
+
+
+   Constrained Power Manager (CPM) is a framework to support driver's
+   local power/performances optimization policies.
+   A mechanism to efficiently exchange information both between drivers
+   and user-space allows to identify optimal syste-wide configurations.
+   This is a nice method to find an agreement between resource providers
+   and consumers and can turn out on better tradeoff between system
+   QoS and power consumption.
+
+   This framework is an evolution of QoSPM. It extend the basic idea
+   of constraint management with an efficient mechanism for the
+   identification of optimal system-wide feasible configuration.
+
+
+Contents:
+---------
+1.   What Is a CPM Policy?
+
+2.   Available Policies
+2.1   Dummy
+2.2   Performance
+
+3.   The framework interface for policies
+
+
+
+1. What Is A CPM Policy?
+============================
+
+A CPM policy is in charge to define a weighting for each FSCs according to an
+appropriate objective function. This functionality can be implemented as a
+kernel module to give more ﬂexibility to the CPM framework.
+
+The general idea of CPM is to evaluate FSCs according some weights deﬁned on
+ASMs that compose them. Anyway, the compliance with this basic idea, does not
+imply the existence of an unique objective function. For example, a policy can
+consider only a subset of ASMs, e.g. only latencies, to optimize a specific
+aspect of the system. The need for different strategies can be, in this way,
+fulfilled through the implementation of different modules.
+
+Policies are also involved in the selection of a new FSC that is compatible with
+a new asserted constraint. The policy enabled is notified immediately after
+the selection of a new FSC and can evaluate it according to its own criteria.
+If the policy rejects the selected FSC the search process restart, seeking the
+next valid FSC. The registered policy is also notified after pre- and
+post-change steps during the FSC drivers' distributed agreement process.
+
+
+2. Available Policies
+=========================
+
+2.1 Dummy
+-----------
+
+The first policy that has been implemented is a very dummy example of policy and
+has been coded with the unique goal of testing framework mechanisms related to
+policy registration and communication. For this reason its functions do not
+apply any kind of optimization’s consideration during their work.
+
+This policy receives from the core the original list of FSCs and simple returns
+it in the same order. During FSC's selection, instead, this policy returns an
+agreement when invoked by the core, always allowing the process to continue.
+
+
+2.2 Performance
+-----------------
+
+This policy has been implemented with the goal of testing also the mechanism for
+computing the FSCs weight, used to implement the objective function.
+If this module is loaded, it is actually possible to drive the system in a more
+realistic way enhancing, for example, power saving vs. performances.
+
+This policy receives from the core the list of identified FSCs and then scans
+all the elements contained inside it. For each FSC, it considers the set of ASMs
+that are involved in the FSC and the corresponding weight that can be configured
+for each ASM using the core provided interface.
+This policy evaluates the objective function on each ASM and then, by summing
+all of the obtained values, it compute the weight for the entire FSC.
+A new FSCs list, ordered according to the computed results, is finally passed to
+the core using the provided interface.
+
+The callback handler is invoked by the core during the FSC selection and drivers
+distributed agreement process; it always returns an agreement to the core since
+this policy is still so dummy to don't implement any kind of run-time
+FSC changing optimizations.
+
+
+3. The Policy Interface in the CPM Core
+=============================================
+
+A new policy must register itself with the CPM core using 'cpm_register_policy'.
+This action is usually accomplished at policy initialization.
+
+The 'struct cpm_policy', which has to be passed to that function, must provide
+the following values:
+
+policy->name		-	A unique name for this policy
+policy->sort_fsc_list	-	The policy callback function for FSC ordering
+policy->ddp_handler	-	The policy callback function to be used during
+                                FSC selection to notify the policy
+
+The 'policy->sort_fsc_list' is called with a reference to the current
+FSC's list.
+
+The 'policy->ddp_handler' is called with a reference to the event that must be
+notified and with a reference that can be used to pass call specific, e.g. the
+selected FSC for approval.
+
+Up to now (but this is a limitation to be removed) only one policy can be
+registered to CPM framework at each point in time. So, if a policy is already
+registered the attempt of inserting a new one returns a failure.
+
+The CPM policy can call the CPM core, to return the new list of ordered
+FSCs, using the following function:
+
+int cpm_set_ordered_fsc_list(struct list head *fscpl_head)
+
+The computation of this list is, in fact, a non-blocking activity and so the
+policy is required to return to the core the results of its work when ready.
+

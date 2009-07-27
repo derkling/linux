@@ -1,0 +1,264 @@
+     Constrained Power Manager (CPM) framework in the Linux(TM) kernel
+
+
+		               L i n u x    C P M
+
+
+
+
+		    Patrick Bellasi  <derkling@gmail.com>
+
+
+
+   Constrained Power Manager (CPM) is a framework to support driver's
+   local power/performances optimization policies.
+   A mechanism to efficiently exchange information both between drivers
+   and user-space allows to identify optimal syste-wide configurations.
+   This is a nice method to find an agreement between resource providers
+   and consumers and can turn out on better tradeoff between system
+   QoS and power consumption.
+
+   This framework is an evolution of QoSPM. It extend the basic idea
+   of constraint management with an efficient mechanism for the
+   identification of optimal system-wide feasible configuration.
+
+Contents:
+---------
+1.  Introduction
+2.  CPM notifiers
+2.1  Constraint assertion policy validation
+2.2  FSC policy validation
+2.3  FSC's Distributed Agreement - Pre-Change
+2.4  FSC's Distributed Agreement - Do-Change
+2.5  FSC's Distributed Agreement - Post-Change
+3.  CPM core interface
+3.1  Initialization
+3.2  Run-Time
+
+1. Introduction
+==========================
+
+The CPM core code is located in drivers/cpm/cpm_core.c. This CPM code offers a
+standardized interface for the CPM platform specific support, device drivers,
+as well as governor and policies.
+
+cpm core is the main module of CPM framework and contains its entire logic.
+It can be primarily paired with the theoretical idea of Power Manager which,
+according to its definition, it is the only component that is known to all
+the others. This module keeps track of devices' DWRs and available FSCs.
+In other words, cpm core has the role of managing global informations and to
+control the workﬂow of the system when CPM’s routines are executing.
+
+To compute FSCs, and to weight them according to a proper objective function,
+the core interacts with the two other external modules, cpm governor and cpm
+policy that are described in separate files. The core also implements and
+exports functions that allow the platform code to setup system ASMs.
+Finally other functions allow instead drivers to register themselves to the
+core, by defining DWRs and to assert constraints on ASMs.
+
+A sysfs interface is also provided by the core. Through that, informations about
+system’s ASMs, and on the constraints that are currently asserted on them, are
+exported to user space. Moreover, using this interface new  constraints can be
+asserted by user-space applications too. This interface has been realized to
+provide a hook to the Execution Context, the model’s entity composed by
+applications, libraries and software buses that describe what it is happening in
+the system from the user point of view.
+
+
+2. CPM notifiers
+======================
+
+CPM notifiers conform to the standard kernel notifier interface.
+See linux/include/linux/notifier.h for details on notifiers.
+
+There is a single CPM notifiers to be used by policies and drivers.
+Each notifier can be called up to five times during an FSC transition to deliver
+different kind of events.
+
+2.1 Constraint assertion policy validation
+--------------------------------------------
+
+This event is notified to the current policy only, when a new constraint is
+asserted by either a driver or an application (initiating entity).
+The policy can decide if grant or deny authorization for this request.
+If a constraint is authorized by the policy the core will aggregate it with
+others and search for a possible new valid FSC with respect to the new
+requirements. If this new FSC cannot be found an error will be notified to the
+requester, otherwise a distributed agreement process (DDP) will be initiated to
+verify if all system components agree to move the system into this new
+configuration.
+
+2.2 FSC policy validation
+---------------------------
+
+This event is notified to the current policy only, when a new FSC has been
+identified and the policy is required to validate it.
+
+2.3 FSC's Distributed Agreement - Pre-Change
+--------------------------------------------
+
+Once a new valid FSC has been selected and validated by the policy this event is
+generated and all subscribed drivers notified about this new system-wide
+configuration request.
+Each driver has the possibility to not accept the new system configuration, in
+this case the FSC update is aborted and an error returned to the initiating
+entity. If instead a driver agree with the new configuration it must place
+itself on a "safe state" and be ready to move to the new FSC if all other
+drivers agree and a do-change notification is received.
+
+2.4 FSC's Distributed Agreement - Do-Change
+--------------------------------------------
+
+If all drivers agree with a new FSC this event is generated and they should move
+to this FSC. This event is also generated in case of not-agreement: this
+condition is reresented by a specific parameter associated to this callback.
+If this is the case the drivers can exit the "safe state" and continue as
+nothing happened.
+Anyway, each driver must return immediatly from this method and eventually
+performs required reconfiguration after.
+
+2.5 FSC's Distributed Agreement - Post-Change
+--------------------------------------------
+
+This event is generated once all drivers have returned by the Do-Change and
+require that each driver return this method only when they have completed the
+reconfiguration required by the do-change event.
+This will ensure that at the end of this notification chain call all devices
+have moved to the configuration corresponding to the current FSC.
+
+
+3. CPM core interface
+=========================
+
+CPM core exports different methods that implement all the framework
+functionalities. These are introduced in this section distinguishing between an
+initialization and a dynamic phase.
+
+3.1 Initialization
+--------------------
+
+The first group of methods are related to actions that must be executed after
+the boot process or after enabling CPM.
+
+These are:
+
+int cpm_register_platform_asms(struct cpm_platform_data *cpd)
+
+allows the platform code to register platform speciﬁc ASMs.  Through this
+function, ASMs are copied into the core. At each ASM the core appends a list for
+the constraints that will be asserted on it by devices and applications and a
+field to store the current level of QoS granted by the system on the ASM.
+The struct cpm_platform_data, which has to be passed to this function, must
+contain the following values:
+
+asms  -	vector of cpm_asm
+count -	number of the asms
+
+
+int cpm_register_governor(struct cpm_governor *cg)
+
+allows a new governor to register to the CPM core
+
+The 'struct cpm_governor' must provide the following values:
+
+governor->name           - A unique name for this governor
+governor->build_fsc_list - The governor callback function for FSC
+					building as parameter.
+
+Only one governor can be registered to CPM framework at each point in time. So,
+if a governor is already registered the attempt of inserting a new one returns a
+failure.
+
+
+int cpm_register_policy(struct cpm_policy *cp)
+
+allows to a new policy to register to the CPM core
+
+The 'struct cpm_policy' must provide the following values:
+
+policy->name          - A unique name for this policy
+policy->sort_fsc_list - The policy callback function for FSC ordering
+policy->ddp_handler   - The policy callback function to be used during
+                                FSC selection to notify the policy
+
+Only one policy can be registered to CPM framework at each point in time. So,
+if a policy is already registered the attempt of inserting a new one returns a
+failure.
+
+
+int cpm_register_device(struct device *dev, struct cpm_dev_data *data)
+
+allows to a device to register itself to CPM core and to be admitted to use the
+services provided by the framework and to interact with it.
+
+a device must provide to this function a reference to itself and must also fill
+the struct cpm_dev_data, that must contain the following values:
+
+notifier_callback - the callback to device to be used during FSC
+			selection
+dwrs              - reference to the dwrs' array of the device
+dwrs_count        - number of dwr of the device
+
+
+int cpm_set_fsc_list(struct list head *fsc_list)
+
+is used by a governor to return to the core the new FSCs that it has been built.
+After this call the core deallocates the old list and starts to use the new one.
+The governor must provide to this function a reference to the fsc list that it
+has built.
+
+
+cpm set_ordered_fsc list(struct list_head *fscpl head)
+
+is used by a policy in a similar way of the previous one, to set up the new
+FSCs’ ordered list that it has computed. The policy must provide a reference to
+the list of struct cpm_fsc_pointer that is used to get access to fsc in the
+order defined by the policy
+
+
+3.2 Run-Time
+--------------
+
+int cpm_update_constraint(struct device *dev, cpm_id asm_id,
+                                struct cpm_range * range);
+
+allows a device driver to assert a new constraint, or to update one that it has
+previously asserted on the same ASM. To use this function, a driver must specify
+a pointer to itself, that will be used to track assertion’s paternity, the id of
+the desired ASM and a range that represent the level of QoS that it required.
+The range must be specified by filling the 'struct cpm_asm_range':
+
+lower - lower bound for the required constraint
+upper - upper bound for the required constraint
+type  - range type for the required constraint can be:
+	0 unbounded
+	1 range
+	2 lower bound only
+	3 upper bound only
+
+After this call, the core executes different actions. First of all it checks,
+searching in the list that it has appended to each ASM, if the considered device
+has already required a constraint on the same parameter. If this occur, it
+substitute the existing with the new one. Then the core notifies for the ﬁrst
+time the registered policy about the raised request and, if this control entity
+returns its agreement, the core aggregates the required constraint to those that
+are currently asserted for that ASM. It can happen that after the aggregation
+the current FSC is no more valid: in this case the update process continues
+normally.
+
+A similar functionality is exposed to user-space via sysfs to allows
+applications assert constraints.
+
+int cpm_remove_constraint(struct device *dev, cpm id asm id,
+                                struct cpm range * range);
+
+allows a device to communicate that it is no more interested in a previously
+requested level of QoS. Parameters that are needed for this action are similar
+to the assertion’s case with the only difference that the speciﬁed range must
+correspond to a previously requested one. After this request the core undoes the
+previous aggregation and, if this operation invalidates the current FSC a new
+distributed agreement process is triggered.
+
+A similar functionality is exposed to user-space via sysfs to allows
+applications remove previously asserted constraints.
+
