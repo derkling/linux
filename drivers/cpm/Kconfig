@@ -1,0 +1,112 @@
+#
+# CPM support
+#
+
+
+menuconfig CPM
+	bool "CPM support"
+	depends on EXPERIMENTAL
+	default n
+	help
+	  CPM is a framework for Constrained Power Management.
+	  This framework is an improvement over QoSPM and DPM, providing
+	  support for feasible system configuration (FSC) identification,
+	  and selection according to a choosed optimization policy and
+	  run-time system constraints asserted by both kernel- and
+	  user-land.
+
+	  For details, take a look at <file:Documentation/cpu-freq>.
+
+	  If in doubt, say N.
+
+	  
+if CPM
+
+comment "Governors"
+
+config CPM_GOV_EXHAUSTIVE
+        tristate "\"Exhaustive\" governor"
+	default m
+        help
+          The exhaustive is a CPM governor which provide FSC identification
+	  using an exhaustive search among working regions (DWR) defined by
+	  drivers registered to the framework
+
+	  If in doubt, say M.
+
+#choice
+#	prompt "Default Governor"
+#	default CPM_DEFAULT_GOVERNOR
+#	help
+#	  This option sets which CPM governor shall be loaded at
+#	  startup. If in doubt, select 'performance'.
+#
+#config CPM_DEFAULT_GOV_EXHAUSTIVE
+#	bool "exhaustive"
+#	select CPM_GOV_EXHAUSTIVE
+#	help
+#	  Use the 'exhaustive' governor as default.
+#
+#endchoice
+
+
+comment "Policies"
+
+config CPM_POLICY_SAME
+	tristate "\"Dummy\" policy"
+	depends on CPM_TESTING 
+	default n
+	help
+	  The "dummy" policy is a CPM policy used for testing
+	  purpose only.
+
+config CPM_POLICY_PERF
+        tristate "\"Performance\" policy"
+        help
+          The "performance" policy is a CPM policy which allows to define
+	  an optimization strategy by associating a weight to each system
+	  metric (ASM) and using those values to identify a partial
+	  ordering on FSC which is optimal with respect to the defined
+	  strategy.
+
+#choice
+#	prompt "Default policy"
+#	default CPM_DEFAULT_POLICY
+#	help
+#	  This option sets which CPM policy shall be loaded at
+#	  startup. If in doubt, select 'performance'.
+#
+#config CPM_DEFAULT_POL_PERF
+#	bool "performance"
+#	select CPM_POLICY_PERF
+#	help
+#	  Use the 'performance' policy as default.
+#
+#endchoice
+
+
+menuconfig CPM_DEBUG
+	bool "Debug Support"
+	default n
+	help
+	  Say Y here to enable CPM debugging code
+
+if CPM_DEBUG
+
+config CPM_GOVERNOR_DEBUG
+	bool "Governors Debugging"
+	default n
+	help
+	  Say Y here to enable CPM Governors debuggin code
+
+config CPM_POLICY_DEBUG
+	bool "Policies Debugging"
+	default n
+	help
+	  Say Y here to enable CPM policies debugging code
+
+endif
+
+source "drivers/cpm/test/Kconfig"
+
+endif # CPM
