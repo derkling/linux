@@ -273,6 +273,20 @@ static int __cpm_remove_constraint(void *entity, u8 type, u8 swm_id);
  *                     CORE DATA                                     *
  *********************************************************************/
 
+/* Abstract System-Wide Metrics (exposed to user-space) */
+
+static struct __initdata cpm_swm cpm_asm[] = {
+	/* The maximum DAM latency [us] */
+	CPM_PLATFORM_SWM("CPM_DMA_LATENCY", CPM_TYPE_LIB, CPM_USER_RW,
+			CPM_COMPOSITION_RESTRICTIVE, 0, ~0),
+	/* The maximum network lantecy [us] */
+	CPM_PLATFORM_SWM("CPM_NETWORK_LATENCY", CPM_TYPE_LIB, CPM_USER_RW,
+			CPM_COMPOSITION_RESTRICTIVE, 0, ~0),
+	/* The network throughput [Mbps]*/
+	CPM_PLATFORM_SWM("CPM_NETWORK_THROUGHPUT", CPM_TYPE_GIB, CPM_USER_RW,
+			CPM_COMPOSITION_ADDITIVE, 0, 100000),
+};
+
 /* cpm_sysfs_ops - a generic sysfs ops dispatcher */
 struct sysfs_ops cpm_sysfs_ops;
 
@@ -666,9 +680,9 @@ static ssize_t __cpm_entity_name(void *ptr, u8 type, char *buf, ssize_t count)
  * @cpd: the array of platform SWMs to register
  *
  */
-int cpm_register_platform(struct cpm_platform_data *cpd)
+int __init cpm_register_platform(struct cpm_platform_data *cpd)
 {
-	int i, result;
+	int i, swm_count, result;
 	struct cpm_swm *pswm;
 
 	if (!cpd) {
@@ -685,28 +699,42 @@ int cpm_register_platform(struct cpm_platform_data *cpd)
 		goto cpm_plat_swm_exist;
 	}
 
-	plat.swms = kzalloc((cpd->count) * sizeof(struct cpm_swm_core),
-				GFP_KERNEL);
+	/* Allocate a unique vector to host ASM+PSM */
+	swm_count = CPM_ASM_COUNT + cpd->count;
+	plat.swms = kzalloc( swm_count * sizeof(struct cpm_swm_core),
+			GFP_KERNEL);
 	if (!plat.swms) {
 		eprintk("out-of-mem on platform data allocation\n");
 		result = -ENOMEM;
 		goto cpm_platform_swm_nomem;
 	}
 
+	/* Copy ASM metrics */
+	for (i = 0; i < CPM_ASM_COUNT; i++) {
+		plat.swms[i].id = i;
+		plat.swms[i].info = cpm_asm[i];
+		plat.swms[i].cur_range.lower = cpm_asm[i].min;
+		plat.swms[i].cur_range.upper = cpm_asm[i].max;
+		INIT_LIST_HEAD(&(plat.swms[i].constraints));
+	}
+
+	/* Adding PSM metrics */
 	pswm = cpd->swms;
 	for (i = 0; i < cpd->count; i++) {
-		plat.swms[i].id = i;
+		plat.swms[i].id = CPM_ASM_COUNT+i;
 		plat.swms[i].info = (*pswm);
 		plat.swms[i].cur_range.lower = pswm->min;
 		plat.swms[i].cur_range.upper = pswm->max;
 		INIT_LIST_HEAD(&(plat.swms[i].constraints));
 		pswm++;
 	}
-	plat.count = i;
+	plat.count = CPM_ASM_COUNT+i;
 
 	mutex_unlock(&plat.mux);
 
-	dprintk("platform data registered, %u SWM defined\n", plat.count);
+	dprintk("platform data registered, %u SWM defined, "
+			"(%u ASMs, %u PSMs)\n",
+			plat.count, CPM_ASM_COUNT, i);
 
 	cpm_sysfs_core_swms_init();
 

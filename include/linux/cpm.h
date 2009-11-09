@@ -36,6 +36,24 @@
 /* The minimum SWM weight */
 #define CPM_SWM_MIN_WEIGHT	-1000000
 
+
+/*********************************************************************
+ *                      CPM USER-SPACE INTERFACE                     *
+ *********************************************************************/
+
+/** enum cpm_asm - a set of Abstract metrics
+ * This enum define the set of pltaform independent metrics which are exposed
+ * to user-space applications.
+ * NOTE these ASM must have a corresponding definitions in the
+ * cpm_core.c:cpm_asm data structure
+ */
+enum cpm_asm {
+	CPM_ASM_CPU_DMA_LATENCY,
+	CPM_ASM_NETWORK_LATENCY,
+	CPM_ASM_NETWORK_THROUGHPUT,
+	CPM_ASM_COUNT			/* This MUST be the last entry */
+};
+
 /*********************************************************************
  *                      CPM PLATFORM INTERFACE                       *
  *********************************************************************/
@@ -234,7 +252,7 @@ struct cpm_platform_data {
 
 };
 
-int cpm_register_platform(struct cpm_platform_data *pdata);
+extern int __init cpm_register_platform(struct cpm_platform_data *pdata);
 
 /*********************************************************************
  *                          CPM GOVERNORS                            *
