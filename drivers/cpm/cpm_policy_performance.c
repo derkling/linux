@@ -72,12 +72,12 @@ static int performance_ordering(void)
 	/*iterate for each fsc */
 	list_for_each_entry(fscs, original_fscs, node) {
 		tot_weight = 0;
-		/*evaluate weight of each asms */
+		/*evaluate weight of each swms */
 		dprintk("evaluating FSC:%2hu\n", fscs->id);
-		dprintk("#asm:%3hu\n", fscs->asms_count);
-		for (i = 0; i < fscs->asms_count; i++) {
-			err = cpm_weight_range(&(fscs->asms[i].range),
-					       fscs->asms[i].id, &weight);
+		dprintk("#swm:%3hu\n", fscs->swms_count);
+		for (i = 0; i < fscs->swms_count; i++) {
+			err = cpm_weight_range(&(fscs->swms[i].range),
+					       fscs->swms[i].id, &weight);
 			if (err) {
 				eprintk("error on FSC weight evaluation\n");
 				result = -EINVAL;
@@ -85,7 +85,7 @@ static int performance_ordering(void)
 			} else {
 				tot_weight += weight;
 				dprintk("fsc:%2hu id:%2hu weight:%3d\n",
-					fscs->id, fscs->asms[i].id, weight);
+					fscs->id, fscs->swms[i].id, weight);
 			}
 		}
 		dprintk("fsc:%2hu TOT weight:%3d\n", fscs->id, tot_weight);

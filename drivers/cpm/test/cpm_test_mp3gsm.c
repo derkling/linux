@@ -24,19 +24,19 @@
 
 static void cpm_buddy_dev_release(struct device *dev);
 
-/*--- Platform ASMs ---*/
-struct cpm_asm cpm_platform_asm[] = {
+/*--- Platform SWMs ---*/
+struct cpm_swm cpm_platform_swm[] = {
 	[0] =
-	    CPM_PLATFORM_ASM("THROUGHPUT", CPM_TYPE_GIB, CPM_USER_RW,
+	    CPM_PLATFORM_SWM("THROUGHPUT", CPM_TYPE_GIB, CPM_USER_RW,
 			     CPM_COMPOSITION_ADDITIVE, 0, 200),
 	[1] =
-	    CPM_PLATFORM_ASM("LATENCY", CPM_TYPE_LIB, CPM_USER_RW,
+	    CPM_PLATFORM_SWM("LATENCY", CPM_TYPE_LIB, CPM_USER_RW,
 			     CPM_COMPOSITION_RESTRICTIVE, 0, 400000),
 };
 
 struct cpm_platform_data cpm_platform_data = {
-	.asms = cpm_platform_asm,
-	.count = ARRAY_SIZE(cpm_platform_asm),
+	.swms = cpm_platform_swm,
+	.count = ARRAY_SIZE(cpm_platform_swm),
 };
 
 /*--- Platform devices ---*/
@@ -60,52 +60,52 @@ static int cpm_buddy_callback(struct notifier_block *nb, unsigned long step,
 		       void *data);
 
 /*--- DWRs definitions ---*/
-struct cpm_asm_range buddy1_dwr0_ranges[] = {
-	DEV_DWR_ASM(0, 0, 10, CPM_ASM_TYPE_RANGE),
-	DEV_DWR_ASM(1, 0, 8000, CPM_ASM_TYPE_RANGE),
+struct cpm_swm_range buddy1_dwr0_ranges[] = {
+	DEV_DWR_SWM(0, 0, 10, CPM_SWM_TYPE_RANGE),
+	DEV_DWR_SWM(1, 0, 8000, CPM_SWM_TYPE_RANGE),
 };
 
-struct cpm_asm_range buddy1_dwr1_ranges[] = {
-	DEV_DWR_ASM(0, 0, 10, CPM_ASM_TYPE_RANGE),
-	DEV_DWR_ASM(1, 9000, 24000, CPM_ASM_TYPE_RANGE),
+struct cpm_swm_range buddy1_dwr1_ranges[] = {
+	DEV_DWR_SWM(0, 0, 10, CPM_SWM_TYPE_RANGE),
+	DEV_DWR_SWM(1, 9000, 24000, CPM_SWM_TYPE_RANGE),
 };
 
-struct cpm_asm_range buddy1_dwr2_ranges[] = {
-	DEV_DWR_ASM(0, 11, 180, CPM_ASM_TYPE_RANGE),
-	DEV_DWR_ASM(1, 0, 185000, CPM_ASM_TYPE_RANGE),
+struct cpm_swm_range buddy1_dwr2_ranges[] = {
+	DEV_DWR_SWM(0, 11, 180, CPM_SWM_TYPE_RANGE),
+	DEV_DWR_SWM(1, 0, 185000, CPM_SWM_TYPE_RANGE),
 };
 
-struct cpm_asm_range buddy1_dwr3_ranges[] = {
-	DEV_DWR_ASM(0, 11, 180, CPM_ASM_TYPE_RANGE),
-	DEV_DWR_ASM(1, 186000, 200000, CPM_ASM_TYPE_LBOUND),
+struct cpm_swm_range buddy1_dwr3_ranges[] = {
+	DEV_DWR_SWM(0, 11, 180, CPM_SWM_TYPE_RANGE),
+	DEV_DWR_SWM(1, 186000, 200000, CPM_SWM_TYPE_LBOUND),
 };
 
-struct cpm_asm_range buddy2_dwr0_ranges[] = {
-	DEV_DWR_ASM(1, 0, 19, CPM_ASM_TYPE_RANGE),
+struct cpm_swm_range buddy2_dwr0_ranges[] = {
+	DEV_DWR_SWM(1, 0, 19, CPM_SWM_TYPE_RANGE),
 };
 
-struct cpm_asm_range buddy2_dwr1_ranges[] = {
-	DEV_DWR_ASM(1, 20, 99, CPM_ASM_TYPE_RANGE),
+struct cpm_swm_range buddy2_dwr1_ranges[] = {
+	DEV_DWR_SWM(1, 20, 99, CPM_SWM_TYPE_RANGE),
 };
 
-struct cpm_asm_range buddy2_dwr2_ranges[] = {
-	DEV_DWR_ASM(1, 100, 3299, CPM_ASM_TYPE_RANGE),
+struct cpm_swm_range buddy2_dwr2_ranges[] = {
+	DEV_DWR_SWM(1, 100, 3299, CPM_SWM_TYPE_RANGE),
 };
 
-struct cpm_asm_range buddy2_dwr3_ranges[] = {
-	DEV_DWR_ASM(1, 3300, 9999, CPM_ASM_TYPE_RANGE),
+struct cpm_swm_range buddy2_dwr3_ranges[] = {
+	DEV_DWR_SWM(1, 3300, 9999, CPM_SWM_TYPE_RANGE),
 };
 
-struct cpm_asm_range buddy2_dwr4_ranges[] = {
-	DEV_DWR_ASM(1, 10000, 11499, CPM_ASM_TYPE_RANGE),
+struct cpm_swm_range buddy2_dwr4_ranges[] = {
+	DEV_DWR_SWM(1, 10000, 11499, CPM_SWM_TYPE_RANGE),
 };
 
-struct cpm_asm_range buddy2_dwr5_ranges[] = {
-	DEV_DWR_ASM(1, 11500, 19999, CPM_ASM_TYPE_RANGE),
+struct cpm_swm_range buddy2_dwr5_ranges[] = {
+	DEV_DWR_SWM(1, 11500, 19999, CPM_SWM_TYPE_RANGE),
 };
 
-struct cpm_asm_range buddy2_dwr6_ranges[] = {
-	DEV_DWR_ASM(1, 20000, 200000, CPM_ASM_TYPE_LBOUND),
+struct cpm_swm_range buddy2_dwr6_ranges[] = {
+	DEV_DWR_SWM(1, 20000, 200000, CPM_SWM_TYPE_LBOUND),
 };
 
 struct cpm_dev_dwr buddy1_dwrs_list[] = {
@@ -210,7 +210,7 @@ static int __init cpm_buddy_init_platform(void)
 
 	pr_info("cpm_buddy: registering platform data...\n");
 
-	cpm_register_platform_asms(&cpm_platform_data);
+	cpm_register_platform(&cpm_platform_data);
 
 	ret = platform_device_register(&buddy1);
 	if (unlikely(ret < 0)) {

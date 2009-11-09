@@ -31,10 +31,10 @@
 /* The maximum number of DWR each device can have */
 #define CPM_DEV_MAX_DWR	16
 
-/* The maximum ASM weight */
-#define CPM_ASM_MAX_WEIGHT	 1000000
-/* The minimum ASM weight */
-#define CPM_ASM_MIN_WEIGHT	-1000000
+/* The maximum SWM weight */
+#define CPM_SWM_MAX_WEIGHT	 1000000
+/* The minimum SWM weight */
+#define CPM_SWM_MIN_WEIGHT	-1000000
 
 /*********************************************************************
  *                      CPM PLATFORM INTERFACE                       *
@@ -50,21 +50,21 @@
 struct cpm_range {
 	u32 lower;
 	u32 upper;
-#define CPM_ASM_TYPE_UNBOUNDED		0	/* no bounds defined         */
-#define CPM_ASM_TYPE_RANGE		1	/* upper and lover bound     */
+#define CPM_SWM_TYPE_UNBOUNDED		0	/* no bounds defined         */
+#define CPM_SWM_TYPE_RANGE		1	/* upper and lover bound     */
 	/*  defined (if lower==upper */
 	/*  than is a single value)  */
-#define CPM_ASM_TYPE_LBOUND		2	/* lower bound only */
-#define CPM_ASM_TYPE_UBOUND		3	/* upper bound only */
+#define CPM_SWM_TYPE_LBOUND		2	/* lower bound only */
+#define CPM_SWM_TYPE_UBOUND		3	/* upper bound only */
 	u8 type:2;
 
 };
 
-/** CPM_PLATFORM_ASM - define a platform ASM
+/** CPM_PLATFORM_SWM - define a platform SWM
  * This macro can be used to simplify the definition of platform specific
- * ASMs. It requires the initialization of the mandatory parameters only.
+ * SWMs. It requires the initialization of the mandatory parameters only.
  */
-#define CPM_PLATFORM_ASM(_name, _type, _mode, _comp, _min, _max)	\
+#define CPM_PLATFORM_SWM(_name, _type, _mode, _comp, _min, _max)	\
 	{								\
 		.name = _name,						\
 		.type = _type,						\
@@ -75,26 +75,26 @@ struct cpm_range {
 	}
 
 /**
- * struct cpm_asm_range - an ASM range
- * @id: the ID of the ASM
- * @range: the range in the corresponding ASM
- * @kattr: the sysfs attribute to access this ASM data
+ * struct cpm_swm_range - an SWM range
+ * @id: the ID of the SWM
+ * @range: the range in the corresponding SWM
+ * @kattr: the sysfs attribute to access this SWM data
  * @name: the attribute name
  */
-struct cpm_asm_range {
+struct cpm_swm_range {
 	u8 id;
 	struct cpm_range range;
 	struct kobj_attribute kattr;
 	char name[CPM_NAME_LEN];
 };
 
-/* DEV_DWR_ASM - initialize ASMs of a DWR
- * This macro can be used to simplify the definition of DWR's ASMs.
+/* DEV_DWR_SWM - initialize SWMs of a DWR
+ * This macro can be used to simplify the definition of DWR's SWMs.
  * It requires the initialization of the mandatory members only.
  * */
-#define DEV_DWR_ASM(_ASM_ID_, _LOWER_, _UPPER_, _TYPE_) \
+#define DEV_DWR_SWM(_SWM_ID_, _LOWER_, _UPPER_, _TYPE_) \
 {							\
-	.id = _ASM_ID_,					\
+	.id = _SWM_ID_,					\
 	.range = {					\
 		.lower = _LOWER_,			\
 		.upper = _UPPER_,			\
@@ -103,32 +103,32 @@ struct cpm_asm_range {
 }
 
 /**
- * struct cpm_asm_opph -
+ * struct cpm_swm_opph -
  * @value:
  * @range:
  * @dt_benefit:
  *
  */
-struct cpm_asm_opph {
+struct cpm_swm_opph {
 	u32 value;		/* NOTE è ridondante */
 	struct cpm_range *range;
 	struct timespec dt_benefit;
 };
 
 /**
- * struct cpm_asm -
+ * struct cpm_swm -
  * @name:
  * @data: governor specific data
  * @type:
  * @userw: user writable
  * @comp:
- * @weight: the policy defined weight for this ASM
- * 	[CPM_ASM_MIN_WEIGHT:CPM_ASM_MAX_WEIGHT]
+ * @weight: the policy defined weight for this SWM
+ * 	[CPM_SWM_MIN_WEIGHT:CPM_SWM_MAX_WEIGHT]
  * @min: min feasible value
  * @max: max feasible value
  *
  */
-struct cpm_asm {
+struct cpm_swm {
 	char name[CPM_NAME_LEN];
 	void *data;
 #define CPM_TYPE_LIB	0
@@ -150,12 +150,12 @@ struct cpm_asm {
  * @dev: the device to which this DWR's belongs to
  * @id: ID for the device's DWR
  * @name: name of a region
- * @asms: ASM's array
- * @asms_count: number of ASM in the 'asms' array
+ * @swms: SWM's array
+ * @swms_count: number of SWM in the 'swms' array
  * @gov_data: governor specific data
  * @pol_data: policy specific data
  * @kattr: the sysfs attribute to access this DWR data
- * @asms_group: the ASMs of this device
+ * @swms_group: the SWMs of this device
 *
  * A device DWR
  */
@@ -163,13 +163,13 @@ struct cpm_dev_dwr {
 	struct device *dev;
 	u8 id;
 	char name[CPM_NAME_LEN];
-	struct cpm_asm_range *asms;
-	u8 asms_count;
+	struct cpm_swm_range *swms;
+	u8 swms_count;
 	void *gov_data;
 	void *pol_data;
 	/* private */
 	struct kobj_attribute kattr;
-	struct attribute_group asms_group;
+	struct attribute_group swms_group;
 
 };
 
@@ -177,12 +177,12 @@ struct cpm_dev_dwr {
  * This macro can be used to simplify the definition of device DWRs.
  * It requires the initialization of the mandatory members only.
  */
-#define DEV_DWR(_id_, _name_, _asms_)		\
+#define DEV_DWR(_id_, _name_, _swms_)		\
 {						\
 	.id = _id_,				\
 	.name = _name_,				\
-	.asms = _asms_,				\
-	.asms_count = ARRAY_SIZE(_asms_),	\
+	.swms = _swms_,				\
+	.swms_count = ARRAY_SIZE(_swms_),	\
 }
 
 
@@ -203,8 +203,8 @@ struct cpm_fsc_dwr {
 /**
  * struct cpm_fsc - a system FSC
  * @id: ID for the system's FSC
- * @asms: ASM's array
- * @asms_count: number of ASM in the 'asms' array
+ * @swms: SWM's array
+ * @swms_count: number of SWM in the 'swms' array
  * @dwrs: array of DWRs that maps to this FSC
  * @dwrs_count: the number of DWRs in the 'dwrs' array
  * @gov_data: governor specific data
@@ -214,8 +214,8 @@ struct cpm_fsc_dwr {
  */
 struct cpm_fsc {
 	u16 id;
-	struct cpm_asm_range *asms;
-	u8 asms_count;
+	struct cpm_swm_range *swms;
+	u8 swms_count;
 	struct cpm_fsc_dwr *dwrs;
 	u8 dwrs_count;
 	void *gov_data;
@@ -225,16 +225,16 @@ struct cpm_fsc {
 
 /**
  * struct cpm_platform_data -
- * @asms: the array of ASM defined by platform code
- * @count: total number of platform ASMs
+ * @swms: the array of SWM defined by platform code
+ * @count: total number of platform SWMs
  */
 struct cpm_platform_data {
-	struct cpm_asm *asms;
+	struct cpm_swm *swms;
 	u8 count;
 
 };
 
-int cpm_register_platform_asms(struct cpm_platform_data *asm_data);
+int cpm_register_platform(struct cpm_platform_data *pdata);
 
 /*********************************************************************
  *                          CPM GOVERNORS                            *
@@ -303,9 +303,9 @@ int cpm_set_fsc_list(struct list_head *fsc_list);
 int cpm_merge_range(struct cpm_range *first, struct cpm_range *second);
 
 /*
- * Compute the weight of a range on the specified ASM
+ * Compute the weight of a range on the specified SWM
  */
-int cpm_weight_range(struct cpm_range *range, u8 asm_id, s32 * weight);
+int cpm_weight_range(struct cpm_range *range, u8 swm_id, s32 * weight);
 
 /*********************************************************************
  *                          CPM POLICIES                             *
@@ -457,13 +457,13 @@ int cpm_unregister_device(struct device *dev);
 /**
  * cpm_update_constraint() -
  */
-int cpm_update_constraint(struct device *dev, u8 asm_id,
+int cpm_update_constraint(struct device *dev, u8 swm_id,
 			  struct cpm_range *range);
 
 /**
  * cpm_remove_constraint() -
  */
-int cpm_remove_constraint(struct device *dev, u8 asm_id);
+int cpm_remove_constraint(struct device *dev, u8 swm_id);
 
 /**
  * cpm_fsc_to_om() -

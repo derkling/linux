@@ -48,25 +48,25 @@ MODULE_PARM_DESC(nmdc, "not-merge_dwrs_count - number of not-merging "
 
 static void pdev_release(struct device *dev);
 
-/*--- Platform ASMs ---*/
-struct cpm_asm cpm_platform_asm[] = {
+/*--- Platform SWMs ---*/
+struct cpm_swm cpm_platform_swm[] = {
 	[0] =
-	    CPM_PLATFORM_ASM("ASM0", CPM_TYPE_LIB, CPM_USER_RW,
+	    CPM_PLATFORM_SWM("SWM0", CPM_TYPE_LIB, CPM_USER_RW,
 			     CPM_COMPOSITION_RESTRICTIVE, 0, 100),
 	[1] =
-	    CPM_PLATFORM_ASM("ASM1", CPM_TYPE_LIB, CPM_USER_RW,
+	    CPM_PLATFORM_SWM("SWM1", CPM_TYPE_LIB, CPM_USER_RW,
 			     CPM_COMPOSITION_RESTRICTIVE, 0, 50),
 	[2] =
-	    CPM_PLATFORM_ASM("ASM2", CPM_TYPE_GIB, CPM_USER_RW,
+	    CPM_PLATFORM_SWM("SWM2", CPM_TYPE_GIB, CPM_USER_RW,
 			     CPM_COMPOSITION_ADDITIVE, 0, 40),
 	[3] =
-	    CPM_PLATFORM_ASM("ASM3", CPM_TYPE_GIB, CPM_USER_RO,
+	    CPM_PLATFORM_SWM("SWM3", CPM_TYPE_GIB, CPM_USER_RO,
 			     CPM_COMPOSITION_ADDITIVE, 0, 50),
 };
 
 struct cpm_platform_data cpm_platform_data = {
-	.asms = cpm_platform_asm,
-	.count = ARRAY_SIZE(cpm_platform_asm),
+	.swms = cpm_platform_swm,
+	.count = ARRAY_SIZE(cpm_platform_swm),
 };
 
 /*--- Platform devices ---*/
@@ -77,9 +77,9 @@ static int govtest_callback(struct notifier_block *nb,
 		unsigned long step, void *data);
 
 /*--- Upper-devices DWRs definitions ---*/
-struct cpm_asm_range upperdev_dwr_ranges[] = {
-	DEV_DWR_ASM(0, 5, 30, CPM_ASM_TYPE_RANGE),
-	DEV_DWR_ASM(1, 5, 25, CPM_ASM_TYPE_RANGE),
+struct cpm_swm_range upperdev_dwr_ranges[] = {
+	DEV_DWR_SWM(0, 5, 30, CPM_SWM_TYPE_RANGE),
+	DEV_DWR_SWM(1, 5, 25, CPM_SWM_TYPE_RANGE),
 };
 
 /* The list of upper-devs DWRs */
@@ -89,19 +89,19 @@ static struct cpm_dev_data upperdev_data = {
 };
 
 /*--- Lower-device DWRs definitions ---*/
-struct cpm_asm_range lowerdev_dwr0_ranges[] = {
-	DEV_DWR_ASM(0, 10, 20, CPM_ASM_TYPE_RANGE),
-	DEV_DWR_ASM(1, 10, 15, CPM_ASM_TYPE_RANGE),
+struct cpm_swm_range lowerdev_dwr0_ranges[] = {
+	DEV_DWR_SWM(0, 10, 20, CPM_SWM_TYPE_RANGE),
+	DEV_DWR_SWM(1, 10, 15, CPM_SWM_TYPE_RANGE),
 };
 
-struct cpm_asm_range lowerdev_dwr1_ranges[] = {
-	DEV_DWR_ASM(0, 25, 35, CPM_ASM_TYPE_RANGE),
-	DEV_DWR_ASM(1, 15, 20, CPM_ASM_TYPE_RANGE),
+struct cpm_swm_range lowerdev_dwr1_ranges[] = {
+	DEV_DWR_SWM(0, 25, 35, CPM_SWM_TYPE_RANGE),
+	DEV_DWR_SWM(1, 15, 20, CPM_SWM_TYPE_RANGE),
 };
 
-struct cpm_asm_range lowerdev_dwr2_ranges[] = {
-	DEV_DWR_ASM(0, 40, 50, CPM_ASM_TYPE_RANGE),
-	DEV_DWR_ASM(1, 20, 25, CPM_ASM_TYPE_RANGE),
+struct cpm_swm_range lowerdev_dwr2_ranges[] = {
+	DEV_DWR_SWM(0, 40, 50, CPM_SWM_TYPE_RANGE),
+	DEV_DWR_SWM(1, 20, 25, CPM_SWM_TYPE_RANGE),
 };
 
 /* The list of lower-devs DWRs */
@@ -237,9 +237,9 @@ static int __init init_platform(void)
 	pd->id = 0;
 	pd->dev.release = pdev_release;
 
-	/* register platform ASMs */
-	cpm_register_platform_asms(&cpm_platform_data);
-	pr_info("cpm_govtest: %d platform ASMs registered\n",
+	/* register platform SWMs */
+	cpm_register_platform(&cpm_platform_data);
+	pr_info("cpm_govtest: %d platform SWMs registered\n",
 		cpm_platform_data.count);
 
 	/* register platform devices */
@@ -294,8 +294,8 @@ static int __init init_cpm(void)
 	for (i = 0; i < tw; udl++, i++) {
 		udl->id = i;
 		snprintf(udl->name, CPM_NAME_LEN, "uDWR%02d", i);
-		udl->asms = upperdev_dwr_ranges;
-		udl->asms_count = 2;
+		udl->swms = upperdev_dwr_ranges;
+		udl->swms_count = 2;
 	}
 	upperdev_data.dwrs = upperdev_dwrs_list;
 	upperdev_data.dwrs_count = i;
@@ -331,10 +331,10 @@ static int __init init_cpm(void)
 	for (i = 0; i < (fmdc + cmdc + nmdc); ldl++, i++) {
 		ldl->id = i;
 		snprintf(ldl->name, CPM_NAME_LEN, "lDWR%02d", i);
-		ldl->asms = i < fmdc ? lowerdev_dwr0_ranges :
+		ldl->swms = i < fmdc ? lowerdev_dwr0_ranges :
 		    i < (fmdc + cmdc) ? lowerdev_dwr1_ranges :
 		    lowerdev_dwr2_ranges;
-		ldl->asms_count = 2;
+		ldl->swms_count = 2;
 	}
 	lowerdev_data.dwrs = lowerdev_dwrs_list;
 	lowerdev_data.dwrs_count = i;

@@ -37,14 +37,14 @@
 #include <linux/cpm.h>
 
 /**
- * struct cpm_gov_asm_range - for ranges of candidate FSCs during search
- * @normal_range: candidate range for an asm
+ * struct cpm_gov_swm_range - for ranges of candidate FSCs during search
+ * @normal_range: candidate range for an swm
  * @node: next range of this candidate fsc
- * @old: previous candidate range for asm
+ * @old: previous candidate range for swm
  * @dev: refer to device from which range derives
  */
-struct cpm_gov_asm_range {
-	struct cpm_asm_range normal_range;
+struct cpm_gov_swm_range {
+	struct cpm_swm_range normal_range;
 	struct list_head node;
 	struct list_head old;
 	struct cpm_dev *dev;
@@ -53,7 +53,7 @@ struct cpm_gov_asm_range {
 /* The number of cpm_dev */
 static u8 dev_tot;
 
-/* The head of cpm_gov_asm_list */
+/* The head of cpm_gov_swm_list */
 static LIST_HEAD(l_ranges);
 
 /* total ranges of candidate FSC */
@@ -149,22 +149,22 @@ int build_fsc_recurs(struct list_head *l_dev, u8 ndev)
 }
 
 /**
- * copy_dwr_to_gov_ranges - copies asms' ranges of a dwr to candidate's ranges
+ * copy_dwr_to_gov_ranges - copies swms' ranges of a dwr to candidate's ranges
  * @dwr: dwr that is the ranges' source
  * @dev: device to which the dwr belong to
  */
 static int copy_dwr_to_gov_ranges(struct cpm_dev_dwr dwr, struct cpm_dev *dev)
 {
 	u8 irgs = 0;
-	struct cpm_gov_asm_range *new_rg;
+	struct cpm_gov_swm_range *new_rg;
 
-	for (irgs = 0; irgs < dwr.asms_count; irgs++) {
-		new_rg = kzalloc(sizeof(struct cpm_gov_asm_range), GFP_KERNEL);
+	for (irgs = 0; irgs < dwr.swms_count; irgs++) {
+		new_rg = kzalloc(sizeof(struct cpm_gov_swm_range), GFP_KERNEL);
 		if (!new_rg) {
-			eprintk("out-of-mem on cpm_gov_asm_range\n");
+			eprintk("out-of-mem on cpm_gov_swm_range\n");
 			return -ENOMEM;
 		}
-		new_rg->normal_range = dwr.asms[irgs];
+		new_rg->normal_range = dwr.swms[irgs];
 		INIT_LIST_HEAD(&(new_rg->old));
 		INIT_LIST_HEAD(&(new_rg->node));
 		new_rg->dev = dev;
@@ -187,25 +187,25 @@ static int copy_dwr_to_gov_ranges(struct cpm_dev_dwr dwr, struct cpm_dev *dev)
 static int merge_dwr_gov_ranges(struct cpm_dev_dwr dwr, struct cpm_dev *dev)
 {
 	u8 irgs = 0;
-	struct cpm_gov_asm_range *new_rg = 0;
-	struct cpm_gov_asm_range *g_rg = 0;
-	struct cpm_asm_range dev_rg;
-	struct cpm_asm_range new_cand_rg;
+	struct cpm_gov_swm_range *new_rg = 0;
+	struct cpm_gov_swm_range *g_rg = 0;
+	struct cpm_swm_range dev_rg;
+	struct cpm_swm_range new_cand_rg;
 	int merge_res = 0;
 
-	for (irgs = 0; irgs < dwr.asms_count; irgs++) {
-		dev_rg = dwr.asms[irgs];
+	for (irgs = 0; irgs < dwr.swms_count; irgs++) {
+		dev_rg = dwr.swms[irgs];
 		list_for_each_entry(g_rg, &l_ranges, node) {
 			if (dev_rg.id == g_rg->normal_range.id)
 				break;
 		}
 		if (dev_rg.id == g_rg->normal_range.id) {
-			/* a range for this asm exists. It must be merged */
-			dprintk("asm %2hu exists in gov ranges\n", dev_rg.id);
+			/* a range for this swm exists. It must be merged */
+			dprintk("swm %2hu exists in gov ranges\n", dev_rg.id);
 			new_cand_rg = g_rg->normal_range;
 
 			merge_res = cpm_merge_range(&(new_cand_rg.range),
-						&(dwr.asms[irgs].range));
+						&(dwr.swms[irgs].range));
 			if (merge_res == -EINVAL) {
 				/* no merge: stop current dwr analysis */
 				dprintk("merge is not possible\n");
@@ -214,7 +214,7 @@ static int merge_dwr_gov_ranges(struct cpm_dev_dwr dwr, struct cpm_dev *dev)
 
 			/* merging is possible: new candidate range*/
 			dprintk("merge is possible\n");
-			new_rg = kzalloc(sizeof(struct cpm_gov_asm_range),
+			new_rg = kzalloc(sizeof(struct cpm_gov_swm_range),
 					GFP_KERNEL);
 			if (!new_rg)
 				return -ENOMEM;
@@ -231,11 +231,11 @@ static int merge_dwr_gov_ranges(struct cpm_dev_dwr dwr, struct cpm_dev *dev)
 		} else {
 			/* a range for this doesn't exist. It must be added */
 			new_rg = 0;
-			new_rg = kzalloc(sizeof(struct cpm_gov_asm_range),
+			new_rg = kzalloc(sizeof(struct cpm_gov_swm_range),
 					GFP_KERNEL);
 			if (!new_rg)
 				return -ENOMEM;
-			new_rg->normal_range = dwr.asms[irgs];
+			new_rg->normal_range = dwr.swms[irgs];
 			INIT_LIST_HEAD(&(new_rg->node));
 			INIT_LIST_HEAD(&(new_rg->old));
 			new_rg->dev = dev;
@@ -253,7 +253,7 @@ static int copy_found_fsc(void)
 {
 	struct cpm_fsc *new_fsc = 0;
 	u8 i = 0;
-	struct cpm_gov_asm_range *g_rgs = 0;
+	struct cpm_gov_swm_range *g_rgs = 0;
 
 	new_fsc = cpm_get_new_fsc();
 	if (!new_fsc)
@@ -264,9 +264,9 @@ static int copy_found_fsc(void)
 	if (!new_fsc->dwrs)
 		goto clean_fsc;
 
-	new_fsc->asms = kzalloc(sizeof(struct cpm_asm_range)*ranges_count,
+	new_fsc->swms = kzalloc(sizeof(struct cpm_swm_range)*ranges_count,
 				GFP_KERNEL);
-	if (!new_fsc->asms)
+	if (!new_fsc->swms)
 		goto clean_dwrs;
 
 	new_fsc->id = fsc_count++;
@@ -276,10 +276,10 @@ static int copy_found_fsc(void)
 
 	dprintk("copy range into FSC\n");
 	list_for_each_entry(g_rgs, &l_ranges, node) {
-		new_fsc->asms[i] = g_rgs->normal_range;
+		new_fsc->swms[i] = g_rgs->normal_range;
 		i++;
 	}
-	new_fsc->asms_count = ranges_count;
+	new_fsc->swms_count = ranges_count;
 	dprintk("%hu ranges copied into fsc\n", i);
 
 	dprintk("copy dwr that bind to the new FSC\n");
@@ -306,9 +306,9 @@ clean_fsc:
  */
 static int clean_gov_ranges(struct cpm_dev *owner_dev)
 {
-	struct cpm_gov_asm_range *grgs = 0;
-	struct cpm_gov_asm_range *grgs_next = 0;
-	struct cpm_gov_asm_range *grgs_sub = 0;
+	struct cpm_gov_swm_range *grgs = 0;
+	struct cpm_gov_swm_range *grgs_next = 0;
+	struct cpm_gov_swm_range *grgs_sub = 0;
 
 	list_for_each_entry_safe(grgs, grgs_next, &l_ranges, node) {
 		if (grgs->dev == owner_dev) {
@@ -317,7 +317,7 @@ static int clean_gov_ranges(struct cpm_dev *owner_dev)
 				ranges_count--;
 			} else {
 				grgs_sub = container_of(grgs->old.next,
-						struct cpm_gov_asm_range, old);
+						struct cpm_gov_swm_range, old);
 				list_replace(&(grgs->node), &(grgs_sub->node));
 				list_del(&(grgs->old));
 			}
