@@ -252,7 +252,7 @@ struct cpm_platform_data {
 
 };
 
-extern int __init cpm_register_platform(struct cpm_platform_data *pdata);
+int cpm_register_platform(struct cpm_platform_data *pdata);
 
 /*********************************************************************
  *                          CPM GOVERNORS                            *

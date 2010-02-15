@@ -680,7 +680,7 @@ static ssize_t __cpm_entity_name(void *ptr, u8 type, char *buf, ssize_t count)
  * @cpd: the array of platform SWMs to register
  *
  */
-int __init cpm_register_platform(struct cpm_platform_data *cpd)
+int cpm_register_platform(struct cpm_platform_data *cpd)
 {
 	int i, swm_count, result;
 	struct cpm_swm *pswm;
@@ -721,10 +721,10 @@ int __init cpm_register_platform(struct cpm_platform_data *cpd)
 	/* Adding PSM metrics */
 	pswm = cpd->swms;
 	for (i = 0; i < cpd->count; i++) {
-		plat.swms[i].id = CPM_ASM_COUNT+i;
-		plat.swms[i].info = (*pswm);
-		plat.swms[i].cur_range.lower = pswm->min;
-		plat.swms[i].cur_range.upper = pswm->max;
+		plat.swms[CPM_ASM_COUNT+i].id = CPM_ASM_COUNT+i;
+		plat.swms[CPM_ASM_COUNT+i].info = (*pswm);
+		plat.swms[CPM_ASM_COUNT+i].cur_range.lower = pswm->min;
+		plat.swms[CPM_ASM_COUNT+i].cur_range.upper = pswm->max;
 		INIT_LIST_HEAD(&(plat.swms[i].constraints));
 		pswm++;
 	}
@@ -3337,7 +3337,6 @@ static int __init cpm_sysfs_core_init(void)
 		eprintk("sysfs - platform interface creation failed\n");
 		goto out_sysfs_core_swms;
 	}
-
 	return result;
 
 out_sysfs_core_swms:
