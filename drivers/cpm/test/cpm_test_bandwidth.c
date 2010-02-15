@@ -30,6 +30,8 @@ struct cpm_swm cpm_platform_swm[] = {
 	    CPM_PLATFORM_SWM("BANDWIDTH", CPM_TYPE_GIB, CPM_USER_RW,
 			     CPM_COMPOSITION_ADDITIVE, 0, 72),
 };
+#define CPM_PSM0 (CPM_ASM_COUNT+0)
+
 
 struct cpm_platform_data cpm_platform_data = {
 	.swms = cpm_platform_swm,
@@ -50,19 +52,19 @@ static int cpm_buddy_callback(struct notifier_block *nb, unsigned long step,
 
 /*--- DWRs definitions ---*/
 struct cpm_swm_range buddy1_dwr0_ranges[] = {
-	DEV_DWR_SWM(0, 0, 18, CPM_SWM_TYPE_RANGE),
+	DEV_DWR_SWM(CPM_PSM0, 0, 18, CPM_SWM_TYPE_RANGE),
 };
 
 struct cpm_swm_range buddy1_dwr1_ranges[] = {
-	DEV_DWR_SWM(0, 16, 36, CPM_SWM_TYPE_RANGE),
+	DEV_DWR_SWM(CPM_PSM0, 16, 36, CPM_SWM_TYPE_RANGE),
 };
 
 struct cpm_swm_range buddy1_dwr2_ranges[] = {
-	DEV_DWR_SWM(0, 34, 48, CPM_SWM_TYPE_RANGE),
+	DEV_DWR_SWM(CPM_PSM0, 34, 48, CPM_SWM_TYPE_RANGE),
 };
 
 struct cpm_swm_range buddy1_dwr3_ranges[] = {
-	DEV_DWR_SWM(0, 46, 72, CPM_SWM_TYPE_RANGE),
+	DEV_DWR_SWM(CPM_PSM0, 46, 72, CPM_SWM_TYPE_RANGE),
 };
 
 struct cpm_dev_dwr buddy1_dwrs_list[] = {

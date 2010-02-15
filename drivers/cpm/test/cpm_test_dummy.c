@@ -63,6 +63,10 @@ struct cpm_swm cpm_platform_swm[] = {
 	    CPM_PLATFORM_SWM("SWM3", CPM_TYPE_GIB, CPM_USER_RO,
 			     CPM_COMPOSITION_ADDITIVE, 0, 50),
 };
+#define CPM_PSM0 (CPM_ASM_COUNT+0)
+#define CPM_PSM1 (CPM_ASM_COUNT+1)
+#define CPM_PSM2 (CPM_ASM_COUNT+2)
+#define CPM_PSM3 (CPM_ASM_COUNT+3)
 
 struct cpm_platform_data cpm_platform_data = {
 	.swms = cpm_platform_swm,
@@ -78,8 +82,8 @@ static int govtest_callback(struct notifier_block *nb,
 
 /*--- Upper-devices DWRs definitions ---*/
 struct cpm_swm_range upperdev_dwr_ranges[] = {
-	DEV_DWR_SWM(0, 5, 30, CPM_SWM_TYPE_RANGE),
-	DEV_DWR_SWM(1, 5, 25, CPM_SWM_TYPE_RANGE),
+	DEV_DWR_SWM(CPM_PSM0, 5, 30, CPM_SWM_TYPE_RANGE),
+	DEV_DWR_SWM(CPM_PSM1, 5, 25, CPM_SWM_TYPE_RANGE),
 };
 
 /* The list of upper-devs DWRs */
@@ -90,18 +94,18 @@ static struct cpm_dev_data upperdev_data = {
 
 /*--- Lower-device DWRs definitions ---*/
 struct cpm_swm_range lowerdev_dwr0_ranges[] = {
-	DEV_DWR_SWM(0, 10, 20, CPM_SWM_TYPE_RANGE),
-	DEV_DWR_SWM(1, 10, 15, CPM_SWM_TYPE_RANGE),
+	DEV_DWR_SWM(CPM_PSM0, 10, 20, CPM_SWM_TYPE_RANGE),
+	DEV_DWR_SWM(CPM_PSM1, 10, 15, CPM_SWM_TYPE_RANGE),
 };
 
 struct cpm_swm_range lowerdev_dwr1_ranges[] = {
-	DEV_DWR_SWM(0, 25, 35, CPM_SWM_TYPE_RANGE),
-	DEV_DWR_SWM(1, 15, 20, CPM_SWM_TYPE_RANGE),
+	DEV_DWR_SWM(CPM_PSM0, 25, 35, CPM_SWM_TYPE_RANGE),
+	DEV_DWR_SWM(CPM_PSM1, 15, 20, CPM_SWM_TYPE_RANGE),
 };
 
 struct cpm_swm_range lowerdev_dwr2_ranges[] = {
-	DEV_DWR_SWM(0, 40, 50, CPM_SWM_TYPE_RANGE),
-	DEV_DWR_SWM(1, 20, 25, CPM_SWM_TYPE_RANGE),
+	DEV_DWR_SWM(CPM_PSM0, 40, 50, CPM_SWM_TYPE_RANGE),
+	DEV_DWR_SWM(CPM_PSM1, 20, 25, CPM_SWM_TYPE_RANGE),
 };
 
 /* The list of lower-devs DWRs */
