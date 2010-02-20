@@ -362,7 +362,7 @@ struct kobj_type cpm_core_ktype;
  *********************************************************************/
 
 #ifdef CONFIG_CPM_DEBUG
-#define dprintk(msg...) pr_debug("cpm-core" msg)
+#define dprintk(msg...) pr_debug("cpm-core: " msg)
 #else
 #define dprintk(msg...) do {} while (0);
 #endif
@@ -725,7 +725,7 @@ int cpm_register_platform(struct cpm_platform_data *cpd)
 		plat.swms[CPM_ASM_COUNT+i].info = (*pswm);
 		plat.swms[CPM_ASM_COUNT+i].cur_range.lower = pswm->min;
 		plat.swms[CPM_ASM_COUNT+i].cur_range.upper = pswm->max;
-		INIT_LIST_HEAD(&(plat.swms[i].constraints));
+		INIT_LIST_HEAD(&(plat.swms[CPM_ASM_COUNT+i].constraints));
 		pswm++;
 	}
 	plat.count = CPM_ASM_COUNT+i;
@@ -1655,6 +1655,7 @@ static ssize_t cpm_sysfs_core_swms_constr_store(struct kobject *kobj,
 
 	/* Getting user value */
 	result = sscanf(buf, "%d:%d", &swm_id, &value);
+
 	if (unlikely(!result)) {
 		eprintk("invalid format on SWMs constraint (task [%s])\n",
 			entity_name);
@@ -2304,15 +2305,14 @@ static int cpm_check_fsc(u8 swm_id, struct cpm_range *range)
 	char str[64];
 
 	/* Check if current FSC has a range on the specified SWM */
-	if (!fscs->curr) {
-		wprintk("no current FSC defined, while expected\n");
+	if (unlikely(!fscs || !fscs->curr)) {
+		wprintk("no current FSC defined, perhaps expected\n");
 		return 0;
 	}
 
 	/* Getting references to current fsc */
 	pfsc = fscs->curr->fsc;
 	pcfsc = container_of(pfsc, struct cpm_fsc_core, info);
-
 	pswm = pfsc->swms;
 	for (i = 0; i < pfsc->swms_count; i++) {
 		if (pswm->id == swm_id)
@@ -2330,7 +2330,6 @@ static int cpm_check_fsc(u8 swm_id, struct cpm_range *range)
 
 	/* Checking if the FSC merge with the new range */
 	fsc_range = pswm->range;
-
 #ifdef CPM_DEBUG_CORE
 	cpm_sysfs_print_range(str, 32, &fsc_range);
 	cpm_sysfs_print_range(str + 32, 32, range);
@@ -2518,7 +2517,8 @@ static int cpm_aggregate_constraint(struct cpm_constraint *pconstr, u8 swm_id,
 		     (plat.swms[swm_id].info.comp ==
 		      CPM_COMPOSITION_ADDITIVE) ? "additive" : "restrictive");
 
-		fscs->updated = 0;
+		if (likely(fscs))
+			fscs->updated = 0;
 
 		return 0;
 	}
@@ -2533,7 +2533,10 @@ static int cpm_aggregate_constraint(struct cpm_constraint *pconstr, u8 swm_id,
 		     pconstr ? "update" : "new",
 		     (plat.swms[swm_id].info.comp ==
 		      CPM_COMPOSITION_ADDITIVE) ? "additive" : "restrictive");
-		fscs->updated = 0;
+
+		if (likely(fscs))
+			fscs->updated = 0;
+
 		return 0;
 	}
 
@@ -2907,6 +2910,13 @@ static int cpm_update_fsc(void)
 
 	mutex_lock(&fsc_mutex);
 
+	if (unlikely(!fscs)) {
+		wprintk("no current FSC defined, perhaps expected\n");
+		mutex_unlock(&fsc_mutex);
+		return 0;
+	}
+
+
 	/* Get a local reference to current FSCs list */
 	_fscs = fscs;
 
@@ -3115,7 +3125,6 @@ static int __cpm_update_constraint(void *entity, u8 type, u8 swm_id,
 	iprintk("%s constraint asserted by [%s], %d:%s %s\n",
 		replace_constraint ? "replacing" : "adding",
 		entity_name, swm_id, plat.swms[swm_id].info.name, str);
-
 	/* Trying constraints aggregation */
 	if (!replace_constraint)
 		pconstr = 0;
@@ -3137,13 +3146,15 @@ static int __cpm_update_constraint(void *entity, u8 type, u8 swm_id,
 
 	/* Trigger DDP if necessary */
 
-	/* NOTE This is required to forward notifications on new
-	 * constraints that don't invalidate current FSC but shrink
-	 * or relax the space */
-	result = cpm_notify_new_fsc(fscs->curr);
-	if (result) {
-		wprintk("DDP failed\n");
-		return result;
+	if (likely(fscs)) {
+		/* NOTE This is required to forward notifications on new
+		 * constraints that don't invalidate current FSC but shrink
+		 * or relax the space */
+		result = cpm_notify_new_fsc(fscs->curr);
+		if (result) {
+			wprintk("DDP failed\n");
+			return result;
+		}
 	}
 
 	/* Keet track of the new constraint */
