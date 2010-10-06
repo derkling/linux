@@ -117,9 +117,12 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
  */
 void __init smp_init_cpus(void)
 {
-	unsigned int i, ncores;
+	unsigned int i, ncores = 0;
 
-	ncores = vexpress_tile_desc->get_core_count();
+	for (i = 0; i < ARRAY_SIZE(vexpress_tile_desc); i++) {
+		if (vexpress_tile_desc[i])
+			ncores += vexpress_tile_desc->get_core_count();
+	}
 
 	/* sanity check */
 	if (ncores > NR_CPUS) {
@@ -143,7 +146,10 @@ void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 	for (i = 0; i < max_cpus; i++)
 		set_cpu_present(i, true);
 
-	vexpress_tile_desc->smp_enable();
+	for (i = 0; i < ARRAY_SIZE(vexpress_tile_desc); i++) {
+		if (vexpress_tile_desc[i])
+			vexpress_tile_desc->smp_enable();
+	}
 
 	/*
 	 * Write the address of secondary startup into the

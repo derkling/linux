@@ -370,7 +370,7 @@ static void v2m_restart(char str, const char *cmd)
 		printk(KERN_EMERG "Unable to reboot\n");
 }
 
-struct vexpress_tile_desc *vexpress_tile_desc;
+struct vexpress_tile_desc *vexpress_tile_desc[VEXPRESS_MAX_TILES_SUPPORTED];
 
 static struct vexpress_tile_desc *vexpress_tile_descs[] __initdata = {
 #ifdef CONFIG_ARCH_VEXPRESS_CA9X4
@@ -383,31 +383,45 @@ static struct vexpress_tile_desc *vexpress_tile_descs[] __initdata = {
 
 static void __init v2m_populate_tile_desc(void)
 {
-	int i;
+	int i, tile_found = 0;
 	u32 current_tile_id;
 
 	ct_desc = NULL;
 	current_tile_id = readl(MMIO_P2V(V2M_SYS_PROCID0)) & V2M_CT_ID_MASK;
-	for (i = 0; i < ARRAY_SIZE(vexpress_tile_descs) && !vexpress_tile_desc; ++i)
+	for (i = 0; i < ARRAY_SIZE(vexpress_tile_descs) && !vexpress_tile_desc[tile_found]; ++i)
 		if (vexpress_tile_descs[i]->id == current_tile_id)
-			vexpress_tile_desc = vexpress_tile_descs[i];
+			vexpress_tile_desc[tile_found++] = vexpress_tile_descs[i];
 
-	if (!vexpress_tile_desc)
-		panic("Versatile Express: failed to populate core tile "
-			"description for tile ID 0x%.8x\n", current_tile_id);
+	current_tile_id = readl(MMIO_P2V(V2M_SYS_PROCID1)) & V2M_CT_ID_MASK;
+	for (i = 0; i < ARRAY_SIZE(vexpress_tile_descs) && !vexpress_tile_desc[tile_found]; ++i)
+		if (vexpress_tile_descs[i]->id == current_tile_id)
+			vexpress_tile_desc[tile_found++] = vexpress_tile_descs[i];
+
+	if (!tile_found)
+		panic("Versatile Express: failed to populate tile description\n");
 
 }
 
 static void __init v2m_map_io(void)
 {
+	int i;
+
 	iotable_init(v2m_io_desc, ARRAY_SIZE(v2m_io_desc));
 	v2m_populate_tile_desc();
-	vexpress_tile_desc->map_io();
+	for (i = 0; i < ARRAY_SIZE(vexpress_tile_desc); i++) {
+		if (vexpress_tile_desc[i])
+			vexpress_tile_desc[i]->map_io();
+	}
 }
 
 static void __init v2m_init_irq(void)
 {
-	vexpress_tile_desc->init_irq();
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(vexpress_tile_desc); i++) {
+		if (vexpress_tile_desc[i])
+			vexpress_tile_desc[i]->init_irq();
+	}
 }
 
 static void __init v2m_init(void)
@@ -432,7 +446,10 @@ static void __init v2m_init(void)
 	pm_power_off = v2m_power_off;
 	arm_pm_restart = v2m_restart;
 
-	vexpress_tile_desc->init_tile();
+	for (i = 0; i < ARRAY_SIZE(vexpress_tile_desc); i++) {
+		if (vexpress_tile_desc[i])
+			vexpress_tile_desc[i]->init_tile();
+	}
 }
 
 MACHINE_START(VEXPRESS, "ARM-Versatile Express")

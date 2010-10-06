@@ -168,7 +168,10 @@ struct vexpress_tile_desc {
 #endif
 };
 
-extern struct vexpress_tile_desc *vexpress_tile_desc;
+
+#define VEXPRESS_MAX_TILES_SUPPORTED	2
+
+extern struct vexpress_tile_desc *vexpress_tile_desc[VEXPRESS_MAX_TILES_SUPPORTED];
 
 #endif	/* !__ASSEMBLY__ */
 #endif
