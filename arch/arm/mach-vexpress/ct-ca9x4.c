@@ -250,7 +250,7 @@ static void ct_ca9x4_smp_enable(void)
 }
 #endif
 
-struct ct_desc ct_ca9x4_desc = {
+struct vexpress_tile_desc ct_ca9x4_desc = {
 	.id		= V2M_CT_ID_CA9,
 	.name		= "CA9x4",
 	.map_io		= ct_ca9x4_map_io,

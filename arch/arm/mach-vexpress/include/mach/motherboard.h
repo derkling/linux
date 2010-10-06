@@ -156,7 +156,7 @@ int v2m_cfg_read(u32 devfn, u32 *data);
 #define V2M_CT_ID_UNSUPPORTED	0xff000191
 #define V2M_CT_ID_MASK		0xff000fff
 
-struct ct_desc {
+struct vexpress_tile_desc {
 	u32			id;
 	const char		*name;
 	void			(*map_io)(void);
@@ -168,7 +168,7 @@ struct ct_desc {
 #endif
 };
 
-extern struct ct_desc *ct_desc;
+extern struct vexpress_tile_desc *vexpress_tile_desc;
 
 #endif	/* !__ASSEMBLY__ */
 #endif

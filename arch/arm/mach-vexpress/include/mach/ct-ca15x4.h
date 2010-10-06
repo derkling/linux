@@ -16,5 +16,5 @@
  */
 #define IRQ_CT_CA15X4_CLCDC	{ 76 }
 
-extern struct ct_desc ct_ca15x4_desc;
+extern struct vexpress_tile_desc ct_ca15x4_desc;
 #endif

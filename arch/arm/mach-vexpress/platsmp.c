@@ -119,7 +119,7 @@ void __init smp_init_cpus(void)
 {
 	unsigned int i, ncores;
 
-	ncores = ct_desc->get_core_count();
+	ncores = vexpress_tile_desc->get_core_count();
 
 	/* sanity check */
 	if (ncores > NR_CPUS) {
@@ -143,7 +143,7 @@ void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 	for (i = 0; i < max_cpus; i++)
 		set_cpu_present(i, true);
 
-	scu_enable(scu_base_addr());
+	vexpress_tile_desc->smp_enable();
 
 	/*
 	 * Write the address of secondary startup into the
