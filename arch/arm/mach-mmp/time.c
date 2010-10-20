@@ -187,19 +187,25 @@ static struct irqaction timer_irq = {
 	.dev_id		= &ckevt,
 };
 
+#ifdef CONFIG_CPU_MMP2
+#define MMP_TICK_RATE		6500000
+#else
+#define MMP_TICK_RATE		3250000
+#endif
+
 void __init timer_init(int irq)
 {
 	timer_config();
 
-	setup_sched_clock(mmp_read_sched_clock, 32, CLOCK_TICK_RATE);
+	setup_sched_clock(mmp_read_sched_clock, 32, MMP_TICK_RATE);
 
-	ckevt.mult = div_sc(CLOCK_TICK_RATE, NSEC_PER_SEC, ckevt.shift);
+	ckevt.mult = div_sc(MMP_TICK_RATE, NSEC_PER_SEC, ckevt.shift);
 	ckevt.max_delta_ns = clockevent_delta2ns(MAX_DELTA, &ckevt);
 	ckevt.min_delta_ns = clockevent_delta2ns(MIN_DELTA, &ckevt);
 	ckevt.cpumask = cpumask_of(0);
 
 	setup_irq(irq, &timer_irq);
 
-	clocksource_register_hz(&cksrc, CLOCK_TICK_RATE);
+	clocksource_register_hz(&cksrc, MMP_TICK_RATE);
 	clockevents_register_device(&ckevt);
 }

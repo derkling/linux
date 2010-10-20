@@ -1,0 +1,2 @@
+#define TICK_RATE		3686400
+#define TIMER_LATCH		((TICK_RATE + HZ/2) / HZ)

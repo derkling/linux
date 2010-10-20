@@ -31,6 +31,9 @@
 #define TIMER_CLOCKEVENT 0
 #define TIMER_CLOCKSOURCE 1
 
+#define TICK_RATE		100000000
+#define TIMER_LATCH		((TICK_RATE + HZ/2) / HZ)
+
 static void netx_set_mode(enum clock_event_mode mode,
 		struct clock_event_device *clk)
 {
@@ -41,7 +44,7 @@ static void netx_set_mode(enum clock_event_mode mode,
 
 	switch (mode) {
 	case CLOCK_EVT_MODE_PERIODIC:
-		writel(LATCH, NETX_GPIO_COUNTER_MAX(TIMER_CLOCKEVENT));
+		writel(TIMER_LATCH, NETX_GPIO_COUNTER_MAX(TIMER_CLOCKEVENT));
 		tmode = NETX_GPIO_COUNTER_CTRL_RST_EN |
 			NETX_GPIO_COUNTER_CTRL_IRQ_EN |
 			NETX_GPIO_COUNTER_CTRL_RUN;
@@ -115,7 +118,7 @@ static void __init netx_timer_init(void)
 	/* Reset the timer value to zero */
 	writel(0, NETX_GPIO_COUNTER_CURRENT(0));
 
-	writel(LATCH, NETX_GPIO_COUNTER_MAX(0));
+	writel(TIMER_LATCH, NETX_GPIO_COUNTER_MAX(0));
 
 	/* acknowledge interrupt */
 	writel(COUNTER_BIT(0), NETX_GPIO_IRQ);
@@ -138,9 +141,9 @@ static void __init netx_timer_init(void)
 			NETX_GPIO_COUNTER_CTRL(TIMER_CLOCKSOURCE));
 
 	clocksource_mmio_init(NETX_GPIO_COUNTER_CURRENT(TIMER_CLOCKSOURCE),
-		"netx_timer", CLOCK_TICK_RATE, 200, 32, clocksource_mmio_readl_up);
+		"netx_timer", TICK_RATE, 200, 32, clocksource_mmio_readl_up);
 
-	netx_clockevent.mult = div_sc(CLOCK_TICK_RATE, NSEC_PER_SEC,
+	netx_clockevent.mult = div_sc(TICK_RATE, NSEC_PER_SEC,
 			netx_clockevent.shift);
 	netx_clockevent.max_delta_ns =
 		clockevent_delta2ns(0xfffffffe, &netx_clockevent);

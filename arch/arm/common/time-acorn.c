@@ -24,6 +24,9 @@
 
 #include <asm/mach/time.h>
 
+#define TICK_RATE		2000000
+#define TIMER_LATCH		((TICK_RATE + HZ/2) / HZ)
+
 unsigned long ioc_timer_gettimeoffset(void)
 {
 	unsigned int count1, count2, status;
@@ -46,23 +49,23 @@ unsigned long ioc_timer_gettimeoffset(void)
 		 * and count2.
 		 */
 		if (status & (1 << 5))
-			offset -= LATCH;
+			offset -= TIMER_LATCH;
 	} else if (count2 > count1) {
 		/*
 		 * We have just had another interrupt between reading
 		 * count1 and count2.
 		 */
-		offset -= LATCH;
+		offset -= TIMER_LATCH;
 	}
 
-	offset = (LATCH - offset) * (tick_nsec / 1000);
-	return (offset + LATCH/2) / LATCH;
+	offset = (TIMER_LATCH - offset) * (tick_nsec / 1000);
+	return (offset + TIMER_LATCH/2) / TIMER_LATCH;
 }
 
 void __init ioctime_init(void)
 {
-	ioc_writeb(LATCH & 255, IOC_T0LTCHL);
-	ioc_writeb(LATCH >> 8, IOC_T0LTCHH);
+	ioc_writeb(TIMER_LATCH & 255, IOC_T0LTCHL);
+	ioc_writeb(TIMER_LATCH >> 8, IOC_T0LTCHH);
 	ioc_writeb(0, IOC_T0GO);
 }
 

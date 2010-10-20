@@ -23,6 +23,8 @@
 #include <asm/mach/irq.h>
 #include <asm/mach/time.h>
 #include "common.h"
+#include "time.h"
+
 /*
  * Timer interrupt handler
  */
@@ -46,7 +48,7 @@ static struct irqaction h7201_timer_irq = {
  */
 void __init h7201_init_time(void)
 {
-	CPU_REG (TIMER_VIRT, TM0_PERIOD) = LATCH;
+	CPU_REG (TIMER_VIRT, TM0_PERIOD) = TIMER_LATCH;
 	CPU_REG (TIMER_VIRT, TM0_CTRL) = TM_RESET;
 	CPU_REG (TIMER_VIRT, TM0_CTRL) = TM_REPEAT | TM_START;
 	CPU_REG (TIMER_VIRT, TIMER_TOPCTRL) = ENABLE_TM0_INTR | TIMER_ENABLE_BIT;

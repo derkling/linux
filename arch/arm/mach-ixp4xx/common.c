@@ -41,6 +41,15 @@
 #include <asm/mach/irq.h>
 #include <asm/mach/time.h>
 
+/*
+ * We use IXP425 General purpose timer for our timer needs, it runs at 
+ * 66.66... MHz. We do a convulted calculation of CLOCK_TICK_RATE b/c the
+ * timer register ignores the bottom 2 bits of the TIMER_LATCH value.
+ */
+#define FREQ		66666000
+#define TICK_RATE	(((FREQ / HZ & ~IXP4XX_OST_RELOAD_MASK) + 1) * HZ)
+#define TIMER_LATCH	((TICK_RATE + HZ/2) / HZ)
+
 static void __init ixp4xx_clocksource_init(void);
 static void __init ixp4xx_clockevent_init(void);
 static struct clock_event_device clockevent_ixp4xx;
@@ -447,7 +456,7 @@ static void ixp4xx_set_mode(enum clock_event_mode mode,
 
 	switch (mode) {
 	case CLOCK_EVT_MODE_PERIODIC:
-		osrt = LATCH & ~IXP4XX_OST_RELOAD_MASK;
+		osrt = TIMER_LATCH & ~IXP4XX_OST_RELOAD_MASK;
  		opts = IXP4XX_OST_ENABLE;
 		break;
 	case CLOCK_EVT_MODE_ONESHOT:

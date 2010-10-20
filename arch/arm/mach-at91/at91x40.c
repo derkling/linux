@@ -16,8 +16,9 @@
 #include <asm/mach/arch.h>
 #include <mach/at91x40.h>
 #include <mach/at91_st.h>
-#include <mach/timex.h>
 #include "generic.h"
+
+#define AT91X40_MASTER_CLOCK	40000000
 
 /*
  * Export the clock functions for the AT91X40. Some external code common

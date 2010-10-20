@@ -26,6 +26,9 @@ static u32 notrace sa1100_read_sched_clock(void)
 
 #define MIN_OSCR_DELTA 2
 
+#define TICK_RATE		3686400
+#define TIMER_LATCH		((TICK_RATE + HZ/2) / HZ)
+
 static irqreturn_t sa1100_ost0_interrupt(int irq, void *dev_id)
 {
 	struct clock_event_device *c = dev_id;
@@ -99,7 +102,7 @@ static void __init sa1100_timer_init(void)
 
 	setup_irq(IRQ_OST0, &sa1100_timer_irq);
 
-	clocksource_mmio_init(&OSCR, "oscr", CLOCK_TICK_RATE, 200, 32,
+	clocksource_mmio_init(&OSCR, "oscr", TICK_RATE, 200, 32,
 		clocksource_mmio_readl_up);
 	clockevents_register_device(&ckevt_sa1100_osmr0);
 }
@@ -128,7 +131,7 @@ static void sa1100_timer_resume(void)
 	/*
 	 * OSMR0 is the system timer: make sure OSCR is sufficiently behind
 	 */
-	OSCR = OSMR0 - LATCH;
+	OSCR = OSMR0 - TIMER_LATCH;
 }
 #else
 #define sa1100_timer_suspend NULL

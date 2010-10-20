@@ -43,6 +43,9 @@
 #include <asm/mach/irq.h>
 #include <asm/mach/arch.h>
 
+#define TICK_RATE		75000000
+#define TIMER_LATCH		((TICK_RATE + HZ/2) / HZ)
+
 
 /*************************************************************************
  * Chip specific mappings shared by all IXP23xx systems
@@ -336,7 +339,7 @@ void __init ixp23xx_init_irq(void)
 /*************************************************************************
  * Timer-tick functions for IXP23xx
  *************************************************************************/
-#define CLOCK_TICKS_PER_USEC	(CLOCK_TICK_RATE / USEC_PER_SEC)
+#define CLOCK_TICKS_PER_USEC	(TICK_RATE / USEC_PER_SEC)
 
 static unsigned long next_jiffy_time;
 
@@ -345,7 +348,7 @@ ixp23xx_gettimeoffset(void)
 {
 	unsigned long elapsed;
 
-	elapsed = *IXP23XX_TIMER_CONT - (next_jiffy_time - LATCH);
+	elapsed = *IXP23XX_TIMER_CONT - (next_jiffy_time - TIMER_LATCH);
 
 	return elapsed / CLOCK_TICKS_PER_USEC;
 }
@@ -355,9 +358,9 @@ ixp23xx_timer_interrupt(int irq, void *dev_id)
 {
 	/* Clear Pending Interrupt by writing '1' to it */
 	*IXP23XX_TIMER_STATUS = IXP23XX_TIMER1_INT_PEND;
-	while ((signed long)(*IXP23XX_TIMER_CONT - next_jiffy_time) >= LATCH) {
+	while ((signed long)(*IXP23XX_TIMER_CONT - next_jiffy_time) >= TIMER_LATCH) {
 		timer_tick();
-		next_jiffy_time += LATCH;
+		next_jiffy_time += TIMER_LATCH;
 	}
 
 	return IRQ_HANDLED;
@@ -376,10 +379,10 @@ void __init ixp23xx_init_timer(void)
 
 	/* Setup the Timer counter value */
 	*IXP23XX_TIMER1_RELOAD =
-		(LATCH & ~IXP23XX_TIMER_RELOAD_MASK) | IXP23XX_TIMER_ENABLE;
+		(TIMER_LATCH & ~IXP23XX_TIMER_RELOAD_MASK) | IXP23XX_TIMER_ENABLE;
 
 	*IXP23XX_TIMER_CONT = 0;
-	next_jiffy_time = LATCH;
+	next_jiffy_time = TIMER_LATCH;
 
 	/* Connect the interrupt handler and enable the interrupt */
 	setup_irq(IRQ_IXP23XX_TIMER1, &ixp23xx_timer_irq);

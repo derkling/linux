@@ -32,6 +32,9 @@
 
 #include "time.h"
 
+#define TICK_RATE		1000000
+#define TIMER_LATCH		((TICK_RATE + HZ/2) / HZ)
+
 /*! Note: all timers are UPCOUNTING */
 
 /*!
@@ -42,8 +45,8 @@ static unsigned long pnx4008_gettimeoffset(void)
 {
 	u32 ticks_to_match =
 	    __raw_readl(HSTIM_MATCH0) - __raw_readl(HSTIM_COUNTER);
-	u32 elapsed = LATCH - ticks_to_match;
-	return (elapsed * (tick_nsec / 1000)) / LATCH;
+	u32 elapsed = TIMER_LATCH - ticks_to_match;
+	return (elapsed * (tick_nsec / 1000)) / TIMER_LATCH;
 }
 
 /*!
@@ -61,7 +64,7 @@ static irqreturn_t pnx4008_timer_interrupt(int irq, void *dev_id)
 			 * for this interrupt handling longer than a normal
 			 * timer period
 			 */
-			__raw_writel(__raw_readl(HSTIM_MATCH0) + LATCH,
+			__raw_writel(__raw_readl(HSTIM_MATCH0) + TIMER_LATCH,
 				     HSTIM_MATCH0);
 			__raw_writel(MATCH0_INT, HSTIM_INT);	/* clear interrupt */
 
@@ -100,7 +103,7 @@ static __init void pnx4008_setup_timer(void)
 	__raw_writel(0, HSTIM_MCTRL);
 	__raw_writel(0, HSTIM_CCR);
 	__raw_writel(12, HSTIM_PMATCH);	/* scale down to 1 MHZ */
-	__raw_writel(LATCH, HSTIM_MATCH0);
+	__raw_writel(TIMER_LATCH, HSTIM_MATCH0);
 	__raw_writel(MR0_INT, HSTIM_MCTRL);
 
 	setup_irq(HSTIMER_INT, &pnx4008_timer_irq);

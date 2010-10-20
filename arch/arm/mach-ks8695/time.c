@@ -30,8 +30,11 @@
 
 #include <mach/regs-timer.h>
 #include <mach/regs-irq.h>
+#include <mach/hardware.h>
 
 #include "generic.h"
+
+#define TIMER_LATCH            ((KS8695_CLOCK_RATE + HZ/2) / HZ)
 
 /*
  * Returns number of ms since last clock interrupt.  Note that interrupts
@@ -55,14 +58,14 @@ static unsigned long ks8695_gettimeoffset (void)
 	} while (elapsed > tick2);
 
 	/* Convert to number of ticks expired (not remaining) */
-	elapsed = (CLOCK_TICK_RATE / HZ) - elapsed;
+	elapsed = (KS8695_CLOCK_RATE / HZ) - elapsed;
 
 	/* Is interrupt pending?  If so, then timer has been reloaded already. */
 	if (intpending)
-		elapsed += (CLOCK_TICK_RATE / HZ);
+		elapsed += (KS8695_CLOCK_RATE / HZ);
 
 	/* Convert ticks to usecs */
-	return (unsigned long)(elapsed * (tick_nsec / 1000)) / LATCH;
+	return (unsigned long)(elapsed * (tick_nsec / 1000)) / TIMER_LATCH;
 }
 
 /*
@@ -82,7 +85,7 @@ static struct irqaction ks8695_timer_irq = {
 
 static void ks8695_timer_setup(void)
 {
-	unsigned long tmout = CLOCK_TICK_RATE / HZ;
+	unsigned long tmout = KS8695_CLOCK_RATE / HZ;
 	unsigned long tmcon;
 
 	/* disable timer1 */

@@ -30,6 +30,8 @@
 
 #include <asm/mach/dma.h>
 
+#include "time.h"
+
 #if 0
 #define IRQDBG(args...) printk(args)
 #else
@@ -46,7 +48,7 @@ void __init arch_dma_init(dma_t *dma)
  */
 unsigned long h720x_gettimeoffset(void)
 {
-	return (CPU_REG (TIMER_VIRT, TM0_COUNT) * tick_usec) / LATCH;
+	return (CPU_REG (TIMER_VIRT, TM0_COUNT) * tick_usec) / TIMER_LATCH;
 }
 
 /*
