@@ -12,7 +12,7 @@
 #ifndef _ASMARM_TIMEX_H
 #define _ASMARM_TIMEX_H
 
-#include <mach/timex.h>
+#define CLOCK_TICK_RATE		(100 * HZ)
 
 typedef unsigned long cycles_t;
 
