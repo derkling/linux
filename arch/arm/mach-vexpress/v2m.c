@@ -29,7 +29,7 @@
 
 #include <plat/sched_clock.h>
 
-#include "core.h"
+#include <mach/core.h>
 
 static struct map_desc v2m_io_desc[] __initdata = {
 	{

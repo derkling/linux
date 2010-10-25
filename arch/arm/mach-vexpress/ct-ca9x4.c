@@ -24,7 +24,7 @@
 #include <asm/mach/map.h>
 #include <asm/mach/time.h>
 
-#include "core.h"
+#include <mach/core.h>
 
 #include <mach/motherboard.h>
 

@@ -17,7 +17,7 @@
 
 #include <asm/mach/map.h>
 
-#include "core.h"
+#include <mach/core.h>
 
 #include <mach/motherboard.h>
 

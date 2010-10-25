@@ -21,7 +21,7 @@
 
 #include <mach/motherboard.h>
 
-#include "core.h"
+#include <mach/core.h>
 
 extern void vexpress_secondary_startup(void);
 
