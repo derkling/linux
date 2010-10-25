@@ -35,8 +35,6 @@ static void __init ct_ca15x4_map_io(void)
 	iotable_init(ct_ca15x4_io_desc, ARRAY_SIZE(ct_ca15x4_io_desc));
 }
 
-void __iomem *gic_cpu_base_addr;
-
 static void __init ct_ca15x4_init_irq(void)
 {
 	gic_cpu_base_addr = MMIO_P2V(A15_MPCORE_GIC_CPU);

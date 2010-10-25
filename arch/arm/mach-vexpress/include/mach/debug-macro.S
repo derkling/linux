@@ -11,11 +11,12 @@
  */
 
 #include <mach/motherboard.h>
+#include <mach/core.h>
 #define DEBUG_LL_UART_OFFSET	V2M_PERIPH_OFFSET(9)
 
 		.macro	addruart,rp,rv
 		mov	\rp, #DEBUG_LL_UART_OFFSET
-		orr	\rv, \rp, #0xf8000000	@ virtual base
+		orr	\rv, \rp, =__MMIO_P2V(V2M_PA_CS7)	@ virtual base
 		orr	\rp, \rp, #V2M_PA_CS7	@ physical base
 		.endm
 

@@ -25,6 +25,7 @@
 
 #include <mach/ct-ca9x4.h>
 #include <mach/ct-ca15x4.h>
+#include <mach/lt-elba.h>
 #include <mach/motherboard.h>
 
 #include <plat/sched_clock.h>
@@ -113,7 +114,7 @@ int v2m_cfg_read(u32 devfn, u32 *data)
 	return !!(val & SYS_CFG_ERR);
 }
 
-
+#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 static struct resource v2m_pcie_i2c_resource = {
 	.start	= V2M_SERIAL_BUS_PCI,
 	.end	= V2M_SERIAL_BUS_PCI + SZ_4K - 1,
@@ -139,6 +140,7 @@ static struct platform_device v2m_ddc_i2c_device = {
 	.num_resources	= 1,
 	.resource	= &v2m_ddc_i2c_resource,
 };
+#endif
 
 static struct resource v2m_eth_resources[] = {
 	{
@@ -192,6 +194,7 @@ static struct platform_device *v2m_eth_device_probe(void)
 	return eth_dev;
 }
 
+#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 static struct resource v2m_usb_resources[] = {
 	{
 		.start	= V2M_ISP1761,
@@ -275,27 +278,36 @@ static struct mmci_platform_data v2m_mmci_data = {
 	.ocr_mask	= MMC_VDD_32_33|MMC_VDD_33_34,
 	.status		= v2m_mmci_status,
 };
+#endif
 
+#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 static AMBA_DEVICE(aaci,  "mb:aaci",  V2M_AACI, NULL);
 static AMBA_DEVICE(mmci,  "mb:mmci",  V2M_MMCI, &v2m_mmci_data);
+#endif
 static AMBA_DEVICE(kmi0,  "mb:kmi0",  V2M_KMI0, NULL);
 static AMBA_DEVICE(kmi1,  "mb:kmi1",  V2M_KMI1, NULL);
 static AMBA_DEVICE(uart0, "mb:uart0", V2M_UART0, NULL);
+#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 static AMBA_DEVICE(uart1, "mb:uart1", V2M_UART1, NULL);
 static AMBA_DEVICE(uart2, "mb:uart2", V2M_UART2, NULL);
 static AMBA_DEVICE(uart3, "mb:uart3", V2M_UART3, NULL);
+#endif
 static AMBA_DEVICE(wdt,   "mb:wdt",   V2M_WDT, NULL);
 static AMBA_DEVICE(rtc,   "mb:rtc",   V2M_RTC, NULL);
 
 static struct amba_device *v2m_amba_devs[] __initdata = {
+#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 	&aaci_device,
 	&mmci_device,
+#endif
 	&kmi0_device,
 	&kmi1_device,
 	&uart0_device,
+#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 	&uart1_device,
 	&uart2_device,
 	&uart3_device,
+#endif
 	&wdt_device,
 	&rtc_device,
 };
@@ -334,7 +346,9 @@ static struct clk_lookup v2m_lookups[] = {
 	}, {	/* UART0 */
 		.dev_id		= "mb:uart0",
 		.clk		= &osc2_clk,
-	}, {	/* UART1 */
+	},
+#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
+	{	/* UART1 */
 		.dev_id		= "mb:uart1",
 		.clk		= &osc2_clk,
 	}, {	/* UART2 */
@@ -343,19 +357,25 @@ static struct clk_lookup v2m_lookups[] = {
 	}, {	/* UART3 */
 		.dev_id		= "mb:uart3",
 		.clk		= &osc2_clk,
-	}, {	/* KMI0 */
+	},
+#endif
+	{	/* KMI0 */
 		.dev_id		= "mb:kmi0",
 		.clk		= &osc2_clk,
 	}, {	/* KMI1 */
 		.dev_id		= "mb:kmi1",
 		.clk		= &osc2_clk,
-	}, {	/* MMC0 */
+	},
+#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
+	{	/* MMC0 */
 		.dev_id		= "mb:mmci",
 		.clk		= &osc2_clk,
-	}, {	/* CLCD */
+	},
+	{	/* CLCD */
 		.dev_id		= "mb:clcd",
 		.clk		= &osc1_clk,
 	},
+#endif
 };
 
 static void v2m_power_off(void)
@@ -370,7 +390,7 @@ static void v2m_restart(char str, const char *cmd)
 		printk(KERN_EMERG "Unable to reboot\n");
 }
 
-struct vexpress_tile_desc *vexpress_tile_desc[VEXPRESS_MAX_TILES_SUPPORTED];
+struct vexpress_tile_desc *vexpress_tile_desc[VEXPRESS_MAX_TILES_SUPPORTED] = { NULL, };
 
 static struct vexpress_tile_desc *vexpress_tile_descs[] __initdata = {
 #ifdef CONFIG_ARCH_VEXPRESS_CA9X4
@@ -379,6 +399,9 @@ static struct vexpress_tile_desc *vexpress_tile_descs[] __initdata = {
 #ifdef CONFIG_ARCH_VEXPRESS_CA15X4
 	&ct_ca15x4_desc,
 #endif
+#ifdef CONFIG_ARCH_VEXPRESS_LT_ELBA
+	&lt_elba_desc,
+#endif
 };
 
 static void __init v2m_populate_tile_desc(void)
@@ -386,7 +409,6 @@ static void __init v2m_populate_tile_desc(void)
 	int i, tile_found = 0;
 	u32 current_tile_id;
 
-	ct_desc = NULL;
 	current_tile_id = readl(MMIO_P2V(V2M_SYS_PROCID0)) & V2M_CT_ID_MASK;
 	for (i = 0; i < ARRAY_SIZE(vexpress_tile_descs) && !vexpress_tile_desc[tile_found]; ++i)
 		if (vexpress_tile_descs[i]->id == current_tile_id)
@@ -431,10 +453,12 @@ static void __init v2m_init(void)
 
 	clkdev_add_table(v2m_lookups, ARRAY_SIZE(v2m_lookups));
 
+#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 	platform_device_register(&v2m_pcie_i2c_device);
 	platform_device_register(&v2m_ddc_i2c_device);
 	platform_device_register(&v2m_flash_device);
 	platform_device_register(&v2m_usb_device);
+#endif
 
 	eth_dev = v2m_eth_device_probe();
 	if (eth_dev)

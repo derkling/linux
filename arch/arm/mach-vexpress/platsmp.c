@@ -121,7 +121,7 @@ void __init smp_init_cpus(void)
 
 	for (i = 0; i < ARRAY_SIZE(vexpress_tile_desc); i++) {
 		if (vexpress_tile_desc[i])
-			ncores += vexpress_tile_desc->get_core_count();
+			ncores += vexpress_tile_desc[i]->get_core_count();
 	}
 
 	/* sanity check */
@@ -148,7 +148,7 @@ void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 
 	for (i = 0; i < ARRAY_SIZE(vexpress_tile_desc); i++) {
 		if (vexpress_tile_desc[i])
-			vexpress_tile_desc->smp_enable();
+			vexpress_tile_desc[i]->smp_enable();
 	}
 
 	/*

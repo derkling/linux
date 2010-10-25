@@ -39,6 +39,23 @@
 #define V2M_SYSREGS		(V2M_PA_CS7 + V2M_PERIPH_OFFSET(1))
 #define V2M_SYSCTL		(V2M_PA_CS7 + V2M_PERIPH_OFFSET(2))
 #define V2M_SERIAL_BUS_PCI	(V2M_PA_CS7 + V2M_PERIPH_OFFSET(3))
+
+#elif defined(CONFIG_VEXPRESS_ELBA_MEMORY_MAP)
+/* CS register bases for the ELBA memory map */
+#define V2M_PA_CS0		0xEC000000
+#define V2M_PA_CS1		0xF0000000
+#define V2M_PA_CS2		0xF4000000
+#define V2M_PA_CS3		0xF8000000
+#define V2M_PA_CS4		0xFC000000
+#define V2M_PA_CS5		0xFD000000
+#define V2M_PA_CS6		0xFE000000
+#define V2M_PA_CS7		0xFF000000
+#define V2M_INT_PERIPH_BASE	0xE0000000
+
+#define V2M_PERIPH_OFFSET(x)	(x << 12)
+#define V2M_SYSREGS		(V2M_PA_CS7 + V2M_PERIPH_OFFSET(0))
+#define V2M_SYSCTL		(V2M_PA_CS7 + V2M_PERIPH_OFFSET(1))
+#define V2M_SERIAL_BUS_PCI	(V2M_PA_CS7 + V2M_PERIPH_OFFSET(2))
 #endif
 
 /* Common peripherals relative to CS7. */
@@ -52,13 +69,23 @@
 #define V2M_UART2		(V2M_PA_CS7 + V2M_PERIPH_OFFSET(11))
 #define V2M_UART3		(V2M_PA_CS7 + V2M_PERIPH_OFFSET(12))
 
+#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 #define V2M_WDT			(V2M_PA_CS7 + V2M_PERIPH_OFFSET(15))
 
 #define V2M_TIMER01		(V2M_PA_CS7 + V2M_PERIPH_OFFSET(17))
 #define V2M_TIMER23		(V2M_PA_CS7 + V2M_PERIPH_OFFSET(18))
 
-#define V2M_SERIAL_BUS_DVI	(V2M_PA_CS7 + V2M_PERIPH_OFFSET(22))
 #define V2M_RTC			(V2M_PA_CS7 + V2M_PERIPH_OFFSET(23))
+#else
+#define V2M_WDT			(V2M_INT_PERIPH_BASE + V2M_PERIPH_OFFSET(16))
+
+#define V2M_TIMER01		(V2M_INT_PERIPH_BASE + V2M_PERIPH_OFFSET(17))
+#define V2M_TIMER23		(V2M_INT_PERIPH_BASE + V2M_PERIPH_OFFSET(18))
+
+#define V2M_RTC			(V2M_INT_PERIPH_BASE + V2M_PERIPH_OFFSET(23))
+#endif
+
+#define V2M_SERIAL_BUS_DVI	(V2M_PA_CS7 + V2M_PERIPH_OFFSET(22))
 
 #define V2M_CF			(V2M_PA_CS7 + V2M_PERIPH_OFFSET(26))
 
@@ -99,6 +126,7 @@
  * Interrupts.  Those in {} are for AMBA devices
  */
 #define IRQ_V2M_WDT		{ (32 + 0) }
+#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 #define IRQ_V2M_TIMER0		(32 + 2)
 #define IRQ_V2M_TIMER1		(32 + 2)
 #define IRQ_V2M_TIMER2		(32 + 3)
@@ -116,6 +144,25 @@
 #define IRQ_V2M_LAN9118		(32 + 15)
 #define IRQ_V2M_ISP1761		(32 + 16)
 #define IRQ_V2M_PCIE		(32 + 17)
+#else
+#define IRQ_V2M_TIMER0		(32 + 4)
+#define IRQ_V2M_TIMER1		(32 + 4)
+#define IRQ_V2M_TIMER2		(32 + 5)
+#define IRQ_V2M_TIMER3		(32 + 5)
+#define IRQ_V2M_RTC		{ (32 + 10) }
+#define IRQ_V2M_UART0		{ (32 + 89) }     /* on motherboard, mapped to extint[1] */
+/*#define IRQ_V2M_UART1		{ (32 + 6) }
+#define IRQ_V2M_UART2		{ (32 + 7) }
+#define IRQ_V2M_UART3		{ (32 + 8) }
+#define IRQ_V2M_MMCI		{ (32 + 9), (32 + 10) } */
+#define IRQ_V2M_AACI		{ (32 + 91) } /* on motherboard, mapped to extint[3] */
+#define IRQ_V2M_KMI0		{ (32 + 92) } /* on motherboard, mapped to extint[4] */
+#define IRQ_V2M_KMI1		{ (32 + 93) } /* on motherboard, mapped to extint[5] */
+#define IRQ_V2M_CLCD		{ (32 + 94) } /* on motherboard, mapped to extint[6] */
+#define IRQ_V2M_LAN9118		(32 + 94)     /* on motherboard, mapped to extint[6] */
+#define IRQ_V2M_ISP1761		(32 + 16)
+#define IRQ_V2M_PCIE		(32 + 17)
+#endif
 
 
 /*
@@ -153,6 +200,7 @@ int v2m_cfg_read(u32 devfn, u32 *data);
 #define V2M_CT_ID_CA15		0x0c000000 /* FIXME: this is almost certainly
 					      wrong, but is what the model
 					      currently provides. */
+#define V2M_LT_ID_ELBA		0x0c000217
 #define V2M_CT_ID_UNSUPPORTED	0xff000191
 #define V2M_CT_ID_MASK		0xff000fff
 

@@ -21,6 +21,12 @@ config VEXPRESS_EXTENDED_MEMORY_MAP
 	  at 0x80000000 (2GB) so that non-LPAE tiles can still function
 	  with the bottom 32-bits of the memory map.
 
+config VEXPRESS_ELBA_MEMORY_MAP
+	bool "ELBA memory map"
+	help
+	  ELBA Logic Tile maps DDR2 memory from 0x00000000. Choose this
+	  if you want to use ELBA tile.
+
 endchoice
 
 config ARCH_VEXPRESS_CA9X4
@@ -32,6 +38,12 @@ config ARCH_VEXPRESS_CA9X4
 config ARCH_VEXPRESS_CA15X4
 	bool "Versatile Express Cortex-A15x4 tile"
 	depends on VEXPRESS_EXTENDED_MEMORY_MAP
+	select CPU_V7
+	select ARM_GIC
+
+config ARCH_VEXPRESS_LT_ELBA
+	bool "Versatile Express ELBA logic tile"
+	depends on VEXPRESS_ELBA_MEMORY_MAP
 	select CPU_V7
 	select ARM_GIC
 
