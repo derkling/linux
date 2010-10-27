@@ -67,6 +67,9 @@ config EVENT_TRACING
 config CONTEXT_SWITCH_TRACER
 	bool
 
+config TASK_PERF_TRACER
+	bool
+
 config RING_BUFFER_ALLOW_SWAP
 	bool
 	help
@@ -202,6 +205,15 @@ config SCHED_TRACER
 	help
 	  This tracer tracks the latency of the highest priority task
 	  to be scheduled in, starting from the point it has woken up.
+
+config PERF_TRACER
+	bool "Task Performances Tracer"
+	select GENERIC_TRACER
+	select TASK_PERF_TRACER
+	select TRACER_MAX_TRACE
+	help
+	  This tracer tracks the performance counters each time a task is
+	  scheduled off a CPU.
 
 config ENABLE_DEFAULT_TRACERS
 	bool "Trace process context switches and events"

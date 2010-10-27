@@ -2843,6 +2843,7 @@ context_switch(struct rq *rq, struct task_struct *prev,
 
 	prepare_task_switch(rq, prev, next);
 	trace_sched_switch(prev, next);
+	trace_task_perf(prev);
 	mm = next->mm;
 	oldmm = prev->active_mm;
 	/*

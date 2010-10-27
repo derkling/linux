@@ -151,6 +151,25 @@ FTRACE_ENTRY_DUP(wakeup, ctx_switch_entry,
 );
 
 /*
+ * Task perf trace entry - which task switched off and relative perf counters.
+ */
+
+#define FTRACE_PERF_ENTRIES	2
+
+FTRACE_ENTRY(task_perf, task_perf_entry,
+
+	TRACE_PERF,
+
+	F_STRUCT(
+		__field(unsigned int,		pid				)
+		__array(unsigned long long,	counter, FTRACE_PERF_ENTRIES	)
+	),
+
+	F_printk("%u [%llu:%llu]",
+		 __entry->pid, __entry->counter[0], __entry->counter[1])
+);
+
+/*
  * Stack-trace entry:
  */
 

@@ -148,6 +148,29 @@ TRACE_EVENT(sched_switch,
 );
 
 /*
+ * Tracepoint for task perf counters collection, performed by the scheduler:
+ */
+TRACE_EVENT(task_perf,
+
+	TP_PROTO(struct task_struct *prev),
+
+	TP_ARGS(prev),
+
+	TP_STRUCT__entry(
+		__array(	char,	prev_comm,	TASK_COMM_LEN	)
+		__field(	pid_t,	prev_pid			)
+	),
+
+	TP_fast_assign(
+		memcpy(__entry->prev_comm, prev->comm, TASK_COMM_LEN);
+		__entry->prev_pid = prev->pid;
+	),
+
+	TP_printk("prev_comm=%s prev_pid=%d",
+		__entry->prev_comm, __entry->prev_pid)
+);
+
+/*
  * Tracepoint for a task being migrated:
  */
 TRACE_EVENT(sched_migrate_task,
