@@ -384,6 +384,29 @@ config FB_ARMCLCD_HITACHI
 
 endchoice
 
+config FB_MALI_HDLCD
+	tristate "Mali High Definition LCD"
+	depends on FB && ARM && ARM_AMBA
+	select FB_CFB_FILLRECT
+	select FB_CFB_COPYAREA
+	select FB_CFB_IMAGEBLIT
+	help
+	  This framebuffer device driver is for the Mali HD
+	  Colour LCD controller.
+
+	  If you want to compile this as a module (=code which can be
+	  inserted into and removed from the running kernel), say M
+	  here and read <file:Documentation/kbuild/modules.txt>.  The module
+	  will be called mali-hdlcd.
+
+if FB_MALI_HDLCD
+
+config MACH_V2_ELBA
+	bool "ELBA Hardware"
+	depends on FB_MALI_HDLCD
+	default n
+
+endif
 
 config FB_ACORN
 	bool "Acorn VIDC support"

@@ -18,4 +18,10 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
+#ifdef CONFIG_PCI
+#define VMALLOC_END		0xD0000000UL
+#elif defined(CONFIG_ARCH_VEXPRESS_LT_ELBA
+#define VMALLOC_END		0xE0000000UL
+#else
 #define VMALLOC_END		0xf8000000UL
+#endif

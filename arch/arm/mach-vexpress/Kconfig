@@ -47,4 +47,25 @@ config ARCH_VEXPRESS_LT_ELBA
 	select CPU_V7
 	select ARM_GIC
 
+config VEXPRESS_HIGH_PHYS_OFFSET
+	bool "High physical base address for the Versatile Express platform"
+	depends on MMU
+	default n
+	help
+	  Versatile Express boards have the RAM available at
+	  0x60000000, 256MB of which being mirrored at 0x00000000.
+	  This option allows the memory to be accessed contiguously
+	  at the high physical offset.
+
+config VEXPRESS_USE_TILE_CLCD
+	bool "Use the CLCD Controller on the daughterboard"
+	default y
+	help
+	  There are two CLCD controllers available on many Versatile
+	  Express systems, one on the motherboard and one on the daughterboard.
+	  This option controls which of these the kernel uses.
+
+config VEXPRESS_PCIE_RC_IN_FPGA
+	bool "Configure the PCI Express code for Root Complex in FPGA"
+	default n
 endmenu

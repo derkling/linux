@@ -26,4 +26,9 @@ struct amba_device name##_device = {		\
 	/* .dma		= DMA_##base,*/		\
 }
 
+
+#if defined(CONFIG_PCI_MSI)
+extern void vexpress_msi_init(void);
+#endif
+
 #endif /* !__ASSEMBLY__ */

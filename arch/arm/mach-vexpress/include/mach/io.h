@@ -20,9 +20,25 @@
 #ifndef __ASM_ARM_ARCH_IO_H
 #define __ASM_ARM_ARCH_IO_H
 
+#include <mach/hardware.h>
+
 #define IO_SPACE_LIMIT 0xffffffff
 
-#define __io(a)		__typesafe_io(a)
+static inline void __iomem *fpga__io(unsigned long addr)
+{
+#if defined(CONFIG_PCI) && defined(CONFIG_VEXPRESS_PCIE_RC_IN_FPGA)
+	/* check for PCI I/O space */
+	if (addr >= VEXPRESS_PCI_IO_BASE && addr <= VEXPRESS_PCI_IO_LIMIT)
+		return (void __iomem *)((addr - VEXPRESS_PCI_IO_BASE) + VEXPRESS_PCI_IO_VBASE);
+	else
+		return (void __iomem *)addr;
+#else
+	return (void __iomem *)addr;
+#endif
+}
+
+// #define __io(a)		__typesafe_io(a)
+#define __io(a)                 fpga__io(a)
 #define __mem_pci(a)	(a)
 
 #endif

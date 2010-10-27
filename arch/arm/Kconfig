@@ -267,6 +267,8 @@ config ARCH_VEXPRESS
 	select ARM_TIMER_SP804
 	select CLKDEV_LOOKUP
 	select GENERIC_CLOCKEVENTS
+	select MIGHT_HAVE_PCI
+	select ARCH_SUPPORTS_MSI
 	select HAVE_CLK
 	select HAVE_SCHED_CLOCK
 	select ICST
@@ -1238,6 +1240,8 @@ config PCI_HOST_ITE8152
 	select DMABOUNCE
 
 source "drivers/pci/Kconfig"
+
+source "drivers/pci/pcie/Kconfig"
 
 source "drivers/pcmcia/Kconfig"
 

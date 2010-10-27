@@ -8,5 +8,6 @@ obj-$(CONFIG_I2C_SMBUS)		+= i2c-smbus.o
 obj-$(CONFIG_I2C_CHARDEV)	+= i2c-dev.o
 obj-$(CONFIG_I2C_MUX)		+= i2c-mux.o
 obj-y				+= algos/ busses/ muxes/
+obj-$(CONFIG_I2C_HDMITX)	+= sil9022.o
 
 ccflags-$(CONFIG_I2C_DEBUG_CORE) := -DDEBUG

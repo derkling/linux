@@ -110,4 +110,9 @@ config I2C_DEBUG_BUS
 	  a problem with I2C support and want to see more of what is going
 	  on.
 
+config I2C_HDMITX
+       tristate "HDMITX I2C support"
+       help
+	  Enable HDMITX I2C support for Elba platform
+
 endif # I2C

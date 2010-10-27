@@ -45,6 +45,54 @@ static struct map_desc ct_ca9x4_io_desc[] __initdata = {
 		.length		= SZ_4K,
 		.type		= MT_DEVICE,
 	},
+#ifdef CONFIG_PCI
+#ifdef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
+	{
+		.virtual	= __MMIO_P2V(VEXPRESS_PCIE_TRN_CTRL_BASE),
+		.pfn		= __phys_to_pfn(VEXPRESS_PCIE_TRN_CTRL_BASE),
+		.length		= SZ_4K,
+		.type		= MT_DEVICE_UNCACHED,
+	},
+	{
+		.virtual	= VEXPRESS_PCI_DBI_VBASE,
+		.pfn		= __phys_to_pfn(VEXPRESS_PCI_DBI_BASE),
+		.length		= VEXPRESS_PCI_DBI_SIZE,
+		.type		= MT_DEVICE_UNCACHED,
+	},
+	{
+		.virtual	= VEXPRESS_PCI_CFG0_VBASE,
+		.pfn		= __phys_to_pfn(VEXPRESS_PCI_CFG0_BASE),
+		.length		= VEXPRESS_PCI_CFG0_SIZE,
+		.type		= MT_DEVICE_UNCACHED,
+	},
+	{
+		.virtual	= VEXPRESS_PCI_CFG1_VBASE,
+		.pfn		= __phys_to_pfn(VEXPRESS_PCI_CFG1_BASE),
+		.length		= VEXPRESS_PCI_CFG1_SIZE,
+		.type		= MT_DEVICE_UNCACHED,
+	},
+	{
+		/* map IO space statically */
+		.virtual	= VEXPRESS_PCI_IO_VBASE,
+		.pfn		= __phys_to_pfn(VEXPRESS_PCI_IO_BASE),
+		.length		= VEXPRESS_PCI_IO_SIZE,
+		.type		= MT_DEVICE_UNCACHED,
+	},
+#else
+	{
+		.virtual	= __MMIO_P2V(VEXPRESS_SYSREG_BASE),
+		.pfn		= __phys_to_pfn(VEXPRESS_SYSREG_BASE),
+		.length		= SZ_4K,
+		.type		= MT_DEVICE,
+	},
+	{
+		.virtual	= VEXPRESS_PCI_VBASE,
+		.pfn		= __phys_to_pfn(VEXPRESS_PCI_BASE),
+		.length		= VEXPRESS_PCI_SIZE,
+		.type		= MT_DEVICE,
+	},
+#endif
+#endif
 };
 
 static void __init ct_ca9x4_map_io(void)
@@ -59,6 +107,10 @@ static void __init ct_ca9x4_init_irq(void)
 {
 	gic_init(0, 29, MMIO_P2V(A9_MPCORE_GIC_DIST),
 		 MMIO_P2V(A9_MPCORE_GIC_CPU));
+
+#if defined(CONFIG_PCI_MSI)
+	vexpress_msi_init();
+#endif
 }
 
 #if 0
@@ -99,7 +151,7 @@ static struct clcd_panel xvga_panel = {
 	.bpp		= 16,
 };
 
-static void ct_ca9x4_clcd_enable(struct clcd_fb *fb)
+static void ct_ca9x4_clcd_enable(void) /* struct clcd_fb *fb  */
 {
 	v2m_cfg_write(SYS_CFG_MUXFPGA | SYS_CFG_SITE_DB1, 0);
 	v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB1, 2);
@@ -140,7 +192,7 @@ static struct clcd_board ct_ca9x4_clcd_data = {
 	.name		= "CT-CA9X4",
 	.check		= clcdfb_check,
 	.decode		= clcdfb_decode,
-	.enable		= ct_ca9x4_clcd_enable,
+//      .enable		= ct_ca9x4_clcd_enable,
 	.setup		= ct_ca9x4_clcd_setup,
 	.mmap		= ct_ca9x4_clcd_mmap,
 	.remove		= ct_ca9x4_clcd_remove,
@@ -236,6 +288,8 @@ static void __init ct_ca9x4_init(void)
 		amba_device_register(ct_ca9x4_amba_devs[i], &iomem_resource);
 
 	platform_device_register(&pmu_device);
+
+	ct_ca9x4_clcd_enable();
 }
 
 #ifdef CONFIG_SMP

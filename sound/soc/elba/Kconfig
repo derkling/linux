@@ -1,0 +1,4 @@
+config SND_ELBA_I2S
+	tristate "SoC Audio for the Elba"
+	help
+	  Say Y or M if you want to add support for Elba

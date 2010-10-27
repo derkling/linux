@@ -323,6 +323,15 @@ config SERIAL_AMBA_PL011_CONSOLE
 	  your boot loader (lilo or loadlin) about how to pass options to the
 	  kernel at boot time.)
 
+config SERIAL_ELBA_PCU_UART
+	tristate "ELBA PCU UART"
+	depends on ARM_AMBA
+	select SERIAL_CORE
+	help
+	  This selects the ELBA PCU UART
+
+	  If unsure, say N.
+
 config SERIAL_SB1250_DUART
 	tristate "BCM1xxx on-chip DUART serial support"
 	depends on SIBYTE_SB1xxx_SOC=y
