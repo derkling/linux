@@ -9,6 +9,7 @@ obj-$(CONFIG_BFIN_JTAG_COMM)	+= bfin_jtag_comm.o
 obj-$(CONFIG_MVME147_SCC)	+= generic_serial.o vme_scc.o
 obj-$(CONFIG_MVME162_SCC)	+= generic_serial.o vme_scc.o
 obj-$(CONFIG_BVME6000_SCC)	+= generic_serial.o vme_scc.o
+obj-$(CONFIG_ARM_SCPC)		+= elba_scpc.o
 obj-$(CONFIG_ROCKETPORT)	+= rocket.o
 obj-$(CONFIG_SERIAL167)		+= serial167.o
 obj-$(CONFIG_CYCLADES)		+= cyclades.o

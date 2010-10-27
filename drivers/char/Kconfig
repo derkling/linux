@@ -1144,5 +1144,10 @@ config RAMOOPS
 	  This enables panic and oops messages to be logged to a circular
 	  buffer in RAM where it can be read back at some later point.
 
+config ARM_SCPC
+	tristate "Elba SCPC driver"
+	default n
+	help
+	  This enables the ARM Serial Config and Power Controller device.
 endmenu
 
