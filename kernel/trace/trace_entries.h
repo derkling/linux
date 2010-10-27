@@ -161,12 +161,11 @@ FTRACE_ENTRY(task_perf, task_perf_entry,
 	TRACE_PERF,
 
 	F_STRUCT(
-		__field(unsigned int,		pid				)
 		__array(unsigned long long,	counter, FTRACE_PERF_ENTRIES	)
 	),
 
-	F_printk("%u [%llu:%llu]",
-		 __entry->pid, __entry->counter[0], __entry->counter[1])
+	F_printk("%llu:%llu",
+		 __entry->counter[0], __entry->counter[1])
 );
 
 /*

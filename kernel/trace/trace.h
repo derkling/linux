@@ -185,7 +185,8 @@ extern void __ftrace_bad_type(void);
 	do {								\
 		IF_ASSIGN(var, ent, struct ftrace_entry, TRACE_FN);	\
 		IF_ASSIGN(var, ent, struct ctx_switch_entry, 0);	\
-		IF_ASSIGN(var, ent, struct task_perf_entry, TRACE_STACK);		\
+		IF_ASSIGN(var, ent, struct task_perf_entry,		\
+				TRACE_PERF);		\
 		IF_ASSIGN(var, ent, struct stack_entry, TRACE_STACK);	\
 		IF_ASSIGN(var, ent, struct userstack_entry,		\
 				TRACE_USER_STACK);	\

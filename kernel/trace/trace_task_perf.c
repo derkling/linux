@@ -37,7 +37,6 @@ tracing_task_perf_trace(struct trace_array *tr,
 		return;
 
 	entry	= ring_buffer_event_data(event);
-	entry->pid = prev->pid;
 	/* The next two counter must collect perf event counter values */
 	entry->counter[0] = 0;
 	entry->counter[1] = 1;
@@ -195,6 +194,35 @@ static void task_perf_trace_stop(struct trace_array *tr)
 	sched_stopped = 1;
 }
 
+/*
+   Trace event formatting
+*/
+static enum print_line_t
+trace_task_perf_print(struct trace_iterator *iter, int flags,
+			   struct trace_event *event)
+{
+	struct task_perf_entry *field;
+
+	trace_assign_type(field, iter->ent);
+
+	if (!trace_seq_printf(&iter->seq,
+			      " %llu:%llu\n",
+			      field->counter[0],
+			      field->counter[1]))
+		return TRACE_TYPE_PARTIAL_LINE;
+
+	return TRACE_TYPE_HANDLED;
+}
+
+static struct trace_event_functions trace_task_perf_funcs = {
+	.trace		= trace_task_perf_print,
+};
+
+static struct trace_event trace_task_perf_event = {
+	.type		= TRACE_PERF,
+	.funcs		= &trace_task_perf_funcs,
+};
+
 static struct tracer task_perf_trace __read_mostly =
 {
 	.name		= "task_perf",
@@ -211,6 +239,12 @@ static struct tracer task_perf_trace __read_mostly =
 
 __init static int init_task_perf_trace(void)
 {
+
+	if (!register_ftrace_event(&trace_task_perf_event)) {
+		pr_warning("Warning: could not register task perf trace events\n");
+		return 1;
+	}
+
 	return register_tracer(&task_perf_trace);
 }
 device_initcall(init_task_perf_trace);
