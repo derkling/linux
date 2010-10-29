@@ -14,12 +14,13 @@
 
 #include "trace.h"
 
-static struct trace_array	*tperf_trace;
+static struct trace_array	*tp_trace;
 static int __read_mostly	tracer_enabled;
 static int			sched_ref;
 static DEFINE_MUTEX(task_perf_mutex);
-static int			sched_stopped;
+static int			events_enabled;
 
+static DEFINE_PER_CPU(struct perf_event *, task_perf_ev);
 
 void
 tracing_task_perf_trace(struct trace_array *tr,
@@ -31,14 +32,25 @@ tracing_task_perf_trace(struct trace_array *tr,
 	struct ring_buffer_event *event;
 	struct task_perf_entry *entry;
 
+	struct perf_event *tp_event;
+	u64 enabled, running;
+
 	event = trace_buffer_lock_reserve(buffer, TRACE_PERF,
 					  sizeof(*entry), flags, pc);
 	if (!event)
 		return;
 
 	entry	= ring_buffer_event_data(event);
+
 	/* The next two counter must collect perf event counter values */
-	entry->counter[0] = 0;
+	tp_event = __get_cpu_var(task_perf_ev);
+	entry->counter[0] = perf_event_read_value(tp_event, &enabled, &running);
+
+	/* Tricks: reset generic event counter to allow start counting next
+	 * task */
+	local64_set(&tp_event->count, 0);
+
+	/* TODO: do the same for the second counter */
 	entry->counter[1] = 1;
 
 	if (!filter_check_discard(call, entry, buffer, event))
@@ -58,16 +70,16 @@ probe_task_perf(void *ignore, struct task_struct *prev)
 
 	tracing_record_cmdline(prev);
 
-	if (!tracer_enabled || sched_stopped)
+	if (!tracer_enabled || !events_enabled)
 		return;
 
 	pc = preempt_count();
 	local_irq_save(flags);
 	cpu = raw_smp_processor_id();
-	data = tperf_trace->data[cpu];
+	data = tp_trace->data[cpu];
 
 	if (likely(!atomic_read(&data->disabled)))
-		tracing_task_perf_trace(tperf_trace, prev, flags, pc);
+		tracing_task_perf_trace(tp_trace, prev, flags, pc);
 
 	local_irq_restore(flags);
 }
@@ -78,11 +90,13 @@ static int tracing_task_perf_register(void)
 
 	ret = register_trace_task_perf(probe_task_perf, NULL);
 	if (ret) {
-		pr_info("task perf trace: Couldn't activate tracepoint"
+		pr_warn("task perf trace: Couldn't activate tracepoint"
 			" probe to kernel_sched_switch\n");
+		return ret;
 	}
 
-	return ret;
+	pr_info("task perf tracer: tracepoint enabled\n");
+	return 0;
 }
 
 static void tracing_task_perf_unregister(void)
@@ -125,7 +139,7 @@ void tracing_stop_cmdline_record(void)
  */
 void tracing_start_task_perf_record(void)
 {
-	if (unlikely(!tperf_trace)) {
+	if (unlikely(!tp_trace)) {
 		WARN_ON(1);
 		return;
 	}
@@ -162,7 +176,7 @@ void tracing_stop_task_perf_record(void)
  */
 void tracing_task_perf_assign_trace(struct trace_array *tr)
 {
-	tperf_trace = tr;
+	tp_trace = tr;
 }
 
 static void stop_sched_trace(struct trace_array *tr)
@@ -172,7 +186,8 @@ static void stop_sched_trace(struct trace_array *tr)
 
 static int task_perf_trace_init(struct trace_array *tr)
 {
-	tperf_trace = tr;
+	tp_trace = tr;
+	events_enabled = 0;
 	tracing_reset_online_cpus(tr);
 	tracing_start_task_perf_record();
 	return 0;
@@ -184,14 +199,133 @@ static void task_perf_trace_reset(struct trace_array *tr)
 		stop_sched_trace(tr);
 }
 
+/* See: tools/perf/util/parse-event.c:402 */
+static struct perf_event_attr task_perf_event_attr = {
+	.type		= PERF_TYPE_HW_CACHE,
+	.config		= PERF_COUNT_HW_CACHE_L1D |
+				(PERF_COUNT_HW_CACHE_OP_READ << 8) |
+				(PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16),
+	.size		= sizeof(struct perf_event_attr),
+	.pinned		= 1,
+	.disabled	= 1,
+};
+
+void task_perf_event_overflow_callback(struct perf_event *event, int nmi,
+		 struct perf_sample_data *data,
+		 struct pt_regs *regs)
+{
+	/* Ensure the interrupt never gets throttled */
+	event->hw.interrupts = 0;
+	trace_printk("task_perf: event overflow\n");
+
+	/* Add a new event to the trace... or simple keep track of overflow
+	 * numbers and produce them on the output trace (i.e
+	 * num_overflows:cur_value */
+
+	return;
+}
+
+static int task_perf_setup_events(int cpu)
+{
+	struct perf_event *event = per_cpu(task_perf_ev, cpu);
+
+	/* is it already setup and enabled? */
+	if (event && event->state > PERF_EVENT_STATE_OFF)
+		goto out;
+
+	/* it is setup but not enabled */
+	if (event != NULL)
+		goto out_enable;
+
+	/* Try to register using hardware perf events */
+	event = perf_event_create_kernel_counter(&task_perf_event_attr, cpu,
+			-1, task_perf_event_overflow_callback);
+	if (!IS_ERR(event)) {
+		pr_info("task perf tracer: enabled, takes one hw-pmu counter "
+				"on CPU#%02i\n", cpu);
+		goto out_save;
+	}
+
+	pr_err("task perf tracer: failed to create perf event on "
+			"CPU#%02i: %p\n", cpu, event);
+	return -1;
+
+	/* success path */
+out_save:
+	per_cpu(task_perf_ev, cpu) = event;
+out_enable:
+	perf_event_enable(event);
+out:
+	return 0;
+}
+
+static int task_perf_enable_events(void)
+{
+	unsigned int cpu;
+	int result;
+
+	for_each_online_cpu(cpu) {
+		result = task_perf_setup_events(cpu);
+		if (result) {
+			pr_warn("task perk tracer: failed to setup events on "
+					"CPU#%02i\n", cpu);
+			goto out_release;
+		}
+	}
+
+	return 0;
+
+out_release:
+
+	/* TODO: free-up already configured events */
+	return result;
+}
+
+static int task_perf_disable_events(void)
+{
+	unsigned int cpu;
+	struct perf_event *event;
+
+	/* BUGFIX this... we should disable all the CPUs enabled so far */
+	/*  perhaps it is better to consider ALL the CPUs independently of
+	 *  their on/off-line state?!? */
+	for_each_online_cpu(cpu) {
+
+		event = per_cpu(task_perf_ev, cpu);
+		if (event) {
+			perf_event_disable(event);
+
+			/* Release event definition... or keep for next run?!? */
+			per_cpu(task_perf_ev, cpu) = NULL;
+			/* should be in cleanup, but blocks oprofile */
+			perf_event_release_kernel(event);
+
+			pr_info("task perf tracer: disabled, releasing one hw-pmu counter "
+				"on CPU#%02i\n", cpu);
+		}
+	}
+
+	return 0;
+}
+
+
 static void task_perf_trace_start(struct trace_array *tr)
 {
-	sched_stopped = 0;
+	int result;
+
+	result = task_perf_enable_events();
+	if (result) {
+		pr_warn("task perf tracer: failed to enable events, "
+				"%d\n", result);
+		return;
+	}
+	events_enabled = 1;
 }
 
 static void task_perf_trace_stop(struct trace_array *tr)
 {
-	sched_stopped = 1;
+	events_enabled = 0;
+	task_perf_disable_events();
 }
 
 /*
@@ -206,7 +340,7 @@ trace_task_perf_print(struct trace_iterator *iter, int flags,
 	trace_assign_type(field, iter->ent);
 
 	if (!trace_seq_printf(&iter->seq,
-			      " %llu:%llu\n",
+			      " %20llu %20llu\n",
 			      field->counter[0],
 			      field->counter[1]))
 		return TRACE_TYPE_PARTIAL_LINE;
@@ -225,7 +359,7 @@ static struct trace_event trace_task_perf_event = {
 
 static struct tracer task_perf_trace __read_mostly =
 {
-	.name		= "task_perf",
+	.name		= "sched_task_perf",
 	.init		= task_perf_trace_init,
 	.reset		= task_perf_trace_reset,
 	.start		= task_perf_trace_start,
@@ -241,7 +375,8 @@ __init static int init_task_perf_trace(void)
 {
 
 	if (!register_ftrace_event(&trace_task_perf_event)) {
-		pr_warning("Warning: could not register task perf trace events\n");
+		pr_warn("task perf tracer: failed to register "
+				"ftrace event\n");
 		return 1;
 	}
 

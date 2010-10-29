@@ -164,7 +164,7 @@ FTRACE_ENTRY(task_perf, task_perf_entry,
 		__array(unsigned long long,	counter, FTRACE_PERF_ENTRIES	)
 	),
 
-	F_printk("%llu:%llu",
+	F_printk("%20llu %20llu",
 		 __entry->counter[0], __entry->counter[1])
 );
 
