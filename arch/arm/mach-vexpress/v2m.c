@@ -72,17 +72,13 @@ int v2m_cfg_write(u32 devfn, u32 data)
 	/* Configuration interface broken? */
 	u32 val;
 
-	printk("%s: writing %08x to %08x\n", __func__, data, devfn);
-
 	devfn |= SYS_CFG_START | SYS_CFG_WRITE;
 
 	spin_lock(&v2m_cfg_lock);
 	val = readl(MMIO_P2V(V2M_SYS_CFGSTAT));
 	writel(val & ~SYS_CFG_COMPLETE, MMIO_P2V(V2M_SYS_CFGSTAT));
-
 	writel(data, MMIO_P2V(V2M_SYS_CFGDATA));
 	writel(devfn, MMIO_P2V(V2M_SYS_CFGCTRL));
-
 	do {
 		val = readl(MMIO_P2V(V2M_SYS_CFGSTAT));
 	} while (val == 0);
@@ -90,6 +86,7 @@ int v2m_cfg_write(u32 devfn, u32 data)
 
 	return !!(val & SYS_CFG_ERR);
 }
+EXPORT_SYMBOL(v2m_cfg_write);
 
 int v2m_cfg_read(u32 devfn, u32 *data)
 {
@@ -268,7 +265,6 @@ static struct platform_device v2m_flash_device = {
 	.dev.platform_data = &v2m_flash_data,
 };
 
-
 static unsigned int v2m_mmci_status(struct device *dev)
 {
 	return readl(MMIO_P2V(V2M_SYS_MCI)) & (1 << 0);
@@ -312,7 +308,6 @@ static struct amba_device *v2m_amba_devs[] __initdata = {
 	&rtc_device,
 };
 
-
 static long v2m_osc_round(struct clk *clk, unsigned long rate)
 {
 	return rate;
@@ -323,9 +318,19 @@ static int v2m_osc1_set(struct clk *clk, unsigned long rate)
 	return v2m_cfg_write(SYS_CFG_OSC | SYS_CFG_SITE_MB | 1, rate);
 }
 
+static int v2m_osc5_set(struct clk *clk, unsigned long rate)
+{
+	return v2m_cfg_write(SYS_CFG_OSC | SYS_CFG_SITE_MB | 5, rate);
+}
+
 static const struct clk_ops osc1_clk_ops = {
 	.round	= v2m_osc_round,
 	.set	= v2m_osc1_set,
+};
+
+static const struct clk_ops osc5_clk_ops = {
+	.round	= v2m_osc_round,
+	.set	= v2m_osc5_set,
 };
 
 static struct clk osc1_clk = {
@@ -334,6 +339,11 @@ static struct clk osc1_clk = {
 };
 
 static struct clk osc2_clk = {
+	.rate	= 24000000,
+};
+
+static struct clk osc5_clk = {
+	.ops	= &osc5_clk_ops,
 	.rate	= 24000000,
 };
 
@@ -374,6 +384,11 @@ static struct clk_lookup v2m_lookups[] = {
 	{	/* CLCD */
 		.dev_id		= "mb:clcd",
 		.clk		= &osc1_clk,
+	},
+#else
+	{	/* HDLCD */
+		.dev_id		= "ct:hdlcd",
+		.clk		= &osc5_clk,
 	},
 #endif
 };

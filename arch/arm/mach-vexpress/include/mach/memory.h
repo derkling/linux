@@ -32,4 +32,6 @@
 
 #endif	/* MEMORY_MAP */
 
+#define CONSISTENT_DMA_SIZE     SZ_8M
+
 #endif	/* __ASM_ARCH_MEMORY_H */

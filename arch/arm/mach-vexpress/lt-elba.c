@@ -8,6 +8,7 @@
 #include <linux/mm.h>
 #include <linux/amba/bus.h>
 #include <linux/amba/clcd.h>
+#include <linux/platform_device.h>
 
 #include <asm/cacheflush.h>
 #include <asm/clkdev.h>
@@ -49,6 +50,74 @@ static struct map_desc lt_elba_io_desc[] __initdata = {
 		.type		= MT_DEVICE,
 	},
 #endif
+#ifdef CONFIG_PCI
+#ifdef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
+	{
+		.virtual	= __MMIO_P2V(VEXPRESS_PCIE_TRN_CTRL_BASE),
+		.pfn		= __phys_to_pfn(VEXPRESS_PCIE_TRN_CTRL_BASE),
+		.length		= SZ_4K,
+		.type		= MT_DEVICE_UNCACHED,
+	},
+	{
+		.virtual	= VEXPRESS_PCI_DBI_VBASE,
+		.pfn		= __phys_to_pfn(VEXPRESS_PCI_DBI_BASE),
+		.length		= VEXPRESS_PCI_DBI_SIZE,
+		.type		= MT_DEVICE_UNCACHED,
+	},
+	{
+		.virtual	= VEXPRESS_PCI_CFG0_VBASE,
+		.pfn		= __phys_to_pfn(VEXPRESS_PCI_CFG0_BASE),
+		.length		= VEXPRESS_PCI_CFG0_SIZE,
+		.type		= MT_DEVICE_UNCACHED,
+	},
+	{
+		.virtual	= VEXPRESS_PCI_CFG1_VBASE,
+		.pfn		= __phys_to_pfn(VEXPRESS_PCI_CFG1_BASE),
+		.length		= VEXPRESS_PCI_CFG1_SIZE,
+		.type		= MT_DEVICE_UNCACHED,
+	},
+	{
+		/* map IO space statically */
+		.virtual	= VEXPRESS_PCI_IO_VBASE,
+		.pfn		= __phys_to_pfn(VEXPRESS_PCI_IO_BASE),
+		.length		= VEXPRESS_PCI_IO_SIZE,
+		.type		= MT_DEVICE_UNCACHED,
+	},
+#else
+	{
+		.virtual	= __MMIO_P2V(VEXPRESS_SYSREG_BASE),
+		.pfn		= __phys_to_pfn(VEXPRESS_SYSREG_BASE),
+		.length		= SZ_4K,
+		.type		= MT_DEVICE,
+	},
+	{
+		.virtual	= VEXPRESS_PCI_VBASE,
+		.pfn		= __phys_to_pfn(VEXPRESS_PCI_BASE),
+		.length		= VEXPRESS_PCI_SIZE,
+		.type		= MT_DEVICE,
+	},
+#endif
+#endif
+};
+
+static struct resource mali_hdlcd_resources[] = {
+	{
+		.start = 0xE0185000,
+		.end   = 0xE0185000 + SZ_4K - 1,
+		.flags = IORESOURCE_MEM,
+	},
+};
+
+static u64 mali_hdlcd_dmamask = ~(u32)0;
+static struct platform_device lt_elba_mali_hdlcd = {
+	.name           = "ct:hdlcd",
+	.id             = -1,
+	.dev = {
+		.dma_mask          = &mali_hdlcd_dmamask,
+		.coherent_dma_mask = 0xFFFFFFFF,
+	},
+	.resource       = mali_hdlcd_resources,
+	.num_resources  = ARRAY_SIZE(mali_hdlcd_resources),
 };
 
 static void __init lt_elba_map_io(void)
@@ -84,6 +153,8 @@ static void lt_elba_init(void)
 
 	for (i = 0; i < ARRAY_SIZE(lt_elba_amba_devs); i++)
 		amba_device_register(lt_elba_amba_devs[i], &iomem_resource);
+
+	platform_device_register(&lt_elba_mali_hdlcd);
 }
 
 #ifdef CONFIG_SMP

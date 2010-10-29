@@ -29,12 +29,15 @@
 #include <asm/uaccess.h>
 #include <mach/motherboard.h>
 
+#define MALI_HDLCD_NAME "ct:hdlcd"
+
 struct {
 	struct fb_videomode	mode;
 	signed short		width;	/* width in mm */
 	signed short		height;	/* height in mm */
 	unsigned int		bpp:8;
 } default_settings =
+#if 0
 {
 	.mode		= {
 		.name           = "UXGA",
@@ -53,6 +56,28 @@ struct {
 	.width		= -1,
 	.height		= -1,
 };
+#else
+{
+	.mode		= {
+		.name		= "VGA",
+		.refresh	= 60,
+		.xres		= 640,
+		.yres		= 480,
+		.pixclock	= 39721,
+		.left_margin	= 40,
+		.right_margin	= 24,
+		.upper_margin	= 32,
+		.lower_margin	= 11,
+		.hsync_len	= 96,
+		.vsync_len	= 2,
+		.sync		= 0,
+		.vmode		= FB_VMODE_NONINTERLACED,
+	},
+	.bpp		= 16,
+	.width		= -1,
+	.height		= -1,
+};
+#endif
 
 enum
 {
@@ -162,11 +187,11 @@ static void hdlcd_enable(hdlcd_device *hdlcd)
 	val = 1; /* turn on LSB, let all others be zero */
 	writel(val, cmd_reg);
 
-/* 	v2m_cfg_write(SYS_CFG_MUXFPGA | SYS_CFG_SITE_DB1, 0); */
+	v2m_cfg_write(SYS_CFG_MUXFPGA | SYS_CFG_SITE_DB2, 0);
 
-/* 	// v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB1, 2); // XGA */
-/* 	// v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB1, 3); // SXGA */
-/* 	v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB1, 4); // UXGA */
+	// v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB1, 2); // XGA
+	// v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB1, 3); // SXGA
+	v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB2, 4); // UXGA
 }
 
 static int hdlcd_setup(struct hdlcd_device *hdlcd)
@@ -514,6 +539,7 @@ static int hdlcd_register(struct hdlcd_device *hdlcd)
 
 	hdlcd->clk = clk_get(&hdlcd->dev->dev, NULL);
 	if (IS_ERR(hdlcd->clk)) {
+		printk(KERN_CRIT "--- %s: cannot get the clock structure.\n", __func__);
 		ret = PTR_ERR(hdlcd->clk);
 		goto out;
 	}
@@ -530,7 +556,7 @@ static int hdlcd_register(struct hdlcd_device *hdlcd)
 	hdlcd->fb.flags              = FBINFO_FLAG_DEFAULT;
 	hdlcd->fb.pseudo_palette     = hdlcd->cmap;
 
-	strncpy(hdlcd->fb.fix.id, "ct:hdlcd", sizeof(hdlcd->fb.fix.id));
+	strncpy(hdlcd->fb.fix.id, MALI_HDLCD_NAME, sizeof(hdlcd->fb.fix.id));
 	hdlcd->fb.fix.type           = FB_TYPE_PACKED_PIXELS;
 	hdlcd->fb.fix.type_aux       = 0;
 	hdlcd->fb.fix.xpanstep       = 0;
@@ -644,7 +670,7 @@ static struct platform_driver hdcld_driver = {
 	.probe = hdlcd_drv_probe,
 	.remove = __devexit_p(hdlcd_drv_remove),
 	.driver = {
-		.name 	= "ct:hdlcd",
+		.name 	= MALI_HDLCD_NAME,
 		.owner	= THIS_MODULE,
 #ifdef CONFIG_OF
 		.of_match_table = hdlcd_matches,
