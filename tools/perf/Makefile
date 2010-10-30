@@ -288,7 +288,7 @@ endif
 -include feature-tests.mak
 
 ifeq ($(call try-cc,$(SOURCE_HELLO),-Werror -fstack-protector-all),y)
-	CFLAGS := $(CFLAGS) -fstack-protector-all
+	CFLAGS := $(CFLAGS) -fstack-protector-all -param ssp-buffer-size=1
 endif
 
 

@@ -20,7 +20,15 @@ static int			sched_ref;
 static DEFINE_MUTEX(task_perf_mutex);
 static int			events_enabled;
 
-static DEFINE_PER_CPU(struct perf_event *, task_perf_ev);
+/* NOTE: the perf_max_events global vars define the number of available
+ * counters for the target architecture... */
+#define MAX_EVENTS	2
+
+struct task_perf_events {
+	struct perf_event *evt[MAX_EVENTS];
+};
+
+static DEFINE_PER_CPU(struct task_perf_events, task_perf_ev);
 
 void
 tracing_task_perf_trace(struct trace_array *tr,
@@ -32,26 +40,27 @@ tracing_task_perf_trace(struct trace_array *tr,
 	struct ring_buffer_event *event;
 	struct task_perf_entry *entry;
 
-	struct perf_event *tp_event;
+	struct task_perf_events *evts;
+	struct perf_event *evt;
 	u64 enabled, running;
+	int i;
 
 	event = trace_buffer_lock_reserve(buffer, TRACE_PERF,
 					  sizeof(*entry), flags, pc);
 	if (!event)
 		return;
 
-	entry	= ring_buffer_event_data(event);
+	entry = ring_buffer_event_data(event);
+	evts = &__get_cpu_var(task_perf_ev);
 
-	/* The next two counter must collect perf event counter values */
-	tp_event = __get_cpu_var(task_perf_ev);
-	entry->counter[0] = perf_event_read_value(tp_event, &enabled, &running);
-
-	/* Tricks: reset generic event counter to allow start counting next
+	/* Collect perf events
+	 * Tricks: reset generic event counter to allow start counting next
 	 * task */
-	local64_set(&tp_event->count, 0);
-
-	/* TODO: do the same for the second counter */
-	entry->counter[1] = 1;
+	for (i=0; i<MAX_EVENTS; i++) {
+		evt = evts->evt[i];
+		entry->counter[i] = perf_event_read_value(evt, &enabled, &running);
+		local64_set(&evt->count, 0);
+	}
 
 	if (!filter_check_discard(call, entry, buffer, event))
 		trace_buffer_unlock_commit(buffer, event, flags, pc);
@@ -200,7 +209,8 @@ static void task_perf_trace_reset(struct trace_array *tr)
 }
 
 /* See: tools/perf/util/parse-event.c:402 */
-static struct perf_event_attr task_perf_event_attr = {
+static struct perf_event_attr task_perf_event_attrs[MAX_EVENTS] = {
+{
 	.type		= PERF_TYPE_HW_CACHE,
 	.config		= PERF_COUNT_HW_CACHE_L1D |
 				(PERF_COUNT_HW_CACHE_OP_READ << 8) |
@@ -208,6 +218,16 @@ static struct perf_event_attr task_perf_event_attr = {
 	.size		= sizeof(struct perf_event_attr),
 	.pinned		= 1,
 	.disabled	= 1,
+	},
+{
+	.type		= PERF_TYPE_HW_CACHE,
+	.config		= PERF_COUNT_HW_CACHE_L1D |
+				(PERF_COUNT_HW_CACHE_OP_READ << 8) |
+				(PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16),
+	.size		= sizeof(struct perf_event_attr),
+	.pinned		= 1,
+	.disabled	= 1,
+	},
 };
 
 void task_perf_event_overflow_callback(struct perf_event *event, int nmi,
@@ -225,39 +245,62 @@ void task_perf_event_overflow_callback(struct perf_event *event, int nmi,
 	return;
 }
 
-static int task_perf_setup_events(int cpu)
+static int
+task_perf_setup_events(int cpu)
 {
-	struct perf_event *event = per_cpu(task_perf_ev, cpu);
+	struct task_perf_events *evts;
+	struct perf_event *evt;
+	struct perf_event_attr *attr;
+	int i;
 
-	/* is it already setup and enabled? */
-	if (event && event->state > PERF_EVENT_STATE_OFF)
-		goto out;
+	evts = &per_cpu(task_perf_ev, cpu);
 
-	/* it is setup but not enabled */
-	if (event != NULL)
-		goto out_enable;
+	/* Registering perf kernel counters */
+	for (i=0; i<MAX_EVENTS; i++) {
 
-	/* Try to register using hardware perf events */
-	event = perf_event_create_kernel_counter(&task_perf_event_attr, cpu,
-			-1, task_perf_event_overflow_callback);
-	if (!IS_ERR(event)) {
-		pr_info("task perf tracer: enabled, takes one hw-pmu counter "
-				"on CPU#%02i\n", cpu);
-		goto out_save;
+		evt = evts->evt[i];
+		attr = &task_perf_event_attrs[i];
+
+		/* Is it already setup and enabled? */
+		if (evt && evt->state > PERF_EVENT_STATE_OFF)
+			continue;
+
+		/* Must be created? */
+		if (!evt) {
+
+			/* Try to register using hardware perf events */
+			evt = perf_event_create_kernel_counter(attr, cpu,
+					-1, task_perf_event_overflow_callback);
+			if (IS_ERR(evt)) {
+				goto out_error;
+			}
+
+			pr_info("task perf tracer: enabled, takes one hw-pmu counter "
+					"on CPU#%02i\n", cpu);
+
+			evts->evt[i] = evt;
+		}
 	}
 
-	pr_err("task perf tracer: failed to create perf event on "
-			"CPU#%02i: %p\n", cpu, event);
+	/* All counters registered: thus now they can be enabled */
+	for (i=0; i<MAX_EVENTS; i++) {
+		evt = evts->evt[i];
+		perf_event_enable(evt);
+	}
+
+	return 0;
+
+out_error:
+	/* Roll-back already registered counters */
+	for (i--; i>=0; i--) {
+		evt = evts->evt[i];
+		perf_event_release_kernel(evt);
+		evts->evt[i] = NULL;
+	}
 	return -1;
 
-	/* success path */
-out_save:
-	per_cpu(task_perf_ev, cpu) = event;
-out_enable:
-	perf_event_enable(event);
-out:
-	return 0;
 }
+
 
 static int task_perf_enable_events(void)
 {
@@ -281,28 +324,50 @@ out_release:
 	return result;
 }
 
-static int task_perf_disable_events(void)
+static void
+task_perf_release_events(int cpu)
+{
+	struct task_perf_events *evts;
+	struct perf_event *evt;
+	int i;
+
+	evts = &per_cpu(task_perf_ev, cpu);
+
+	/* Releasing all perf kernel counters */
+	for (i=0; i<MAX_EVENTS; i++) {
+
+		evt = evts->evt[i];
+
+		/* Is it configured? */
+		if (!evt)
+			continue;
+
+		/* Is it enabled? */
+		if (evt->state > PERF_EVENT_STATE_OFF)
+			perf_event_disable(evt);
+
+		perf_event_release_kernel(evt);
+		evts->evt[i] = NULL;
+
+		pr_info("task perf tracer: disabled, releasing one hw-pmu counter "
+				"on CPU#%02i\n", cpu);
+
+	}
+
+}
+
+static int
+task_perf_disable_events(void)
 {
 	unsigned int cpu;
-	struct perf_event *event;
 
-	/* BUGFIX this... we should disable all the CPUs enabled so far */
-	/*  perhaps it is better to consider ALL the CPUs independently of
-	 *  their on/off-line state?!? */
+	/* BUGFIX this... we should disable all the CPUs enabled so far
+	   perhaps it is better to consider ALL the CPUs independently of
+	   their on/off-line state?!?
+	   We should build a CPUMASK at enable time and use it at disable time
+	   */
 	for_each_online_cpu(cpu) {
-
-		event = per_cpu(task_perf_ev, cpu);
-		if (event) {
-			perf_event_disable(event);
-
-			/* Release event definition... or keep for next run?!? */
-			per_cpu(task_perf_ev, cpu) = NULL;
-			/* should be in cleanup, but blocks oprofile */
-			perf_event_release_kernel(event);
-
-			pr_info("task perf tracer: disabled, releasing one hw-pmu counter "
-				"on CPU#%02i\n", cpu);
-		}
+		task_perf_release_events(cpu);
 	}
 
 	return 0;
