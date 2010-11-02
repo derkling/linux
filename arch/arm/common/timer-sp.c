@@ -18,6 +18,8 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
+#include <linux/clk.h>
+#include <linux/err.h>
 #include <linux/clocksource.h>
 #include <linux/clockchips.h>
 #include <linux/interrupt.h>
@@ -29,9 +31,9 @@
 /*
  * These timers are currently always setup to be clocked at 1MHz.
  */
-#define TIMER_FREQ_KHZ	(1000)
-#define TIMER_RELOAD	(TIMER_FREQ_KHZ * 1000 / HZ)
+#define TIMER_FREQ_HZ	(1000000)
 
+static unsigned long sp804_clksrc_rate = TIMER_FREQ_HZ;
 static void __iomem *clksrc_base;
 
 static cycle_t sp804_read(struct clocksource *cs)
@@ -40,18 +42,24 @@ static cycle_t sp804_read(struct clocksource *cs)
 }
 
 static struct clocksource clocksource_sp804 = {
-	.name		= "timer3",
 	.rating		= 200,
 	.read		= sp804_read,
 	.mask		= CLOCKSOURCE_MASK(32),
 	.flags		= CLOCK_SOURCE_IS_CONTINUOUS,
 };
 
-void __init sp804_clocksource_init(void __iomem *base)
+void __init sp804_clocksource_init(void __iomem *base, char *clk_id)
 {
+	struct clk *clk;
 	struct clocksource *cs = &clocksource_sp804;
 
+	cs->name = clk_id ? clk_id : "timer-sp";
+
 	clksrc_base = base;
+
+	clk = clk_get_sys("sp804", clk_id);
+	if (!IS_ERR(clk))
+		sp804_clksrc_rate = clk_get_rate(clk);
 
 	/* setup timer 0 as free-running clocksource */
 	writel(0, clksrc_base + TIMER_CTRL);
@@ -60,10 +68,11 @@ void __init sp804_clocksource_init(void __iomem *base)
 	writel(TIMER_CTRL_32BIT | TIMER_CTRL_ENABLE | TIMER_CTRL_PERIODIC,
 		clksrc_base + TIMER_CTRL);
 
-	clocksource_register_khz(cs, TIMER_FREQ_KHZ);
+	clocksource_register_khz(cs, sp804_clksrc_rate / 1000);
 }
 
 
+static unsigned long sp804_clkevt_rate = TIMER_FREQ_HZ;
 static void __iomem *clkevt_base;
 
 /*
@@ -90,7 +99,7 @@ static void sp804_set_mode(enum clock_event_mode mode,
 
 	switch (mode) {
 	case CLOCK_EVT_MODE_PERIODIC:
-		writel(TIMER_RELOAD, clkevt_base + TIMER_LOAD);
+		writel(sp804_clkevt_rate / HZ, clkevt_base + TIMER_LOAD);
 		ctrl |= TIMER_CTRL_PERIODIC | TIMER_CTRL_ENABLE;
 		break;
 
@@ -120,7 +129,6 @@ static int sp804_set_next_event(unsigned long next,
 }
 
 static struct clock_event_device sp804_clockevent = {
-	.name		= "timer0",
 	.shift		= 32,
 	.features       = CLOCK_EVT_FEAT_PERIODIC | CLOCK_EVT_FEAT_ONESHOT,
 	.set_mode	= sp804_set_mode,
@@ -136,14 +144,22 @@ static struct irqaction sp804_timer_irq = {
 	.dev_id		= &sp804_clockevent,
 };
 
-void __init sp804_clockevents_init(void __iomem *base, unsigned int timer_irq)
+void __init sp804_clockevents_init(void __iomem *base, unsigned int timer_irq,
+				   char *clk_id)
 {
+	struct clk *clk;
 	struct clock_event_device *evt = &sp804_clockevent;
+
+	evt->name = clk_id ? clk_id : "timer-sp";
 
 	clkevt_base = base;
 
+	clk = clk_get_sys("sp804", clk_id);
+	if (!IS_ERR(clk))
+		sp804_clkevt_rate = clk_get_rate(clk);
+
 	evt->irq = timer_irq;
-	evt->mult = div_sc(TIMER_FREQ_KHZ, NSEC_PER_MSEC, evt->shift);
+	evt->mult = div_sc(sp804_clkevt_rate / 1000, NSEC_PER_MSEC, evt->shift);
 	evt->max_delta_ns = clockevent_delta2ns(0xffffffff, evt);
 	evt->min_delta_ns = clockevent_delta2ns(0xf, evt);
 

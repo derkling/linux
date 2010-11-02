@@ -588,8 +588,8 @@ static void __init intcp_timer_init(void)
 	writel(0, TIMER1_VA_BASE + TIMER_CTRL);
 	writel(0, TIMER2_VA_BASE + TIMER_CTRL);
 
-	sp804_clocksource_init(TIMER2_VA_BASE);
-	sp804_clockevents_init(TIMER1_VA_BASE, IRQ_TIMERINT1);
+	sp804_clocksource_init(TIMER2_VA_BASE, NULL);
+	sp804_clockevents_init(TIMER1_VA_BASE, IRQ_TIMERINT1, NULL);
 }
 
 static struct sys_timer cp_timer = {

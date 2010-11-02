@@ -931,8 +931,8 @@ static void __init versatile_timer_init(void)
 	writel(0, TIMER2_VA_BASE + TIMER_CTRL);
 	writel(0, TIMER3_VA_BASE + TIMER_CTRL);
 
-	sp804_clocksource_init(TIMER3_VA_BASE);
-	sp804_clockevents_init(TIMER0_VA_BASE, IRQ_TIMERINT0_1);
+	sp804_clocksource_init(TIMER3_VA_BASE, NULL);
+	sp804_clockevents_init(TIMER0_VA_BASE, IRQ_TIMERINT0_1, NULL);
 }
 
 struct sys_timer versatile_timer = {

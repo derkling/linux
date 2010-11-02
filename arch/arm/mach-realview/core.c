@@ -698,8 +698,8 @@ void __init realview_timer_init(unsigned int timer_irq)
 	writel(0, timer2_va_base + TIMER_CTRL);
 	writel(0, timer3_va_base + TIMER_CTRL);
 
-	sp804_clocksource_init(timer3_va_base);
-	sp804_clockevents_init(timer0_va_base, timer_irq);
+	sp804_clocksource_init(timer3_va_base, NULL);
+	sp804_clockevents_init(timer0_va_base, timer_irq, NULL);
 }
 
 /*
