@@ -30,6 +30,7 @@
 #include <mach/motherboard.h>
 
 #define MALI_HDLCD_NAME "ct:hdlcd"
+#define MALI_HDLCD_LOWRES
 
 struct {
 	struct fb_videomode	mode;
@@ -37,28 +38,9 @@ struct {
 	signed short		height;	/* height in mm */
 	unsigned int		bpp:8;
 } default_settings =
-#if 0
+#ifdef MALI_HDLCD_LOWRES
 {
-	.mode		= {
-		.name           = "UXGA",
-		.xres           = 1680,
-		.yres           = 1050,
-		.pixclock       = 8403,
-		.left_margin    = 80,
-		.right_margin   = 48,
-		.hsync_len      = 32,
-		.upper_margin   = 21,
-		.lower_margin   = 3,
-		.vsync_len      = 6,
-		.vmode          = FB_VMODE_NONINTERLACED,
-	},
-	.bpp		= 16,
-	.width		= -1,
-	.height		= -1,
-};
-#else
-{
-	.mode		= {
+	.mode = {
 		.name		= "VGA",
 		.refresh	= 60,
 		.xres		= 640,
@@ -72,6 +54,25 @@ struct {
 		.vsync_len	= 2,
 		.sync		= 0,
 		.vmode		= FB_VMODE_NONINTERLACED,
+	},
+	.width		= -1,
+	.height		= -1,
+	.bpp		= 16,
+};
+#else
+{
+	.mode		= {
+		.name           = "UXGA",
+		.xres           = 1680,
+		.yres           = 1050,
+		.pixclock       = 8403,
+		.left_margin    = 80,
+		.right_margin   = 48,
+		.hsync_len      = 32,
+		.upper_margin   = 21,
+		.lower_margin   = 3,
+		.vsync_len      = 6,
+		.vmode          = FB_VMODE_NONINTERLACED,
 	},
 	.bpp		= 16,
 	.width		= -1,
@@ -187,11 +188,10 @@ static void hdlcd_enable(hdlcd_device *hdlcd)
 	val = 1; /* turn on LSB, let all others be zero */
 	writel(val, cmd_reg);
 
-	v2m_cfg_write(SYS_CFG_MUXFPGA | SYS_CFG_SITE_DB2, 0);
-
-	// v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB1, 2); // XGA
+	v2m_cfg_write(SYS_CFG_MUXFPGA | SYS_CFG_SITE_DB1, 0);
+	v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB1, 2); // XGA
 	// v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB1, 3); // SXGA
-	v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB2, 4); // UXGA
+	// v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB1, 4); // UXGA
 }
 
 static int hdlcd_setup(struct hdlcd_device *hdlcd)
