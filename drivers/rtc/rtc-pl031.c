@@ -403,7 +403,11 @@ static int pl031_probe(struct amba_device *adev, struct amba_id *id)
 	}
 
 	if (request_irq(adev->irq[0], pl031_interrupt,
+#ifdef CONFIG_ARCH_VEXPRESS_LT_ELBA
+			IRQF_DISABLED | IRQF_SHARED | IRQF_PROBE_SHARED, "rtc-pl031", ldata)) {
+#else
 			IRQF_DISABLED, "rtc-pl031", ldata)) {
+#endif
 		ret = -EIO;
 		goto out_no_irq;
 	}
