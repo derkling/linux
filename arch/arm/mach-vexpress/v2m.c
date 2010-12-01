@@ -44,6 +44,7 @@ static struct map_desc v2m_io_desc[] __initdata = {
 static void __init v2m_timer_init(void)
 {
 	u32 scctrl;
+	int i;
 
 	versatile_sched_clock_init(MMIO_P2V(V2M_SYS_24MHZ), 24000000);
 
@@ -56,8 +57,16 @@ static void __init v2m_timer_init(void)
 	writel(0, MMIO_P2V(V2M_TIMER0) + TIMER_CTRL);
 	writel(0, MMIO_P2V(V2M_TIMER1) + TIMER_CTRL);
 
-	sp804_clocksource_init(MMIO_P2V(V2M_TIMER1), NULL);
-	sp804_clockevents_init(MMIO_P2V(V2M_TIMER0), IRQ_V2M_TIMER0, NULL);
+
+	sp804_clocksource_init(MMIO_P2V(V2M_TIMER1), "v2m-timer-sp-1");
+	sp804_clockevents_init(MMIO_P2V(V2M_TIMER0), IRQ_V2M_TIMER0, "v2m-timer-sp-0");
+	sp804_clocksource_init(MMIO_P2V(V2M_TIMER2), "v2m-timer-sp-2");
+	sp804_clocksource_init(MMIO_P2V(V2M_TIMER3), "v2m-timer-sp-3");
+
+	for (i = 0; i < ARRAY_SIZE(vexpress_tile_desc); i++) {
+		if (vexpress_tile_desc[i] && vexpress_tile_desc[i]->init_timers)
+			vexpress_tile_desc[i]->init_timers();
+	}
 }
 
 static struct sys_timer v2m_timer = {
@@ -191,7 +200,6 @@ static struct platform_device *v2m_eth_device_probe(void)
 	return eth_dev;
 }
 
-#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 static struct resource v2m_usb_resources[] = {
 	{
 		.start	= V2M_ISP1761,
@@ -221,6 +229,7 @@ static struct platform_device v2m_usb_device = {
 	.dev.platform_data = &v2m_usb_config,
 };
 
+#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 static int v2m_flash_init(void)
 {
 	writel(0, MMIO_P2V(V2M_SYS_FLASH));
@@ -264,6 +273,7 @@ static struct platform_device v2m_flash_device = {
 	.num_resources	= ARRAY_SIZE(v2m_flash_resources),
 	.dev.platform_data = &v2m_flash_data,
 };
+#endif
 
 static unsigned int v2m_mmci_status(struct device *dev)
 {
@@ -274,12 +284,9 @@ static struct mmci_platform_data v2m_mmci_data = {
 	.ocr_mask	= MMC_VDD_32_33|MMC_VDD_33_34,
 	.status		= v2m_mmci_status,
 };
-#endif
 
-#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 static AMBA_DEVICE(aaci,  "mb:aaci",  V2M_AACI, NULL);
 static AMBA_DEVICE(mmci,  "mb:mmci",  V2M_MMCI, &v2m_mmci_data);
-#endif
 static AMBA_DEVICE(kmi0,  "mb:kmi0",  V2M_KMI0, NULL);
 static AMBA_DEVICE(kmi1,  "mb:kmi1",  V2M_KMI1, NULL);
 static AMBA_DEVICE(uart0, "mb:uart0", V2M_UART0, NULL);
@@ -292,10 +299,8 @@ static AMBA_DEVICE(wdt,   "mb:wdt",   V2M_WDT, NULL);
 static AMBA_DEVICE(rtc,   "mb:rtc",   V2M_RTC, NULL);
 
 static struct amba_device *v2m_amba_devs[] __initdata = {
-#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 	&aaci_device,
 	&mmci_device,
-#endif
 	&kmi0_device,
 	&kmi1_device,
 	&uart0_device,
@@ -376,18 +381,18 @@ static struct clk_lookup v2m_lookups[] = {
 		.dev_id		= "mb:kmi1",
 		.clk		= &osc2_clk,
 	},
-#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 	{	/* MMC0 */
 		.dev_id		= "mb:mmci",
 		.clk		= &osc2_clk,
 	},
+#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 	{	/* CLCD */
 		.dev_id		= "mb:clcd",
 		.clk		= &osc1_clk,
 	},
 #else
 	{	/* HDLCD */
-		.dev_id		= "ct:hdlcd",
+		.dev_id		= "lt:hdlcd",
 		.clk		= &osc5_clk,
 	},
 #endif
@@ -466,14 +471,15 @@ static void __init v2m_init(void)
 	int i;
 	struct platform_device *eth_dev;
 
+	printk(KERN_INFO "V2M: Registering clock lookups\n");
 	clkdev_add_table(v2m_lookups, ARRAY_SIZE(v2m_lookups));
 
 #ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 	platform_device_register(&v2m_pcie_i2c_device);
 	platform_device_register(&v2m_ddc_i2c_device);
 	platform_device_register(&v2m_flash_device);
-	platform_device_register(&v2m_usb_device);
 #endif
+	platform_device_register(&v2m_usb_device);
 
 	eth_dev = v2m_eth_device_probe();
 	if (eth_dev)

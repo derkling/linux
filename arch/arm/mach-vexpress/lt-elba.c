@@ -20,6 +20,7 @@
 #ifdef CONFIG_CACHE_L2X0
 #include <asm/hardware/cache-l2x0.h>
 #endif
+#include <asm/hardware/timer-sp.h>
 
 #include <mach/clkdev.h>
 #include <mach/lt-elba.h>
@@ -37,8 +38,8 @@ static struct map_desc lt_elba_io_desc[] __initdata = {
 		.length		= SZ_8K,
 		.type		= MT_DEVICE,
 	}, {
-		.virtual	= __MMIO_P2V(LT_ELBA_SP804_TIMER),
-		.pfn		= __phys_to_pfn(LT_ELBA_SP804_TIMER),
+		.virtual	= __MMIO_P2V(LT_ELBA_SP804_TIMER01),
+		.pfn		= __phys_to_pfn(LT_ELBA_SP804_TIMER01),
 		.length		= SZ_8K,
 		.type		= MT_DEVICE,
 	},
@@ -110,7 +111,7 @@ static struct resource mali_hdlcd_resources[] = {
 
 static u64 mali_hdlcd_dmamask = ~(u32)0;
 static struct platform_device lt_elba_mali_hdlcd = {
-	.name           = "ct:hdlcd",
+	.name           = "lt:hdlcd",
 	.id             = -1,
 	.dev = {
 		.dma_mask          = &mali_hdlcd_dmamask,
@@ -122,20 +123,57 @@ static struct platform_device lt_elba_mali_hdlcd = {
 
 static void __init lt_elba_map_io(void)
 {
-#ifdef CONFIG_SMP
-	twd_base = MMIO_P2V(ELBA_A9_MPCORE_TWD);
+#ifdef CONFIG_LOCAL_TIMERS
+	twd_base = MMIO_P2V(LT_ELBA_A9_MPCORE_TWD);
 #endif
 	iotable_init(lt_elba_io_desc, ARRAY_SIZE(lt_elba_io_desc));
 }
 
 static void __init lt_elba_init_irq(void)
 {
-	gic_init(0, 29, MMIO_P2V(ELBA_A9_MPCORE_GIC_DIST),
-		MMIO_P2V(ELBA_A9_MPCORE_GIC_CPU));
+	gic_init(0, 29, MMIO_P2V(LT_ELBA_A9_MPCORE_GIC_DIST),
+		MMIO_P2V(LT_ELBA_A9_MPCORE_GIC_CPU));
 }
 
+static AMBA_DEVICE(wdt, "elba:wdt", LT_ELBA_WDT, NULL);
+static AMBA_DEVICE(rtc, "elba:rtc", LT_ELBA_RTC, NULL);
 static struct amba_device *lt_elba_amba_devs[] __initdata = {
+	&wdt_device,
+	&rtc_device,
 };
+
+static struct clk sp804_clk = {
+	.rate	= 10000000,
+};
+
+static struct clk_lookup elba_clk_lookups[] = {
+	{	/* SP804 clock 0 */
+		.dev_id		= "sp804",
+		.con_id		= "elba-timer-sp-0",
+		.clk		= &sp804_clk,
+	}, {	/* SP804 clock 1 */
+		.dev_id		= "sp804",
+		.con_id		= "elba-timer-sp-1",
+		.clk		= &sp804_clk,
+	},{	/* SP804 clock 2 */
+		.dev_id		= "sp804",
+		.con_id		= "elba-timer-sp-2",
+		.clk		= &sp804_clk,
+	},{	/* SP804 clock 3 */
+		.dev_id		= "sp804",
+		.con_id		= "elba-timer-sp-3",
+		.clk		= &sp804_clk,
+	},
+};
+
+static void __init lt_elba_init_timers(void)
+{
+	printk(KERN_INFO "ELBA: SP804 initialising timers\n");
+	sp804_clocksource_init(MMIO_P2V(LT_ELBA_TIMER1), "elba-timer-sp-1");
+	sp804_clockevents_init(MMIO_P2V(LT_ELBA_TIMER0), IRQ_LT_ELBA_TIMER0, "elba-timer-sp-0");
+	sp804_clocksource_init(MMIO_P2V(LT_ELBA_TIMER2), "elba-timer-sp-2");
+	sp804_clocksource_init(MMIO_P2V(LT_ELBA_TIMER3), "elba-timer-sp-3");
+}
 
 static void lt_elba_init(void)
 {
@@ -148,8 +186,12 @@ static void lt_elba_init(void)
 	writel(0, l2x0_base + L2X0_TAG_LATENCY_CTRL);
 	writel(0, l2x0_base + L2X0_DATA_LATENCY_CTRL);
 
+	/* set bit 22 (shared attribute override enable) */
 	l2x0_init(l2x0_base, 0x00400000, 0xfe0fffff);
 #endif
+
+	clkdev_add_table(elba_clk_lookups, ARRAY_SIZE(elba_clk_lookups));
+	printk(KERN_INFO "ELBA: SP804 clocks registered\n");
 
 	for (i = 0; i < ARRAY_SIZE(lt_elba_amba_devs); i++)
 		amba_device_register(lt_elba_amba_devs[i], &iomem_resource);
@@ -160,12 +202,12 @@ static void lt_elba_init(void)
 #ifdef CONFIG_SMP
 static unsigned int lt_elba_get_core_count(void)
 {
-	return scu_get_core_count(MMIO_P2V(ELBA_A9_MPCORE_SCU));
+	return scu_get_core_count(MMIO_P2V(LT_ELBA_A9_MPCORE_SCU));
 }
 
 static void lt_elba_smp_enable(void)
 {
-	scu_enable(MMIO_P2V(ELBA_A9_MPCORE_SCU));
+	scu_enable(MMIO_P2V(LT_ELBA_A9_MPCORE_SCU));
 }
 #endif
 
@@ -174,6 +216,7 @@ struct vexpress_tile_desc lt_elba_desc = {
 	.name		= "ELBA",
 	.map_io		= lt_elba_map_io,
 	.init_irq	= lt_elba_init_irq,
+	.init_timers	= lt_elba_init_timers,
 	.init_tile	= lt_elba_init,
 #ifdef CONFIG_SMP
 	.get_core_count	= lt_elba_get_core_count,
