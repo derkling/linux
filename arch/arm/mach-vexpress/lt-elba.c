@@ -146,6 +146,20 @@ static struct clk sp804_clk = {
 	.rate	= 10000000,
 };
 
+static int v2m_osc5_set(struct clk *clk, unsigned long rate)
+{
+	return v2m_cfg_write(SYS_CFG_OSC | SYS_CFG_SITE_DB1 | 5, 2 * rate);
+}
+
+static const struct clk_ops osc5_clk_ops = {
+	.set	= v2m_osc5_set,
+};
+
+static struct clk osc5_clk = {
+	.ops	= &osc5_clk_ops,
+	.rate	= 10000000,
+};
+
 static struct clk_lookup elba_clk_lookups[] = {
 	{	/* SP804 clock 0 */
 		.dev_id		= "sp804",
@@ -163,6 +177,9 @@ static struct clk_lookup elba_clk_lookups[] = {
 		.dev_id		= "sp804",
 		.con_id		= "elba-timer-sp-3",
 		.clk		= &sp804_clk,
+	},{	/* OSC5 HDLCD clock */
+		.dev_id		= "lt:hdlcd",
+		.clk		= &osc5_clk,
 	},
 };
 

@@ -323,19 +323,9 @@ static int v2m_osc1_set(struct clk *clk, unsigned long rate)
 	return v2m_cfg_write(SYS_CFG_OSC | SYS_CFG_SITE_MB | 1, rate);
 }
 
-static int v2m_osc5_set(struct clk *clk, unsigned long rate)
-{
-	return v2m_cfg_write(SYS_CFG_OSC | SYS_CFG_SITE_MB | 5, rate);
-}
-
 static const struct clk_ops osc1_clk_ops = {
 	.round	= v2m_osc_round,
 	.set	= v2m_osc1_set,
-};
-
-static const struct clk_ops osc5_clk_ops = {
-	.round	= v2m_osc_round,
-	.set	= v2m_osc5_set,
 };
 
 static struct clk osc1_clk = {
@@ -344,11 +334,6 @@ static struct clk osc1_clk = {
 };
 
 static struct clk osc2_clk = {
-	.rate	= 24000000,
-};
-
-static struct clk osc5_clk = {
-	.ops	= &osc5_clk_ops,
 	.rate	= 24000000,
 };
 
@@ -389,11 +374,6 @@ static struct clk_lookup v2m_lookups[] = {
 	{	/* CLCD */
 		.dev_id		= "mb:clcd",
 		.clk		= &osc1_clk,
-	},
-#else
-	{	/* HDLCD */
-		.dev_id		= "lt:hdlcd",
-		.clk		= &osc5_clk,
 	},
 #endif
 };
