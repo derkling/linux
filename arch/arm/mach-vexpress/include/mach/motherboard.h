@@ -416,8 +416,10 @@ struct vexpress_tile_desc {
 #define VEXPRESS_SYSREG_BASE		0x100E2000	/* System registers */
 
 #if defined(CONFIG_VEXPRESS_PCIE_RC_IN_FPGA)
-#define VEXPRESS_PCIE_TRN_CTRL_BASE	0xE0003000	/* PCI Express Addr Translation regs */
-#define VEXPRESS_PCI_BASE		0xF0000000	/* PCI Express */
+// #define VEXPRESS_PCIE_TRN_CTRL_BASE	0xE0003000	/* PCI Express Addr Translation regs */
+#define VEXPRESS_PCIE_TRN_CTRL_BASE	0xE0186000	/* PCI Express Addr Translation regs */
+// #define VEXPRESS_PCI_BASE		0xF0000000	/* PCI Express */
+#define VEXPRESS_PCI_BASE		0xD0000000	/* PCI Express */
 #define VEXPRESS_PCI_SIZE		SZ_256M		/* F0000000-FFFFFFFF */
 #else /* !CONFIG_VEXPRESS_PCIE_RC_IN_FPGA */
 #define VEXPRESS_PCI_BASE		0x20000000	/* PCI Express */

@@ -399,15 +399,6 @@ config FB_MALI_HDLCD
 	  here and read <file:Documentation/kbuild/modules.txt>.  The module
 	  will be called mali-hdlcd.
 
-if FB_MALI_HDLCD
-
-config MACH_V2_ELBA
-	bool "ELBA Hardware"
-	depends on FB_MALI_HDLCD
-	default n
-
-endif
-
 config FB_ACORN
 	bool "Acorn VIDC support"
 	depends on (FB = y) && ARM && ARCH_ACORN

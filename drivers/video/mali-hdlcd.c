@@ -29,8 +29,16 @@
 #include <asm/uaccess.h>
 #include <mach/motherboard.h>
 
-#define MALI_HDLCD_NAME "ct:hdlcd"
-#define MALI_HDLCD_LOWRES
+#define MALI_USE_UNIFIED_MEMORY_PROVIDER 1
+#define MALI_HDLCD_RES 0
+
+#if MALI_USE_UNIFIED_MEMORY_PROVIDER
+#include "ump_kernel_interface.h"
+#include "ump_kernel_interface_ref_drv.h"
+#endif
+
+#define MALI_HDLCD_NAME "lt:hdlcd"
+#define HDLCD_IOCTL_GET_FB_UMP_SECURE_ID  _IOWR('m',0xF8, __u32)
 
 struct {
 	struct fb_videomode	mode;
@@ -38,7 +46,7 @@ struct {
 	signed short		height;	/* height in mm */
 	unsigned int		bpp:8;
 } default_settings =
-#ifdef MALI_HDLCD_LOWRES
+#if (MALI_HDLCD_RES == 0)
 {
 	.mode = {
 		.name		= "VGA",
@@ -55,9 +63,47 @@ struct {
 		.sync		= 0,
 		.vmode		= FB_VMODE_NONINTERLACED,
 	},
+	.bpp		= 16,
 	.width		= -1,
 	.height		= -1,
-	.bpp		= 16,
+};
+#elif (MALI_HDLCD_RES == 1)
+{
+	.mode = {
+		.name		= "DVI-SVGA",
+		.refresh	= 60,
+		.xres		= 800,
+		.yres		= 600,
+		.pixclock	= 26144,
+		.hsync_len	= 80,
+		.left_margin	= 112,
+		.right_margin	= 32,
+		.vsync_len	= 4,
+		.upper_margin	= 18,
+		.lower_margin	= 4,
+	},
+	.bpp = 16,
+	.width = -1,
+	.height = 1,
+};
+#elif (MALI_HDLCD_RES == 2)
+{
+	.mode = {
+		.name		= "SVGA",
+		.refresh	= 60,
+		.xres		= 1024,
+		.yres		= 768,
+		.pixclock	= 15748,
+		.hsync_len	= 104,
+		.left_margin	= 152,
+		.right_margin	= 48,
+		.vsync_len	= 4,
+		.upper_margin	= 24,
+		.lower_margin	= 4,
+	},
+	.bpp = 16,
+	.width = -1,
+	.height = 1,
 };
 #else
 {
@@ -78,6 +124,10 @@ struct {
 	.width		= -1,
 	.height		= -1,
 };
+#endif
+
+#if MALI_USE_UNIFIED_MEMORY_PROVIDER
+ump_dd_handle ump_wrapped_buffer;
 #endif
 
 enum
@@ -189,7 +239,7 @@ static void hdlcd_enable(hdlcd_device *hdlcd)
 	writel(val, cmd_reg);
 
 	v2m_cfg_write(SYS_CFG_MUXFPGA | SYS_CFG_SITE_DB1, 0);
-	v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB1, 2); // XGA
+	v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB1, 1); // XGA
 	// v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB1, 3); // SXGA
 	// v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB1, 4); // UXGA
 }
@@ -199,7 +249,12 @@ static int hdlcd_setup(struct hdlcd_device *hdlcd)
 	struct platform_device *pdev = hdlcd->dev;
 	struct resource *res;
 	dma_addr_t dma;
-	unsigned long framesize = default_settings.mode.xres * default_settings.mode.yres * 2;
+	/* Maximum resolution supported.  */
+	unsigned long framesize = 1600 * 1200 * 2 * 2;
+
+#if MALI_USE_UNIFIED_MEMORY_PROVIDER
+	ump_dd_physical_block ump_memory_description;
+#endif
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
@@ -229,6 +284,21 @@ static int hdlcd_setup(struct hdlcd_device *hdlcd)
 
 	/* Clear the fb.  */
 	memset_io(hdlcd->fb.screen_base, 0, framesize);
+
+#if MALI_USE_UNIFIED_MEMORY_PROVIDER
+	ump_memory_description.addr = dma;
+	ump_memory_description.size = framesize;
+
+	ump_wrapped_buffer = ump_dd_handle_create_from_phys_blocks(&ump_memory_description, 1);
+	if (UMP_DD_HANDLE_INVALID == ump_wrapped_buffer)
+	{
+		dma_free_writecombine(&hdlcd->dev->dev, hdlcd->fb.fix.smem_len,
+				      hdlcd->fb.screen_base, hdlcd->fb.fix.smem_start);
+		release_mem_region(res->start, resource_size(res));
+		printk(KERN_ERR "CLCD: Unable to wrap framebuffer as a ump handle\n");
+		return -ENOMEM;
+	}
+#endif
 
 	printk("Mali HDLCD: frame buffer virt base %p phys base 0x%lX\n", hdlcd->fb.screen_base, (unsigned long)dma);
 
@@ -510,7 +580,18 @@ static int hdlcd_pan_display(struct fb_var_screeninfo *var, struct fb_info *info
 
 static int hdlcd_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
 {
+#if MALI_USE_UNIFIED_MEMORY_PROVIDER
+	if ( HDLCD_IOCTL_GET_FB_UMP_SECURE_ID == cmd )
+	{
+		u32 __user * psecureid = (u32 __user *)arg;
+		ump_secure_id secure_id = ump_dd_secure_id_get(ump_wrapped_buffer);
+		printk(KERN_ERR "FB: Saving secure id:%u in userptr:%p\n", (unsigned int)secure_id, psecureid );
+		return put_user( (u32)secure_id, psecureid);
+	}
+#endif
+
 	printk("Mali HDLCD: Getting ioctl\n" );
+
 	return -ENOIOCTLCMD;
 }
 
@@ -621,6 +702,11 @@ static int hdlcd_drv_remove(struct platform_device *pdev)
 
 	hdlcd_disable(hdlcd);
 	unregister_framebuffer(&hdlcd->fb);
+
+#if MALI_USE_UNIFIED_MEMORY_PROVIDER
+	ump_dd_reference_release(ump_wrapped_buffer);
+	ump_wrapped_buffer = UMP_DD_HANDLE_INVALID;
+#endif
 
 	/* Unmap and release registers.  */
 	iounmap(hdlcd->base);

@@ -71,8 +71,8 @@
 #define TWRITE(v,reg) writel((v), __MMIO_P2V(VEXPRESS_PCIE_TRN_CTRL_BASE + (reg)))
 
 #define PCI_VIRT_ADDR(a) ((a)-VEXPRESS_PCI_BASE+VEXPRESS_PCI_VBASE)
-#define IOWRITEL(val,addr) writel((val),__io_address(addr))
-#define IOREADL(addr) readl(__io_address(addr))
+#define IOWRITEL(val,addr) writel((val),__MMIO_P2V(addr))
+#define IOREADL(addr) readl(__MMIO_P2V(addr))
 
 #ifdef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
 
@@ -334,14 +334,12 @@ int vexpress_pci_read_config(struct pci_bus *pbus, u32 devfn,
 		return PCIBIOS_DEVICE_NOT_FOUND;
 	}
 
-
 	/* trap access to the class code reg because the RC has junk */
 	if (bus == ROOT_BUS && offset == PCI_CLASS_REVISION && size == 4) {
 
 		*pdata = 0x06040001;	/* Bridge/PCI-PCI/rev 1 */
 		return PCIBIOS_SUCCESSFUL;
 	}
-
 
 #ifdef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
 	if (setup_config(bus, slot, function, offset, &addr) < 0)
@@ -358,6 +356,7 @@ int vexpress_pci_read_config(struct pci_bus *pbus, u32 devfn,
 
 	if (change_mapping(bus, &prevmap, &cpsr) == 0) {
 #endif
+
 		pci_abort = 0;
 		switch (size) {
 		case 1:
@@ -370,6 +369,7 @@ int vexpress_pci_read_config(struct pci_bus *pbus, u32 devfn,
 			*pdata = readl(addr);
 			break;
 		}
+
 #ifndef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
 		restore_mapping(prevmap, cpsr);
 #endif
@@ -377,6 +377,7 @@ int vexpress_pci_read_config(struct pci_bus *pbus, u32 devfn,
 		//printk("read_config %u, %u, %u, %#x (%#x) -> %#x\n", bus, slot, function, offset, addr, *pdata);
 		if (!pci_abort)
 			return PCIBIOS_SUCCESSFUL;
+
 #ifndef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
 	}
 #endif
