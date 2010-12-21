@@ -136,6 +136,9 @@ config RWSEM_GENERIC_SPINLOCK
 config RWSEM_XCHGADD_ALGORITHM
 	bool
 
+config ARCH_HAS_CPU_IDLE_WAIT
+	def_bool y
+
 config ARCH_HAS_ILOG2_U32
 	bool
 
@@ -273,6 +276,7 @@ config ARCH_VEXPRESS
 	select HAVE_SCHED_CLOCK
 	select ICST
 	select PLAT_VERSATILE
+	select ARCH_HAS_CPUFREQ
 	help
 	  This enables support for the ARM Ltd Versatile Express boards.
 
