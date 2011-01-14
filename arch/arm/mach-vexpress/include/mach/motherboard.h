@@ -373,7 +373,8 @@ int v2m_cfg_read(u32 devfn, u32 *data);
 #define V2M_CT_ID_CA15		0x0c000000 /* FIXME: this is almost certainly
 					      wrong, but is what the model
 					      currently provides. */
-#define V2M_LT_ID_ELBA		0x0c000217
+#define V2M_CT_ID_ELBA		0x0c000222
+#define V2M_LT_ID_ELBA_FPGA	0x0c000217
 #define V2M_CT_ID_UNSUPPORTED	0xff000191
 #define V2M_CT_ID_MASK		0xff000fff
 

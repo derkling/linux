@@ -6,7 +6,7 @@
  * Physical base addresses
  */
 #define LT_ELBA_SMC			(0xEC000000)
-#define LT_ELBA_SCC			(0xE3000000)
+#define LT_ELBA_SCC			(0xE0003000)
 #define LT_ELBA_L2CC			(0xE0202000)
 #define LT_ELBA_MPIC			(0xE0200000)
 #define LT_ELBA_INTERNAL_PERIPH		(0xE0000000)
@@ -41,5 +41,6 @@
 #define IRQ_LT_ELBA_AACI		{ (32 + 19) }
 
 extern struct vexpress_tile_desc lt_elba_desc;
+extern struct vexpress_tile_desc ct_elba_desc;
 
 #endif

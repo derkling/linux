@@ -285,32 +285,36 @@ static struct mmci_platform_data v2m_mmci_data = {
 	.status		= v2m_mmci_status,
 };
 
+#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 static AMBA_DEVICE(aaci,  "mb:aaci",  V2M_AACI, NULL);
 static AMBA_DEVICE(mmci,  "mb:mmci",  V2M_MMCI, &v2m_mmci_data);
 static AMBA_DEVICE(kmi0,  "mb:kmi0",  V2M_KMI0, NULL);
 static AMBA_DEVICE(kmi1,  "mb:kmi1",  V2M_KMI1, NULL);
+#endif
 static AMBA_DEVICE(uart0, "mb:uart0", V2M_UART0, NULL);
 #ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 static AMBA_DEVICE(uart1, "mb:uart1", V2M_UART1, NULL);
 static AMBA_DEVICE(uart2, "mb:uart2", V2M_UART2, NULL);
 static AMBA_DEVICE(uart3, "mb:uart3", V2M_UART3, NULL);
-#endif
 static AMBA_DEVICE(wdt,   "mb:wdt",   V2M_WDT, NULL);
 static AMBA_DEVICE(rtc,   "mb:rtc",   V2M_RTC, NULL);
+#endif
 
 static struct amba_device *v2m_amba_devs[] __initdata = {
+#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 	&aaci_device,
 	&mmci_device,
 	&kmi0_device,
 	&kmi1_device,
+#endif
 	&uart0_device,
 #ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 	&uart1_device,
 	&uart2_device,
 	&uart3_device,
-#endif
 	&wdt_device,
 	&rtc_device,
+#endif
 };
 
 static long v2m_osc_round(struct clk *clk, unsigned long rate)
@@ -358,7 +362,6 @@ static struct clk_lookup v2m_lookups[] = {
 		.dev_id		= "mb:uart3",
 		.clk		= &osc2_clk,
 	},
-#endif
 	{	/* KMI0 */
 		.dev_id		= "mb:kmi0",
 		.clk		= &osc2_clk,
@@ -370,6 +373,7 @@ static struct clk_lookup v2m_lookups[] = {
 		.dev_id		= "mb:mmci",
 		.clk		= &osc2_clk,
 	},
+#endif
 #ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 	{	/* CLCD */
 		.dev_id		= "mb:clcd",
@@ -401,6 +405,7 @@ static struct vexpress_tile_desc *vexpress_tile_descs[] __initdata = {
 #endif
 #ifdef CONFIG_ARCH_VEXPRESS_LT_ELBA
 	&lt_elba_desc,
+	&ct_elba_desc,
 #endif
 };
 
@@ -453,17 +458,18 @@ static void __init v2m_init(void)
 
 	printk(KERN_INFO "V2M: Registering clock lookups\n");
 	clkdev_add_table(v2m_lookups, ARRAY_SIZE(v2m_lookups));
+	printk(KERN_INFO "V2M: clocks registered\n");
 
 #ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 	platform_device_register(&v2m_pcie_i2c_device);
 	platform_device_register(&v2m_ddc_i2c_device);
 	platform_device_register(&v2m_flash_device);
-#endif
 	platform_device_register(&v2m_usb_device);
 
 	eth_dev = v2m_eth_device_probe();
 	if (eth_dev)
 		platform_device_register(eth_dev);
+#endif
 
 	for (i = 0; i < ARRAY_SIZE(v2m_amba_devs); i++)
 		amba_device_register(v2m_amba_devs[i], &iomem_resource);
