@@ -154,7 +154,7 @@
 #define IRQ_V2M_CLCD		(32 + 95)     /* on motherboard, mapped to extint[7] */
 #define IRQ_V2M_LAN9118		(32 + 94)     /* on motherboard, mapped to extint[6] */
 #define IRQ_V2M_ISP1761		(32 + 95)     /* on motherboard, mapped to extint[7] */
-/*#define IRQ_V2M_PCIE		(32 + 17) */
+#define IRQ_V2M_PCIE		(32 + 26)
 #endif
 
 
