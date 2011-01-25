@@ -71,6 +71,7 @@
 #define TWRITE(v,reg) writel((v), __MMIO_P2V(VEXPRESS_PCIE_TRN_CTRL_BASE + (reg)))
 
 #define PCI_VIRT_ADDR(a) ((a)-VEXPRESS_PCI_BASE+VEXPRESS_PCI_VBASE)
+//#define PCI_VIRT_ADDR(addr) (__MMIO_P2V(addr))
 #define IOWRITEL(val,addr) writel((val),__MMIO_P2V(addr))
 #define IOREADL(addr) readl(__MMIO_P2V(addr))
 
@@ -535,6 +536,15 @@ int __init vexpress_pci_setup(int nr, struct pci_sys_data *sys)
 	int i;
 #endif
 
+
+	/* First make sure that the Link Training & Status State Machine is disabled */
+#ifdef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
+	TWRITE(0, VEXPRESS_TRN_APP_LTSSM_ENABLE_RD_EN);
+#else
+	IOWRITEL(0 << 15, CFGRW2);		/* "PCIe programming mode" */
+#endif
+
+
 #ifdef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
 	/* Configure DBI - note, configure AXI translation block only since it
 	 * never gets through to the OB translation block
@@ -661,7 +671,7 @@ int __init vexpress_pci_setup(int nr, struct pci_sys_data *sys)
 	 * b8==1 required
 	 * 21:16 = number of lanes (encoded)
 	 */
-	if (vexpress_pci_write_config(&bus, 0, PCI_PORT_LINK_CONTROL, 4, 0x000f0120)
+	if (vexpress_pci_write_config(&bus, 0, PCI_PORT_LINK_CONTROL, 4, 0x00070120)
 		    != PCIBIOS_SUCCESSFUL) {
 		printk(KERN_ERR "PCIe can't write link control register\n");
 		return -1;
