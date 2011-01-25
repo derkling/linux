@@ -285,7 +285,7 @@ static struct mmci_platform_data v2m_mmci_data = {
 	.status		= v2m_mmci_status,
 };
 
-#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
+#ifdef CONFIG_ARCH_VEXPRESS_LT_ELBA
 static AMBA_DEVICE(aaci,  "mb:aaci",  V2M_AACI, NULL);
 static AMBA_DEVICE(mmci,  "mb:mmci",  V2M_MMCI, &v2m_mmci_data);
 static AMBA_DEVICE(kmi0,  "mb:kmi0",  V2M_KMI0, NULL);
@@ -301,7 +301,7 @@ static AMBA_DEVICE(rtc,   "mb:rtc",   V2M_RTC, NULL);
 #endif
 
 static struct amba_device *v2m_amba_devs[] __initdata = {
-#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
+#ifdef CONFIG_ARCH_VEXPRESS_LT_ELBA
 	&aaci_device,
 	&mmci_device,
 	&kmi0_device,
@@ -464,12 +464,12 @@ static void __init v2m_init(void)
 	platform_device_register(&v2m_pcie_i2c_device);
 	platform_device_register(&v2m_ddc_i2c_device);
 	platform_device_register(&v2m_flash_device);
+#endif
 	platform_device_register(&v2m_usb_device);
 
 	eth_dev = v2m_eth_device_probe();
 	if (eth_dev)
 		platform_device_register(eth_dev);
-#endif
 
 	for (i = 0; i < ARRAY_SIZE(v2m_amba_devs); i++)
 		amba_device_register(v2m_amba_devs[i], &iomem_resource);
