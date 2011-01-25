@@ -148,6 +148,7 @@ static struct clk sp804_clk = {
 
 static int v2m_osc5_set(struct clk *clk, unsigned long rate)
 {
+	/* FPGA implementation needs a doubled rate to be set in the oscillator */
 	return v2m_cfg_write(SYS_CFG_OSC | SYS_CFG_SITE_DB1 | 5, 2 * rate);
 }
 
@@ -160,7 +161,21 @@ static struct clk osc5_clk = {
 	.rate	= 10000000,
 };
 
-static struct clk_lookup elba_clk_lookups[] = {
+static int v2m_osc11_set(struct clk *clk, unsigned long rate)
+{
+	return v2m_cfg_write(SYS_CFG_OSC | SYS_CFG_SITE_DB1 | 11, rate);
+}
+
+static const struct clk_ops osc11_clk_ops = {
+	.set	= v2m_osc11_set,
+};
+
+static struct clk osc11_clk = {
+	.ops	= &osc11_clk_ops,
+	.rate	= 119000000,
+};
+
+static struct clk_lookup elba_common_clk_lookups[] = {
 	{	/* SP804 clock 0 */
 		.dev_id		= "sp804",
 		.con_id		= "elba-timer-sp-0",
@@ -178,23 +193,29 @@ static struct clk_lookup elba_clk_lookups[] = {
 		.con_id		= "elba-timer-sp-3",
 		.clk		= &sp804_clk,
 	},
-#if 0
-{	/* OSC5 HDLCD clock */
+};
+
+static struct clk_lookup lt_elba_clk_lookups[] = {
+	{	/* OSC5 drives HDLCD clock in FPGA */
 		.dev_id		= "lt:hdlcd",
 		.clk		= &osc5_clk,
 	},
-#endif
+};
+
+static struct clk_lookup ct_elba_clk_lookups[] = {
+	{	/* OSC11 drives the HDLCD clock in Tuscan/ELBA */
+		.dev_id		= "lt:hdlcd",
+		.clk		= &osc11_clk,
+	},
 };
 
 static void __init lt_elba_init_timers(void)
 {
 	printk(KERN_INFO "ELBA: SP804 initialising timers\n");
-#if 0
 	sp804_clocksource_init(MMIO_P2V(LT_ELBA_TIMER1), "elba-timer-sp-1");
 	sp804_clockevents_init(MMIO_P2V(LT_ELBA_TIMER0), IRQ_LT_ELBA_TIMER0, "elba-timer-sp-0");
 	sp804_clocksource_init(MMIO_P2V(LT_ELBA_TIMER2), "elba-timer-sp-2");
 	sp804_clocksource_init(MMIO_P2V(LT_ELBA_TIMER3), "elba-timer-sp-3");
-#endif
 }
 
 static void elba_init(u32 l2cache_latencies)
@@ -212,24 +233,30 @@ static void elba_init(u32 l2cache_latencies)
 	l2x0_init(l2x0_base, 0x00470000, 0xfe0fffff);
 #endif
 
-	// clkdev_add_table(elba_clk_lookups, ARRAY_SIZE(elba_clk_lookups));
-	// printk(KERN_INFO "ELBA: SP804 clocks registered\n");
+	clkdev_add_table(elba_common_clk_lookups, ARRAY_SIZE(elba_common_clk_lookups));
+	printk(KERN_INFO "ELBA: SP804 clocks registered\n");
 
 	for (i = 0; i < ARRAY_SIZE(lt_elba_amba_devs); i++)
 		amba_device_register(lt_elba_amba_devs[i], &iomem_resource);
 
-	// platform_device_register(&lt_elba_mali_hdlcd);
+	platform_device_register(&lt_elba_mali_hdlcd);
 }
 
 
 static void lt_elba_init(void)
 {
+	/* HDLCD on FPGA uses OSC 5 */
+	clkdev_add_table(lt_elba_clk_lookups, ARRAY_SIZE(lt_elba_clk_lookups));
+
 	/* set RAM latencies to 1 cycle for this logic tile. */
 	elba_init(0);
 }
 
 static void ct_elba_init(void)
 {
+	/* HDLCD in silicon uses OSC 11 */
+	clkdev_add_table(ct_elba_clk_lookups, ARRAY_SIZE(ct_elba_clk_lookups));
+
 	/* set RAM latencies to 5 cycles for this core tile. */
 	elba_init(0x444);
 }
