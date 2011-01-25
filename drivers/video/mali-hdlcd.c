@@ -29,10 +29,10 @@
 #include <asm/uaccess.h>
 #include <mach/motherboard.h>
 
-#define MALI_USE_UNIFIED_MEMORY_PROVIDER 1
-#define MALI_HDLCD_RES 0
+//#define MALI_USE_UNIFIED_MEMORY_PROVIDER 1
+#define MALI_HDLCD_RES 3
 
-#if MALI_USE_UNIFIED_MEMORY_PROVIDER
+#ifdef MALI_USE_UNIFIED_MEMORY_PROVIDER
 #include "ump_kernel_interface.h"
 #include "ump_kernel_interface_ref_drv.h"
 #endif
@@ -81,6 +81,7 @@ struct {
 		.vsync_len	= 4,
 		.upper_margin	= 18,
 		.lower_margin	= 4,
+		.vmode          = FB_VMODE_NONINTERLACED,
 	},
 	.bpp = 16,
 	.width = -1,
@@ -105,7 +106,7 @@ struct {
 	.width = -1,
 	.height = 1,
 };
-#else
+#elif (MALI_HDLCD_RES == 3)
 {
 	.mode		= {
 		.name           = "UXGA",
@@ -124,9 +125,28 @@ struct {
 	.width		= -1,
 	.height		= -1,
 };
+#else
+{
+	.mode		= {
+		.name           = "HD",
+		.xres           = 1920,
+		.yres           = 1080,
+		.pixclock       = 722,
+		.hsync_len      = 80,
+		.left_margin    = 48,
+		.right_margin   = 160,
+		.vsync_len      = 8,
+		.upper_margin   = 31,
+		.lower_margin   = 3,
+		.vmode          = FB_VMODE_NONINTERLACED,
+	},
+	.bpp		= 16,
+	.width		= -1,
+	.height		= -1,
+};
 #endif
 
-#if MALI_USE_UNIFIED_MEMORY_PROVIDER
+#ifdef MALI_USE_UNIFIED_MEMORY_PROVIDER
 ump_dd_handle ump_wrapped_buffer;
 #endif
 
@@ -222,6 +242,14 @@ static void hdlcd_disable(hdlcd_device *hdlcd)
 	clk_disable(hdlcd->clk);
 }
 
+
+#define VGA 0  /* 640x480 */
+#define SVGA 1  /* 800x600 */
+#define XGA 2 /* 1024x768 */
+#define SXGA 3 /* 1280x1024 */
+#define UXGA 4 /* 1600x1200 */
+#define HD1080 5 /* 1920x1080 */
+
 /*
  * Enable the relevant connector on the interface module.
  */
@@ -239,9 +267,9 @@ static void hdlcd_enable(hdlcd_device *hdlcd)
 	writel(val, cmd_reg);
 
 	v2m_cfg_write(SYS_CFG_MUXFPGA | SYS_CFG_SITE_DB1, 0);
-	v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB1, 1); // XGA
+	// v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB1, 1); // SVGA
 	// v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB1, 3); // SXGA
-	// v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB1, 4); // UXGA
+	v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB1, 4); // UXGA
 }
 
 static int hdlcd_setup(struct hdlcd_device *hdlcd)
@@ -252,7 +280,7 @@ static int hdlcd_setup(struct hdlcd_device *hdlcd)
 	/* Maximum resolution supported.  */
 	unsigned long framesize = 1600 * 1200 * 2 * 2;
 
-#if MALI_USE_UNIFIED_MEMORY_PROVIDER
+#ifdef MALI_USE_UNIFIED_MEMORY_PROVIDER
 	ump_dd_physical_block ump_memory_description;
 #endif
 
@@ -285,7 +313,7 @@ static int hdlcd_setup(struct hdlcd_device *hdlcd)
 	/* Clear the fb.  */
 	memset_io(hdlcd->fb.screen_base, 0, framesize);
 
-#if MALI_USE_UNIFIED_MEMORY_PROVIDER
+#ifdef MALI_USE_UNIFIED_MEMORY_PROVIDER
 	ump_memory_description.addr = dma;
 	ump_memory_description.size = framesize;
 
@@ -580,7 +608,7 @@ static int hdlcd_pan_display(struct fb_var_screeninfo *var, struct fb_info *info
 
 static int hdlcd_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
 {
-#if MALI_USE_UNIFIED_MEMORY_PROVIDER
+#ifdef MALI_USE_UNIFIED_MEMORY_PROVIDER
 	if ( HDLCD_IOCTL_GET_FB_UMP_SECURE_ID == cmd )
 	{
 		u32 __user * psecureid = (u32 __user *)arg;
@@ -703,7 +731,7 @@ static int hdlcd_drv_remove(struct platform_device *pdev)
 	hdlcd_disable(hdlcd);
 	unregister_framebuffer(&hdlcd->fb);
 
-#if MALI_USE_UNIFIED_MEMORY_PROVIDER
+#ifdef MALI_USE_UNIFIED_MEMORY_PROVIDER
 	ump_dd_reference_release(ump_wrapped_buffer);
 	ump_wrapped_buffer = UMP_DD_HANDLE_INVALID;
 #endif
