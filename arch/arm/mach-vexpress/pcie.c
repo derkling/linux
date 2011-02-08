@@ -654,7 +654,7 @@ int __init vexpress_pci_setup(int nr, struct pci_sys_data *sys)
 #ifdef VEXPRESS_PCIE_CHECK_SWITCH
 	/* write bus numbers to Root Complex */
 	data = (data & 0xff000000)
-		    | MAKE_BUS_NUMBER(ROOT_BUS, ROOT_BUS + 1, 255);
+		    | MAKE_BUS_NUMBER(ROOT_BUS, SWITCH_BUS, 255);
 	if (vexpress_pci_write_config(&bus, 0, PCI_PRIMARY_BUS, 4, data)
 		    != PCIBIOS_SUCCESSFUL) {
 		printk(KERN_ERR "PCIe can't set RC bus numbers\n");
