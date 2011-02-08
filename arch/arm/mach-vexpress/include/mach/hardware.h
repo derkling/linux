@@ -25,14 +25,6 @@
 #include <asm/sizes.h>
 #include <mach/motherboard.h>
 
-/*
- * System Register Interface
- */
-#define ARM_VEXPRESS_SYS_CFG_DATA	0x100000A0
-#define ARM_VEXPRESS_SYS_CFG_CTRL	0x100000A4
-#define ARM_VEXPRESS_SYS_CFG_STAT	0x100000A8
-
-
 /* PCI stuff */
 #ifndef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
 #define CFGRW2			VEXPRESS_SYSREG_BASE + 0x08
