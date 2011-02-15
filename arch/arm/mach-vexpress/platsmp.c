@@ -139,6 +139,8 @@ void __init smp_init_cpus(void)
 
 void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 {
+	unsigned int i;
+
 	/*
 	 * Initialise the present map, which describes the set of CPUs
 	 * actually populated at the present time.

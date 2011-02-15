@@ -9,9 +9,9 @@
 #include <linux/amba/bus.h>
 #include <linux/amba/clcd.h>
 #include <linux/platform_device.h>
+#include <linux/clkdev.h>
 
 #include <asm/cacheflush.h>
-#include <asm/clkdev.h>
 #include <asm/hardware/gic.h>
 #include <asm/smp_twd.h>
 #ifdef CONFIG_SMP
@@ -184,11 +184,11 @@ static struct clk_lookup elba_common_clk_lookups[] = {
 		.dev_id		= "sp804",
 		.con_id		= "elba-timer-sp-1",
 		.clk		= &sp804_clk,
-	},{	/* SP804 clock 2 */
+	}, {	/* SP804 clock 2 */
 		.dev_id		= "sp804",
 		.con_id		= "elba-timer-sp-2",
 		.clk		= &sp804_clk,
-	},{	/* SP804 clock 3 */
+	}, {	/* SP804 clock 3 */
 		.dev_id		= "sp804",
 		.con_id		= "elba-timer-sp-3",
 		.clk		= &sp804_clk,

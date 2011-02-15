@@ -16,7 +16,8 @@
 
 		.macro	addruart,rp,rv
 		mov	\rp, #DEBUG_LL_UART_OFFSET
-		orr	\rv, \rp, =__MMIO_P2V(V2M_PA_CS7)	@ virtual base
+		orr	\rv, \rp, #0xf8000000	@ virtual base
+		orr	\rv, \rv, #0x00f00000
 		orr	\rp, \rp, #V2M_PA_CS7	@ physical base
 		.endm
 
