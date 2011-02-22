@@ -27,7 +27,6 @@
 #define IRQ_VEXPRESS_ETH	(IRQ_ARM_VEXPRESS_GIC_START + 15)	/* Ethernet controller */
 #define IRQ_VEXPRESS_USB	(IRQ_ARM_VEXPRESS_GIC_START + 16)	/* USB controller */
 
-#if defined(CONFIG_VEXPRESS_PCIE_RC_IN_FPGA)
 #ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 #define IRQ_VEXPRESS_PCIE_A		(IRQ_ARM_VEXPRESS_GIC_START + 36)	/* PCI Express INTA */
 #define IRQ_VEXPRESS_PCIE_B		(IRQ_ARM_VEXPRESS_GIC_START + 37)	/* PCI Express INTB */
@@ -39,14 +38,13 @@
 #define IRQ_VEXPRESS_PCIE_C		(IRQ_ARM_VEXPRESS_GIC_START + 28)	/* PCI Express INTC */
 #define IRQ_VEXPRESS_PCIE_D		(IRQ_ARM_VEXPRESS_GIC_START + 29)	/* PCI Express INTD */
 #endif
-#endif
 
 #ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 #define IRQ_VEXPRESS_MSI_IN		(IRQ_ARM_VEXPRESS_GIC_START + 40)	/* PCI Express MSI interrupt */
 #else /* CONFIG_ARCH_VEXPRESS_LT_ELBA */
 #define IRQ_VEXPRESS_MSI_IN		(IRQ_ARM_VEXPRESS_GIC_START + 15)	/* PCI Express MSI interrupt */
 #endif
-#if defined(CONFIG_VEXPRESS_PCIE_RC_IN_FPGA)
+
 #ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 #define IRQ_VEXPRESS_MSI_IN_1		(IRQ_ARM_VEXPRESS_GIC_START + 41)	/* PCI Express MSI interrupt */
 #define IRQ_VEXPRESS_MSI_IN_2		(IRQ_ARM_VEXPRESS_GIC_START + 42)	/* PCI Express MSI interrupt */
@@ -56,7 +54,6 @@
 #define IRQ_VEXPRESS_MSI_IN_2		(IRQ_ARM_VEXPRESS_GIC_START + 17)	/* PCI Express MSI interrupt */
 #define IRQ_VEXPRESS_MSI_IN_3		(IRQ_ARM_VEXPRESS_GIC_START + 18)	/* PCI Express MSI interrupt */
 #endif
-#endif
 
 #ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 #define IRQ_VE_CA9_L220_EVENT	(IRQ_ARM_VEXPRESS_GIC_START + 43)	/* L220 Cache controller combined Int */
@@ -64,13 +61,6 @@
 #else /* CONFIG_ARCH_VEXPRESS_LT_ELBA */
 #define IRQ_VE_CA9_L220_EVENT	(IRQ_ARM_VEXPRESS_GIC_START + 47)	/* L220 Cache controller combined Int */
 #define IRQ_VE_CA9_CLCD		(IRQ_ARM_VEXPRESS_GIC_START + 23)	/* CA9 Tile CLCD controller */
-#endif
-
-#if !defined(CONFIG_VEXPRESS_PCIE_RC_IN_FPGA)
-#define IRQ_VEXPRESS_PCIE_A		(IRQ_ARM_VEXPRESS_GIC_START + 56)	/* PCI Express INTA */
-#define IRQ_VEXPRESS_PCIE_B		(IRQ_ARM_VEXPRESS_GIC_START + 57)	/* PCI Express INTB */
-#define IRQ_VEXPRESS_PCIE_C		(IRQ_ARM_VEXPRESS_GIC_START + 58)	/* PCI Express INTC */
-#define IRQ_VEXPRESS_PCIE_D		(IRQ_ARM_VEXPRESS_GIC_START + 59)	/* PCI Express INTD */
 #endif
 
 #ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
@@ -84,7 +74,11 @@
 #endif
 
 #ifdef CONFIG_PCI_MSI
-#define IRQ_VEXPRESS_MSI_0		(IRQ_ARM_VEXPRESS_GIC_START + 64)	/* first soft IRQ for decoded MSI */
+#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
+#define IRQ_VEXPRESS_MSI_0	(IRQ_ARM_VEXPRESS_GIC_START + 64)	/* first soft IRQ for decoded MSI */
+#else
+#define IRQ_VEXPRESS_MSI_0	(IRQ_ARM_VEXPRESS_GIC_START + 96)	/* first soft IRQ for decoded MSI */
+#endif
 #endif
 
 #define IRQ_ARM_VEXPRESS_SMC	-1
@@ -93,11 +87,7 @@
 #define NR_GIC_ARM_VEXPRESS	1
 
 #ifdef CONFIG_PCI_MSI
-#if defined(CONFIG_VEXPRESS_PCIE_RC_IN_FPGA)
 #define NR_MSI_IRQS_ARM_VEXPRESS	(16*4)
-#else
-#define NR_MSI_IRQS_ARM_VEXPRESS	16
-#endif	/* CONFIG_VEXPRESS_PCIE_RC_IN_FPGA */
 #endif
 
 /*
@@ -115,7 +105,10 @@
 #endif
 
 #ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
-#define NR_IRQS	128
+#define V2M_NR_IRQS	128
 #else
-#define NR_IRQS 160
+#define V2M_NR_IRQS	196
 #endif
+
+
+#define NR_IRQS		V2M_NR_IRQS

@@ -64,8 +64,4 @@ config VEXPRESS_USE_TILE_CLCD
 	  There are two CLCD controllers available on many Versatile
 	  Express systems, one on the motherboard and one on the daughterboard.
 	  This option controls which of these the kernel uses.
-
-config VEXPRESS_PCIE_RC_IN_FPGA
-	bool "Configure the PCI Express code for Root Complex in FPGA"
-	default n
 endmenu

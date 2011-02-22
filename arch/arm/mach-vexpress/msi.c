@@ -45,12 +45,6 @@
  *	   interrupt numbers.
  */
 
-#ifdef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
-#define ONE_IRQ_PER_MSI_REG
-#else
-#undef  ONE_IRQ_PER_MSI_REG
-#endif
-
 
 /* We read the pending interrupt status from the SET register */
 #define VEXPRESS_PCIE_MSI_INT_STATUS	VEXPRESS_PCIE_MSI_INT_SET
@@ -81,13 +75,7 @@ static irqreturn_t vexpress_msi_handler(int irq, void *dev_id)
 	int bitnum, r;
 	int handled = 0;
 
-#ifdef ONE_IRQ_PER_MSI_REG
-	r = irq - IRQ_VEXPRESS_MSI_IN;
-
-	{
-#else
 	for (r = 0; r < NR_MSI_REGS; ++r) {
-#endif
 		/* read status register to see which devices are interrupting */
 		reg = readl(__MMIO_P2V(VEXPRESS_PCIE_MSI_INT_STATUS + r*4));
 
@@ -103,14 +91,13 @@ static irqreturn_t vexpress_msi_handler(int irq, void *dev_id)
 			 * gets cleared.
 			 */
 			bitnum = find_first_bit(&reg, 32);
-			writel((1 << bitnum),
-				__MMIO_P2V(VEXPRESS_PCIE_MSI_INT_CLEAR + r*4));
+			writel((1 << bitnum), __MMIO_P2V(VEXPRESS_PCIE_MSI_INT_CLEAR + r*4));
 
 			/* call the handler only if the bit that was set was in
 			 * the low 16 bits - MSI doesn't use bits 16..31.
 			 */
-			if (bitnum < min(16,NR_MSI_IRQS_ARM_VEXPRESS))
-				generic_handle_irq(IRQ_VEXPRESS_MSI_0 + r*16 + bitnum);
+			if (bitnum < min(16, NR_MSI_IRQS_ARM_VEXPRESS))
+				generic_handle_irq(IRQ_VEXPRESS_MSI_0 + r * 16 + bitnum);
 			else
 				printk(KERN_ALERT
 					"PCIe MSI register %u, high bit %u "
@@ -136,14 +123,11 @@ static struct irqaction vexpress_msi_irq = {
  */
 void __init vexpress_msi_init(void)
 {
-#ifdef ONE_IRQ_PER_MSI_REG
 	int r;
 
-	for (r = 0; r < NR_MSI_REGS; ++r)
-		setup_irq(IRQ_VEXPRESS_MSI_IN + r*4, &vexpress_msi_irq);
-#else
-	setup_irq(IRQ_VEXPRESS_MSI_IN, &vexpress_msi_irq);
-#endif
+	for (r = 0; r < NR_MSI_REGS; ++r) {
+		setup_irq(IRQ_VEXPRESS_MSI_IN + r, &vexpress_msi_irq);
+	}
 }
 
 
@@ -158,19 +142,19 @@ void arch_teardown_msi_irq(unsigned int irq)
 }
 
 
-static void vexpress_msi_nop(unsigned int irq)
+static void vexpress_msi_nop(struct irq_data *data)
 {
 	return;
 }
 
 
 static struct irq_chip vexpress_msi_chip = {
-	.name    = "PCIe-MSI",
-	.ack     = vexpress_msi_nop,
-	.enable  = unmask_msi_irq,
-	.disable = mask_msi_irq,
-	.mask    = mask_msi_irq,
-	.unmask  = unmask_msi_irq,
+	.name		= "PCIe-MSI",
+	.irq_ack	= vexpress_msi_nop,
+	.irq_enable	= unmask_msi_irq,
+	.irq_disable	= mask_msi_irq,
+	.irq_mask	= mask_msi_irq,
+	.irq_unmask	= unmask_msi_irq,
 };
 
 
@@ -194,8 +178,12 @@ int arch_setup_msi_irq(struct pci_dev *pdev, struct msi_desc *desc)
 	irq = IRQ_VEXPRESS_MSI_0 + bitnum;
 
 	dynamic_irq_init(irq);
+
 	set_irq_msi(irq, desc);
 	set_irq_chip_and_handler(irq, &vexpress_msi_chip, handle_simple_irq);
+
+	/* mark this IRQ as valid but don't try to probe it */
+	set_irq_flags(irq, IRQF_VALID);
 
 	/* N.B. MSI data reg is 16 bits wide, write address 32-bit aligned */
 	msg.address_hi = 0x0;

@@ -45,23 +45,15 @@
 #define VEXPRESS_PCIE_CHECK_SWITCH	/* need bus numbers configured */
 #endif
 
+
+#define VEXPRESS_PCIE_MAX_READ_REQUEST_SIZE	256
+
 /* PCIe bus numbers */
-#ifdef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
 #define ROOT_BUS	0
 #define LAST_BUS	255
-#else
-#define ROOT_BUS	32		/* fixed because RC is at 0x20000000 */
-#define LAST_BUS	(ROOT_BUS + 31)
-#define MEMORY_BUS	(-1)		/* to flag special mode of access */
-#endif
-
 #define SWITCH_BUS	(ROOT_BUS + 1)
 
-#ifdef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
 #define ROOT_COMPLEX_ID 	0x072013b5
-#else
-#define ROOT_COMPLEX_ID 	0xabcd16c3
-#endif
 #define IDT_SWITCH_ID		0x8035111d
 
 
@@ -75,7 +67,6 @@
 #define IOWRITEL(val,addr) writel((val),__MMIO_P2V(addr))
 #define IOREADL(addr) readl(__MMIO_P2V(addr))
 
-#ifdef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
 
 /* PCIe space mapping - base and limit are obvious
  *	output_address = (input_address & mask) + offset
@@ -149,15 +140,11 @@ enum {
 };
 
 
-#endif /* CONFIG_VEXPRESS_PCIE_RC_IN_FPGA */
-
-
 static volatile int pci_abort;
 
 
-/* Maps a legacy interrupt pin to an interrupt number.  Since legacy interrupts
- * currently don't work on this platform, the swizzling has not been sorted out
- * and so this function is effectively untested.
+/* 
+ * Maps a legacy interrupt pin to an interrupt number.
  *
  * Returns interrupt number or -1 for error.
  */
@@ -168,8 +155,8 @@ static int vexpress_pci_map_irq(struct pci_dev *dev, u8 slot, u8 pin)
 
 	/* check pin in range INTA..INTD */
 	if (pin >= 1 && pin <= 4) {
-		/* PCIe generates IRQs on _pins_ 56..59 which are mapped to
-		 * GIC interrupts 88..91
+		/* 
+		 * Pins 1..4 are mapped from IRQ_VEXPRESS_PCIE_A to IRQ_VEXPRESS_PCIE_D
 		 */
 		irq = IRQ_VEXPRESS_PCIE_A + pin - 1;
 	}
@@ -182,81 +169,6 @@ static int vexpress_pci_map_irq(struct pci_dev *dev, u8 slot, u8 pin)
 }
 
 
-#ifndef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
-/* Set mapping depending on the type of access wanted.
- *
- * Returns with irqs disabled, if successful
- *
- * In this faulty design, memory, I/O, config type 0/1 are all mapped at the
- * same address and we have to tweak registers to do the sort of access we
- * want. Drivers are expected to want "memory" all the time so we leave it set
- * up like that and disable irqs for any section that needs it differently.
- * (Memory and I/O cannot be used at the same time so very few devices will
- * work.) There is no need to protect this with a spinlock since the high-level
- * PCI code ensures that we are never reentered.
- */
-static int change_mapping(int bus, u32 *p_prev, unsigned long *p_cpsr)
-{
-	u32 magic;
-	unsigned long cpsr;
-
-	switch (bus) {
-	case MEMORY_BUS:	/* magic value - not a real bus number */
-		magic = 0;
-		break;
-	case ROOT_BUS:		/* DBI access */
-		magic = 1 << 21;
-		break;
-	case SWITCH_BUS:
-		magic = 4;	/* type 0 config */
-		break;
-	default:
-		if (bus < ROOT_BUS || bus > LAST_BUS) {
-			return -1;
-		}
-		magic = 5;	/* type 1 config */
-		break;
-	}
-
-	*p_prev = IOREADL(SLV_ARMISC_INFO);	/* save current mapping */
-
-	/* disable irqs mapping for all the time that mapping is changed */
-	local_irq_save(cpsr);
-	*p_cpsr = cpsr;
-
-	/* no cache flushing - space is uncached, unbuffered */
-
-	IOWRITEL(magic, SLV_ARMISC_INFO);
-	IOWRITEL(magic, SLV_AWMISC_INFO);
-
-	/* no TLB flushing because VA->PA has not changed */
-
-	return 0;
-}
-#endif /* ifndef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA */
-
-
-#ifndef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
-/* This is the complementary function for change_mapping() and restores the
- * previous mapping and interrupt disable state
- *
- * Returns: none
- */
-static void restore_mapping(u32 previous, unsigned long cpsr)
-{
-	/* no cache flushing - space is uncached, unbuffered */
-
-	IOWRITEL(previous, SLV_ARMISC_INFO);
-	IOWRITEL(previous, SLV_AWMISC_INFO);
-
-	/* no TLB flushing because VA->PA has not changed */
-
-	local_irq_restore(cpsr);
-}
-#endif /* ifndef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA */
-
-
-#ifdef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
 /* Calculate address for required access and program the OB translation block,
  * as necessary. There is no need to protect this with a spinlock since the
  * high-level PCI code ensures that we are never reentered.
@@ -296,7 +208,6 @@ static int setup_config(u32 bus, u32 slot, u32 function,
 
 	return 0;
 }
-#endif /* CONFIG_VEXPRESS_PCIE_RC_IN_FPGA */
 
 
 /* Reads PCI configuration space and may fake a return value where necessary.
@@ -309,23 +220,14 @@ int vexpress_pci_read_config(struct pci_bus *pbus, u32 devfn,
 			int offset, int size, u32 *pdata)
 {
 	u32 addr, bus, slot, function;
-#ifndef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
-	u32 prevmap;
-	unsigned long cpsr;
-#endif
 
 	bus = pbus->number;
 	slot = PCI_SLOT(devfn);
 	function = PCI_FUNC(devfn);
 
 	/* ignore accesses to non-existent ports */
-#ifdef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
 	if ((bus == SWITCH_BUS && (((slot > 0) && (slot < 4)) || (slot > 7)))
 			|| (bus == ROOT_BUS && slot > 0)) {
-#else
-	if ((bus == SWITCH_BUS && slot > 7) || (bus == ROOT_BUS && slot > 0)) {
-#endif
-
 		/* only slots 0..7 on the switch are connected (and not all of
 		 * those)
 		 */
@@ -342,21 +244,8 @@ int vexpress_pci_read_config(struct pci_bus *pbus, u32 devfn,
 		return PCIBIOS_SUCCESSFUL;
 	}
 
-#ifdef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
 	if (setup_config(bus, slot, function, offset, &addr) < 0)
 		return PCIBIOS_DEVICE_NOT_FOUND;
-#else
-	/* Note that the bus number is not encoded in bits [27:20] of the
-	 * address, as in the PCIe spec. but appears in bits [31:24] instead.
-	 * Consequently, we don't add the base address of the root complex and
-	 * the minimum bus number is 32 (root complex sits at 0x20000000).
-	 */
-	addr = (bus << 24) | ((slot & 0x1f) << 19)
-		     | ((function & 7) << 16) | (offset & ~3);
-	addr = PCI_VIRT_ADDR(addr);
-
-	if (change_mapping(bus, &prevmap, &cpsr) == 0) {
-#endif
 
 		pci_abort = 0;
 		switch (size) {
@@ -371,17 +260,9 @@ int vexpress_pci_read_config(struct pci_bus *pbus, u32 devfn,
 			break;
 		}
 
-#ifndef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
-		restore_mapping(prevmap, cpsr);
-#endif
-
 		//printk("read_config %u, %u, %u, %#x (%#x) -> %#x\n", bus, slot, function, offset, addr, *pdata);
 		if (!pci_abort)
 			return PCIBIOS_SUCCESSFUL;
-
-#ifndef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
-	}
-#endif
 
 	*pdata = ((size == 1) ? 0xFF : ((size == 2) ? 0xFFFF : 0xFFFFFFFF));
 	return PCIBIOS_DEVICE_NOT_FOUND;
@@ -398,64 +279,39 @@ int vexpress_pci_write_config(struct pci_bus *pbus, u32 devfn,
 			int offset, int size, u32 data)
 {
 	u32 addr, bus, slot, function;
-#ifndef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
-	u32 prevmap;
-	unsigned long cpsr;
-#endif
 
 	bus = pbus->number;
 	slot = PCI_SLOT(devfn);
 	function = PCI_FUNC(devfn);
 
-#ifdef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
 	if ((bus == SWITCH_BUS && (((slot > 0) && (slot < 4)) || (slot > 7)))
 			|| (bus == ROOT_BUS && slot > 0)) {
-#else
-	if ((bus == SWITCH_BUS && slot > 7) || (bus == ROOT_BUS && slot > 0)) {
-#endif
 		/* only slots 0..7 on switch are connected (and not all of
 		 * those)
 		 */
 		return PCIBIOS_DEVICE_NOT_FOUND;
 	}
 
-#ifdef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
 	if (setup_config(bus, slot, function, offset, &addr) < 0)
 		return PCIBIOS_DEVICE_NOT_FOUND;
-#else
-	/* Note that the bus number is not encoded in bits [27:20] of the
-	 * address, as in the PCIe spec. but appears in bits [31:24] instead.
-	 * Consequently, we don't add the base address of the root complex and
-	 * the minimum bus number is 32 (root complex sits at 0x20000000).
-	 */
-	addr = (bus << 24) | ((slot & 0x1f) << 19)
-		     | ((function & 7) << 16) | (offset & ~3);
-	addr = PCI_VIRT_ADDR(addr);
 
-	if (change_mapping(bus, &prevmap, &cpsr) == 0) {
-#endif
-		//printk("write_config %u, %u, %u, %#x (%#x) = %#x\n", bus, slot, function, offset, addr, data);
-		pci_abort = 0;
-		switch (size) {
-		case 1:
-			writeb(data, addr + (offset & 3));
-			break;
-		case 2:
-			writew(data, addr + (offset & 3));
-			break;
-		default:
-			writel(data, addr);
-			break;
-		}
-#ifndef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
-		restore_mapping(prevmap, cpsr);
-#endif
-
-		if (!pci_abort)
-			return PCIBIOS_SUCCESSFUL;
-#ifndef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
+	//printk("write_config %u, %u, %u, %#x (%#x) = %#x\n", bus, slot, function, offset, addr, data);
+	pci_abort = 0;
+	switch (size) {
+	case 1:
+		writeb(data, addr + (offset & 3));
+		break;
+	case 2:
+		writew(data, addr + (offset & 3));
+		break;
+	default:
+		writel(data, addr);
+		break;
 	}
-#endif
+
+	if (!pci_abort)
+		return PCIBIOS_SUCCESSFUL;
+
 	return PCIBIOS_DEVICE_NOT_FOUND;
 }
 
@@ -538,14 +394,9 @@ int __init vexpress_pci_setup(int nr, struct pci_sys_data *sys)
 
 
 	/* First make sure that the Link Training & Status State Machine is disabled */
-#ifdef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
 	TWRITE(0, VEXPRESS_TRN_APP_LTSSM_ENABLE_RD_EN);
-#else
-	IOWRITEL(0 << 15, CFGRW2);		/* "PCIe programming mode" */
-#endif
 
 
-#ifdef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
 	/* Configure DBI - note, configure AXI translation block only since it
 	 * never gets through to the OB translation block
 	 */
@@ -613,27 +464,6 @@ int __init vexpress_pci_setup(int nr, struct pci_sys_data *sys)
 	/* Enable OB translation block */
 	TWRITE(1, VEXPRESS_TRN_TRANSLATION_ENABLE_RD_EN);
 
-#else /* CONFIG_VEXPRESS_PCIE_RC_IN_FPGA */
-
-	/* Memory, I/O, config type 0/1 are all mapped at the same address and
-	 * we have to tweak registers to do the sort of access we want. Set the
-	 * initial, default state
-	 */
-
-	/* no cache flushing - space is uncached, unbuffered */
-
-#ifdef VEXPRESS_ALLOCATE_PCI_IO_SPACE
-	IOWRITEL(2, SLV_ARMISC_INFO);	/* access = I/O R/W */
-	IOWRITEL(2, SLV_AWMISC_INFO);
-#else
-	IOWRITEL(0, SLV_ARMISC_INFO);	/* access = memory R/W */
-	IOWRITEL(0, SLV_AWMISC_INFO);
-#endif
-
-	/* no TLB flushing because VA->PA has not changed */
-
-#endif	/* CONFIG_VEXPRESS_PCIE_RC_IN_FPGA */
-
 	bus.number = ROOT_BUS;	/* so can use read/write_config */
 
 	/* look for the Root Complex */
@@ -677,14 +507,8 @@ int __init vexpress_pci_setup(int nr, struct pci_sys_data *sys)
 		return -1;
 	}
 
-
 	/* Enable the Link Training & Status State Machine (LTSSM) */
-#ifdef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
 	TWRITE(1, VEXPRESS_TRN_APP_LTSSM_ENABLE_RD_EN);
-#else
-	IOWRITEL(1 << 15, CFGRW2);		/* "PCIe programming mode" */
-#endif
-
 
 #ifdef VEXPRESS_PCIE_CHECK_LINK_UP
 	/* poll for link up */
@@ -813,17 +637,18 @@ static void pcie_fix_sizes(void)
 	while ((pdev = pci_get_device(PCI_ANY_ID, PCI_ANY_ID, pdev)) != NULL) {
 		pci_read_config_word(pdev, pdev->pcie_cap + PCI_EXP_DEVCTL, &val16);
 		v = pcie_get_readrq(pdev);
-		printk(KERN_ERR "%s: %02x%02x\t%04x : (MPSZ, RRQSZ): (%d, %d) -> (128, 128)\n",
+		printk(KERN_ERR "%s: %02x%02x\t%04x : (MPSZ, RRQSZ): (%d, %d) -> (%d, %d)\n",
 				__FUNCTION__,
 				pdev->bus->number,
 				pdev->devfn,
 				pdev->vendor,
-				((((val16 & PCI_EXP_DEVCTL_PAYLOAD) >> 5) + 1) * 128),
-				v);
+				((((val16 & PCI_EXP_DEVCTL_PAYLOAD) >> 5) + 1) << 7),
+				v, VEXPRESS_PCIE_MAX_READ_REQUEST_SIZE,
+				VEXPRESS_PCIE_MAX_READ_REQUEST_SIZE);
 
 		val16 &= ~PCI_EXP_DEVCTL_PAYLOAD;
 		pci_write_config_word(pdev, pdev->pcie_cap + PCI_EXP_DEVCTL, val16);
-		pcie_set_readrq(pdev, 128);
+		pcie_set_readrq(pdev, VEXPRESS_PCIE_MAX_READ_REQUEST_SIZE);
 		pcie_aer_enable(pdev);
 
 		/* Enable PME feature.  */

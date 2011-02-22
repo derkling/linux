@@ -46,7 +46,6 @@ static struct map_desc ct_ca9x4_io_desc[] __initdata = {
 		.type		= MT_DEVICE,
 	},
 #ifdef CONFIG_PCI
-#ifdef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
 	{
 		.virtual	= __MMIO_P2V(VEXPRESS_PCIE_TRN_CTRL_BASE),
 		.pfn		= __phys_to_pfn(VEXPRESS_PCIE_TRN_CTRL_BASE),
@@ -78,20 +77,6 @@ static struct map_desc ct_ca9x4_io_desc[] __initdata = {
 		.length		= VEXPRESS_PCI_IO_SIZE,
 		.type		= MT_DEVICE_UNCACHED,
 	},
-#else
-	{
-		.virtual	= __MMIO_P2V(VEXPRESS_SYSREG_BASE),
-		.pfn		= __phys_to_pfn(VEXPRESS_SYSREG_BASE),
-		.length		= SZ_4K,
-		.type		= MT_DEVICE,
-	},
-	{
-		.virtual	= VEXPRESS_PCI_VBASE,
-		.pfn		= __phys_to_pfn(VEXPRESS_PCI_BASE),
-		.length		= VEXPRESS_PCI_SIZE,
-		.type		= MT_DEVICE,
-	},
-#endif
 #endif
 };
 

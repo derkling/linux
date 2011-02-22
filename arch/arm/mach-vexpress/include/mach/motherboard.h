@@ -394,10 +394,6 @@ struct vexpress_tile_desc {
 /*
  * Peripheral addresses
  */
-#ifndef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
-#define VEXPRESS_PCIE_MSI_INT_SET	0x10000068	/* PCI MSI write to set bit and interrupt */
-#define VEXPRESS_PCIE_MSI_INT_CLEAR	0x1000006C	/* PCI MSI write to clear bit */
-#endif
 #define VEXPRESS_UART0_BASE		0x10009000	/* UART 0 */
 #define VEXPRESS_UART1_BASE		0x1000A000	/* UART 1 */
 #define VEXPRESS_UART2_BASE		0x1000B000	/* UART 2 */
@@ -416,16 +412,9 @@ struct vexpress_tile_desc {
 #define VEXPRESS_SMC_BASE		0x100E1000	/* SMC configuration */
 #define VEXPRESS_SYSREG_BASE		0x100E2000	/* System registers */
 
-#if defined(CONFIG_VEXPRESS_PCIE_RC_IN_FPGA)
-// #define VEXPRESS_PCIE_TRN_CTRL_BASE	0xE0003000	/* PCI Express Addr Translation regs */
 #define VEXPRESS_PCIE_TRN_CTRL_BASE	0xE0186000	/* PCI Express Addr Translation regs */
-// #define VEXPRESS_PCI_BASE		0xF0000000	/* PCI Express */
 #define VEXPRESS_PCI_BASE		0xD0000000	/* PCI Express */
-#define VEXPRESS_PCI_SIZE		SZ_256M		/* F0000000-FFFFFFFF */
-#else /* !CONFIG_VEXPRESS_PCIE_RC_IN_FPGA */
-#define VEXPRESS_PCI_BASE		0x20000000	/* PCI Express */
-#define VEXPRESS_PCI_SIZE		SZ_512M		/* 20000000-3FFFFFFF */
-#endif	/* !CONFIG_VEXPRESS_PCIE_RC_IN_FPGA */
+#define VEXPRESS_PCI_SIZE		SZ_256M		/* D0000000-DFFFFFFF */
 
 #define VEXPRESS_FLASH0_BASE		0x40000000
 #define VEXPRESS_FLASH0_SIZE		SZ_64M
@@ -447,7 +436,6 @@ struct vexpress_tile_desc {
 
 #define VEXPRESS_SYS_PLD_CTRL1		0x74
 
-#if defined(CONFIG_VEXPRESS_PCIE_RC_IN_FPGA)
 /* PCI Express Address Translation registers
  * All are offsets from VEXPRESS_PCIE_TRN_CTRL_BASE
  */
@@ -579,7 +567,6 @@ struct vexpress_tile_desc {
 #define VEXPRESS_PCIE_MSI_INT_CLEAR	\
 	(VEXPRESS_PCIE_TRN_CTRL_BASE + VEXPRESS_TRN_PCIE_MSI0_WR_EN_CLR)	/* PCI MSI write to clear bit */
 
-#endif	/* CONFIG_VEXPRESS_PCIE_RC_IN_FPGA */
 
 #define VEXPRESS_MAX_TILES_SUPPORTED	2
 

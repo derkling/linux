@@ -52,7 +52,6 @@ static struct map_desc lt_elba_io_desc[] __initdata = {
 	},
 #endif
 #ifdef CONFIG_PCI
-#ifdef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
 	{
 		.virtual	= __MMIO_P2V(VEXPRESS_PCIE_TRN_CTRL_BASE),
 		.pfn		= __phys_to_pfn(VEXPRESS_PCIE_TRN_CTRL_BASE),
@@ -84,20 +83,6 @@ static struct map_desc lt_elba_io_desc[] __initdata = {
 		.length		= VEXPRESS_PCI_IO_SIZE,
 		.type		= MT_DEVICE_UNCACHED,
 	},
-#else
-	{
-		.virtual	= __MMIO_P2V(VEXPRESS_SYSREG_BASE),
-		.pfn		= __phys_to_pfn(VEXPRESS_SYSREG_BASE),
-		.length		= SZ_4K,
-		.type		= MT_DEVICE,
-	},
-	{
-		.virtual	= VEXPRESS_PCI_VBASE,
-		.pfn		= __phys_to_pfn(VEXPRESS_PCI_BASE),
-		.length		= VEXPRESS_PCI_SIZE,
-		.type		= MT_DEVICE,
-	},
-#endif
 #endif
 };
 
@@ -133,6 +118,10 @@ static void __init lt_elba_init_irq(void)
 {
 	gic_init(0, 29, MMIO_P2V(LT_ELBA_A9_MPCORE_GIC_DIST),
 		MMIO_P2V(LT_ELBA_A9_MPCORE_GIC_CPU));
+
+#if defined(CONFIG_PCI_MSI)
+	vexpress_msi_init();
+#endif
 }
 
 static AMBA_DEVICE(wdt, "elba:wdt", LT_ELBA_WDT, NULL);

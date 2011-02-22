@@ -26,19 +26,11 @@
 #include <mach/motherboard.h>
 
 /* PCI stuff */
-#ifndef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
-#define CFGRW2			VEXPRESS_SYSREG_BASE + 0x08
-#define CFGRW3			VEXPRESS_SYSREG_BASE + 0x0c
-#define SLV_ARMISC_INFO	CFGRW3
-#define CFGRW4			VEXPRESS_SYSREG_BASE + 0x10
-#define SLV_AWMISC_INFO	CFGRW4
-#endif
 
 /* offsets in config space */
 #define PCI_PORT_LINK_CONTROL	0x710
 #define PCI_RC_DEBUGREG1	0x72c
 
-#ifdef CONFIG_VEXPRESS_PCIE_RC_IN_FPGA
 
 /* Base, limit & mask values for setting up the AXI and OB translation units.
  * The offset regs will be set up dynamically (see pcie.c).
@@ -75,48 +67,6 @@
 
 #define PCIBIOS_MIN_MEM		VEXPRESS_PCI_MEM_BASE	/* bus = phys addr */
 #define PCIBIOS_MIN_IO		VEXPRESS_PCI_IO_BASE	/* bus = phys address */
-
-#else
-
-#define VEXPRESS_PCI_MEM_BASE	VEXPRESS_PCI_BASE	/* mem at same address */
-#define VEXPRESS_PCI_MEM_SIZE	SZ_512M		/* 512 MB */
-#define VEXPRESS_PCI_IO_BASE	VEXPRESS_PCI_BASE	/* I/O at same address */
-#define VEXPRESS_PCI_IO_SIZE	SZ_1M		/* 1 MB */
-
-#define VEXPRESS_PCI_VBASE	0xD0000000	/* virt addr of config space */
-#define VEXPRESS_PCI_MEM_VBASE	VEXPRESS_PCI_VBASE	/* mem at same address */
-#define VEXPRESS_PCI_IO_VBASE	VEXPRESS_PCI_VBASE	/* I/O at same address */
-
-
-/* Addresses used by PCI IO/MEM window allocator
- * Note that we don't want I/O allocated at all but passing (-1) as the min
- * when it uses (-1) as the max doesn't seem to do it.
- *
- * These should be PHYSICAL addresses. The virtual ones are still here because
- * it took a while to find out exactly what was going on.
- */
-
-#define  VEXPRESS_ALLOCATE_PCI_MEM_SPACE
-#undef   VEXPRESS_ALLOCATE_PCI_IO_SPACE
-
-#if defined(VEXPRESS_ALLOCATE_PCI_MEM_SPACE) && defined(VEXPRESS_ALLOCATE_PCI_IO_SPACE)
-#warning can support only one of VEXPRESS_ALLOCATE_PCI_MEM_SPACE and VEXPRESS_ALLOCATE_PCI_IO_SPACE
-#endif
-
-#ifdef VEXPRESS_ALLOCATE_PCI_MEM_SPACE
-#define PCIBIOS_MIN_MEM		VEXPRESS_PCI_MEM_BASE		/* bus = phys addr */
-#else
-#define PCIBIOS_MIN_MEM		(-1)
-#endif
-
-
-#ifdef VEXPRESS_ALLOCATE_PCI_IO_SPACE
-#define PCIBIOS_MIN_IO		VEXPRESS_PCI_IO_BASE		/* bus = phys address */
-#else
-#define PCIBIOS_MIN_IO	(-1)
-#endif
-
-#endif	/* CONFIG_VEXPRESS_PCIE_RC_IN_FPGA */
 
 #define pcibios_assign_all_busses()     0
 
