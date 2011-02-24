@@ -10,15 +10,12 @@
  * published by the Free Software Foundation.
  */
 
-#include <mach/motherboard.h>
+#include <mach/uart.h>
 #include <mach/core.h>
-#define DEBUG_LL_UART_OFFSET	V2M_PERIPH_OFFSET(9)
 
 		.macro	addruart,rp,rv
-		mov	\rp, #DEBUG_LL_UART_OFFSET
-		orr	\rv, \rp, #0xf8000000	@ virtual base
-		orr	\rv, \rv, #0x00f00000
-		orr	\rp, \rp, #V2M_PA_CS7	@ physical base
+		ldr	\rp, =VEXPRESS_UART0			@ physical base
+		ldr	\rv, =__MMIO_P2V(VEXPRESS_UART0)	@ virtual base
 		.endm
 
 #include <asm/hardware/debug-pl01x.S>

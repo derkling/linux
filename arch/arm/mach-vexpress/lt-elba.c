@@ -33,6 +33,11 @@
 
 static struct map_desc lt_elba_io_desc[] __initdata = {
 	{
+		.virtual	= __MMIO_P2V(LT_ELBA_UART0),
+		.pfn		= __phys_to_pfn(LT_ELBA_UART0),
+		.length		= SZ_4K,
+		.type		= MT_DEVICE,
+	}, {
 		.virtual	= __MMIO_P2V(LT_ELBA_MPIC),
 		.pfn		= __phys_to_pfn(LT_ELBA_MPIC),
 		.length		= SZ_8K,
@@ -126,9 +131,18 @@ static void __init lt_elba_init_irq(void)
 
 static AMBA_DEVICE(wdt, "elba:wdt", LT_ELBA_WDT, NULL);
 static AMBA_DEVICE(rtc, "elba:rtc", LT_ELBA_RTC, NULL);
+static AMBA_DEVICE(uart0, "elba:uart0", LT_ELBA_UART0, NULL);
+static AMBA_DEVICE(uart1, "elba:uart1", LT_ELBA_UART1, NULL);
+
 static struct amba_device *lt_elba_amba_devs[] __initdata = {
 	&wdt_device,
 	&rtc_device,
+	&uart0_device,
+	&uart1_device,
+};
+
+static struct clk osc1_clk = {
+	.rate	= 24000000,
 };
 
 static struct clk sp804_clk = {
@@ -165,22 +179,28 @@ static struct clk osc11_clk = {
 };
 
 static struct clk_lookup elba_common_clk_lookups[] = {
-	{	/* SP804 clock 0 */
+	{	/* SP804 timer 0 */
 		.dev_id		= "sp804",
 		.con_id		= "elba-timer-sp-0",
 		.clk		= &sp804_clk,
-	}, {	/* SP804 clock 1 */
+	}, {	/* SP804 timer 1 */
 		.dev_id		= "sp804",
 		.con_id		= "elba-timer-sp-1",
 		.clk		= &sp804_clk,
-	}, {	/* SP804 clock 2 */
+	}, {	/* SP804 timer 2 */
 		.dev_id		= "sp804",
 		.con_id		= "elba-timer-sp-2",
 		.clk		= &sp804_clk,
-	}, {	/* SP804 clock 3 */
+	}, {	/* SP804 timer 3 */
 		.dev_id		= "sp804",
 		.con_id		= "elba-timer-sp-3",
 		.clk		= &sp804_clk,
+	}, {    /* UART0 */
+		.dev_id		= "elba:uart0",
+		.clk		= &osc1_clk,
+	}, {    /* UART1 */
+		.dev_id		= "elba:uart1",
+		.clk		= &osc1_clk,
 	},
 };
 

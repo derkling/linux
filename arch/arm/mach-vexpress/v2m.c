@@ -291,7 +291,9 @@ static AMBA_DEVICE(mmci,  "mb:mmci",  V2M_MMCI, &v2m_mmci_data);
 static AMBA_DEVICE(kmi0,  "mb:kmi0",  V2M_KMI0, NULL);
 static AMBA_DEVICE(kmi1,  "mb:kmi1",  V2M_KMI1, NULL);
 #endif
+#ifndef CONFIG_VEXPRESS_USE_TILE_UART0
 static AMBA_DEVICE(uart0, "mb:uart0", V2M_UART0, NULL);
+#endif
 #ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 static AMBA_DEVICE(uart1, "mb:uart1", V2M_UART1, NULL);
 static AMBA_DEVICE(uart2, "mb:uart2", V2M_UART2, NULL);
@@ -307,7 +309,9 @@ static struct amba_device *v2m_amba_devs[] __initdata = {
 	&kmi0_device,
 	&kmi1_device,
 #endif
+#ifndef CONFIG_VEXPRESS_USE_TILE_UART0
 	&uart0_device,
+#endif
 #ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 	&uart1_device,
 	&uart2_device,
@@ -347,9 +351,11 @@ static struct clk_lookup v2m_lookups[] = {
 	{	/* AMBA bus clock */
 		.con_id		= "apb_pclk",
 		.clk		= &dummy_apb_pclk,
+#ifndef CONFIG_VEXPRESS_USE_TILE_UART0
 	}, {	/* UART0 */
 		.dev_id		= "mb:uart0",
 		.clk		= &osc2_clk,
+#endif
 	},
 #ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 	{	/* UART1 */
@@ -486,6 +492,7 @@ static void __init v2m_init(void)
 MACHINE_START(VEXPRESS, "ARM-Versatile Express")
 	.boot_params	= PHYS_OFFSET + 0x00000100,
 	.map_io		= v2m_map_io,
+	.nr_irqs	= V2M_NR_IRQS,
 	.init_irq	= v2m_init_irq,
 	.timer		= &v2m_timer,
 	.init_machine	= v2m_init,

@@ -12,6 +12,9 @@
 #define LT_ELBA_INTERNAL_PERIPH		(0xE0000000)
 #define ELBA_PERIPH_OFFSET(x)		(x << 12)
 
+#define LT_ELBA_UART0			(LT_ELBA_INTERNAL_PERIPH + ELBA_PERIPH_OFFSET(9))
+#define LT_ELBA_UART1			(LT_ELBA_INTERNAL_PERIPH + ELBA_PERIPH_OFFSET(10))
+
 #define LT_ELBA_WDT			(LT_ELBA_INTERNAL_PERIPH + ELBA_PERIPH_OFFSET(16))
 
 #define LT_ELBA_SP804_TIMER01		(LT_ELBA_INTERNAL_PERIPH + ELBA_PERIPH_OFFSET(17))
@@ -32,15 +35,18 @@
 
 
 #define IRQ_LT_ELBA_WDT			{ (32 + 0) }
-#define IRQ_LT_ELBA_RTC			{ (32 + 10) }
 #define IRQ_LT_ELBA_TIMER0		(32 + 4)
 #define IRQ_LT_ELBA_TIMER1		(32 + 4)
 #define IRQ_LT_ELBA_TIMER2		(32 + 5)
 #define IRQ_LT_ELBA_TIMER3		(32 + 5)
 #define IRQ_LT_ELBA_HDLCD		(32 + 9)
+#define IRQ_LT_ELBA_RTC			{ (32 + 10) }
+#define IRQ_LT_ELBA_UART0		{ (32 + 12) }
+#define IRQ_LT_ELBA_UART1		{ (32 + 13) }
 #define IRQ_LT_ELBA_AACI		{ (32 + 19) }
 
+#ifndef __ASSEMBLY__
 extern struct vexpress_tile_desc lt_elba_desc;
 extern struct vexpress_tile_desc ct_elba_desc;
-
+#endif
 #endif

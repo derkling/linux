@@ -64,4 +64,15 @@ config VEXPRESS_USE_TILE_CLCD
 	  There are two CLCD controllers available on many Versatile
 	  Express systems, one on the motherboard and one on the daughterboard.
 	  This option controls which of these the kernel uses.
+
+config VEXPRESS_USE_TILE_UART0
+	bool "Use the serial port on the daugherboard"
+	depends on ARCH_VEXPRESS_LT_ELBA
+	default n
+	help
+	  Some daughterboards have their own serial port and do not
+	  depend on the motherboard for output. Select this option
+	  if you want to use them in preference to the motherboard
+	  serial port.
+
 endmenu
