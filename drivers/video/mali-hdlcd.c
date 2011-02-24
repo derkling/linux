@@ -278,7 +278,7 @@ static int hdlcd_setup(struct hdlcd_device *hdlcd)
 	struct resource *res;
 	dma_addr_t dma;
 	/* Maximum resolution supported.  */
-	unsigned long framesize = 1600 * 1200 * 2 * 2;
+	unsigned long framesize = PAGE_ALIGN(1600 * 1200 * 2 * 2);
 
 #ifdef MALI_USE_UNIFIED_MEMORY_PROVIDER
 	ump_dd_physical_block ump_memory_description;
