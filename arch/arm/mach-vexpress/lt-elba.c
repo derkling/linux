@@ -308,6 +308,32 @@ static void lt_elba_init(void)
 	elba_init(0, 0);
 }
 
+#if CONFIG_VEXPRESS_ELBA_ACP
+void acp_init(void __iomem *scc_base)
+{
+#define ACP_MIDPL301 (1 << 8) // 0x100
+#define ACP_HIP      (2 << 8) // 0x200
+#define ACP_MID      (4 << 8) // 0x400
+
+      	/* Remap ACP to HIP  */
+	unsigned long scc_conf = __raw_readl(scc_base);
+	scc_conf &= (~0x700);
+	scc_conf |= ACP_HIP;
+	writel(scc_conf, scc_base);
+#if 0
+	/* Enable ACP for Mali  */
+	writel(0x1, scc_base + 0x170);
+	writel(0x1E, scc_base + 0x174);
+	writel(0x1, scc_base + 0x178);
+	writel(0x1E, scc_base + 0x17C);
+#endif
+} 
+#else
+void acp_init(void __iomem *scc_base)
+{
+}
+#endif
+
 static void ct_elba_init(void)
 {
 	/* HDLCD in silicon uses OSC 11 */

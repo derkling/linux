@@ -76,4 +76,7 @@ config VEXPRESS_USE_TILE_UART0
 	  if you want to use them in preference to the motherboard
 	  serial port.
 
+config VEXPRESS_ELBA_ACP
+       bool "Enable ACP on Elba tile"
+       default n
 endmenu
