@@ -43,11 +43,17 @@ static struct map_desc lt_elba_io_desc[] __initdata = {
 		.length		= SZ_8K,
 		.type		= MT_DEVICE,
 	}, {
+		.virtual	= __MMIO_P2V(LT_ELBA_SCC),
+		.pfn		= __phys_to_pfn(LT_ELBA_SCC),
+		.length		= SZ_4K,
+		.type		= MT_DEVICE,
+	}, {
 		.virtual	= __MMIO_P2V(LT_ELBA_MPIC),
 		.pfn		= __phys_to_pfn(LT_ELBA_MPIC),
 		.length		= SZ_8K,
 		.type		= MT_DEVICE,
-	}, {
+	},
+	{
 		.virtual	= __MMIO_P2V(LT_ELBA_SP804_TIMER01),
 		.pfn		= __phys_to_pfn(LT_ELBA_SP804_TIMER01),
 		.length		= SZ_8K,
@@ -308,7 +314,7 @@ static void lt_elba_init(void)
 	elba_init(0, 0);
 }
 
-#if CONFIG_VEXPRESS_ELBA_ACP
+#ifdef CONFIG_VEXPRESS_ELBA_ACP
 void acp_init(void __iomem *scc_base)
 {
 #define ACP_MIDPL301 (1 << 8) // 0x100

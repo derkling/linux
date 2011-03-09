@@ -657,7 +657,7 @@ static void pcie_fix_sizes(void)
 	}
 }
 
-#if CONFIG_VEXPRESS_ELBA_ACP
+#ifdef CONFIG_VEXPRESS_ELBA_ACP
 void pcie_acp_init(void __iomem *trn_base)
 {
 	writel(0x01, trn_base + 0x300);
