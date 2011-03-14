@@ -33,9 +33,14 @@
 
 static struct map_desc lt_elba_io_desc[] __initdata = {
 	{
+		.virtual	= __MMIO_P2V(LT_ELBA_KMI0),
+		.pfn		= __phys_to_pfn(LT_ELBA_KMI0),
+		.length		= SZ_8K,
+		.type		= MT_DEVICE,
+	}, {
 		.virtual	= __MMIO_P2V(LT_ELBA_UART0),
 		.pfn		= __phys_to_pfn(LT_ELBA_UART0),
-		.length		= SZ_4K,
+		.length		= SZ_8K,
 		.type		= MT_DEVICE,
 	}, {
 		.virtual	= __MMIO_P2V(LT_ELBA_MPIC),
@@ -89,6 +94,14 @@ static struct map_desc lt_elba_io_desc[] __initdata = {
 		.type		= MT_DEVICE_UNCACHED,
 	},
 #endif
+#ifdef CONFIG_PL330_DMA
+	{
+		.virtual	= __MMIO_P2V(LT_ELBA_DMAC),
+		.pfn		= __phys_to_pfn(LT_ELBA_DMAC),
+		.length		= SZ_4K,
+		.type		= MT_DEVICE,
+	},
+#endif
 };
 
 static struct resource mali_hdlcd_resources[] = {
@@ -129,16 +142,44 @@ static void __init lt_elba_init_irq(void)
 #endif
 }
 
+#ifdef CONFIG_PL330_DMA
+bool uart_filter_dma(struct dma_chan *chan, void *filter_param)
+{
+	return true;
+}
+
+struct amba_pl011_data uart_data = {
+	.dma_filter	= uart_filter_dma,
+	.dma_rx_param	= NULL,
+	.dma_tx_param	= NULL,
+};
+#else
+#define uart_data	NULL
+#endif
+
 static AMBA_DEVICE(wdt, "elba:wdt", LT_ELBA_WDT, NULL);
 static AMBA_DEVICE(rtc, "elba:rtc", LT_ELBA_RTC, NULL);
-static AMBA_DEVICE(uart0, "elba:uart0", LT_ELBA_UART0, NULL);
+static AMBA_DEVICE(uart0, "elba:uart0", LT_ELBA_UART0, uart_data);
 static AMBA_DEVICE(uart1, "elba:uart1", LT_ELBA_UART1, NULL);
+static AMBA_DEVICE(aaci, "elba:aaci", LT_ELBA_AACI, NULL);
+static AMBA_DEVICE(kmi0, "mb:kmi0", LT_ELBA_KMI0, NULL);
+static AMBA_DEVICE(kmi1, "mb:kmi1", LT_ELBA_KMI1, NULL);
 
 static struct amba_device *lt_elba_amba_devs[] __initdata = {
 	&wdt_device,
 	&rtc_device,
 	&uart0_device,
 	&uart1_device,
+	&aaci_device,
+	&kmi0_device,
+	&kmi1_device,
+#ifdef CONFIG_PL330_DMA
+	&dma_device,
+#endif
+};
+
+static struct clk osc0_clk = {
+	.rate	= 24000000,
 };
 
 static struct clk osc1_clk = {
@@ -201,6 +242,12 @@ static struct clk_lookup elba_common_clk_lookups[] = {
 	}, {    /* UART1 */
 		.dev_id		= "elba:uart1",
 		.clk		= &osc1_clk,
+	}, {	/* KMI0 */
+		.dev_id		= "elba:kmi0",
+		.clk		= &osc0_clk,
+	}, {	/* KMI1 */
+		.dev_id		= "elba:kmi1",
+		.clk		= &osc0_clk,
 	},
 };
 
@@ -227,7 +274,7 @@ static void __init lt_elba_init_timers(void)
 	sp804_clocksource_init(MMIO_P2V(LT_ELBA_TIMER3), "elba-timer-sp-3");
 }
 
-static void elba_init(u32 l2cache_latencies)
+static void elba_init(u32 l2cache_tag_latencies, u32 l2cache_data_latencies)
 {
 	int i;
 
@@ -235,8 +282,8 @@ static void elba_init(u32 l2cache_latencies)
 	void __iomem *l2x0_base = MMIO_P2V(LT_ELBA_L2CC);
 
 	/* set RAM latencies */
-	writel(l2cache_latencies, l2x0_base + L2X0_TAG_LATENCY_CTRL);
-	writel(l2cache_latencies, l2x0_base + L2X0_DATA_LATENCY_CTRL);
+	writel(l2cache_tag_latencies, l2x0_base + L2X0_TAG_LATENCY_CTRL);
+	writel(l2cache_data_latencies, l2x0_base + L2X0_DATA_LATENCY_CTRL);
 
 	/* set bit 22 (shared attribute override enable) */
 	l2x0_init(l2x0_base, 0x00470000, 0xfe0fffff);
@@ -258,7 +305,7 @@ static void lt_elba_init(void)
 	clkdev_add_table(lt_elba_clk_lookups, ARRAY_SIZE(lt_elba_clk_lookups));
 
 	/* set RAM latencies to 1 cycle for this logic tile. */
-	elba_init(0);
+	elba_init(0, 0);
 }
 
 static void ct_elba_init(void)
@@ -266,8 +313,13 @@ static void ct_elba_init(void)
 	/* HDLCD in silicon uses OSC 11 */
 	clkdev_add_table(ct_elba_clk_lookups, ARRAY_SIZE(ct_elba_clk_lookups));
 
-	/* set RAM latencies to 5 cycles for this core tile. */
-	elba_init(0x444);
+	/* set RAM latencies for this core tile. */
+	// for HIP @ 1.6 GHz
+	// recommended values: elba_init(0x352, 0x122);
+	elba_init(0x352, 0x142);
+	// for MID @ any frequency
+	// recommended values: elba_init(0x220, 0x120);
+	//elba_init(0x220, 0x120);
 }
 
 #ifdef CONFIG_SMP
