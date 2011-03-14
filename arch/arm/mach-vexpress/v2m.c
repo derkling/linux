@@ -285,9 +285,9 @@ static struct mmci_platform_data v2m_mmci_data = {
 	.status		= v2m_mmci_status,
 };
 
-#ifdef CONFIG_ARCH_VEXPRESS_LT_ELBA
 static AMBA_DEVICE(aaci,  "mb:aaci",  V2M_AACI, NULL);
-static AMBA_DEVICE(mmci,  "mb:mmci",  V2M_MMCI, &v2m_mmci_data);
+//static AMBA_DEVICE(mmci,  "mb:mmci",  V2M_MMCI, &v2m_mmci_data);
+#if 0
 static AMBA_DEVICE(kmi0,  "mb:kmi0",  V2M_KMI0, NULL);
 static AMBA_DEVICE(kmi1,  "mb:kmi1",  V2M_KMI1, NULL);
 #endif
@@ -303,9 +303,9 @@ static AMBA_DEVICE(rtc,   "mb:rtc",   V2M_RTC, NULL);
 #endif
 
 static struct amba_device *v2m_amba_devs[] __initdata = {
-#ifdef CONFIG_ARCH_VEXPRESS_LT_ELBA
 	&aaci_device,
-	&mmci_device,
+//	&mmci_device,
+#if 0
 	&kmi0_device,
 	&kmi1_device,
 #endif
@@ -368,6 +368,8 @@ static struct clk_lookup v2m_lookups[] = {
 		.dev_id		= "mb:uart3",
 		.clk		= &osc2_clk,
 	},
+#endif
+#if 0
 	{	/* KMI0 */
 		.dev_id		= "mb:kmi0",
 		.clk		= &osc2_clk,
@@ -375,12 +377,12 @@ static struct clk_lookup v2m_lookups[] = {
 		.dev_id		= "mb:kmi1",
 		.clk		= &osc2_clk,
 	},
+#endif
+#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 	{	/* MMC0 */
 		.dev_id		= "mb:mmci",
 		.clk		= &osc2_clk,
 	},
-#endif
-#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 	{	/* CLCD */
 		.dev_id		= "mb:clcd",
 		.clk		= &osc1_clk,

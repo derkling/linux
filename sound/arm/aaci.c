@@ -1001,6 +1001,8 @@ static unsigned int __devinit aaci_size_fifo(struct aaci *aaci)
 	udelay(1);
 	writel(aaci->maincr, aaci->base + AACI_MAINCR);
 
+	printk(KERN_INFO "AACI: FIFO size %d\n", i);
+
 	/*
 	 * If we hit 4096, we failed.  Go back to the specified
 	 * fifo depth.
@@ -1072,8 +1074,10 @@ static int __devinit aaci_probe(struct amba_device *dev, struct amba_id *id)
 	if (aaci->fifosize & 15) {
 		printk(KERN_WARNING "AACI: fifosize = %d not supported\n",
 		       aaci->fifosize);
+#if 0
 		ret = -ENODEV;
 		goto out;
+#endif
 	}
 
 	ret = aaci_init_pcm(aaci);

@@ -4,6 +4,7 @@
 #include <linux/slab.h>
 #include <sound/soc.h>
 #include <asm/io.h>
+#include <mach/lt-elba.h>
 
 /*
  * I2S Controller Register and Bit Definitions
@@ -64,12 +65,13 @@ static struct elba_i2s_info {
 	int irq;
 } *info;
 static struct clk *clk_i2s;
+static int clk_enabled = 0;
 
 static int elba_i2s_startup(struct snd_pcm_substream *substream,
 			      struct snd_soc_dai *dai)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai *cpu_dai = rtd->dai->cpu_dai;
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
 
 	if (IS_ERR(clk_i2s))
 		return PTR_ERR(clk_i2s);
@@ -97,9 +99,9 @@ static void elba_i2s_shutdown(struct snd_pcm_substream *substream,
 	writel(0, info->base + ITER);
 
 	/* Disable clock.  */
-	if (dai->private_data != NULL) {
+	if (clk_enabled) {
 		clk_disable(clk_i2s);
-		dai->private_data = NULL;
+		clk_enabled = 0;
 	}
 }
 
@@ -146,7 +148,7 @@ static int elba_i2s_hw_params(struct snd_pcm_substream *substream,
 
 	BUG_ON(IS_ERR(clk_i2s));
 	clk_enable(clk_i2s);
-	dai->private_data = dai;
+	clk_enabled = 1;
 	// pxa_i2s_wait();
 
 /* 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) */
@@ -234,6 +236,23 @@ static int elba_i2s_set_dai_sysclk(struct snd_soc_dai *cpu_dai,
 	return 0;
 }
 
+static int elba_i2s_probe(struct snd_soc_dai *dai)
+{
+	clk_i2s = clk_get(dai->dev, "I2SCLK");
+	if (IS_ERR(clk_i2s))
+		return PTR_ERR(clk_i2s);
+
+	return 0;
+}
+
+static int elba_i2s_remove(struct snd_soc_dai *dai)
+{
+	clk_put(clk_i2s);
+	clk_i2s = ERR_PTR(-ENOENT);
+	return 0;
+}
+
+
 #ifdef CONFIG_PM
 static int elba_i2s_suspend(struct snd_soc_dai *dai)
 {
@@ -253,6 +272,9 @@ static int elba_i2s_resume(struct snd_soc_dai *dai)
 
 	return 0;
 }
+#else
+#define elba_i2s_suspend	NULL
+#define elba_i2s_resume		NULL
 #endif
 
 static irqreturn_t elba_i2s_interrupt(int irq, void *dev_id)
@@ -295,13 +317,11 @@ static struct snd_soc_dai_ops elba_i2s_dai_ops = {
 	.set_sysclk	= elba_i2s_set_dai_sysclk,
 };
 
-struct snd_soc_dai elba_i2s_dai = {
-	.name = "elba-dai-i2s",
-	.id = 0,
-#ifdef CONFIG_PM
+struct snd_soc_dai_driver elba_i2s_dai = {
+	.probe = elba_i2s_probe,
+	.remove = elba_i2s_remove,
 	.suspend = elba_i2s_suspend,
 	.resume  = elba_i2s_resume,
-#endif
 	.playback = {
 		.channels_min = 2,
 		.channels_max = 2,
@@ -316,7 +336,7 @@ struct snd_soc_dai elba_i2s_dai = {
 	.symmetric_rates = 1,
 };
 
-static int elba_i2s_probe(struct platform_device *pdev)
+static __devinit int elba_i2s_drv_probe(struct platform_device *pdev)
 {
 	struct resource *res = pdev->resource;
 	int ret;
@@ -340,26 +360,14 @@ static int elba_i2s_probe(struct platform_device *pdev)
 		goto ioremap_err;
 	}
 
-	info->irq = 0; // res[1] ???
+	info->irq = IRQ_LT_ELBA_I2S;
 	ret = request_irq(info->irq, elba_i2s_interrupt, IRQF_SHARED, dev_name(&pdev->dev), NULL);
 	if (ret) {
 		printk(KERN_ERR "elba-i2s: IRQ %d is not free.\n", info->irq);
 		goto irq_err;
 	}
-	platform_set_drvdata(pdev, info);
 
-	clk_i2s = clk_get(&pdev->dev, "I2SCLK");
-	if (IS_ERR(clk_i2s))
-		return PTR_ERR(clk_i2s);
-
-	elba_i2s_dai.dev = &pdev->dev;
-	elba_i2s_dai.private_data = NULL;
-	ret = snd_soc_register_dai(&elba_i2s_dai);
-	if (ret != 0)
-		clk_put(clk_i2s);
-
-out:
-	return ret;
+	return snd_soc_register_dai(&pdev->dev, &elba_i2s_dai);
 
 irq_err:
 	iounmap(info->base);
@@ -370,16 +378,17 @@ ioremap_err:
 reqreg_err:
 	kfree(info);
 	info = NULL;
-	goto out;
+
+out:
+	return ret;
 }
 
-static int elba_i2s_remove(struct platform_device *pdev)
+static __devexit int elba_i2s_drv_remove(struct platform_device *pdev)
 {
 	struct resource *res = pdev->resource;
 
-	snd_soc_unregister_dai(&elba_i2s_dai);
-	clk_put(clk_i2s);
-	clk_i2s = ERR_PTR(-ENOENT);
+	snd_soc_unregister_dai(&pdev->dev);
+
 	iounmap(info->base);
 	release_region(res->start, resource_size(res));
 	kfree(info);
@@ -388,8 +397,8 @@ static int elba_i2s_remove(struct platform_device *pdev)
 }
 
 static struct platform_driver elba_i2s_driver = {
-	.probe		= elba_i2s_probe,
-	.remove		= elba_i2s_remove,
+	.probe		= elba_i2s_drv_probe,
+	.remove		= __devexit_p(elba_i2s_drv_remove),
 	.driver		= {
 		.name	= "elba-i2s",
 		.owner	= THIS_MODULE,
@@ -398,6 +407,7 @@ static struct platform_driver elba_i2s_driver = {
 
 static int __init elba_i2s_init(void)
 {
+	clk_i2s = ERR_PTR(-ENOENT);
 	return platform_driver_register(&elba_i2s_driver);
 }
 module_init(elba_i2s_init);
