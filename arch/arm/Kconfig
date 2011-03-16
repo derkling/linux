@@ -717,7 +717,8 @@ config ARCH_S5P64X0
 	select GENERIC_GPIO
 	select HAVE_CLK
 	select HAVE_S3C2410_WATCHDOG if WATCHDOG
-	select ARCH_USES_GETTIMEOFFSET
+	select GENERIC_CLOCKEVENTS
+	select HAVE_SCHED_CLOCK
 	select HAVE_S3C2410_I2C if I2C
 	select HAVE_S3C_RTC if RTC_CLASS
 	help
@@ -755,15 +756,16 @@ config ARCH_S5PV210
 	select HAVE_CLK
 	select ARM_L1_CACHE_SHIFT_6
 	select ARCH_HAS_CPUFREQ
-	select ARCH_USES_GETTIMEOFFSET
+	select GENERIC_CLOCKEVENTS
+	select HAVE_SCHED_CLOCK
 	select HAVE_S3C2410_I2C if I2C
 	select HAVE_S3C_RTC if RTC_CLASS
 	select HAVE_S3C2410_WATCHDOG if WATCHDOG
 	help
 	  Samsung S5PV210/S5PC110 series based systems
 
-config ARCH_S5PV310
-	bool "Samsung S5PV310/S5PC210"
+config ARCH_EXYNOS4
+	bool "Samsung EXYNOS4"
 	select CPU_V7
 	select ARCH_SPARSEMEM_ENABLE
 	select GENERIC_GPIO
@@ -774,7 +776,7 @@ config ARCH_S5PV310
 	select HAVE_S3C2410_I2C if I2C
 	select HAVE_S3C2410_WATCHDOG if WATCHDOG
 	help
-	  Samsung S5PV310 series based systems
+	  Samsung EXYNOS4 series based systems
 
 config ARCH_SHARK
 	bool "Shark"
@@ -993,7 +995,7 @@ source "arch/arm/mach-s5pc100/Kconfig"
 
 source "arch/arm/mach-s5pv210/Kconfig"
 
-source "arch/arm/mach-s5pv310/Kconfig"
+source "arch/arm/mach-exynos4/Kconfig"
 
 source "arch/arm/mach-shmobile/Kconfig"
 
@@ -1179,6 +1181,31 @@ config ARM_ERRATA_743622
 	  visible impact on the overall performance or power consumption of the
 	  processor.
 
+config ARM_ERRATA_751472
+	bool "ARM errata: Interrupted ICIALLUIS may prevent completion of broadcasted operation"
+	depends on CPU_V7 && SMP
+	help
+	  This option enables the workaround for the 751472 Cortex-A9 (prior
+	  to r3p0) erratum. An interrupted ICIALLUIS operation may prevent the
+	  completion of a following broadcasted operation if the second
+	  operation is received by a CPU before the ICIALLUIS has completed,
+	  potentially leading to corrupted entries in the cache or TLB.
+
+config ARM_ERRATA_753970
+	bool "ARM errata: cache sync operation may be faulty"
+	depends on CACHE_PL310
+	help
+	  This option enables the workaround for the 753970 PL310 (r3p0) erratum.
+
+	  Under some condition the effect of cache sync operation on
+	  the store buffer still remains when the operation completes.
+	  This means that the store buffer is always asked to drain and
+	  this prevents it from merging any further writes. The workaround
+	  is to replace the normal offset of cache sync operation (0x730)
+	  by another offset targeting an unmapped PL310 register 0x740.
+	  This has the same effect as the cache sync operation: store buffer
+	  drain and waiting for all buffers empty.
+
 endmenu
 
 source "arch/arm/common/Kconfig"
@@ -1346,7 +1373,7 @@ config LOCAL_TIMERS
 	bool "Use local timer interrupts"
 	depends on SMP
 	default y
-	select HAVE_ARM_TWD if !ARCH_MSM_SCORPIONMP
+	select HAVE_ARM_TWD if (!ARCH_MSM_SCORPIONMP && !EXYNOS4_MCT)
 	help
 	  Enable support for local timers on SMP platforms, rather then the
 	  legacy IPI broadcast method.  Local timers allows the system
@@ -1358,7 +1385,7 @@ source kernel/Kconfig.preempt
 config HZ
 	int
 	default 200 if ARCH_EBSA110 || ARCH_S3C2410 || ARCH_S5P64X0 || \
-		ARCH_S5P6442 || ARCH_S5PV210 || ARCH_S5PV310
+		ARCH_S5P6442 || ARCH_S5PV210 || ARCH_EXYNOS4
 	default OMAP_32K_TIMER_HZ if ARCH_OMAP && OMAP_32K_TIMER
 	default AT91_TIMER_HZ if ARCH_AT91
 	default SHMOBILE_TIMER_HZ if ARCH_SHMOBILE
