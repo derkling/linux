@@ -31,6 +31,11 @@
 #include <mach/motherboard.h>
 
 
+#define CLUSTER_ID_MASK		0x00000F00
+#define HIP_CLUSTER		(0 << 8)
+#define MID_CLUSTER		(1 << 8)
+
+
 static struct map_desc lt_elba_io_desc[] __initdata = {
 	{
 		.virtual	= __MMIO_P2V(LT_ELBA_KMI0),
@@ -287,12 +292,25 @@ static void elba_init(u32 l2cache_tag_latencies, u32 l2cache_data_latencies)
 #ifdef CONFIG_CACHE_L2X0
 	void __iomem *l2x0_base = MMIO_P2V(LT_ELBA_L2CC);
 
-	/* set RAM latencies */
+	/* set cache latencies */
 	writel(l2cache_tag_latencies, l2x0_base + L2X0_TAG_LATENCY_CTRL);
 	writel(l2cache_data_latencies, l2x0_base + L2X0_DATA_LATENCY_CTRL);
 
-	/* set bit 22 (shared attribute override enable) */
-	l2x0_init(l2x0_base, 0x00470000, 0xfe0fffff);
+	/* prefetch control */
+	writel(0x30000007, l2x0_base + L2X0_PREFETCH_CTRL);
+
+	/* power control */
+	writel(L2X0_DYNAMIC_CLK_GATING_EN | L2X0_STNDBY_MODE_EN,
+		l2x0_base + L2X0_POWER_CTRL);
+
+	/* set the following bits:
+		- 30 (early BRESP enable)
+		- 29 (instruction prefetch enable)
+		- 28 (data prefetch enable)
+		- 22 (shared attribute override enable)
+		-  0 (full line of write zero enable)
+	*/
+	l2x0_init(l2x0_base, 0x70400001, 0x8fbffffe);
 #endif
 
 	clkdev_add_table(elba_common_clk_lookups, ARRAY_SIZE(elba_common_clk_lookups));
@@ -342,16 +360,24 @@ void acp_init(void __iomem *scc_base)
 
 static void ct_elba_init(void)
 {
+	unsigned int cluster_id = 0;
+
 	/* HDLCD in silicon uses OSC 11 */
 	clkdev_add_table(ct_elba_clk_lookups, ARRAY_SIZE(ct_elba_clk_lookups));
 
+	asm("mrc p15, 0, %0, c0, c0, 5\n\t" : "+r" (cluster_id) : :);
+
+	cluster_id &= CLUSTER_ID_MASK;
+
 	/* set RAM latencies for this core tile. */
-	// for HIP @ 1.6 GHz
-	// recommended values: elba_init(0x352, 0x122);
-	elba_init(0x352, 0x142);
-	// for MID @ any frequency
-	// recommended values: elba_init(0x220, 0x120);
-	//elba_init(0x220, 0x120);
+	switch (cluster_id) {
+	case HIP_CLUSTER:
+		elba_init(0x122, 0x352); /* HIP @ 1.6 GHz */
+		break;
+	case MID_CLUSTER:
+		elba_init(0x120, 0x220); /* MID @ any frequency */
+		break;
+	}
 }
 
 #ifdef CONFIG_SMP
