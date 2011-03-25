@@ -29,7 +29,7 @@
 #include <asm/uaccess.h>
 #include <mach/motherboard.h>
 
-//#define MALI_USE_UNIFIED_MEMORY_PROVIDER 1
+//#define MALI_USE_UNIFIED_MEMORY_PROVIDER
 #define MALI_HDLCD_RES 3
 
 #ifdef MALI_USE_UNIFIED_MEMORY_PROVIDER
@@ -232,8 +232,6 @@ static void hdlcd_disable(hdlcd_device *hdlcd)
 	void __iomem *cmd_reg = hdlcd->base + HDLCD_REGISTER_COMMAND;
 	u32 val;
 
-	printk("Disabling the HDLCD\n");
-
 	val = readl(cmd_reg);
 	val &= ~1; /* turn off LSB */
 	writel(val, cmd_reg);
@@ -258,18 +256,11 @@ static void hdlcd_enable(hdlcd_device *hdlcd)
 	void __iomem *cmd_reg = hdlcd->base + HDLCD_REGISTER_COMMAND;
 	u32 val;
 
-	printk("Enabling the HDLCD\n");
-
 	/* Enable clock source.  */
 	clk_enable(hdlcd->clk);
 
 	val = 1; /* turn on LSB, let all others be zero */
 	writel(val, cmd_reg);
-
-	v2m_cfg_write(SYS_CFG_MUXFPGA | SYS_CFG_SITE_DB1, 0);
-	// v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB1, 1); // SVGA
-	// v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB1, 3); // SXGA
-	v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_DB1, 4); // UXGA
 }
 
 static int hdlcd_setup(struct hdlcd_device *hdlcd)
@@ -396,8 +387,6 @@ static inline void hdlcd_decode(hdlcd_device *dev, hdlcd_registers *regs)
 #endif
 
 	regs->pixclock = dev->fb.var.pixclock;
-
-	printk("Got pixclock %d\n", regs->pixclock);
 }
 
 
@@ -409,8 +398,6 @@ static inline void hdlcd_set_start(hdlcd_device *hdlcd, u32 offset)
 	unsigned long start = hdlcd->fb.fix.smem_start;
 
 	start += hdlcd->fb.var.yoffset * hdlcd->fb.fix.line_length;
-	printk("Framebuffer set to %p\n", (void*)start);
-
 	writel(start, hdlcd->base + HDLCD_REGISTER_FB_BASE);
 }
 
@@ -579,8 +566,6 @@ static int hdlcd_mmap(struct fb_info *info, struct vm_area_struct *vma)
 
 	if (off <= len && vma->vm_end - vma->vm_start <= len - off)
 	{
-		printk("mmapping framebuffer %p into virtual address %p\n", (void*)dev->fb.fix.smem_start, (void*)vma->vm_start);
-
 		vma->vm_flags |= VM_IO;
 		vma->vm_flags |= VM_RESERVED;
 
@@ -613,12 +598,9 @@ static int hdlcd_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg
 	{
 		u32 __user * psecureid = (u32 __user *)arg;
 		ump_secure_id secure_id = ump_dd_secure_id_get(ump_wrapped_buffer);
-		printk(KERN_ERR "FB: Saving secure id:%u in userptr:%p\n", (unsigned int)secure_id, psecureid );
 		return put_user( (u32)secure_id, psecureid);
 	}
 #endif
-
-	printk("Mali HDLCD: Getting ioctl\n" );
 
 	return -ENOIOCTLCMD;
 }
@@ -644,11 +626,8 @@ static int hdlcd_register(struct hdlcd_device *hdlcd)
 {
 	int ret;
 
-	printk("Mali HDLCD: Register of fbdev\n");
-
 	hdlcd->clk = clk_get(&hdlcd->dev->dev, NULL);
 	if (IS_ERR(hdlcd->clk)) {
-		printk(KERN_CRIT "--- %s: cannot get the clock structure.\n", __func__);
 		ret = PTR_ERR(hdlcd->clk);
 		goto out;
 	}
@@ -712,9 +691,6 @@ static int hdlcd_register(struct hdlcd_device *hdlcd)
 	/* writel(0, hdlcd->base + 0x18);  */
 
 	fb_set_var(&hdlcd->fb, &hdlcd->fb.var);
-
-	printk("Mali HDLCD: %s hardware, %s display\n", "LA8PB" , default_settings.mode.name);
-
 	if (!register_framebuffer(&hdlcd->fb))
 		return 0;
 
