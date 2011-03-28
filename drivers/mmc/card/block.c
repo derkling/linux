@@ -245,6 +245,20 @@ static u32 mmc_sd_num_wr_blocks(struct mmc_card *card)
 	return result;
 }
 
+static void send_stop(struct mmc_card *card, struct request *req)
+{
+	struct mmc_command cmd;
+	int err;
+
+	memset(&cmd, 0, sizeof(struct mmc_command));
+	cmd.opcode = MMC_STOP_TRANSMISSION;
+	cmd.flags = MMC_RSP_SPI_R1B | MMC_RSP_R1B | MMC_CMD_AC;
+	err = mmc_wait_for_cmd(card->host, &cmd, 0);
+	if (err)
+		pr_err("%s: error %d sending stop command\n",
+		       req->rq_disk->disk_name, err);
+}
+
 static u32 get_card_status(struct mmc_card *card, struct request *req)
 {
 	struct mmc_command cmd;
@@ -255,9 +269,9 @@ static u32 get_card_status(struct mmc_card *card, struct request *req)
 	if (!mmc_host_is_spi(card->host))
 		cmd.arg = card->rca << 16;
 	cmd.flags = MMC_RSP_SPI_R2 | MMC_RSP_R1 | MMC_CMD_AC;
-	err = mmc_wait_for_cmd(card->host, &cmd, 0);
+	err = mmc_wait_for_cmd(card->host, &cmd, 2);
 	if (err)
-		printk(KERN_ERR "%s: error %d sending status command",
+		pr_err("%s: error %d sending status command\n",
 		       req->rq_disk->disk_name, err);
 	return cmd.resp[0];
 }
@@ -336,7 +350,7 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *req)
 	struct mmc_blk_data *md = mq->data;
 	struct mmc_card *card = md->queue.card;
 	struct mmc_blk_request brq;
-	int ret = 1, disable_multi = 0;
+	int ret = 1, disable_multi = 0, retry = 0;
 
 	mmc_claim_host(card->host);
 
@@ -432,6 +446,53 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *req)
 		 * programming mode even when things go wrong.
 		 */
 		if (brq.cmd.error || brq.data.error || brq.stop.error) {
+			status = get_card_status(card, req);
+
+			/* First print what's up */
+			if (brq.cmd.error)
+				pr_err("%s: error %d sending read/write command, card status %#x\n",
+				       req->rq_disk->disk_name, brq.cmd.error,
+				       status);
+
+			if (brq.data.error)
+				pr_err("%s: error %d transferring data, sector %u, nr %u, cmd response %#x, card status %#x\n",
+				       req->rq_disk->disk_name, brq.data.error,
+				       (unsigned)blk_rq_pos(req),
+				       (unsigned)blk_rq_sectors(req),
+				       brq.cmd.resp[0], status);
+
+			if (brq.stop.error)
+				pr_err("%s: error %d sending stop command, original cmd response %#x, card status %#x\n",
+				       req->rq_disk->disk_name, brq.stop.error,
+				       brq.cmd.resp[0], status);
+
+			/*
+			 * Now check the current card state.  If it is
+			 * in some data transfer mode, tell it to stop
+			 * (and hopefully transition back to TRAN.)
+			 */
+			if (R1_CURRENT_STATE(status) == R1_STATE_DATA ||
+			    R1_CURRENT_STATE(status) == R1_STATE_RCV)
+				send_stop(card, req);
+
+			/*
+			 * r/w cmd failure - get_card_status() should
+			 * tell us why the command was not accepted
+			 */
+			if (brq.cmd.error && retry < 2) {
+				/*
+				 * if it was a r/w cmd crc error, or illegal
+				 * command (eg, issued in wrong state) then
+				 * retry - we should have corrected the
+				 * state problem above.
+				 */
+				if (status & (R1_COM_CRC_ERROR |
+					      R1_ILLEGAL_COMMAND)) {
+					retry++;
+					continue;
+				}
+			}
+
 			if (brq.data.blocks > 1 && rq_data_dir(req) == READ) {
 				/* Redo read one sector at a time */
 				printk(KERN_WARNING "%s: retrying using single "
@@ -439,32 +500,9 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *req)
 				disable_multi = 1;
 				continue;
 			}
-			status = get_card_status(card, req);
-		}
 
-		if (brq.cmd.error) {
-			printk(KERN_ERR "%s: error %d sending read/write "
-			       "command, response %#x, card status %#x\n",
-			       req->rq_disk->disk_name, brq.cmd.error,
-			       brq.cmd.resp[0], status);
-		}
-
-		if (brq.data.error) {
-			if (brq.data.error == -ETIMEDOUT && brq.mrq.stop)
-				/* 'Stop' response contains card status */
-				status = brq.mrq.stop->resp[0];
-			printk(KERN_ERR "%s: error %d transferring data,"
-			       " sector %u, nr %u, card status %#x\n",
-			       req->rq_disk->disk_name, brq.data.error,
-			       (unsigned)blk_rq_pos(req),
-			       (unsigned)blk_rq_sectors(req), status);
-		}
-
-		if (brq.stop.error) {
-			printk(KERN_ERR "%s: error %d sending stop command, "
-			       "response %#x, card status %#x\n",
-			       req->rq_disk->disk_name, brq.stop.error,
-			       brq.stop.resp[0], status);
+			if (retry++ < 5)
+				continue;
 		}
 
 		if (!mmc_host_is_spi(card->host) && rq_data_dir(req) != READ) {
@@ -486,7 +524,7 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *req)
 				 * indication and the card state.
 				 */
 			} while (!(cmd.resp[0] & R1_READY_FOR_DATA) ||
-				(R1_CURRENT_STATE(cmd.resp[0]) == 7));
+			    (R1_CURRENT_STATE(cmd.resp[0]) == R1_STATE_PRG));
 
 #if 0
 			if (cmd.resp[0] & ~0x00000900)

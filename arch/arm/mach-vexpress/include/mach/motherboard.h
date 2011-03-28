@@ -147,7 +147,7 @@
 /*#define IRQ_V2M_UART1		{ (32 + 6) }
 #define IRQ_V2M_UART2		{ (32 + 7) }
 #define IRQ_V2M_UART3		{ (32 + 8) } */
-#define IRQ_V2M_MMCI		{ (32 + 90),  33 /* not connected */ }  /* on motherboard, mapped to extint[2] */
+#define IRQ_V2M_MMCI		{ (32 + 90),  NO_IRQ }  /* on motherboard, mapped to extint[2] */
 #define IRQ_V2M_AACI		{ (32 + 91) } /* on motherboard, mapped to extint[3] */
 #define IRQ_V2M_KMI0		{ (32 + 92) } /* on motherboard, mapped to extint[4] */
 #define IRQ_V2M_KMI1		{ (32 + 93) } /* on motherboard, mapped to extint[5] */

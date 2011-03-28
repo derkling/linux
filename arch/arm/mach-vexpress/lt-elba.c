@@ -7,7 +7,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/mm.h>
 #include <linux/amba/bus.h>
-#include <linux/amba/clcd.h>
+#include <linux/amba/mmci.h>
 #include <linux/platform_device.h>
 #include <linux/clkdev.h>
 
@@ -168,13 +168,25 @@ struct amba_pl011_data uart_data = {
 #define uart_data	NULL
 #endif
 
+static unsigned int lt_elba_mmci_status(struct device *dev)
+{
+	return readl(MMIO_P2V(V2M_SYS_MCI)) & (1 << 0);
+}
+
+static struct mmci_platform_data lt_elba_mmci_data = {
+	.ocr_mask	= MMC_VDD_32_33|MMC_VDD_33_34,
+	.status		= lt_elba_mmci_status,
+};
+
+
 static AMBA_DEVICE(wdt, "elba:wdt", LT_ELBA_WDT, NULL);
 static AMBA_DEVICE(rtc, "elba:rtc", LT_ELBA_RTC, NULL);
 static AMBA_DEVICE(uart0, "elba:uart0", LT_ELBA_UART0, uart_data);
 static AMBA_DEVICE(uart1, "elba:uart1", LT_ELBA_UART1, NULL);
 static AMBA_DEVICE(aaci, "elba:aaci", LT_ELBA_AACI, NULL);
-static AMBA_DEVICE(kmi0, "mb:kmi0", LT_ELBA_KMI0, NULL);
-static AMBA_DEVICE(kmi1, "mb:kmi1", LT_ELBA_KMI1, NULL);
+static AMBA_DEVICE(kmi0, "elba:kmi0", LT_ELBA_KMI0, NULL);
+static AMBA_DEVICE(kmi1, "elba:kmi1", LT_ELBA_KMI1, NULL);
+static AMBA_DEVICE(mmci,  "elba:mmci",  V2M_MMCI, &lt_elba_mmci_data);
 
 static struct amba_device *lt_elba_amba_devs[] __initdata = {
 	&wdt_device,
@@ -187,6 +199,7 @@ static struct amba_device *lt_elba_amba_devs[] __initdata = {
 #ifdef CONFIG_PL330_DMA
 	&dma_device,
 #endif
+//	&mmci_device,
 };
 
 static struct clk osc0_clk = {
@@ -214,6 +227,20 @@ static const struct clk_ops osc5_clk_ops = {
 static struct clk osc5_clk = {
 	.ops	= &osc5_clk_ops,
 	.rate	= 10000000,
+};
+
+static int v2m_osc8_set(struct clk *clk, unsigned long rate)
+{
+	return v2m_cfg_write(SYS_CFG_OSC | SYS_CFG_SITE_DB1 | 8, rate);
+}
+
+static const struct clk_ops osc8_clk_ops = {
+	.set	= v2m_osc8_set,
+};
+
+static struct clk osc8_clk = {
+	.ops	= &osc8_clk_ops,
+	.rate	= 40000000,
 };
 
 static int v2m_osc11_set(struct clk *clk, unsigned long rate)
@@ -259,6 +286,9 @@ static struct clk_lookup elba_common_clk_lookups[] = {
 	}, {	/* KMI1 */
 		.dev_id		= "elba:kmi1",
 		.clk		= &osc0_clk,
+	}, {	/* MMCI */
+		.dev_id		= "elba:mmci",
+		.clk		= &osc8_clk,
 	},
 };
 
@@ -315,6 +345,10 @@ static void elba_init(u32 l2cache_tag_latencies, u32 l2cache_data_latencies)
 
 	clkdev_add_table(elba_common_clk_lookups, ARRAY_SIZE(elba_common_clk_lookups));
 	printk(KERN_INFO "ELBA: SP804 clocks registered\n");
+
+	/* these peripherals seem to be missing the AMBA cid/pid */
+	kmi0_device.periphid = 0x00041050;
+	kmi1_device.periphid = 0x00041050;
 
 	for (i = 0; i < ARRAY_SIZE(lt_elba_amba_devs); i++)
 		amba_device_register(lt_elba_amba_devs[i], &iomem_resource);

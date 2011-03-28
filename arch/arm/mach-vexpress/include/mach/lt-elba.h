@@ -52,6 +52,7 @@
 #define IRQ_LT_ELBA_AACI		{ (32 + 19) }
 #define IRQ_LT_ELBA_KMI0		{ (32 + 20) }
 #define IRQ_LT_ELBA_KMI1		{ (32 + 21) }
+#define IRQ_LT_ELBA_SMC			(32 + 22)
 #define IRQ_LT_ELBA_DMAC		{ (32 + 24), (32 + 25) }
 #define IRQ_LT_ELBA_I2S			(32 + 30)
 
