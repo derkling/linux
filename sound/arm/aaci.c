@@ -243,14 +243,14 @@ static void aaci_fifo_irq(struct aaci *aaci, int channel, u32 mask)
 
 			aacirun->bytes -= len;
 
-			/* reading 16 bytes at a time */
-			for( ; len > 0; len -= 16) {
+			/* reading 8 bytes at a time */
+			for( ; len > 0; len -= 8) {
 				asm(
-					"ldmia	%1, {r0, r1, r2, r3}\n\t"
-					"stmia	%0!, {r0, r1, r2, r3}"
+					"ldmia	%1, {r0, r1}\n\t"
+					"stmia	%0!, {r0, r1}\n\t"
 					: "+r" (ptr)
 					: "r" (aacirun->fifo)
-					: "r0", "r1", "r2", "r3", "cc");
+					: "r0", "r1", "cc");
 
 				if (ptr >= aacirun->end)
 					ptr = aacirun->start;
@@ -302,14 +302,14 @@ static void aaci_fifo_irq(struct aaci *aaci, int channel, u32 mask)
 
 			aacirun->bytes -= len;
 
-			/* writing 16 bytes at a time */
-			for ( ; len > 0; len -= 16) {
+			/* writing 8 bytes at a time */
+			for ( ; len > 0; len -= 8) {
 				asm(
-					"ldmia	%0!, {r0, r1, r2, r3}\n\t"
-					"stmia	%1, {r0, r1, r2, r3}"
+					"ldmia	%0!, {r0, r1}\n\t"
+					"stmia	%1, {r0, r1}\n\t"
 					: "+r" (ptr)
 					: "r" (aacirun->fifo)
-					: "r0", "r1", "r2", "r3", "cc");
+					: "r0", "r1", "cc");
 
 				if (ptr >= aacirun->end)
 					ptr = aacirun->start;
@@ -1068,16 +1068,14 @@ static int __devinit aaci_probe(struct amba_device *dev, struct amba_id *id)
 		goto out;
 
 	/*
-	 * Size the FIFOs (must be multiple of 16).
+	 * Size the FIFOs (must be multiple of 8).
 	 */
 	aaci->fifosize = aaci_size_fifo(aaci);
-	if (aaci->fifosize & 15) {
+	if (aaci->fifosize & 7) {
 		printk(KERN_WARNING "AACI: fifosize = %d not supported\n",
 		       aaci->fifosize);
-#if 0
 		ret = -ENODEV;
 		goto out;
-#endif
 	}
 
 	ret = aaci_init_pcm(aaci);
