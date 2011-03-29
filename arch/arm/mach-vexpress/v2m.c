@@ -12,6 +12,7 @@
 #include <linux/sysdev.h>
 #include <linux/usb/isp1760.h>
 #include <linux/clkdev.h>
+#include <linux/memblock.h>
 
 #include <asm/mach-types.h>
 #include <asm/sizes.h>
@@ -489,6 +490,14 @@ static void __init v2m_init(void)
 	}
 }
 
+static void v2m_reserve(void)
+{
+#ifdef CONFIG_ARCH_VEXPRESS_LT_ELBA
+	/* reset vector page */
+	memblock_reserve(PHYS_OFFSET, PAGE_SIZE);
+#endif
+}
+
 MACHINE_START(VEXPRESS, "ARM-Versatile Express")
 	.boot_params	= PHYS_OFFSET + 0x00000100,
 	.map_io		= v2m_map_io,
@@ -496,4 +505,5 @@ MACHINE_START(VEXPRESS, "ARM-Versatile Express")
 	.init_irq	= v2m_init_irq,
 	.timer		= &v2m_timer,
 	.init_machine	= v2m_init,
+	.reserve	= v2m_reserve,
 MACHINE_END
