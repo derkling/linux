@@ -55,6 +55,8 @@
 #define IRQ_LT_ELBA_SMC			(32 + 22)
 #define IRQ_LT_ELBA_DMAC		{ (32 + 24), (32 + 25) }
 #define IRQ_LT_ELBA_I2S			(32 + 30)
+#define IRQ_LT_ELBA_PMU_CPU0		(32 + 36)
+#define IRQ_LT_ELBA_PMU_CPU1		(32 + 37)
 
 #ifndef __ASSEMBLY__
 extern struct vexpress_tile_desc lt_elba_desc;

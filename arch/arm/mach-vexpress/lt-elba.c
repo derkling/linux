@@ -14,6 +14,7 @@
 #include <asm/cacheflush.h>
 #include <asm/hardware/gic.h>
 #include <asm/smp_twd.h>
+#include <asm/pmu.h>
 #ifdef CONFIG_SMP
 #include <asm/smp_scu.h>
 #endif
@@ -133,6 +134,26 @@ static struct platform_device lt_elba_mali_hdlcd = {
 	},
 	.resource       = mali_hdlcd_resources,
 	.num_resources  = ARRAY_SIZE(mali_hdlcd_resources),
+};
+
+static struct resource elba_spsc_resources[] = {
+	{
+		.start = 0xe001b000,
+		.end   = 0xe001b000 + SZ_4K - 1,
+		.flags = IORESOURCE_MEM,
+	},
+};
+
+static u64 elba_spsc_dmamask = ~(u32)0;
+static struct platform_device elba_spsc = {
+	.name           = "SCPC",
+	.id             = -1,
+	.dev = {
+		.dma_mask          = &elba_spsc_dmamask,
+		.coherent_dma_mask = 0xFFFFFFFF,
+	},
+	.resource       = elba_spsc_resources,
+	.num_resources  = ARRAY_SIZE(elba_spsc_resources),
 };
 
 static void __init lt_elba_map_io(void)
@@ -306,6 +327,26 @@ static struct clk_lookup ct_elba_clk_lookups[] = {
 	},
 };
 
+static struct resource pmu_resources[] = {
+	[0] = {
+		.start	= IRQ_LT_ELBA_PMU_CPU0,
+		.end	= IRQ_LT_ELBA_PMU_CPU0,
+		.flags	= IORESOURCE_IRQ,
+	},
+	[1] = {
+		.start	= IRQ_LT_ELBA_PMU_CPU1,
+		.end	= IRQ_LT_ELBA_PMU_CPU1,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+static struct platform_device pmu_device = {
+	.name		= "arm-pmu",
+	.id		= ARM_PMU_DEVICE_CPU,
+	.num_resources	= ARRAY_SIZE(pmu_resources),
+	.resource	= pmu_resources,
+};
+
 static void __init lt_elba_init_timers(void)
 {
 	printk(KERN_INFO "ELBA: SP804 initialising timers\n");
@@ -354,6 +395,8 @@ static void elba_init(u32 l2cache_tag_latencies, u32 l2cache_data_latencies)
 		amba_device_register(lt_elba_amba_devs[i], &iomem_resource);
 
 	platform_device_register(&lt_elba_mali_hdlcd);
+	platform_device_register(&elba_spsc);
+	platform_device_register(&pmu_device);
 }
 
 
