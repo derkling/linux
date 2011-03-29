@@ -29,6 +29,15 @@ config VEXPRESS_ELBA_MEMORY_MAP
 
 endchoice
 
+config VEXPRESS_ELBA_PM
+	bool "ELBA PM"
+	help
+	  Enable ELBA power management capabilities. Choose this
+	  if you want to use ELBA tile with Power Management set.
+	select CPU_FREQ
+	select CPU_IDLE
+	select CONTEXT_SR
+
 config ARCH_VEXPRESS_CA9X4
 	bool "Versatile Express Cortex-A9x4 tile"
 	depends on VEXPRESS_ORIGINAL_MEMORY_MAP

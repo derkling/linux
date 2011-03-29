@@ -11,3 +11,5 @@ obj-$(CONFIG_HOTPLUG_CPU)		+= hotplug.o
 obj-$(CONFIG_LOCAL_TIMERS)		+= localtimer.o
 obj-$(CONFIG_PCI)			+= pcie.o
 obj-$(CONFIG_PCI_MSI)			+= msi.o
+obj-$(CONFIG_CPU_IDLE)			+= cpuidle.o
+obj-$(CONFIG_CPU_FREQ)			+= cpufreq.o
