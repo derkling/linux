@@ -8,17 +8,22 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+
 #include <linux/kernel.h>
 #include <linux/cpufreq.h>
 #include <linux/slab.h>
+#include <asm/hardware/elba_scpc.h>
 
 #define ARRAY_AND_SIZE(x) (x), ARRAY_SIZE(x)
-#define VEXPRESS_MIN_FREQUENCY 100000 /* 100 MHz  */
-#define VEXPRESS_MAX_FREQUENCY 800000 /* 800 MHz  */
-#define OP(cpufreq, _xl, _xn, _hss, _dmc, _smc, _sfl, _dfi, vcore, vsram) \
+#define VEXPRESS_MIN_FREQUENCY 915000 /* 915 MHz  */
+#define VEXPRESS_MAX_FREQUENCY 1713000 /* 1.7 GHz  */
+#define OP(cpufreq) \
 {								\
 	.cpufreq_mhz	= cpufreq,				\
 }
+
+static unsigned long target_cpu_perf[CONFIG_NR_CPUS];
+static unsigned long current_cpu_perf;
 
 /* FIX STRUCTURE  */
 struct vexpress_freq_info {
@@ -27,16 +32,62 @@ struct vexpress_freq_info {
 
 /* FIX VALUES!!!  */
 static struct vexpress_freq_info vexpress_freqs_array[] = {
-	/*  CPU XL XN  HSS DMEM SMEM SRAM DFI VCC_CORE VCC_SRAM */
-	OP(104,  8, 1, 104, 260,  78, 104, 3, 1000, 1100), /* 104MHz */
-	OP(208, 16, 1, 104, 260, 104, 156, 2, 1000, 1100), /* 208MHz */
-	OP(416, 16, 2, 156, 260, 104, 208, 2, 1100, 1200), /* 416MHz */
-	OP(624, 24, 2, 208, 260, 208, 312, 3, 1375, 1400), /* 624MHz */
-	OP(806, 31, 2, 208, 260, 208, 312, 3, 1400, 1400), /* 806MHz */
+	/*  CPU */
+	OP(915),  /* 915MHz */
+	OP(1024), /* 1024MHz */
+	OP(1133), /* 1133MHz */
+	OP(1242), /* 1242MHz */
+	OP(1320), /* 1320MHz */
+	OP(1376), /* 1376MHz */
+	OP(1432), /* 1432MHz */
+	OP(1488), /* 1488MHz */
+	OP(1544), /* 1544MHz */
+	OP(1601), /* 1601MHz */
+	OP(1657), /* 1657MHz */
+	OP(1713), /* 1713MHz */
 };
 static unsigned int vexpress_freqs_num;
 static struct vexpress_freq_info *vexpress_freqs;
 static struct cpufreq_frequency_table *vexpress_freqs_table;
+
+static int vexpress_update_cpu_perf(void)
+{
+	int i;
+	unsigned long idx = 0;
+	int ret = 0;
+	struct cpufreq_freqs freqs;
+
+	for_each_online_cpu(i)
+		idx = max(idx, target_cpu_perf[i]);
+
+	freqs.old = vexpress_freqs_array[current_cpu_perf].cpufreq_mhz * 1000;
+	freqs.new = vexpress_freqs_array[idx].cpufreq_mhz * 1000;
+
+	if (freqs.old == freqs.new)
+		return ret;
+
+	for_each_online_cpu(freqs.cpu)
+		cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
+
+#ifdef CONFIG_CPU_FREQ_DEBUG
+	printk(KERN_DEBUG "cpufreq-elba: transition: %u --> %u\n",
+	       freqs.old, freqs.new);
+#endif
+	current_cpu_perf = idx;
+
+	ret = hip_set_performance(idx);
+
+	if (ret) {
+		pr_err("elba: Failed to set cpu frequency to %d kHz\n",
+			freqs.new);
+		return ret;
+	}
+
+	for_each_online_cpu(freqs.cpu)
+		cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
+
+	return 0;
+}
 
 static int setup_freqs_table(struct cpufreq_policy *policy,
 			     struct vexpress_freq_info *freqs, int num)
@@ -72,12 +123,7 @@ static int vexpress_cpufreq_set(struct cpufreq_policy *policy,
 				unsigned int relation)
 {
 	struct vexpress_freq_info *next;
-	struct cpufreq_freqs freqs;
-	unsigned long flags;
-	int idx;
-
-	if (policy->cpu != 0)
-		return -EINVAL;
+	int idx, ret;
 
 	/* Lookup the next frequency */
 	if (cpufreq_frequency_table_target(policy, vexpress_freqs_table,
@@ -85,27 +131,12 @@ static int vexpress_cpufreq_set(struct cpufreq_policy *policy,
 		return -EINVAL;
 
 	next = &vexpress_freqs_array[idx];
+	target_cpu_perf[policy->cpu] = idx;
 
-	freqs.old = policy->cur;
-	freqs.new = next->cpufreq_mhz * 1000;
-	freqs.cpu = policy->cpu;
-
-	pr_debug("CPU frequency from %d MHz to %d MHz%s\n",
-			freqs.old / 1000, freqs.new / 1000,
-			(freqs.old == freqs.new) ? " (skipped)" : "");
-
-	if (freqs.old == target_freq)
-		return 0;
-
-	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
-
-	local_irq_save(flags);
 	/* Update core frequency  */
-	local_irq_restore(flags);
+	ret = vexpress_update_cpu_perf();
 
-	cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
-
-	return 0;
+	return ret;
 }
 
 static __init int vexpress_cpufreq_init(struct cpufreq_policy *policy)
@@ -150,7 +181,7 @@ static int __init cpufreq_init(void)
 
 	return 0;
 }
-module_init(cpufreq_init);
+late_initcall(cpufreq_init);
 
 static void __exit cpufreq_exit(void)
 {
@@ -158,5 +189,5 @@ static void __exit cpufreq_exit(void)
 }
 module_exit(cpufreq_exit);
 
-MODULE_DESCRIPTION("CPU frequency scaling driver for Versatile Express")
-MODULE_LICENSE("GPL")
+MODULE_DESCRIPTION("CPU frequency scaling driver for Versatile Express");
+MODULE_LICENSE("GPL");
