@@ -17,6 +17,7 @@
 #include <asm/thread_info.h>
 #include <asm/memory.h>
 #include <asm/procinfo.h>
+#include <asm/cacheflush.h>
 #include <linux/kbuild.h>
 
 /*
@@ -114,6 +115,7 @@ int main(void)
 #ifdef MULTI_PABORT
   DEFINE(PROCESSOR_PABT_FUNC,	offsetof(struct processor, _prefetch_abort));
 #endif
+  DEFINE(OUTER_CACHE_INV_RANGE, offsetof(struct outer_cache_fns, inv_range));
   BLANK();
   DEFINE(DMA_BIDIRECTIONAL,	DMA_BIDIRECTIONAL);
   DEFINE(DMA_TO_DEVICE,		DMA_TO_DEVICE);
