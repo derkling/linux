@@ -12,7 +12,7 @@
 #include <asm/io.h>
 #include <asm/uaccess.h>
 
-#include "elba_scpc.h"
+#include <asm/hardware/elba_scpc.h>
 
 static struct scpc_info *info;
 
@@ -133,6 +133,37 @@ int set_wakeup_int(int devs)
 	return 0;
 }
 EXPORT_SYMBOL(set_wakeup_int);
+
+int hip_set_auto_shutdown(int cpu)
+{
+	if (cpu & ~0x3) {
+		printk(KERN_ERR "Wrong set-up: %x\n", cpu);
+		return -EINVAL;
+	}
+
+	spin_lock(&info->lock);
+	iowrite32(1 << cpu, info->base + spc_hip_auto_shutdown);
+	spin_unlock(&info->lock);
+
+	return 0;
+}
+EXPORT_SYMBOL(hip_set_auto_shutdown);
+
+int hip_force_wakeup(int cpu)
+{
+	unsigned long flags;
+	if (cpu & ~0x3) {
+		printk(KERN_ERR "Wrong set-up: %x\n", cpu);
+		return -EINVAL;
+	}
+
+	spin_lock_irqsave(&info->lock, flags);
+	iowrite32(0x3 << (cpu*2), info->base + spc_hip_force_wakeup);
+	spin_unlock_irqrestore(&info->lock, flags);
+
+	return 0;
+}
+EXPORT_SYMBOL(hip_force_wakeup);
 
 static int __devinit scpc_driver_init_one(struct platform_device *pdev)
 {
