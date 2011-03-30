@@ -24,16 +24,18 @@
 
 #define IO_SPACE_LIMIT 0xffffffff
 
+#if defined(CONFIG_PCI)
 static inline void __iomem *fpga__io(unsigned long addr)
 {
-#if defined(CONFIG_PCI)
 	/* check for PCI I/O space */
 	if (addr >= VEXPRESS_PCI_IO_BASE && addr <= VEXPRESS_PCI_IO_LIMIT)
 		return (void __iomem *)((addr - VEXPRESS_PCI_IO_BASE) + VEXPRESS_PCI_IO_VBASE);
 	else
 		return (void __iomem *)addr;
-#endif
 }
+#else
+static inline void __iomem *fpga__io(unsigned long addr) { return NULL; }
+#endif
 
 // #define __io(a)		__typesafe_io(a)
 #define __io(a)                 fpga__io(a)
