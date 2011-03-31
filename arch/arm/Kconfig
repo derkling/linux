@@ -1899,6 +1899,16 @@ config VFP
 
 	  Say N if your target does not have VFP hardware.
 
+config CONTEXT_SR
+	bool "Save/Restore code support for v7 Power Management"
+	depends on CPU_V7
+	help
+	  Say Y to include Save/Restore code in the kernel. This allows
+	  core to be shut down and the state to be saved in RAM for fast
+	  restore.
+
+	  Say N if your target does not have Power Management hardware.
+
 config VFPv3
 	bool
 	depends on VFP
