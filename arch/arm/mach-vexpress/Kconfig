@@ -37,6 +37,7 @@ config VEXPRESS_ELBA_PM
 	select CPU_FREQ
 	select CPU_IDLE
 	select CONTEXT_SR
+	select ARM_SCPC
 
 config ARCH_VEXPRESS_CA9X4
 	bool "Versatile Express Cortex-A9x4 tile"
