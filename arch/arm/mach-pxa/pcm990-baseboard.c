@@ -23,12 +23,12 @@
 #include <linux/irq.h>
 #include <linux/platform_device.h>
 #include <linux/i2c.h>
+#include <linux/i2c/pxa-i2c.h>
 #include <linux/pwm_backlight.h>
 
 #include <media/soc_camera.h>
 
 #include <asm/gpio.h>
-#include <plat/i2c.h>
 #include <mach/camera.h>
 #include <asm/mach/map.h>
 #include <mach/pxa27x.h>
@@ -515,7 +515,7 @@ void __init pcm990_baseboard_init(void)
 	pcm990_init_irq();
 
 #ifndef CONFIG_PCM990_DISPLAY_NONE
-	set_pxa_fb_info(&pcm990_fbinfo);
+	pxa_set_fb_info(NULL, &pcm990_fbinfo);
 #endif
 	platform_device_register(&pcm990_backlight_device);
 

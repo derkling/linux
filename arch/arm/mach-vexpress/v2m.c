@@ -7,12 +7,12 @@
 #include <linux/io.h>
 #include <linux/init.h>
 #include <linux/platform_device.h>
+#include <linux/ata_platform.h>
 #include <linux/smsc911x.h>
 #include <linux/spinlock.h>
 #include <linux/sysdev.h>
 #include <linux/usb/isp1760.h>
 #include <linux/clkdev.h>
-#include <linux/memblock.h>
 
 #include <asm/mach-types.h>
 #include <asm/sizes.h>
@@ -42,12 +42,21 @@ static struct map_desc v2m_io_desc[] __initdata = {
 	},
 };
 
+static void __init v2m_init_early(void)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(vexpress_tile_desc); i++) {
+		if (vexpress_tile_desc[i] && vexpress_tile_desc[i]->init_early)
+			vexpress_tile_desc[i]->init_early();
+	}
+	versatile_sched_clock_init(MMIO_P2V(V2M_SYS_24MHZ), 24000000);
+}
+
 static void __init v2m_timer_init(void)
 {
 	u32 scctrl;
 	int i;
-
-	versatile_sched_clock_init(MMIO_P2V(V2M_SYS_24MHZ), 24000000);
 
 	/* Select 1MHz TIMCLK as the reference clock for SP804 timers */
 	scctrl = readl(MMIO_P2V(V2M_SYSCTL + SCCTRL));
@@ -275,6 +284,30 @@ static struct platform_device v2m_flash_device = {
 	.dev.platform_data = &v2m_flash_data,
 };
 
+static struct pata_platform_info v2m_pata_data = {
+	.ioport_shift	= 2,
+};
+
+static struct resource v2m_pata_resources[] = {
+	{
+		.start	= V2M_CF,
+		.end	= V2M_CF + 0xff,
+		.flags	= IORESOURCE_MEM,
+	}, {
+		.start	= V2M_CF + 0x100,
+		.end	= V2M_CF + SZ_4K - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+};
+
+static struct platform_device v2m_cf_device = {
+	.name		= "pata_platform",
+	.id		= -1,
+	.resource	= v2m_pata_resources,
+	.num_resources	= ARRAY_SIZE(v2m_pata_resources),
+	.dev.platform_data = &v2m_pata_data,
+};
+
 static unsigned int v2m_mmci_status(struct device *dev)
 {
 	return readl(MMIO_P2V(V2M_SYS_MCI)) & (1 << 0);
@@ -463,14 +496,13 @@ static void __init v2m_init(void)
 	int i;
 	struct platform_device *eth_dev;
 
-	printk(KERN_INFO "V2M: Registering clock lookups\n");
 	clkdev_add_table(v2m_lookups, ARRAY_SIZE(v2m_lookups));
-	printk(KERN_INFO "V2M: clocks registered\n");
 
 #ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
 	platform_device_register(&v2m_pcie_i2c_device);
 	platform_device_register(&v2m_ddc_i2c_device);
 	platform_device_register(&v2m_flash_device);
+	platform_device_register(&v2m_cf_device);
 #endif
 	platform_device_register(&v2m_usb_device);
 
@@ -490,20 +522,12 @@ static void __init v2m_init(void)
 	}
 }
 
-static void v2m_reserve(void)
-{
-#ifdef CONFIG_ARCH_VEXPRESS_LT_ELBA
-	/* reset vector page */
-	memblock_reserve(PHYS_OFFSET, PAGE_SIZE);
-#endif
-}
-
 MACHINE_START(VEXPRESS, "ARM-Versatile Express")
-	.boot_params	= PHYS_OFFSET + 0x00000100,
+	.boot_params	= PLAT_PHYS_OFFSET + 0x00000100,
 	.map_io		= v2m_map_io,
+	.init_early	= v2m_init_early,
 	.nr_irqs	= V2M_NR_IRQS,
 	.init_irq	= v2m_init_irq,
 	.timer		= &v2m_timer,
 	.init_machine	= v2m_init,
-	.reserve	= v2m_reserve,
 MACHINE_END

@@ -13,6 +13,9 @@
 #include <linux/sched.h>
 #include <linux/mm.h>
 #include <linux/dma-mapping.h>
+#include <asm/cacheflush.h>
+#include <asm/glue-df.h>
+#include <asm/glue-pf.h>
 #include <asm/mach/arch.h>
 #include <asm/thread_info.h>
 #include <asm/memory.h>
@@ -116,6 +119,14 @@ int main(void)
   DEFINE(PROCESSOR_PABT_FUNC,	offsetof(struct processor, _prefetch_abort));
 #endif
   DEFINE(OUTER_CACHE_INV_RANGE, offsetof(struct outer_cache_fns, inv_range));
+#ifdef MULTI_CPU
+  DEFINE(CPU_SLEEP_SIZE,	offsetof(struct processor, suspend_size));
+  DEFINE(CPU_DO_SUSPEND,	offsetof(struct processor, do_suspend));
+  DEFINE(CPU_DO_RESUME,		offsetof(struct processor, do_resume));
+#endif
+#ifdef MULTI_CACHE
+  DEFINE(CACHE_FLUSH_KERN_ALL,	offsetof(struct cpu_cache_fns, flush_kern_all));
+#endif
   BLANK();
   DEFINE(DMA_BIDIRECTIONAL,	DMA_BIDIRECTIONAL);
   DEFINE(DMA_TO_DEVICE,		DMA_TO_DEVICE);

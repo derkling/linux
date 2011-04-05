@@ -11,3 +11,4 @@ obj-y				+= algos/ busses/ muxes/
 obj-$(CONFIG_I2C_HDMITX)	+= sil9022.o
 
 ccflags-$(CONFIG_I2C_DEBUG_CORE) := -DDEBUG
+CFLAGS_i2c-core.o := -Wno-deprecated-declarations

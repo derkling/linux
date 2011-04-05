@@ -382,12 +382,13 @@ struct vexpress_tile_desc {
 	u32			id;
 	const char		*name;
 	void			(*map_io)(void);
+	void			(*init_early)(void);
 	void			(*init_irq)(void);
 	void			(*init_timers)(void);
 	void			(*init_tile)(void);
 #ifdef CONFIG_SMP
-	unsigned int		(*get_core_count)(void);
-	void			(*smp_enable)(void);
+	void			(*init_cpu_map)(void);
+	void			(*smp_enable)(unsigned int);
 #endif
 };
 
