@@ -167,6 +167,7 @@ DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_DEC, PCI_DEVICE_ID_DEC_21285, pci_fixup_d
  * with an IXP4xx target device and we don't want to kill the
  * resources in that case.
  */
+#ifdef CONFIG_ARCH_PRPMC1100
 static void __devinit pci_fixup_prpmc1100(struct pci_dev *dev)
 {
 	int i;
@@ -182,6 +183,7 @@ static void __devinit pci_fixup_prpmc1100(struct pci_dev *dev)
 	}
 }
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_IXP4XX, pci_fixup_prpmc1100);
+#endif
 
 /*
  * PCI IDE controllers use non-standard I/O port decoding, respect it.
