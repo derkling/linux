@@ -46,7 +46,7 @@
 #endif
 
 
-#define VEXPRESS_PCIE_MAX_READ_REQUEST_SIZE	256
+#define VEXPRESS_PCIE_MAX_READ_REQUEST_SIZE 128
 
 /* PCIe bus numbers */
 #define ROOT_BUS	0
@@ -330,9 +330,14 @@ static struct pci_ops vexpress_pci_ops =
  */
 struct pci_bus *vexpress_pci_scan_bus(int nr, struct pci_sys_data *sys)
 {
+	struct pci_bus *root_bus;
+
 	sys->busnr = ROOT_BUS;
 
-	return pci_scan_bus(sys->busnr, &vexpress_pci_ops, sys);
+	root_bus = pci_scan_bus(sys->busnr, &vexpress_pci_ops, sys);
+	pci_assign_unassigned_resources();
+
+	return root_bus;
 }
 
 
