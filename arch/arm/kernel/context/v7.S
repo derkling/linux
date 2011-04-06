@@ -33,14 +33,14 @@
 #define MODE_ABT 0x17
 #define MODE_UND 0x1b
 #define MODE_SYS 0x1f
-#define OFFSET (PAGE_OFFSET - PHYS_OFFSET)
+#define OFFSET (PAGE_OFFSET - PLAT_PHYS_OFFSET)
 
 #define MODE_MON 0x16 @@ a-profile (security extensions) only
 #define SCR_NS 0x01 @@ a-profile (security extensions) only
 
 #define CACHE_LINE_SIZE 32 @@ todo: remove this
 #define CACHE_LINE_MASK 31 @@ todo: remove this
-#define OFFSET (PAGE_OFFSET - PHYS_OFFSET)
+#define OFFSET (PAGE_OFFSET - PLAT_PHYS_OFFSET)
 
         .syntax unified
 ENTRY(save_performance_monitors)

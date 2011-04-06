@@ -229,14 +229,17 @@ static void ct_ca15x4_init(void) {
 }
 
 #ifdef CONFIG_SMP
-static unsigned int ct_ca15x4_get_core_count(void)
+static void ct_ca15x4_init_cpu_map(void)
 {
-	unsigned int ncores;
+	unsigned int i, ncores;
 	asm volatile("mrc p15, 1, %0, c9, c0, 2\n" : "=r" (ncores));
-	return ((ncores >> 24) & 3) + 1;
+	ncores = ((ncores >> 24) & 3) + 1;
+
+	for (i = 0; i < ncores; ++i)
+		set_cpu_possible(i, true);
 }
 
-static void ct_ca15x4_smp_enable(void)
+static void ct_ca15x4_smp_enable(unsigned int max_cpus)
 {
 	u32 l2_aux_ctrl;
 
@@ -260,7 +263,7 @@ struct vexpress_tile_desc ct_ca15x4_desc = {
 	.init_irq	= ct_ca15x4_init_irq,
 	.init_tile	= ct_ca15x4_init,
 #ifdef CONFIG_SMP
-	.get_core_count	= ct_ca15x4_get_core_count,
+	.init_cpu_map	= ct_ca15x4_init_cpu_map,
 	.smp_enable	= ct_ca15x4_smp_enable,
 #endif
 };

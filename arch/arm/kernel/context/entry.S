@@ -28,7 +28,7 @@
 #define	SCTLR_RR (1<<14)
 #define	SCTLR_I (1<<12)
 #define	SCTLR_Z (1<<11)
-#define	OFFSET (PAGE_OFFSET - PHYS_OFFSET)
+#define	OFFSET (PAGE_OFFSET - PLAT_PHYS_OFFSET)
 #define	DELAY	100
 
 	.syntax unified

@@ -458,12 +458,15 @@ static void ct_elba_init(void)
 }
 
 #ifdef CONFIG_SMP
-static unsigned int lt_elba_get_core_count(void)
+static void lt_elba_init_cpu_map(void)
 {
-	return scu_get_core_count(MMIO_P2V(LT_ELBA_A9_MPCORE_SCU));
+	unsigned int i, ncores = scu_get_core_count(MMIO_P2V(LT_ELBA_A9_MPCORE_SCU));
+
+	for (i = 0; i < ncores; ++i)
+		set_cpu_possible(i, true);
 }
 
-static void lt_elba_smp_enable(void)
+static void lt_elba_smp_enable(unsigned int max_cpus)
 {
 	scu_enable(MMIO_P2V(LT_ELBA_A9_MPCORE_SCU));
 }
@@ -477,7 +480,7 @@ struct vexpress_tile_desc ct_elba_desc = {
 	.init_timers	= lt_elba_init_timers,
 	.init_tile	= ct_elba_init,
 #ifdef CONFIG_SMP
-	.get_core_count	= lt_elba_get_core_count,
+	.init_cpu_map	= lt_elba_init_cpu_map,
 	.smp_enable	= lt_elba_smp_enable,
 #endif
 };
@@ -490,7 +493,7 @@ struct vexpress_tile_desc lt_elba_desc = {
 	.init_timers	= lt_elba_init_timers,
 	.init_tile	= lt_elba_init,
 #ifdef CONFIG_SMP
-	.get_core_count	= lt_elba_get_core_count,
+	.init_cpu_map	= lt_elba_init_cpu_map,
 	.smp_enable	= lt_elba_smp_enable,
 #endif
 };
