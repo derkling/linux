@@ -15,8 +15,8 @@
 #include <asm/hardware/elba_scpc.h>
 
 #define ARRAY_AND_SIZE(x) (x), ARRAY_SIZE(x)
-#define VEXPRESS_MIN_FREQUENCY 915000 /* 915 MHz  */
-#define VEXPRESS_MAX_FREQUENCY 1713000 /* 1.7 GHz  */
+#define VEXPRESS_MIN_FREQUENCY 800000 /* 800 MHz  */
+#define VEXPRESS_MAX_FREQUENCY 1600000 /* 1.6 GHz  */
 #define OP(cpufreq) \
 {								\
 	.cpufreq_mhz	= cpufreq,				\
@@ -33,18 +33,16 @@ struct vexpress_freq_info {
 /* FIX VALUES!!!  */
 static struct vexpress_freq_info vexpress_freqs_array[] = {
 	/*  CPU */
-	OP(915),  /* 915MHz */
-	OP(1024), /* 1024MHz */
-	OP(1133), /* 1133MHz */
-	OP(1242), /* 1242MHz */
+	OP(800),  /* 800MHz */
+	OP(1020), /* 1020MHz */
+	OP(1130), /* 1130MHz */
+	OP(1240), /* 1240MHz */
 	OP(1320), /* 1320MHz */
-	OP(1376), /* 1376MHz */
-	OP(1432), /* 1432MHz */
-	OP(1488), /* 1488MHz */
-	OP(1544), /* 1544MHz */
-	OP(1601), /* 1601MHz */
-	OP(1657), /* 1657MHz */
-	OP(1713), /* 1713MHz */
+	OP(1370), /* 1370MHz */
+	OP(1430), /* 1430MHz */
+	OP(1480), /* 1480MHz */
+	OP(1540), /* 1540MHz */
+	OP(1600), /* 1600MHz */
 };
 static unsigned int vexpress_freqs_num;
 static struct vexpress_freq_info *vexpress_freqs;
