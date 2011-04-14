@@ -181,11 +181,14 @@ bool uart_filter_dma(struct dma_chan *chan, void *filter_param)
 	return true;
 }
 
-struct amba_pl011_data uart_data = {
+struct amba_pl011_data uart_dma_data = {
 	.dma_filter	= uart_filter_dma,
 	.dma_rx_param	= NULL,
 	.dma_tx_param	= NULL,
 };
+
+struct amba_pl011_data* uart_data = &uart_dma_data;
+
 #else
 #define uart_data	NULL
 #endif
@@ -203,7 +206,7 @@ static struct mmci_platform_data lt_elba_mmci_data = {
 
 static AMBA_DEVICE(wdt, "elba:wdt", LT_ELBA_WDT, NULL);
 static AMBA_DEVICE(rtc, "elba:rtc", LT_ELBA_RTC, NULL);
-static AMBA_DEVICE(uart0, "elba:uart0", LT_ELBA_UART0, &uart_data);
+static AMBA_DEVICE(uart0, "elba:uart0", LT_ELBA_UART0, uart_data);
 static AMBA_DEVICE(uart1, "elba:uart1", LT_ELBA_UART1, NULL);
 static AMBA_DEVICE(aaci, "elba:aaci", LT_ELBA_AACI, NULL);
 static AMBA_DEVICE(kmi0, "elba:kmi0", LT_ELBA_KMI0, NULL);
