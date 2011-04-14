@@ -137,7 +137,7 @@ static int vexpress_cpufreq_set(struct cpufreq_policy *policy,
 	return ret;
 }
 
-static __init int vexpress_cpufreq_init(struct cpufreq_policy *policy)
+static int vexpress_cpufreq_init(struct cpufreq_policy *policy)
 {
 	int ret = -EINVAL;
 
@@ -146,6 +146,12 @@ static __init int vexpress_cpufreq_init(struct cpufreq_policy *policy)
 	policy->cpuinfo.max_freq = VEXPRESS_MAX_FREQUENCY;
 	policy->cpuinfo.transition_latency = 1000; /* FIXME: 1 ms, assumed */
 	policy->cur = policy->min = policy->max = 0; /* FIXME: get clock freqeuncy  */
+
+	/* policy sharing between dual CPUs */
+	cpumask_copy(policy->cpus, &cpu_present_map);
+	cpumask_copy(policy->related_cpus, cpu_possible_mask);
+
+	policy->shared_type = CPUFREQ_SHARED_TYPE_ALL;
 
 	ret = setup_freqs_table(policy, ARRAY_AND_SIZE(vexpress_freqs_array));
 	if (ret) {
