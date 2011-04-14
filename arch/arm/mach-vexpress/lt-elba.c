@@ -8,6 +8,7 @@
 #include <linux/mm.h>
 #include <linux/amba/bus.h>
 #include <linux/amba/mmci.h>
+#include <linux/amba/serial.h>
 #include <linux/platform_device.h>
 #include <linux/clkdev.h>
 
@@ -202,7 +203,7 @@ static struct mmci_platform_data lt_elba_mmci_data = {
 
 static AMBA_DEVICE(wdt, "elba:wdt", LT_ELBA_WDT, NULL);
 static AMBA_DEVICE(rtc, "elba:rtc", LT_ELBA_RTC, NULL);
-static AMBA_DEVICE(uart0, "elba:uart0", LT_ELBA_UART0, uart_data);
+static AMBA_DEVICE(uart0, "elba:uart0", LT_ELBA_UART0, &uart_data);
 static AMBA_DEVICE(uart1, "elba:uart1", LT_ELBA_UART1, NULL);
 static AMBA_DEVICE(aaci, "elba:aaci", LT_ELBA_AACI, NULL);
 static AMBA_DEVICE(kmi0, "elba:kmi0", LT_ELBA_KMI0, NULL);
@@ -218,7 +219,7 @@ static struct amba_device *lt_elba_amba_devs[] __initdata = {
 	&kmi0_device,
 	&kmi1_device,
 #ifdef CONFIG_PL330_DMA
-	&dma_device,
+//	&dma_device,
 #endif
 //	&mmci_device,
 };
@@ -442,7 +443,7 @@ static void ct_elba_init(void)
 	/* HDLCD in silicon uses OSC 11 */
 	clkdev_add_table(ct_elba_clk_lookups, ARRAY_SIZE(ct_elba_clk_lookups));
 
-	asm("mrc p15, 0, %0, c0, c0, 5\n\t" : "+r" (cluster_id) : :);
+	asm("mrc p15, 0, %0, c0, c0, 5\n\t" : "+r" (cluster_id));
 
 	cluster_id &= CLUSTER_ID_MASK;
 
@@ -468,6 +469,10 @@ static void lt_elba_init_cpu_map(void)
 
 static void lt_elba_smp_enable(unsigned int max_cpus)
 {
+	int i = 0;
+	for (i = 0; i < max_cpus; i++)
+		set_cpu_present(i, true);
+
 	scu_enable(MMIO_P2V(LT_ELBA_A9_MPCORE_SCU));
 }
 #endif
