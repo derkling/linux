@@ -289,7 +289,7 @@ static spinlock_t dm_timer_lock;
  * is encoded in reg. Note that in posted mode write pending bit must be
  * checked. Otherwise a read of a non completed write will produce an error.
  */
-static inline u32 omap_dm_timer_read_reg(struct omap_dm_timer *timer, u32 reg)
+static inline u32 notrace omap_dm_timer_read_reg(struct omap_dm_timer *timer, u32 reg)
 {
 	if (timer->posted)
 		while (readl(timer->io_base + (OMAP_TIMER_WRITE_PEND_REG & 0xff))
@@ -700,7 +700,7 @@ void omap_dm_timer_write_status(struct omap_dm_timer *timer, unsigned int value)
 }
 EXPORT_SYMBOL_GPL(omap_dm_timer_write_status);
 
-unsigned int omap_dm_timer_read_counter(struct omap_dm_timer *timer)
+unsigned int notrace omap_dm_timer_read_counter(struct omap_dm_timer *timer)
 {
 	unsigned int l;
 
