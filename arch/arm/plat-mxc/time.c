@@ -27,7 +27,6 @@
 #include <linux/clk.h>
 
 #include <mach/hardware.h>
-#include <asm/sched_clock.h>
 #include <asm/mach/time.h>
 #include <mach/common.h>
 
@@ -106,17 +105,12 @@ static void gpt_irq_acknowledge(void)
 		__raw_writel(V2_TSTAT_OF1, timer_base + V2_TSTAT);
 }
 
-static cycle_t dummy_get_cycles(struct clocksource *cs)
-{
-	return 0;
-}
-
-static cycle_t mx1_2_get_cycles(struct clocksource *cs)
+static cycle_t notrace mx1_2_get_cycles(struct clocksource *cs)
 {
 	return __raw_readl(timer_base + MX1_2_TCN);
 }
 
-static cycle_t v2_get_cycles(struct clocksource *cs)
+static cycle_t notrace v2_get_cycles(struct clocksource *cs)
 {
 	return __raw_readl(timer_base + V2_TCN);
 }
@@ -124,24 +118,9 @@ static cycle_t v2_get_cycles(struct clocksource *cs)
 static struct clocksource clocksource_mxc = {
 	.name 		= "mxc_timer1",
 	.rating		= 200,
-	.read		= dummy_get_cycles,
 	.mask		= CLOCKSOURCE_MASK(32),
-	.flags		= CLOCK_SOURCE_IS_CONTINUOUS,
+	.flags		= CLOCK_SOURCE_IS_CONTINUOUS | CLOCK_SOURCE_SCHED_CLOCK,
 };
-
-static DEFINE_CLOCK_DATA(cd);
-unsigned long long notrace sched_clock(void)
-{
-	cycle_t cyc = clocksource_mxc.read(&clocksource_mxc);
-
-	return cyc_to_sched_clock(&cd, cyc, (u32)~0);
-}
-
-static void notrace mxc_update_sched_clock(void)
-{
-	cycle_t cyc = clocksource_mxc.read(&clocksource_mxc);
-	update_sched_clock(&cd, cyc, (u32)~0);
-}
 
 static int __init mxc_clocksource_init(struct clk *timer_clk)
 {
@@ -152,7 +131,6 @@ static int __init mxc_clocksource_init(struct clk *timer_clk)
 	else
 		clocksource_mxc.read = mx1_2_get_cycles;
 
-	init_sched_clock(&cd, mxc_update_sched_clock, 32, c);
 	clocksource_register_hz(&clocksource_mxc, c);
 
 	return 0;
