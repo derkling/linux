@@ -35,7 +35,6 @@
 #include <asm/pgtable.h>
 #include <asm/page.h>
 #include <asm/irq.h>
-#include <asm/sched_clock.h>
 
 #include <asm/mach/map.h>
 #include <asm/mach/irq.h>
@@ -400,26 +399,9 @@ void __init ixp4xx_sys_init(void)
 }
 
 /*
- * sched_clock()
- */
-static DEFINE_CLOCK_DATA(cd);
-
-unsigned long long notrace sched_clock(void)
-{
-	u32 cyc = *IXP4XX_OSTS;
-	return cyc_to_sched_clock(&cd, cyc, (u32)~0);
-}
-
-static void notrace ixp4xx_update_sched_clock(void)
-{
-	u32 cyc = *IXP4XX_OSTS;
-	update_sched_clock(&cd, cyc, (u32)~0);
-}
-
-/*
  * clocksource
  */
-static cycle_t ixp4xx_get_cycles(struct clocksource *cs)
+static cycle_t notrace ixp4xx_get_cycles(struct clocksource *cs)
 {
 	return *IXP4XX_OSTS;
 }
@@ -436,8 +418,6 @@ unsigned long ixp4xx_timer_freq = IXP4XX_TIMER_FREQ;
 EXPORT_SYMBOL(ixp4xx_timer_freq);
 static void __init ixp4xx_clocksource_init(void)
 {
-	init_sched_clock(&cd, ixp4xx_update_sched_clock, 32, ixp4xx_timer_freq);
-
 	clocksource_register_hz(&clocksource_ixp4xx, ixp4xx_timer_freq);
 }
 
