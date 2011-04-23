@@ -44,7 +44,6 @@
 
 #include <plat/clcd.h>
 #include <plat/fpga-irq.h>
-#include <plat/sched_clock.h>
 
 #include "common.h"
 
@@ -448,10 +447,6 @@ static void __init intcp_init_early(void)
 	clkdev_add_table(cp_lookups, ARRAY_SIZE(cp_lookups));
 
 	integrator_init_early();
-
-#ifdef CONFIG_PLAT_VERSATILE_SCHED_CLOCK
-	versatile_sched_clock_init(REFCOUNTER, 24000000);
-#endif
 }
 
 static void __init intcp_init(void)

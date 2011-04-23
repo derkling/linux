@@ -29,8 +29,6 @@
 #include <mach/lt-elba.h>
 #include <mach/motherboard.h>
 
-#include <plat/sched_clock.h>
-
 #include <mach/core.h>
 
 static struct map_desc v2m_io_desc[] __initdata = {
@@ -50,7 +48,6 @@ static void __init v2m_init_early(void)
 		if (vexpress_tile_desc[i] && vexpress_tile_desc[i]->init_early)
 			vexpress_tile_desc[i]->init_early();
 	}
-	versatile_sched_clock_init(MMIO_P2V(V2M_SYS_24MHZ), 24000000);
 }
 
 static void __init v2m_timer_init(void)

@@ -52,7 +52,6 @@
 
 #include <plat/clcd.h>
 #include <plat/fpga-irq.h>
-#include <plat/sched_clock.h>
 
 #include "core.h"
 
@@ -706,8 +705,6 @@ void __init versatile_init_early(void)
 
 	osc4_clk.vcoreg	= sys + VERSATILE_SYS_OSCCLCD_OFFSET;
 	clkdev_add_table(lookups, ARRAY_SIZE(lookups));
-
-	versatile_sched_clock_init(sys + VERSATILE_SYS_24MHz_OFFSET, 24000000);
 }
 
 void __init versatile_init(void)

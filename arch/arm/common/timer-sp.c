@@ -49,7 +49,7 @@ struct sp804_clock_event_device {
 
 static unsigned long sp804_clksrc_rate = TIMER_FREQ_HZ;
 
-static cycle_t sp804_read(struct clocksource *cs)
+static cycle_t notrace sp804_read(struct clocksource *cs)
 {
 	struct sp804_clocksource* sp804_cs = to_sp804_clocksource(cs);
 	return ~readl(sp804_cs->base + TIMER_VALUE);
@@ -68,7 +68,7 @@ void __init sp804_clocksource_init(void __iomem *base, char *clk_id)
 	cs->cs.read = sp804_read;
 	cs->cs.mask = CLOCKSOURCE_MASK(32);
 	cs->cs.shift = 20;
-	cs->cs.flags = CLOCK_SOURCE_IS_CONTINUOUS;
+	cs->cs.flags = CLOCK_SOURCE_IS_CONTINUOUS | CLOCK_SOURCE_SCHED_CLOCK;
 	cs->base = base;
 
 	clk = clk_get_sys("sp804", clk_id);

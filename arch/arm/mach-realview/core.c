@@ -52,7 +52,6 @@
 #include <asm/hardware/timer-sp.h>
 
 #include <plat/clcd.h>
-#include <plat/sched_clock.h>
 
 #include "core.h"
 
@@ -370,8 +369,6 @@ void __init realview_init_early(void)
 		oscvco_clk.vcoreg = sys + REALVIEW_SYS_OSC4_OFFSET;
 
 	clkdev_add_table(lookups, ARRAY_SIZE(lookups));
-
-	versatile_sched_clock_init(sys + REALVIEW_SYS_24MHz_OFFSET, 24000000);
 }
 
 /*
