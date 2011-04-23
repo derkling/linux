@@ -27,7 +27,6 @@
 #include <linux/irq.h>
 #include <linux/sched.h>
 
-#include <asm/sched_clock.h>
 #include <mach/addr-map.h>
 #include <mach/regs-timers.h>
 #include <mach/regs-apbc.h>
@@ -42,12 +41,10 @@
 #define MAX_DELTA		(0xfffffffe)
 #define MIN_DELTA		(16)
 
-static DEFINE_CLOCK_DATA(cd);
-
 /*
  * FIXME: the timer needs some delay to stablize the counter capture
  */
-static inline uint32_t timer_read(void)
+static inline uint32_t notrace timer_read(void)
 {
 	int delay = 100;
 
@@ -57,18 +54,6 @@ static inline uint32_t timer_read(void)
 		cpu_relax();
 
 	return __raw_readl(TIMERS_VIRT_BASE + TMR_CVWR(0));
-}
-
-unsigned long long notrace sched_clock(void)
-{
-	u32 cyc = timer_read();
-	return cyc_to_sched_clock(&cd, cyc, (u32)~0);
-}
-
-static void notrace mmp_update_sched_clock(void)
-{
-	u32 cyc = timer_read();
-	update_sched_clock(&cd, cyc, (u32)~0);
 }
 
 static irqreturn_t timer_interrupt(int irq, void *dev_id)
@@ -174,8 +159,6 @@ static struct irqaction timer_irq = {
 void __init timer_init(int irq)
 {
 	timer_config();
-
-	init_sched_clock(&cd, mmp_update_sched_clock, 32, CLOCK_TICK_RATE);
 
 	ckevt.mult = div_sc(CLOCK_TICK_RATE, NSEC_PER_SEC, ckevt.shift);
 	ckevt.max_delta_ns = clockevent_delta2ns(MAX_DELTA, &ckevt);
