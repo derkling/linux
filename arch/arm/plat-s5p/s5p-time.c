@@ -22,7 +22,6 @@
 #include <asm/mach/time.h>
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
-#include <asm/sched_clock.h>
 
 #include <mach/map.h>
 #include <plat/devs.h>
@@ -290,7 +289,7 @@ static void __init s5p_clockevent_init(void)
 	setup_irq(irq_number, &s5p_clock_event_irq);
 }
 
-static cycle_t s5p_timer_read(struct clocksource *cs)
+static cycle_t notrace s5p_timer_read(struct clocksource *cs)
 {
 	unsigned long offset = 0;
 
@@ -314,72 +313,12 @@ static cycle_t s5p_timer_read(struct clocksource *cs)
 	return (cycle_t) ~__raw_readl(S3C_TIMERREG(offset));
 }
 
-/*
- * Override the global weak sched_clock symbol with this
- * local implementation which uses the clocksource to get some
- * better resolution when scheduling the kernel. We accept that
- * this wraps around for now, since it is just a relative time
- * stamp. (Inspired by U300 implementation.)
- */
-static DEFINE_CLOCK_DATA(cd);
-
-unsigned long long notrace sched_clock(void)
-{
-	u32 cyc;
-	unsigned long offset = 0;
-
-	switch (timer_source.source_id) {
-	case S5P_PWM0:
-	case S5P_PWM1:
-	case S5P_PWM2:
-	case S5P_PWM3:
-		offset = (timer_source.source_id * 0x0c) + 0x14;
-		break;
-
-	case S5P_PWM4:
-		offset = 0x40;
-		break;
-
-	default:
-		printk(KERN_ERR "Invalid Timer %d\n", timer_source.source_id);
-		return 0;
-	}
-
-	cyc = ~__raw_readl(S3C_TIMERREG(offset));
-	return cyc_to_sched_clock(&cd, cyc, (u32)~0);
-}
-
-static void notrace s5p_update_sched_clock(void)
-{
-	u32 cyc;
-	unsigned long offset = 0;
-
-	switch (timer_source.source_id) {
-	case S5P_PWM0:
-	case S5P_PWM1:
-	case S5P_PWM2:
-	case S5P_PWM3:
-		offset = (timer_source.source_id * 0x0c) + 0x14;
-		break;
-
-	case S5P_PWM4:
-		offset = 0x40;
-		break;
-
-	default:
-		printk(KERN_ERR "Invalid Timer %d\n", timer_source.source_id);
-	}
-
-	cyc = ~__raw_readl(S3C_TIMERREG(offset));
-	update_sched_clock(&cd, cyc, (u32)~0);
-}
-
 struct clocksource time_clocksource = {
 	.name		= "s5p_clocksource_timer",
 	.rating		= 250,
 	.read		= s5p_timer_read,
 	.mask		= CLOCKSOURCE_MASK(32),
-	.flags		= CLOCK_SOURCE_IS_CONTINUOUS,
+	.flags		= CLOCK_SOURCE_IS_CONTINUOUS | CLOCKS_SOURCE_SCHED_CLOCK,
 };
 
 static void __init s5p_clocksource_init(void)
@@ -393,8 +332,6 @@ static void __init s5p_clocksource_init(void)
 	clk_set_parent(tin_source, tdiv_source);
 
 	clock_rate = clk_get_rate(tin_source);
-
-	init_sched_clock(&cd, s5p_update_sched_clock, 32, clock_rate);
 
 	s5p_time_setup(timer_source.source_id, TCNT_MAX);
 	s5p_time_start(timer_source.source_id, PERIODIC);
