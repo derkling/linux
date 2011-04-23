@@ -22,7 +22,6 @@
 #include <mach/hardware.h>
 
 /* Generic stuff */
-#include <asm/sched_clock.h>
 #include <asm/mach/map.h>
 #include <asm/mach/time.h>
 #include <asm/mach/irq.h>
@@ -334,7 +333,7 @@ static struct irqaction u300_timer_irq = {
 };
 
 /* Use general purpose timer 2 as clock source */
-static cycle_t u300_get_cycles(struct clocksource *cs)
+static cycle_t notrace u300_get_cycles(struct clocksource *cs)
 {
 	return (cycles_t) readl(U300_TIMER_APP_VBASE + U300_TIMER_APP_GPT2CC);
 }
@@ -344,30 +343,8 @@ static struct clocksource clocksource_u300_1mhz = {
 	.rating         = 300, /* Reasonably fast and accurate clock source */
 	.read           = u300_get_cycles,
 	.mask           = CLOCKSOURCE_MASK(32), /* 32 bits */
-	.flags          = CLOCK_SOURCE_IS_CONTINUOUS,
+	.flags          = CLOCK_SOURCE_IS_CONTINUOUS | CLOCK_SOURCE_SCHED_CLOCK,
 };
-
-/*
- * Override the global weak sched_clock symbol with this
- * local implementation which uses the clocksource to get some
- * better resolution when scheduling the kernel. We accept that
- * this wraps around for now, since it is just a relative time
- * stamp. (Inspired by OMAP implementation.)
- */
-static DEFINE_CLOCK_DATA(cd);
-
-unsigned long long notrace sched_clock(void)
-{
-	u32 cyc = readl(U300_TIMER_APP_VBASE + U300_TIMER_APP_GPT2CC);
-	return cyc_to_sched_clock(&cd, cyc, (u32)~0);
-}
-
-static void notrace u300_update_sched_clock(void)
-{
-	u32 cyc = readl(U300_TIMER_APP_VBASE + U300_TIMER_APP_GPT2CC);
-	update_sched_clock(&cd, cyc, (u32)~0);
-}
-
 
 /*
  * This sets up the system timers, clock source and clock event.
@@ -382,8 +359,6 @@ static void __init u300_timer_init(void)
 	BUG_ON(IS_ERR(clk));
 	clk_enable(clk);
 	rate = clk_get_rate(clk);
-
-	init_sched_clock(&cd, u300_update_sched_clock, 32, rate);
 
 	/*
 	 * Disable the "OS" and "DD" timers - these are designed for Symbian!
