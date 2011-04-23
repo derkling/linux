@@ -25,7 +25,6 @@
 #include <linux/clockchips.h>
 #include <mach/hardware.h>
 #include <asm/irq.h>
-#include <asm/sched_clock.h>
 #include <asm/uaccess.h>
 #include <asm/mach/irq.h>
 #include <asm/mach/time.h>
@@ -49,25 +48,8 @@ static struct clocksource iop_clocksource = {
 	.rating		= 300,
 	.read		= iop_clocksource_read,
 	.mask		= CLOCKSOURCE_MASK(32),
-	.flags		= CLOCK_SOURCE_IS_CONTINUOUS,
+	.flags		= CLOCK_SOURCE_IS_CONTINUOUS | CLOCK_SOURCE_SCHED_CLOCK,
 };
-
-static DEFINE_CLOCK_DATA(cd);
-
-/*
- * IOP sched_clock() implementation via its clocksource.
- */
-unsigned long long notrace sched_clock(void)
-{
-	u32 cyc = 0xffffffffu - read_tcr1();
-	return cyc_to_sched_clock(&cd, cyc, (u32)~0);
-}
-
-static void notrace iop_update_sched_clock(void)
-{
-	u32 cyc = 0xffffffffu - read_tcr1();
-	update_sched_clock(&cd, cyc, (u32)~0);
-}
 
 /*
  * IOP clockevents (interrupting timer 0).
@@ -151,8 +133,6 @@ EXPORT_SYMBOL(get_iop_tick_rate);
 void __init iop_init_time(unsigned long tick_rate)
 {
 	u32 timer_ctl;
-
-	init_sched_clock(&cd, iop_update_sched_clock, 32, tick_rate);
 
 	ticks_per_jiffy = DIV_ROUND_CLOSEST(tick_rate, HZ);
 	iop_tick_rate = tick_rate;
