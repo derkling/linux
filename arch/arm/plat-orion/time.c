@@ -17,7 +17,6 @@
 #include <linux/clockchips.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
-#include <asm/sched_clock.h>
 
 /*
  * MBus bridge block registers.
@@ -55,35 +54,10 @@ static void __iomem *timer_base;
  */
 static u32 ticks_per_jiffy;
 
-
-/*
- * Orion's sched_clock implementation. It has a resolution of
- * at least 7.5ns (133MHz TCLK).
- */
-static DEFINE_CLOCK_DATA(cd);
-
-unsigned long long notrace sched_clock(void)
-{
-	u32 cyc = ~readl(timer_base + TIMER0_VAL_OFF);
-	return cyc_to_sched_clock(&cd, cyc, (u32)~0);
-}
-
-
-static void notrace orion_update_sched_clock(void)
-{
-	u32 cyc = ~readl(timer_base + TIMER0_VAL_OFF);
-	update_sched_clock(&cd, cyc, (u32)~0);
-}
-
-static void __init setup_sched_clock(unsigned long tclk)
-{
-	init_sched_clock(&cd, orion_update_sched_clock, 32, tclk);
-}
-
 /*
  * Clocksource handling.
  */
-static cycle_t orion_clksrc_read(struct clocksource *cs)
+static cycle_t notrace orion_clksrc_read(struct clocksource *cs)
 {
 	return 0xffffffff - readl(timer_base + TIMER0_VAL_OFF);
 }
@@ -93,10 +67,8 @@ static struct clocksource orion_clksrc = {
 	.rating		= 300,
 	.read		= orion_clksrc_read,
 	.mask		= CLOCKSOURCE_MASK(32),
-	.flags		= CLOCK_SOURCE_IS_CONTINUOUS,
+	.flags		= CLOCK_SOURCE_IS_CONTINUOUS | CLOCK_SOURCE_SCHED_CLOCK,
 };
-
-
 
 /*
  * Clockevent handling.
@@ -231,11 +203,6 @@ orion_time_init(u32 _bridge_base, u32 _bridge_timer1_clr_mask,
 	bridge_timer1_clr_mask = _bridge_timer1_clr_mask;
 
 	ticks_per_jiffy = (tclk + HZ/2) / HZ;
-
-	/*
-	 * Set scale and timer for sched_clock.
-	 */
-	setup_sched_clock(tclk);
 
 	/*
 	 * Setup free-running clocksource timer (interrupts
