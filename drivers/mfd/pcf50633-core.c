@@ -51,7 +51,7 @@ static int __pcf50633_write(struct pcf50633 *pcf, u8 reg, int num, u8 *data)
 
 }
 
-/* Read a block of upto 32 regs  */
+/* Read a block of up to 32 regs  */
 int pcf50633_read_block(struct pcf50633 *pcf, u8 reg,
 					int nr_regs, u8 *data)
 {
@@ -65,7 +65,7 @@ int pcf50633_read_block(struct pcf50633 *pcf, u8 reg,
 }
 EXPORT_SYMBOL_GPL(pcf50633_read_block);
 
-/* Write a block of upto 32 regs  */
+/* Write a block of up to 32 regs  */
 int pcf50633_write_block(struct pcf50633 *pcf , u8 reg,
 					int nr_regs, u8 *data)
 {
@@ -356,7 +356,7 @@ static int __devexit pcf50633_remove(struct i2c_client *client)
 	return 0;
 }
 
-static struct i2c_device_id pcf50633_id_table[] = {
+static const struct i2c_device_id pcf50633_id_table[] = {
 	{"pcf50633", 0x73},
 	{/* end of list */}
 };
