@@ -60,7 +60,8 @@
 #define MAKE_BUS_NUMBER(pri,sec,sub) \
     (((pri) & 0xff) | (((sec) & 0xff) << 8) | (((sub) & 0xff) << 16))
 
-#define TWRITE(v,reg) writel((v), __MMIO_P2V(VEXPRESS_PCIE_TRN_CTRL_BASE + (reg)))
+#define TWRITE(v,reg) 	writel((v), __MMIO_P2V(VEXPRESS_PCIE_TRN_CTRL_BASE + (reg)))
+#define TREAD(reg)	readl(__MMIO_P2V(VEXPRESS_PCIE_TRN_CTRL_BASE + (reg)))
 
 #define PCI_VIRT_ADDR(a) ((a)-VEXPRESS_PCI_BASE+VEXPRESS_PCI_VBASE)
 //#define PCI_VIRT_ADDR(addr) (__MMIO_P2V(addr))
@@ -397,9 +398,11 @@ int __init vexpress_pci_setup(int nr, struct pci_sys_data *sys)
 	int i;
 #endif
 
-
-	/* First make sure that the Link Training & Status State Machine is disabled */
-	TWRITE(0, VEXPRESS_TRN_APP_LTSSM_ENABLE_RD_EN);
+	/* Make sure the AXI and Outbound Translation blocks are disabled */
+	/* Disable AXI translation block */
+	TWRITE(0, VEXPRESS_TRN_AMISCPCIE_SLV_CNTRL_RD_EN);
+	/* Disable OB translation block */
+	TWRITE(0, VEXPRESS_TRN_TRANSLATION_ENABLE_RD_EN);
 
 
 	/* Configure DBI - note, configure AXI translation block only since it
@@ -497,43 +500,47 @@ int __init vexpress_pci_setup(int nr, struct pci_sys_data *sys)
 	}
 #endif
 
-
-	/* set port link control register
-	 * Disable fast link and enable scramble
-	 * b1==0 scramble enabled
-	 * b5==1 link enabled
-	 * b7==0 fast link disabled (reserved for simulation)
-	 * b8==1 required
-	 * 21:16 = number of lanes (encoded)
-	 */
-	if (vexpress_pci_write_config(&bus, 0, PCI_PORT_LINK_CONTROL, 4, 0x00070120)
-		    != PCIBIOS_SUCCESSFUL) {
-		printk(KERN_ERR "PCIe can't write link control register\n");
-		return -1;
-	}
-
-	/* Enable the Link Training & Status State Machine (LTSSM) */
-	TWRITE(1, VEXPRESS_TRN_APP_LTSSM_ENABLE_RD_EN);
-
-#ifdef VEXPRESS_PCIE_CHECK_LINK_UP
-	/* poll for link up */
-	for (i = 0; i < 100; i++) {
-		if (vexpress_pci_read_config(&bus, 0, PCI_RC_DEBUGREG1, 4, &data)
+	/* Only enable the Link Training & Status State Machine (LTSSM) if not  */
+	/* already done by the boot firmware */
+	data = TREAD(VEXPRESS_TRN_APP_LTSSM_ENABLE_RD_EN);
+	if (data == 0) {
+		/* set port link control register
+		 * Disable fast link and enable scramble
+		 * b1==0 scramble enabled
+		 * b5==1 link enabled
+		 * b7==0 fast link disabled (reserved for simulation)
+		 * b8==1 required
+		 * 21:16 = number of lanes (encoded)
+		 */
+		if (vexpress_pci_write_config(&bus, 0, PCI_PORT_LINK_CONTROL, 4, 0x00070120)
 			    != PCIBIOS_SUCCESSFUL) {
-			printk(KERN_ERR "PCIe: can't read DEBUGREG1\n");
+			printk(KERN_ERR "PCIe can't write link control register\n");
 			return -1;
 		}
-		if (data & 0x10)
-			break;
-		msleep(1);
-	}
 
-	/* check for link up */
-	if ((data & 0x10) == 0) {
-		printk(KERN_ERR "PCIe: RC->switch link not up\n");
-		return -1;
-	}
+		/* Enable the Link Training & Status State Machine (LTSSM) */
+		TWRITE(1, VEXPRESS_TRN_APP_LTSSM_ENABLE_RD_EN);
+
+#ifdef VEXPRESS_PCIE_CHECK_LINK_UP
+		/* poll for link up */
+		for (i = 0; i < 100; i++) {
+			if (vexpress_pci_read_config(&bus, 0, PCI_RC_DEBUGREG1, 4, &data)
+				    != PCIBIOS_SUCCESSFUL) {
+				printk(KERN_ERR "PCIe: can't read DEBUGREG1\n");
+				return -1;
+			}
+			if (data & 0x10)
+				break;
+			msleep(1);
+		}
+
+		/* check for link up */
+		if ((data & 0x10) == 0) {
+			printk(KERN_ERR "PCIe: RC->switch link not up\n");
+			return -1;
+		}
 #endif
+	}
 
 
 #ifdef VEXPRESS_PCIE_CHECK_SWITCH
