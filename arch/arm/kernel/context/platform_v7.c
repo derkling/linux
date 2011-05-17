@@ -157,7 +157,7 @@ int appf_platform_a9_init(void)
 		}
 		aem_cluster[0].scu_address = cbar;
 		aem_cluster[0].ic_address = cbar + 0x1000;
-#ifdef CONFIG_ARCH_VEXPRESS_LT_ELBA
+#if defined(CONFIG_ARCH_VEXPRESS_LT_ELBA) || defined(CONFIG_ARCH_TUSCAN)
 		/* TODO: is this actually standardized? */
 		aem_cluster[0].l2_address = cbar + 0x2000;
 #else

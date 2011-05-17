@@ -1051,6 +1051,8 @@ static int __devinit aaci_probe(struct amba_device *dev,
 		goto out;
 	}
 
+	printk(KERN_INFO "AACI: FIFO depth %d\n", aaci->fifo_depth);
+
 	ret = aaci_init_pcm(aaci);
 	if (ret)
 		goto out;

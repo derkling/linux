@@ -37,7 +37,7 @@
 #include "ump_kernel_interface_ref_drv.h"
 #endif
 
-#define MALI_HDLCD_NAME "lt:hdlcd"
+#define MALI_HDLCD_NAME "tuscan:hdlcd"
 #define HDLCD_IOCTL_GET_FB_UMP_SECURE_ID  _IOWR('m',0xF8, __u32)
 
 struct {

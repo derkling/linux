@@ -86,7 +86,7 @@ int linux_appf_setup_translation_tables(void)
 	linux_appf_map_page(context_memory_uncached,
 			    CONTEXT_SPACE_UNCACHED,
 			    pgprot_dmacoherent(pgprot_kernel));
-#ifdef CONFIG_ARCH_VEXPRESS_LT_ELBA
+#if defined(CONFIG_ARCH_VEXPRESS_LT_ELBA) || defined(CONFIG_ARCH_TUSCAN)
 	linux_appf_map_page((void *) read_cbar() + 0x2000, PAGE_SIZE,
 			    __pgprot(PROT_PTE_DEVICE | L_PTE_MT_DEV_SHARED
 				     | L_PTE_SHARED));

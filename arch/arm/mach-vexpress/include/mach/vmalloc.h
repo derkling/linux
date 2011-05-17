@@ -19,9 +19,11 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 #ifdef CONFIG_PCI
+#if defined(CONFIG_ARCH_VEXPRESS_LT_ELBA) || defined(CONFIG_ARCH_TUSCAN)
 #define VMALLOC_END		0xD0000000UL
-#elif defined(CONFIG_ARCH_VEXPRESS_LT_ELBA)
+#else
 #define VMALLOC_END		0xE0000000UL
+#endif
 #else
 #define VMALLOC_END		0xf8000000UL
 #endif

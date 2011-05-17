@@ -7,6 +7,7 @@ struct clk {
 	const struct clk_ops	*ops;
 	unsigned long		rate;
 	const struct icst_params *params;
+	unsigned int		id;
 };
 
 #define __clk_get(clk) ({ 1; })

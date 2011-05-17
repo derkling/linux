@@ -117,7 +117,7 @@
 /*
  * Interrupts.  Those in {} are for AMBA devices
  */
-#ifndef CONFIG_ARCH_VEXPRESS_LT_ELBA
+#if !defined(CONFIG_ARCH_VEXPRESS_LT_ELBA) && !defined(CONFIG_ARCH_TUSCAN)
 #define IRQ_V2M_WDT		{ (32 + 0) }
 #define IRQ_V2M_TIMER0		(32 + 2)
 #define IRQ_V2M_TIMER1		(32 + 2)

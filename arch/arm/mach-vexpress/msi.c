@@ -181,7 +181,7 @@ int arch_setup_msi_irq(struct pci_dev *pdev, struct msi_desc *desc)
 	dynamic_irq_init(irq);
 
 	irq_set_msi_desc(irq, desc);
-	irq_set_chip_and_handler_name(irq, &vexpress_msi_chip, handle_simple_irq, NULL);
+	irq_set_chip_and_handler(irq, &vexpress_msi_chip, handle_simple_irq);
 
 	/* mark this IRQ as valid but don't try to probe it */
 	set_irq_flags(irq, IRQF_VALID);

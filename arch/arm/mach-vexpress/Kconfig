@@ -61,6 +61,13 @@ config ARCH_VEXPRESS_LT_ELBA
 	select ARM_GIC
 	select PL330
 
+config ARCH_TUSCAN
+	bool "Tuscan standalone motherboard"
+	depends on VEXPRESS_ELBA_MEMORY_MAP
+	select CPU_V7
+	select ARM_GIC
+	select PL330
+
 config VEXPRESS_HIGH_PHYS_OFFSET
 	bool "High physical base address for the Versatile Express platform"
 	depends on MMU

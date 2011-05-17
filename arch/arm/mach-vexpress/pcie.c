@@ -54,7 +54,8 @@
 #define SWITCH_BUS	(ROOT_BUS + 1)
 
 #define ROOT_COMPLEX_ID 	0x072013b5
-#define IDT_SWITCH_ID		0x8035111d
+#define IDT_SWITCH_ID1		0x8035111d
+#define IDT_SWITCH_ID2		0x8090111d
 
 
 #define MAKE_BUS_NUMBER(pri,sec,sub) \
@@ -551,8 +552,8 @@ int __init vexpress_pci_setup(int nr, struct pci_sys_data *sys)
 		printk(KERN_ERR "PCIe can't read switch id\n");
 		return -1;
 	}
-	if (data != IDT_SWITCH_ID) {
-		printk(KERN_ERR "PCIe can't find IDT switch\n");
+	if (data != IDT_SWITCH_ID1 && data != IDT_SWITCH_ID2) {
+		printk(KERN_ERR "PCIe can't find IDT switch. Value read: 0x%x\n", data);
 		return -1;
 	}
 #endif
