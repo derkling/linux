@@ -20,6 +20,7 @@
 #include <linux/pci.h>
 #include <linux/msi.h>
 #include <linux/interrupt.h>
+#include <linux/irq.h>
 #include <asm/mach/irq.h>
 #include <asm/irq.h>
 #include <asm/io.h>
@@ -179,8 +180,8 @@ int arch_setup_msi_irq(struct pci_dev *pdev, struct msi_desc *desc)
 
 	dynamic_irq_init(irq);
 
-	set_irq_msi(irq, desc);
-	set_irq_chip_and_handler(irq, &vexpress_msi_chip, handle_simple_irq);
+	irq_set_msi_desc(irq, desc);
+	irq_set_chip_and_handler_name(irq, &vexpress_msi_chip, handle_simple_irq, NULL);
 
 	/* mark this IRQ as valid but don't try to probe it */
 	set_irq_flags(irq, IRQF_VALID);
