@@ -43,9 +43,9 @@ struct sp804_clock_event_device {
 #define to_sp804_clock_event_device(x) container_of((x), struct sp804_clock_event_device, dev);
 
 /*
- * These timers are currently always setup to be clocked at 1MHz.
+ * These timers are currently always setup to be clocked at 50MHz.
  */
-#define TIMER_FREQ_HZ	(1000000)
+#define TIMER_FREQ_HZ	(50000000)
 
 static unsigned long sp804_clksrc_rate = TIMER_FREQ_HZ;
 

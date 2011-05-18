@@ -48,6 +48,7 @@
 #define MID_CLUSTER		(1 << 8)
 
 
+extern void versatile_secondary_startup(void);
 
 static struct map_desc tuscan_io_desc[] __initdata = {
 	{
@@ -130,7 +131,7 @@ static struct map_desc tuscan_io_desc[] __initdata = {
 
 static void __init tuscan_init_early(void)
 {
-	versatile_sched_clock_init(MMIO_P2V(LT_ELBA_TIMER2), 400000000);
+	versatile_sched_clock_init(MMIO_P2V(LT_ELBA_TIMER2), 50000000);
 }
 
 static void __init tuscan_timer_init(void)
@@ -340,6 +341,15 @@ void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 		set_cpu_present(i, true);
 
 	scu_enable(MMIO_P2V(LT_ELBA_A9_MPCORE_SCU));
+
+	/*
+	 * Write the address of the secondary startup into the
+	 * SCC register 0x30c. The boot monitor waits until
+	 * it receives a soft interrupt, and then the secondary
+	 * CPU branches to this address
+	 */
+	writel(BSYM(virt_to_phys(versatile_secondary_startup)),
+		MMIO_P2V(0xe000330c));
 }
 
 static void __init tuscan_init(void)
