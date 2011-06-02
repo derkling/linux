@@ -693,3 +693,193 @@ int __init vexpress_pci_init(void)
 	return 0;
 }
 subsys_initcall(vexpress_pci_init);
+
+#define ALLOC_SIZE 10240
+#define DRV_NAME "switch-dma"
+static struct switch_dma_info {
+	struct pci_dev *pdev;
+	void __iomem *regs;
+	int irq;
+	void *src_mem;
+	dma_addr_t src_dma;
+	void *dest_mem;
+	dma_addr_t dest_dma;
+} *info;
+
+struct switch_dma_desc {
+	unsigned int mrrs  : 4;
+	unsigned int lst   : 1;
+	unsigned int zero1 : 3;
+	unsigned int dtc   : 3;
+	unsigned int dro   : 1;
+	unsigned int dns   : 1;
+	unsigned int zero2 : 3;
+	unsigned int stc   : 3;
+	unsigned int sro   : 1;
+	unsigned int sns   : 1;
+	unsigned int zero3 : 5;
+	unsigned int iof   : 1;
+	unsigned int dsts  : 2;
+	unsigned int dtype : 3;
+	unsigned int bcount;
+	unsigned int saddrl;
+	unsigned int saddru;
+	unsigned int daddrl;
+	unsigned int daddru;
+	unsigned int nextl;
+	unsigned int nextu;
+} __attribute__((packed));
+static struct switch_dma_desc *desc1;
+
+static irqreturn_t switch_dma_irq(int irq, void *dev_id)
+{
+	struct switch_dma_info *info = (struct switch_dma_info *)dev_id;
+	unsigned long status;
+
+	status = readl(info->regs + 0x508);
+
+	if (status) {
+		/* Clear interrupt bit.  */
+		writel(0xFFFFFFFF, info->regs + 0x508);
+		if(memcmp(info->dest_mem, info->src_mem, ALLOC_SIZE)) {
+			printk(KERN_ERR "PCIe DMA quirk OK.\n");
+		}
+		/* Disable interrupts.  */
+		writel(0x3F, info->regs + 0x50C);
+		/* Disable all errors reporting.  */
+		writel(0xFFFFFFFF, info->regs + 0x514);
+
+		return IRQ_HANDLED;
+	}
+	return IRQ_NONE;
+}
+
+static void set_single_dma_desc(struct switch_dma_desc *desc, unsigned int src, unsigned int dest)
+{
+	desc->mrrs = 0x7; // 128 bytes
+	desc->lst = 1;    // only one descriptor
+	desc->dtc = 0;
+	desc->dro = 0;
+	desc->dns = 0;
+	desc->stc = 0;
+	desc->sro = 0;
+	desc->sns = 0;
+	desc->iof = 1;
+	desc->dsts = 0;   // Unprocessed descriptor
+	desc->dtype = 1;  // Data transfer DMA descriptor
+	desc->bcount = ALLOC_SIZE;
+	desc->saddrl = src;
+	desc->saddru = 0;
+	desc->daddrl = dest;
+	desc->daddru = 0;
+	desc->nextl = 0;
+	desc->nextu = 0;
+}
+
+static void __devinit switch_dma_hook(struct pci_dev *pdev)
+{
+	int err;
+
+	if (!pdev->irq)
+		return;
+
+	err = pci_enable_device(pdev);
+	if (err) {
+		printk(KERN_ERR "cannot enable PCI device\n");
+		goto err_out;
+	}
+
+	err = pci_request_regions(pdev, DRV_NAME);
+	if (err) {
+		printk(KERN_ERR "cannot obtain PCI resources\n");
+		goto err_out_disable;
+	}
+
+	pci_set_master(pdev);
+
+	err = pci_set_dma_mask(pdev, DMA_BIT_MASK(32));
+	if (err) {
+		printk(KERN_ERR "no usable DMA configuration\n");
+		goto err_out_free_regions;
+	}
+
+	info = kzalloc(sizeof(*info), GFP_KERNEL);
+	if (!info) {
+		printk(KERN_ERR "cannot allocate info struct\n");
+		goto err_out_free_regions;
+	}
+
+	info->pdev = pdev;
+
+	err = request_irq(pdev->irq, switch_dma_irq, IRQF_SHARED, DRV_NAME, info);
+	if (err) {
+		printk(KERN_ERR "cannot request IRQ\n");
+		goto err_out_free_hw;
+	}
+
+	info->regs = ioremap_nocache(pci_resource_start(pdev, 0), 0x1000);
+	if (!info->regs) {
+		printk(KERN_ERR "cannot map device registers\n");
+		goto err_out_free_irq;
+	}
+
+	/* Enable finished interrupt.  */
+	writel(0x38, info->regs + 0x50C);
+	/* Enable all errors reporting.  */
+	writel(0, info->regs + 0x514);
+
+	desc1 = kzalloc(sizeof(*desc1), GFP_KERNEL);
+	if (!desc1) {
+		printk(KERN_ERR "Can't allocate desc1\n");
+		panic("desc1: ");
+	}
+
+	info->src_mem = dma_alloc_coherent(&pdev->dev, ALLOC_SIZE, &info->src_dma, GFP_KERNEL);
+	if (!info->src_mem) {
+		printk(KERN_ERR "cannot allocate dma source mem\n");
+		goto err_out_ioremap;
+	}
+	memset(info->src_mem, 0xCAFEBABE, ALLOC_SIZE);
+
+	info->dest_mem = dma_alloc_coherent(&pdev->dev, ALLOC_SIZE, &info->dest_dma, GFP_KERNEL);
+	if (!info->dest_mem) {
+		printk(KERN_ERR "cannot allocate dma dest mem\n");
+		goto err_out_free_src_dma;
+	}
+	memset(info->dest_mem, 0, ALLOC_SIZE);
+
+	memset(desc1, 0, sizeof(desc1));
+	set_single_dma_desc(desc1, info->src_dma, info->dest_dma);
+	writel(__pa(desc1), info->regs + 0x528);
+	writel(0, info->regs + 0x52C);
+	writel(0, info->regs + 0x530);
+	writel(0, info->regs + 0x534);
+	smp_wmb();
+	__cpuc_flush_kern_all();
+	outer_flush_all();
+	/* Run  */
+	writel(1, info->regs + 0x500);
+
+err_out:
+	return;
+
+err_out_free_src_dma:
+	dma_free_coherent(&pdev->dev, ALLOC_SIZE, info->src_mem, info->src_dma);
+
+err_out_ioremap:
+	iounmap(info->regs);
+
+err_out_free_irq:
+	free_irq(pdev->irq, info);
+
+err_out_free_hw:
+	kfree(info);
+
+err_out_free_regions:
+	pci_release_regions(pdev);
+
+err_out_disable:
+	pci_disable_device(pdev);
+	goto err_out;
+}
+DECLARE_PCI_FIXUP_FINAL(0x111D, 0x8090, switch_dma_hook);
