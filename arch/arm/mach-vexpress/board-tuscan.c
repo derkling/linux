@@ -34,8 +34,6 @@
 #include <asm/hardware/cache-l2x0.h>
 #endif
 
-#include <plat/sched_clock.h>
-
 #include <mach/motherboard.h>
 #include <mach/clkdev.h>
 #include <mach/lt-elba.h>
@@ -131,7 +129,7 @@ static struct map_desc tuscan_io_desc[] __initdata = {
 
 static void __init tuscan_init_early(void)
 {
-	versatile_sched_clock_init(MMIO_P2V(LT_ELBA_TIMER2), 50000000);
+	// TODO: Reserve memory for HD-LCD framebuffer
 }
 
 static void __init tuscan_timer_init(void)
@@ -214,12 +212,14 @@ static AMBA_DEVICE(aaci,  "aaci",  LT_ELBA_AACI, NULL);
 static AMBA_DEVICE(kmi0,  "kmi0",  LT_ELBA_KMI0, NULL);
 static AMBA_DEVICE(kmi1,  "kmi1",  LT_ELBA_KMI1, NULL);
 static AMBA_DEVICE(uart0, "uart0", LT_ELBA_UART0, NULL);
+static AMBA_DEVICE(rtc0, "rtc0", LT_ELBA_RTC, NULL);
 
 static struct amba_device *tuscan_amba_devs[] __initdata = {
 	&aaci_device,
 	&kmi0_device,
 	&kmi1_device,
 	&uart0_device,
+	&rtc0_device,
 };
 
 static long tuscan_osc_round(struct clk *clk, unsigned long rate)
