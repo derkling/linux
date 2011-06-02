@@ -44,7 +44,7 @@ struct {
 	struct fb_videomode	mode;
 	signed short		width;	/* width in mm */
 	signed short		height;	/* height in mm */
-	unsigned int		bpp:8;
+	unsigned char		bpp;
 } default_settings =
 #if (MALI_HDLCD_RES == 0)
 {
@@ -121,7 +121,7 @@ struct {
 		.vsync_len      = 6,
 		.vmode          = FB_VMODE_NONINTERLACED,
 	},
-	.bpp		= 16,
+	.bpp		= 32,
 	.width		= -1,
 	.height		= -1,
 };
@@ -174,9 +174,9 @@ enum
 	HDLCD_REGISTER_POLARITIES       = 0x0220, /*rw*/
 	HDLCD_REGISTER_COMMAND          = 0x0230, /*rw*/
 	HDLCD_REGISTER_PIXEL_FORMAT     = 0x0240, /*rw*/
-	HDLCD_REGISTER_RED_SELECT       = 0x0244, /*rw*/
+	HDLCD_REGISTER_BLUE_SELECT      = 0x0244, /*rw*/
 	HDLCD_REGISTER_GREEN_SELECT     = 0x0248, /*rw*/
-	HDLCD_REGISTER_BLUE_SELECT      = 0x024C, /*rw*/
+	HDLCD_REGISTER_RED_SELECT       = 0x024C, /*rw*/
 };
 
 enum
@@ -186,6 +186,16 @@ enum
 	HDLCD_POLARITY_DATAEN     = 1 << 2,
 	HDLCD_POLARITY_DATA       = 1 << 3,
 	HDLCD_POLARITY_PXLCLK     = 1 << 4,
+};
+
+enum
+{
+	HDLCD_BURST_NONE	= 0 << 0,
+	HDLCD_BURST_1		= 1 << 0,
+	HDLCD_BURST_2		= 1 << 1,
+	HDLCD_BURST_4		= 1 << 2,
+	HDLCD_BURST_8		= 1 << 3,
+	HDLCD_BURST_16		= 1 << 4,
 };
 
 typedef struct hdlcd_device
@@ -269,7 +279,7 @@ static int hdlcd_setup(struct hdlcd_device *hdlcd)
 	struct resource *res;
 	dma_addr_t dma;
 	/* Maximum resolution supported.  */
-	unsigned long framesize = PAGE_ALIGN(1600 * 1200 * 2 * 2);
+	unsigned long framesize = PAGE_ALIGN(1680 * 1050 * 4 * 2);
 
 #ifdef MALI_USE_UNIFIED_MEMORY_PROVIDER
 	ump_dd_physical_block ump_memory_description;
@@ -280,7 +290,7 @@ static int hdlcd_setup(struct hdlcd_device *hdlcd)
 		pr_warning("Could not allocate resource.\n");
 		return  -ENODEV;
 	}
-	printk("HDLCD MEM START @ [0x%x] SIZE[0x%x]\n", res->start, resource_size(res));
+	printk(KERN_INFO "HDLCD MEM START @ [0x%x] SIZE[0x%x]\n", res->start, resource_size(res));
 
 	if (NULL == request_mem_region(res->start, resource_size(res), "hdlcd"))
 	{
@@ -369,22 +379,22 @@ static inline void hdlcd_decode(hdlcd_device *dev, hdlcd_registers *regs)
 	regs->h_data = dev->fb.var.xres - 1;
 	regs->h_front_porch = dev->fb.var.right_margin - 1;
 
-	regs->polarities = HDLCD_POLARITY_PXLCLK | HDLCD_POLARITY_DATAEN | HDLCD_POLARITY_DATA;
+	/* Allow max number of outstanding requests with the largest beat burst */
+	regs->bus_options = (0xf << 8) | HDLCD_BURST_16;
+
+	regs->polarities = HDLCD_POLARITY_DATAEN |
+#ifndef CONFIG_ARCH_TUSCAN
+		HDLCD_POLARITY_PXLCLK |
+#endif
+		HDLCD_POLARITY_DATA;
 	regs->polarities |= (dev->fb.var.sync & FB_SYNC_HOR_HIGH_ACT) ? HDLCD_POLARITY_HSYNC : 0;
 	regs->polarities |= (dev->fb.var.sync & FB_SYNC_VERT_HIGH_ACT) ? HDLCD_POLARITY_VSYNC : 0;
 
 	regs->pixel_format = ((dev->fb.var.bits_per_pixel / 8) - 1) << 3;
 
-	/* Original colors.  */
-#if 0
 	regs->red_select    = ((dev->fb.var.red.length & 0xF) << 8  ) | dev->fb.var.red.offset;
 	regs->green_select  = ((dev->fb.var.green.length & 0xF) << 8  ) | dev->fb.var.green.offset;
 	regs->blue_select   = ((dev->fb.var.blue.length & 0xF) << 8  ) | dev->fb.var.blue.offset;
-#else
-	regs->red_select    = ((dev->fb.var.blue.length & 0xF) << 8  ) | dev->fb.var.blue.offset;
-	regs->green_select  = ((dev->fb.var.green.length & 0xF) << 8  ) | dev->fb.var.green.offset;
-	regs->blue_select   = ((dev->fb.var.red.length & 0xF) << 8  ) | dev->fb.var.red.offset;
-#endif
 
 	regs->pixclock = dev->fb.var.pixclock;
 }
@@ -428,8 +438,9 @@ static int hdlcd_set_bitfields(hdlcd_device *dev, struct fb_var_screeninfo *var)
 			var->blue.length     = 5;
 			if (var->green.length != 5 && var->green.length != 6) var->green.length = 6;
 			break;
-		case 24:
 		case 32:
+			var->transp.length   = 8;
+		case 24:
 			var->red.length      = 8;
 			var->green.length    = 8;
 			var->blue.length     = 8;
@@ -444,6 +455,8 @@ static int hdlcd_set_bitfields(hdlcd_device *dev, struct fb_var_screeninfo *var)
 		var->blue.offset = 0;
 		var->green.offset = var->blue.offset + var->blue.length;
 		var->red.offset = var->green.offset + var->green.length;
+		if (var->bits_per_pixel == 32)
+			var->transp.offset = var->red.offset + var->red.length;
 	}
 
 	return ret;
@@ -456,7 +469,8 @@ static int hdlcd_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 
 	var->yres_virtual = 2 * var->yres;
 
-	if ((var->xres_virtual * var->bits_per_pixel / 8 * var->yres_virtual) > dev->fb.fix.smem_len) ret = -EINVAL;
+	if ((var->xres_virtual * var->bits_per_pixel / 8 * var->yres_virtual) > dev->fb.fix.smem_len) 
+		ret = -EINVAL;
 
 	if (ret == 0) ret = hdlcd_set_bitfields(dev, var);
 
@@ -470,7 +484,10 @@ static int hdlcd_set_par(struct fb_info *info)
 
 	dev->fb.fix.line_length = dev->fb.var.xres_virtual * dev->fb.var.bits_per_pixel / 8;
 
-	dev->fb.fix.visual = FB_VISUAL_TRUECOLOR;
+	if (dev->fb.var.bits_per_pixel >= 16)
+		dev->fb.fix.visual = FB_VISUAL_TRUECOLOR;
+	else
+		dev->fb.fix.visual = FB_VISUAL_PSEUDOCOLOR;
 
 	hdlcd_decode(dev, &regs);
 
@@ -520,17 +537,18 @@ static int hdlcd_setcolreg(unsigned int regno, unsigned int red, unsigned int gr
 {
 	hdlcd_device *dev = to_device(info);
 
+	if (regno > 255)
+		return 1;
+
 	if (regno < 16)
 	{
 		dev->cmap[regno] = convert_bitfield(transp, &dev->fb.var.transp) |
 			convert_bitfield(blue, &dev->fb.var.blue) |
 			convert_bitfield(green, &dev->fb.var.green) |
 			convert_bitfield(red, &dev->fb.var.red);
-
-		return 0;
 	}
 
-	return -1;
+	return 0;
 }
 
 /*
