@@ -12,103 +12,200 @@
 #define PAGES_ORDER 11
 #define MTU_MAJOR   0 /* Dynamic Major  */
 
-static int elba_mtc;
-static int elba_mali_bypass;
+static int ratio;
 struct elba_mtc_info *mtc_info;
+static int enable;
+
+static irqreturn_t mtc_irq_lat_worker(int irq, void *dev_id)
+{
+	struct elba_mtc_info *mtc_info = (struct elba_mtc_info *)dev_id;
+	unsigned long flags;
+	unsigned long lat1_data, trans1_data, maxlat1_data;
+	unsigned long lat2_data, trans2_data, maxlat2_data;
+	unsigned long lat3_data, trans3_data, maxlat3_data;
+	unsigned long lat4_data, trans4_data, maxlat4_data;
+	unsigned long lat5_data, trans5_data, maxlat5_data;
+	unsigned long lat6_data, trans6_data, maxlat6_data;
+	unsigned long lat7_data, trans7_data, maxlat7_data;
+	unsigned long lat8_data, trans8_data, maxlat8_data;
+	unsigned long lat9_data, trans9_data, maxlat9_data;
+	
+	SAMPLES_LAT(mtc_info->samples);
+	
+	spin_lock_irqsave(&mtc_info->lock, flags);
+	lat1_data = *latency1;
+	trans1_data = *transactions1;
+	maxlat1_data = *maxlat1;
+	lat2_data = *latency2;
+	trans2_data = *transactions2;
+	maxlat2_data = *maxlat2;
+	lat3_data = *latency3;
+	trans3_data = *transactions3;
+	maxlat3_data = *maxlat3;
+	lat4_data = *latency4;
+	trans4_data = *transactions4;
+	maxlat4_data = *maxlat4;
+	lat5_data = *latency5;
+	trans5_data = *transactions5;
+	maxlat5_data = *maxlat5;
+	lat6_data = *latency6;
+	trans6_data = *transactions6;
+	maxlat6_data = *maxlat6;
+	lat7_data = *latency7;
+	trans7_data = *transactions7;
+	maxlat7_data = *maxlat7;
+	lat8_data = *latency8;
+	trans8_data = *transactions8;
+	maxlat8_data = *maxlat8;
+	lat9_data = *latency9;
+	trans9_data = *transactions9;
+	maxlat9_data = *maxlat9;
+	
+	*latency1 = *transactions1 = *maxlat1 = 0;
+	*latency2 = *transactions2 = *maxlat2 = 0;
+	*latency3 = *transactions3 = *maxlat3 = 0;
+	*latency4 = *transactions4 = *maxlat4 = 0;
+	*latency5 = *transactions5 = *maxlat5 = 0;
+	*latency6 = *transactions6 = *maxlat6 = 0;
+	*latency7 = *transactions7 = *maxlat7 = 0;
+	*latency8 = *transactions8 = *maxlat8 = 0;
+	*latency9 = *transactions9 = *maxlat9 = 0;
+	enable = 0;
+	spin_unlock_irqrestore(&mtc_info->lock, flags);
+	
+	trace_printk("MTU DRAM 1: avg %u - max %u\n", *latency1 / *transactions1, *maxlat1);
+	trace_printk("MTU DRAM 2: avg %u - max %u\n", *latency2 / *transactions2, *maxlat2);
+	trace_printk("MTU L2CC 1: avg %u - max %u\n", *latency4 / *transactions4, *maxlat4);
+	trace_printk("MTU L2CC 2: avg %u - max %u\n", *latency5 / *transactions5, *maxlat5);
+	trace_printk("MTU HDLCD: avg %u - max %u\n", *latency6 / *transactions6, *maxlat6);
+	trace_printk("MTU MALI400: avg %u - max %u\n", *latency7 / *transactions7, *maxlat7);
+	trace_printk("MTU PCIE: avg %u - max %u\n", *latency9 / *transactions9, *maxlat9);
+	
+	return IRQ_HANDLED;
+}
 
 static irqreturn_t mtc_irq_lat(int irq, void *dev_id)
 {
 	struct elba_mtc_info *mtc_info = (struct elba_mtc_info *)dev_id;
 	void __iomem *regs = mtc_info->regs;
 	unsigned long val;
-	unsigned int latencysum = 0;
-	unsigned int transactions = 0;
+	static int enable;
 	SAMPLES_LAT(mtc_info->samples);
 	
 	val = readl(regs + MTCCTRL);
 	writel(val | 0x10, regs + MTCCTRL);
 
-	latencysum = readl(regs + MTU_OFF(DRAM1, MTLATS));
-	transactions = readl(regs + MTU_OFF(DRAM1, MTXACTC));
-	if (transactions)
-		*latency1 = (latencysum / transactions);
-	else
-		*latency1 = 0;
-	*maxlat1 = readl(regs + MTU_OFF(DRAM1, MTLATM));
+	spin_lock(&mtc_info->lock);
+	*latency1 += readl(regs + MTU_OFF(DRAM1, MTLATS));
+	*transactions1 += readl(regs + MTU_OFF(DRAM1, MTXACTC));
+	val = readl(regs + MTU_OFF(DRAM1, MTLATM));
+	if (*maxlat1 < val)
+		*maxlat1 = val;
 
-	latencysum = readl(regs + MTU_OFF(DRAM2, MTLATS));
-	transactions = readl(regs + MTU_OFF(DRAM2, MTXACTC));
-	if (transactions)
-		*latency2 = (latencysum / transactions);
-	else
-		*latency2 = 0;
-	*maxlat2 = readl(regs + MTU_OFF(DRAM2, MTLATM));
+	*latency2 += readl(regs + MTU_OFF(DRAM2, MTLATS));
+	*transactions2 += readl(regs + MTU_OFF(DRAM2, MTXACTC));
+	val = readl(regs + MTU_OFF(DRAM2, MTLATM));
+	if (*maxlat2 < val)
+		*maxlat2 = val;
 
-	latencysum = readl(regs + MTU_OFF(DMA, MTLATS));
-	transactions = readl(regs + MTU_OFF(DMA, MTXACTC));
-	if (transactions)
-		*latency3 = (latencysum / transactions);
-	else
-		*latency3 = 0;		
-	*maxlat3 = readl(regs + MTU_OFF(DMA, MTLATM));
+	*latency3 += readl(regs + MTU_OFF(DMA, MTLATS));
+	*transactions3 += readl(regs + MTU_OFF(DMA, MTXACTC));
+	val = readl(regs + MTU_OFF(DMA, MTLATM));
+	if (*maxlat3 < val)
+		*maxlat3 = val;
 
-	latencysum = readl(regs + MTU_OFF(L2CC1, MTLATS));
-	transactions = readl(regs + MTU_OFF(L2CC1, MTXACTC));
-	if (transactions)
-		*latency4 = (latencysum / transactions);
-	else
-		*latency4 = 0;
-	*maxlat4 = readl(regs + MTU_OFF(L2CC1, MTLATM));
+	*latency4 += readl(regs + MTU_OFF(L2CC1, MTLATS));
+	*transactions4 += readl(regs + MTU_OFF(L2CC1, MTXACTC));
+	val = readl(regs + MTU_OFF(L2CC1, MTLATM));	
+	if (*maxlat4 < val)
+		*maxlat4 = val;
 
-	latencysum = readl(regs + MTU_OFF(L2CC2, MTLATS));
-	transactions = readl(regs + MTU_OFF(L2CC2, MTXACTC));
-	if (transactions)
-		*latency5 = (latencysum / transactions);
-	else
-		*latency5 = 0;
-	*maxlat5 = readl(regs + MTU_OFF(L2CC2, MTLATM));
+	*latency5 += readl(regs + MTU_OFF(L2CC2, MTLATS));
+	*transactions5 += readl(regs + MTU_OFF(L2CC2, MTXACTC));
+	val = readl(regs + MTU_OFF(L2CC2, MTLATM));
+	if (*maxlat5 < val)
+		*maxlat5 = val;
 
-	latencysum = readl(regs + MTU_OFF(HDLCD, MTLATS));
-	transactions = readl(regs + MTU_OFF(HDLCD, MTXACTC));
-	if (transactions)
-		*latency6 = (latencysum / transactions);
-	else
-		*latency6 = 0;
-	*maxlat6 = readl(regs + MTU_OFF(HDLCD, MTLATM));
+	*latency6 += readl(regs + MTU_OFF(HDLCD, MTLATS));
+	*transactions6 += readl(regs + MTU_OFF(HDLCD, MTXACTC));
+	val = readl(regs + MTU_OFF(HDLCD, MTLATM));
+	if (*maxlat6 < val)
+		*maxlat6 = val;
 
-	latencysum = readl(regs + MTU_OFF(MALI400, MTLATS));
-	transactions = readl(regs + MTU_OFF(MALI400, MTXACTC));
-	if (transactions)
-		*latency7 = (latencysum / transactions);
-	else
-		*latency7 = 0;
-	*maxlat7 = readl(regs + MTU_OFF(MALI400, MTLATM));
+	*latency7 += readl(regs + MTU_OFF(MALI400, MTLATS));
+	*transactions7 += readl(regs + MTU_OFF(MALI400, MTXACTC));
+	val = readl(regs + MTU_OFF(MALI400, MTLATM));
+	if (*maxlat7 < val)
+		*maxlat7 = val;
 
-	latencysum = readl(regs + MTU_OFF(MALIAVE, MTLATS));
-	transactions = readl(regs + MTU_OFF(MALIAVE, MTXACTC));
-	if (transactions)
-		*latency8 = (latencysum / transactions);
-	else
-		*latency8 = 0;
-	*maxlat8 = readl(regs + MTU_OFF(MALIAVE, MTLATM));
+	*latency8 += readl(regs + MTU_OFF(MALIAVE, MTLATS));
+	*transactions8 += readl(regs + MTU_OFF(MALIAVE, MTXACTC));
+	val = readl(regs + MTU_OFF(MALIAVE, MTLATM));
+	if (*maxlat8 < val)
+		*maxlat8 = val;
 
-	latencysum = readl(regs + MTU_OFF(PCIE, MTLATS));
-	transactions = readl(regs + MTU_OFF(PCIE, MTXACTC));
-	if (transactions)
-		*latency9 = (latencysum / transactions);
-	else
-		*latency9 = 0;	       
-	*maxlat9 = readl(regs + MTU_OFF(PCIE, MTLATM));
+	*latency9 += readl(regs + MTU_OFF(PCIE, MTLATS));
+	*transactions9 += readl(regs + MTU_OFF(PCIE, MTXACTC));
+	val = readl(regs + MTU_OFF(PCIE, MTLATM));
+	if (*maxlat9 < val)
+		*maxlat9 = val;
 
 	/* Use ftrace to output data  */
-	trace_printk("MTU DRAM 1: avg %d - max %d\n", *latency1, *maxlat1);
-	trace_printk("MTU DRAM 2: avg %d - max %d\n", *latency2, *maxlat2);
-	trace_printk("MTU L2CC 1: avg %d - max %d\n", *latency4, *maxlat4);
-	trace_printk("MTU L2CC 2: avg %d - max %d\n", *latency5, *maxlat5);
-	trace_printk("MTU HDLCD: avg %d - max %d\n", *latency6, *maxlat6);
-	trace_printk("MTU MALI400: avg %d - max %d\n", *latency7, *maxlat7);
-	trace_printk("MTU PCIE: avg %d - max %d\n", *latency9, *maxlat9);
+	if (enable == ratio) {
+		spin_unlock(&mtc_info->lock);
+		return IRQ_WAKE_THREAD;
+	} else
+		enable++;
+	spin_unlock(&mtc_info->lock);
 
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t mtc_irq_bw_worker(int irq, void *dev_id)
+{
+	struct elba_mtc_info *mtc_info = (struct elba_mtc_info *)dev_id;
+	unsigned long flags;
+	unsigned int dmc1_data;
+	unsigned int dmc2_data;
+	unsigned int l2cc1_data;
+	unsigned int l2cc2_data;
+	unsigned int hdlcd_data;
+	unsigned int mali400_data;
+	unsigned int pcie_data;
+
+	SAMPLES_BW(mtc_info->samples);
+
+	spin_lock_irqsave(&mtc_info->lock, flags);
+	dmc1_data = *dmc1_bw;
+	dmc2_data = *dmc2_bw;
+	l2cc1_data = *l2cc1_bw;
+	l2cc2_data = *l2cc2_bw;
+	hdlcd_data = *hdlcd_bw;
+	mali400_data = *mali400_bw;
+	pcie_data = *pcie_bw;
+	
+	*dmc1_bw = 0; 
+	*dmc2_bw = 0;
+	*dma_bw = 0;
+	*l2cc1_bw = 0;
+	*l2cc2_bw = 0;
+	*hdlcd_bw = 0;
+	*mali400_bw = 0;
+	*maliave_bw = 0; 
+	*pcie_bw = 0;
+	enable = 0;
+	spin_unlock_irqrestore(&mtc_info->lock, flags);
+
+	/* Use ftrace to output data  */
+	trace_printk("Multi: %u %u %u %u %u %u %u\n",
+		     dmc1_data,
+		     dmc2_data,
+		     l2cc1_data,
+		     l2cc2_data,
+		     hdlcd_data,
+		     mali400_data,
+		     pcie_data);
+	
 	return IRQ_HANDLED;
 }
 
@@ -122,25 +219,23 @@ static irqreturn_t mtc_irq_bw(int irq, void *dev_id)
 	val = readl(regs + MTCCTRL);
 	writel(val | 0x10, regs + MTCCTRL);
 
-	*dmc1_bw = readl(regs + MTU_OFF(DRAM1, MTBWC));
-	*dmc2_bw = readl(regs + MTU_OFF(DRAM2, MTBWC));
-	*dma_bw = readl(regs + MTU_OFF(DMA, MTBWC));
-	*l2cc1_bw = readl(regs + MTU_OFF(L2CC1, MTBWC));
-	*l2cc2_bw = readl(regs + MTU_OFF(L2CC2, MTBWC));
-	*hdlcd_bw = readl(regs + MTU_OFF(HDLCD, MTBWC));
-	*mali400_bw = readl(regs + MTU_OFF(MALI400, MTBWC));
-	*maliave_bw = readl(regs + MTU_OFF(MALIAVE, MTBWC));
-	*pcie_bw = readl(regs + MTU_OFF(PCIE, MTBWC));
+	spin_lock(&mtc_info->lock);
+	*dmc1_bw += readl(regs + MTU_OFF(DRAM1, MTBWC));
+	*dmc2_bw += readl(regs + MTU_OFF(DRAM2, MTBWC));
+	*dma_bw += readl(regs + MTU_OFF(DMA, MTBWC));
+	*l2cc1_bw += readl(regs + MTU_OFF(L2CC1, MTBWC));
+	*l2cc2_bw += readl(regs + MTU_OFF(L2CC2, MTBWC));
+	*hdlcd_bw += readl(regs + MTU_OFF(HDLCD, MTBWC));
+	*mali400_bw += readl(regs + MTU_OFF(MALI400, MTBWC));
+	*maliave_bw += readl(regs + MTU_OFF(MALIAVE, MTBWC));
+	*pcie_bw += readl(regs + MTU_OFF(PCIE, MTBWC));
+	if (enable == ratio) {
+		spin_unlock(&mtc_info->lock);
+		return IRQ_WAKE_THREAD;
+	} else
+		enable++;
+	spin_unlock(&mtc_info->lock);
 	
-	/* Use ftrace to output data  */
-	trace_printk("MTU DRAM 1: %d\n", *dmc1_bw);
-	trace_printk("MTU DRAM 2: %d\n", *dmc2_bw);
-	trace_printk("MTU L2CC 1: %d\n", *l2cc1_bw);
-	trace_printk("MTU L2CC 2: %d\n", *l2cc2_bw);
-	trace_printk("MTU HDLCD: %d\n", *hdlcd_bw);
-	trace_printk("MTU MALI400: %d\n", *mali400_bw);
-	trace_printk("MTU PCIE: %d\n", *pcie_bw);
-
 	return IRQ_HANDLED;
 }
 
@@ -187,56 +282,6 @@ static void mtc_set_axiid(int axi_id, int mtu)
 #if defined (CONFIG_DEBUG_FS)
 /* Root dentry.  */
 static struct dentry *mtc_root;
-
-/* MTU enable.  */
-static struct dentry *mtc_enable;
-static long mtc_enable_value;
-static ssize_t mtc_enable_read(struct file *file,
-			       char __user *user_buf,
-			       size_t len,
-			       loff_t *ppos)
-{
-	char buffer[512];
-	unsigned int count = 0;
-
-	count += snprintf(buffer, sizeof(buffer), "MTUs are %s\n",
-			  mtc_enable_value ? "enabled" : "disabled");
-
-	return simple_read_from_buffer(user_buf, len, ppos, buffer, count);
-} 
-
-static ssize_t mtc_enable_write(struct file *file,
-			 const char __user *user_buf,
-			 size_t len,
-			 loff_t *ppos)
-{
-	char buffer[20];
-
-	if (copy_from_user(buffer, user_buf, min(len, sizeof(buffer))))
-		return -EFAULT;
-
-	mtc_enable_value = simple_strtol(buffer, NULL, 10);
-
-	switch (mtc_enable_value) {
-	case 0:
-		mtc_stop();
-		break;
-	case 1:
-		mtc_start();
-		break;
-	default:
-		printk(KERN_ERR "Accepted values: 0 (OFF) - 1 (ON)\n");
-		break;
-	}
-
-	return len;
-}
-
-static const struct file_operations mtc_enable_fops = {
-	.owner   = THIS_MODULE,
-	.read    = mtc_enable_read,
-	.write   = mtc_enable_write,
-};
 
 /* MTU AXI ID select.  */
 static struct dentry *mtc_axiid;
@@ -352,7 +397,7 @@ static ssize_t mtc_ctrl_write(struct file *file,
 		mtc_set_ctrl(PCIE, sme | mxe);
 		trace_printk("MTUs: read latency\n");		
 		break;
-	case 4: /* avg and max read latency.  */
+	case 4: /* avg and max write latency.  */
 		mtc_set_ctrl(DRAM1, sme | mxe | we);
 		mtc_set_ctrl(DRAM2, sme | mxe | we);
 		mtc_set_ctrl(DMA, sme | mxe | we);
@@ -374,6 +419,92 @@ static const struct file_operations mtc_ctrl_fops = {
 	.owner = THIS_MODULE,
 	.read  = mtc_ctrl_read,
 	.write = mtc_ctrl_write,
+};
+
+
+/* MTU enable.  */
+static struct dentry *mtc_enable;
+static long mtc_enable_value;
+static ssize_t mtc_enable_read(struct file *file,
+			       char __user *user_buf,
+			       size_t len,
+			       loff_t *ppos)
+{
+	char buffer[512];
+	unsigned int count = 0;
+
+	count += snprintf(buffer, sizeof(buffer), "MTUs are %s\n",
+			  mtc_enable_value ? "enabled" : "disabled");
+
+	return simple_read_from_buffer(user_buf, len, ppos, buffer, count);
+} 
+
+static ssize_t mtc_enable_write(struct file *file,
+			 const char __user *user_buf,
+			 size_t len,
+			 loff_t *ppos)
+{
+	static int enabled;
+	char buffer[20];
+	irqreturn_t (*irq_handler)(int irq, void *dev_id);
+	irqreturn_t (*irq_handler_worker)(int irq, void *dev_id);
+	int err;
+
+	if (copy_from_user(buffer, user_buf, min(len, sizeof(buffer))))
+		return -EFAULT;
+
+	mtc_enable_value = simple_strtol(buffer, NULL, 10);
+
+	switch (mtc_enable_value) {
+	case 0:
+		if (enabled) {
+			free_irq(MTC_IRQ, mtc_info);
+			/* Stop MTUs  */
+			mtc_stop();
+			enabled = 0;
+		}
+		break;
+	case 1:
+		if (!enabled) {
+			switch (mtc_ctrl_value) {
+			case 1:
+			case 2:
+				irq_handler = mtc_irq_bw;
+				irq_handler_worker = mtc_irq_bw_worker;
+				break;
+			case 3:
+			case 4:
+				irq_handler = mtc_irq_lat;
+				irq_handler_worker = mtc_irq_lat_worker;
+				break;
+			default:
+				printk(KERN_ERR "%s: wrong mtc control value\n", DRIVER_NAME);
+				return 0;
+			}
+
+			err = request_threaded_irq(MTC_IRQ, irq_handler,  irq_handler_worker, 0, DRIVER_NAME, mtc_info);
+			if (err) {
+				printk(KERN_ERR "%s: cannot assign irq %d\n", DRIVER_NAME, MTC_IRQ);
+				return 0;
+			} else {
+				/* Start MTUs  */
+				mtc_start();
+				enabled = 1;
+			}
+		}
+		break;
+	default:
+		printk(KERN_ERR "Accepted values: 0 (OFF) - 1 (ON)\n");
+		break;
+	}
+
+	return len;
+}
+
+static const struct file_operations mtc_enable_fops = {
+	.owner   = THIS_MODULE,
+	.read    = mtc_enable_read,
+	.write   = mtc_enable_write,
 };
 
 static void mtc_create_debugfs(void)
@@ -424,10 +555,7 @@ static int mtc_setup(void)
 
 	/* Configure MTC  */
 	writel(MTC_SAMPLE_WINDOW, regs + MTCWIND);
-	if(elba_mali_bypass)
-		writel(0x00004FE0, regs + MTCCTRL);
-	else
-		writel(0x00007FE0, regs + MTCCTRL);
+	writel(0x00007FE0, regs + MTCCTRL);
 	/* Enable ATB data upload.  */
 	writel(0x00000084, regs + MTTCFG);
 
@@ -445,26 +573,6 @@ static int mtc_setup(void)
 	return 0;
 }
 
-static irqreturn_t mtc_irq(int irq, void *dev_id)
-{
-	irqreturn_t ret;
-
-	switch (mtc_ctrl_value) {
-	case 1:
-	case 2:
-		ret = mtc_irq_bw(irq, dev_id);
-		break;
-	case 3:
-	case 4:
-		ret = mtc_irq_lat(irq, dev_id);
-		break;
-	default:
-		break;
-	}
-
-	return ret;
-}
-
 static int __init elba_mtc_init(void)
 {
 	void __iomem *regs;
@@ -480,25 +588,20 @@ static int __init elba_mtc_init(void)
 		goto release_mem;
 	}
 	mtc_info->regs = regs;
-
-	err = request_irq(MTC_IRQ, mtc_irq,  0, DRIVER_NAME, mtc_info);
-	if (err) {
-		printk(KERN_ERR "%s: cannot assign irq %d\n", DRIVER_NAME, MTC_IRQ);
-		goto release_map;
-	}
+	
+	/* Init spinlock.  */
+	spin_lock_init(&mtc_info->lock);
 
 	err = mtc_setup();
 	if (err) {
 		printk(KERN_ERR "%s: cannot alloc samples\n", DRIVER_NAME);
-		goto release_irq;		
+		goto release_map;		
 	}
 
 	mtc_create_debugfs();       
 out:
 	return err;
 
-release_irq:
-	free_irq(MTC_IRQ, mtc_info);
 release_map:
 	iounmap(mtc_info->regs);
 release_mem:
@@ -519,11 +622,8 @@ module_init(elba_mtc_init);
 module_exit(elba_mtc_exit);
 
 /* Module cmdline params  */
-module_param_named(mtc, elba_mtc, int, S_IRUGO);
-MODULE_PARM_DESC(mtc, "Select MTC interface to monitor");
-
-module_param_named(mali_bypass, elba_mali_bypass, int, S_IRUGO);
-MODULE_PARM_DESC(mali_bypass, "Select to bypass Mali400 and MaliAVE MTUs");
+module_param(ratio, int, S_IRUGO);
+MODULE_PARM_DESC(ratio, "Interrupts tracing ratio");
 
 MODULE_AUTHOR("Giuseppe Calderaro");
 MODULE_DESCRIPTION("Elba MTCs driver");

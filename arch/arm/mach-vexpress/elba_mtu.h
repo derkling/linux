@@ -50,22 +50,31 @@
 
 #define SAMPLES_LAT(samples) \
 	unsigned int *latency1 = &samples->latency1;		\
+	unsigned int *transactions1 = &samples->transactions1;  \
 	unsigned int *maxlat1 = &samples->maxlat1;		\
 	unsigned int *latency2 = &samples->latency2;		\
+	unsigned int *transactions2 = &samples->transactions2;  \
 	unsigned int *maxlat2 = &samples->maxlat2;		\
 	unsigned int *latency3 = &samples->latency3;		\
+	unsigned int *transactions3 = &samples->transactions3;  \
 	unsigned int *maxlat3 = &samples->maxlat3;		\
 	unsigned int *latency4 = &samples->latency4;		\
+	unsigned int *transactions4 = &samples->transactions4;  \
 	unsigned int *maxlat4 = &samples->maxlat4;		\
 	unsigned int *latency5 = &samples->latency5;		\
+	unsigned int *transactions5 = &samples->transactions5;  \
 	unsigned int *maxlat5 = &samples->maxlat5;		\
 	unsigned int *latency6 = &samples->latency6;		\
+	unsigned int *transactions6 = &samples->transactions6;  \
 	unsigned int *maxlat6 = &samples->maxlat6;		\
 	unsigned int *latency7 = &samples->latency7;		\
+	unsigned int *transactions7 = &samples->transactions7;  \
 	unsigned int *maxlat7 = &samples->maxlat7;		\
 	unsigned int *latency8 = &samples->latency8;		\
+	unsigned int *transactions8 = &samples->transactions8;  \
 	unsigned int *maxlat8 = &samples->maxlat8;		\
 	unsigned int *latency9 = &samples->latency9;		\
+	unsigned int *transactions9 = &samples->transactions9;  \
 	unsigned int *maxlat9 = &samples->maxlat9;		\
 
 /* Samples  */
@@ -81,22 +90,31 @@ struct samples {
 	unsigned int pcie_bw;
 
 	unsigned int latency1;
+	unsigned int transactions1;
 	unsigned int maxlat1;
 	unsigned int latency2;
+	unsigned int transactions2;
 	unsigned int maxlat2;
 	unsigned int latency3;
+	unsigned int transactions3;
 	unsigned int maxlat3;
 	unsigned int latency4;
+	unsigned int transactions4;
 	unsigned int maxlat4;
 	unsigned int latency5;
+	unsigned int transactions5;
 	unsigned int maxlat5;
 	unsigned int latency6;
+	unsigned int transactions6;
 	unsigned int maxlat6;
 	unsigned int latency7;
+	unsigned int transactions7;
 	unsigned int maxlat7;
 	unsigned int latency8;
+	unsigned int transactions8;
 	unsigned int maxlat8;
 	unsigned int latency9;
+	unsigned int transactions9;
 	unsigned int maxlat9;
 };
 
@@ -117,6 +135,7 @@ struct mtu_setup {
 struct elba_mtc_info {
 	void __iomem *regs;
 	struct samples *samples;
+	spinlock_t lock;
 };
 
 extern struct elba_mtc_info *mtc_info;
