@@ -1,4 +1,4 @@
-linux-ti-omap4 (3.0.0-1200.1) oneiric; urgency=low
+linux-ti-omap4 (3.0.0-1200.2) oneiric; urgency=low
 
   * Rebased against 3.0.0-6.7
   * BSP from TI based on 3.0.0
