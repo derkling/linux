@@ -40,12 +40,16 @@ adt7475
 adutux
 af_802154
 af9013
+af_alg
 affs
+af_key
 af-rxrpc
 ah4
 ah6
 aiptek
 aircable
+algif_hash
+algif_skcipher
 alphatrack
 altera_ps2
 amc6821
@@ -124,6 +128,7 @@ can-bcm
 can-dev
 can-raw
 cast5
+cast6
 catc
 ccm
 cdc-acm
@@ -528,6 +533,8 @@ ir-rc6-decoder
 ir-sony-decoder
 irtty-sir
 ir-usb
+iscsi_boot_sysfs
+iscsi_tcp
 isdn
 isight_firmware
 isl29003
@@ -590,6 +597,8 @@ libertas_sdio
 libertas_spi
 libertas_tf
 libertas_tf_usb
+libiscsi
+libiscsi_tcp
 lightning
 linear
 lis3lv02d
@@ -659,6 +668,7 @@ mg_disk
 michael_mic
 microtek
 minix
+mip6
 mISDN_core
 mk712
 mkiss
@@ -787,6 +797,8 @@ ocfs2_stackglue
 ocfs2_stack_o2cb
 ocfs2_stack_user
 old_belkin-sir
+omap-aes
+omap-sham
 omfs
 omninet
 onenand
@@ -796,6 +808,7 @@ option
 oti6858
 ov772x
 ov9640
+overlayfs
 oxu210hp-hcd
 p54common
 p54spi
@@ -813,6 +826,7 @@ pcf50633
 pcf50633-adc
 pcf50633-gpio
 pcf8591
+pcrypt
 pcwd_usb
 pda_power
 pegasus
@@ -1037,6 +1051,7 @@ sch_red
 sch_sfq
 sch_tbf
 sch_teql
+scsi_transport_iscsi
 scsi_wait_scan
 sctp
 seed
@@ -1232,6 +1247,7 @@ virtual
 visor
 vitesse
 vivopay-serial
+vmac
 vsxxxaa
 vt1211
 w1_bq27000
