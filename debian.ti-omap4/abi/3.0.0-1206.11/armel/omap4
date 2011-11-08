@@ -998,6 +998,7 @@
 (unknown) drivers/net/wireless/rt2x00/rt2800lib 0x00000000	rt2800_rfkill_poll
 (unknown) drivers/net/wireless/rt2x00/rt2800lib 0x00000000	rt2800_rt2x00debug
 (unknown) drivers/net/wireless/rt2x00/rt2800lib 0x00000000	rt2800_set_rts_threshold
+(unknown) drivers/net/wireless/rt2x00/rt2800lib 0x00000000	rt2800_txdone
 (unknown) drivers/net/wireless/rt2x00/rt2800lib 0x00000000	rt2800_txdone_entry
 (unknown) drivers/net/wireless/rt2x00/rt2800lib 0x00000000	rt2800_validate_eeprom
 (unknown) drivers/net/wireless/rt2x00/rt2800lib 0x00000000	rt2800_wait_csr_ready
