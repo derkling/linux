@@ -140,6 +140,83 @@ static inline unsigned int gic_irq(struct irq_data *d)
 	return d->hwirq;
 }
 
+#ifdef CONFIG_OF
+static u32 gic_cpuif_logical_map[NR_CPUS];
+#define cpuif_logical_map(cpu)	gic_cpuif_logical_map[cpu]
+
+/*
+ * Create a mapping of GIC CPU IF numbers to logical cpus through the device
+ * tree. GIC CPU IF are linked to the respective cpu nodes through the "cpu"
+ * phandle.
+ */
+static void __init gic_init_if_maps(struct gic_chip_data *gic)
+{
+	struct device_node *ncpu, *gic_cpuif;
+	struct irq_domain *domain = &gic->domain;
+	int i;
+
+	if (WARN_ON(!domain || !domain->of_node))
+		return;
+
+	for_each_child_of_node(domain->of_node, gic_cpuif) {
+		const u32 *cpuif_hwid, *mpidr;
+		int len;
+
+		if (!of_device_is_compatible(gic_cpuif, "arm,gic-cpuif"))
+			continue;
+
+		pr_debug("  * %s...\n", gic_cpuif->full_name);
+
+		ncpu = of_parse_phandle(gic_cpuif, "cpu", 0);
+
+		if (!ncpu) {
+			pr_err("  * %s missing cpu phandle\n",
+						gic_cpuif->full_name);
+			continue;
+		}
+
+		mpidr = of_get_property(ncpu, "reg", &len);
+
+		if (!mpidr || len != 4) {
+			pr_err("  * %s missing reg property\n",
+					ncpu->full_name);
+			continue;
+		}
+
+		cpuif_hwid = of_get_property(gic_cpuif, "cpuif-id", &len);
+
+		if (!cpuif_hwid || len != 4) {
+			pr_err("  * %s missing cpuif-id property\n",
+						gic_cpuif->full_name);
+			continue;
+		}
+
+		/*
+		 * Do the logical enumeration once in arm_dt_init_cpu_maps and
+		 * use it again here to avoid logical numbering mix-ups between
+		 * cpu and interrupt controller ids
+		 */
+
+		i = get_logical_index(be32_to_cpup(mpidr));
+
+		if (i < 0) {
+			pr_err("  * %s mpidr mismatch\n",
+						ncpu->full_name);
+			continue;
+		}
+
+		if (!i)
+			printk(KERN_INFO "Booting Linux on GIC CPU IF 0x%x\n",
+					be32_to_cpup(cpuif_hwid));
+
+		cpuif_logical_map(i) = be32_to_cpup(cpuif_hwid);
+	}
+}
+#else
+static inline void gic_init_if_maps(struct gic_chip_data *gic) {}
+#define cpuif_logical_map(cpu)	cpu_logical_map(cpu)
+#endif
+
 /*
  * Routines to acknowledge, disable and enable interrupts
  */
@@ -245,7 +322,7 @@ static int gic_set_affinity(struct irq_data *d, const struct cpumask *mask_val,
 		return -EINVAL;
 
 	mask = 0xff << shift;
-	bit = 1 << (cpu_logical_map(cpu) + shift);
+	bit = 1 << (cpuif_logical_map(cpu) + shift);
 
 	raw_spin_lock(&irq_controller_lock);
 	val = readl_relaxed(reg) & ~mask;
@@ -353,7 +430,7 @@ static void __init gic_dist_init(struct gic_chip_data *gic)
 	unsigned int gic_irqs = gic->gic_irqs;
 	struct irq_domain *domain = &gic->domain;
 	void __iomem *base = gic_data_dist_base(gic);
-	u32 cpu = cpu_logical_map(smp_processor_id());
+	u32 cpu = cpuif_logical_map(smp_processor_id());
 
 	cpumask = 1 << cpu;
 	cpumask |= cpumask << 8;
@@ -659,6 +736,14 @@ void __init gic_init_bases(unsigned int gic_nr, int irq_start,
 
 	gic = &gic_data[gic_nr];
 	domain = &gic->domain;
+
+	/*
+	 * create the logical/physical mapping just for the
+	 * primary GIC
+	 */
+	if (gic_nr == 0)
+		gic_init_if_maps(gic);
+
 #ifdef CONFIG_GIC_NON_BANKED
 	if (percpu_offset) { /* Frankein-GIC without banked registers... */
 		unsigned int cpu;
@@ -673,7 +758,8 @@ void __init gic_init_bases(unsigned int gic_nr, int irq_start,
 		}
 
 		for_each_possible_cpu(cpu) {
-			unsigned long offset = percpu_offset * cpu_logical_map(cpu);
+			unsigned long offset =
+				percpu_offset * cpuif_logical_map(cpu);
 			*per_cpu_ptr(gic->dist_base.percpu_base, cpu) = dist_base + offset;
 			*per_cpu_ptr(gic->cpu_base.percpu_base, cpu) = cpu_base + offset;
 		}
@@ -746,7 +832,7 @@ void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 
 	/* Convert our logical CPU mask into a physical one. */
 	for_each_cpu(cpu, mask)
-		map |= 1 << cpu_logical_map(cpu);
+		map |= 1 << cpuif_logical_map(cpu);
 
 	/*
 	 * Ensure that stores to Normal memory are visible to the
