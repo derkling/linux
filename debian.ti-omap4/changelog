@@ -4,6 +4,388 @@ linux-ti-omap4 (3.0.0-1206.14) UNRELEASED; urgency=low
   CHANGELOG: Use the printchanges target to see the curent changes.
   CHANGELOG: Use the insertchanges target to create the final log.
 
+  [ Ubuntu: 3.0.0-15.24 ]
+
+  * Release Tracking Bug
+    - LP: #903188
+  * (config) Change Xen paravirt drivers to be built-in
+    - LP: #886521
+  * Revert "SAUCE: HID: hid-ntrig: add support for 1b96:0006 model"
+    - LP: #724831
+  * Revert "SAUCE: hid: ntrig: Remove unused device ids"
+    - LP: #724831
+  * SAUCE: dell-wmi: Demote unknown WMI event message to pr_debug
+    - LP: #581312
+  * Revert "leds: save the delay values after a successful call to
+    blink_set()"
+    - LP: #893741
+  * xfs: Fix possible memory corruption in xfs_readlink, CVE-2011-4077
+    - LP: #887298
+    - CVE-2011-4077
+  * drm/i915: fix IVB cursor support
+    - LP: #893222
+  * drm/i915: always set FDI composite sync bit
+    - LP: #893222
+  * jbd/jbd2: validate sb->s_first in journal_get_superblock()
+    - LP: #893148
+    - CVE-2011-4132
+  * ALSA: hda - Don't add elements of other codecs to vmaster slave
+    - LP: #893741
+  * virtio-pci: fix use after free
+    - LP: #893741
+  * ASoC: Don't use wm8994->control_data in wm8994_readable_register()
+    - LP: #893741
+  * sh: Fix cached/uncaced address calculation in 29bit mode
+    - LP: #893741
+  * drm/i915: Fix object refcount leak on mmappable size limit error path.
+    - LP: #893741
+  * drm/nouveau: initialize chan->fence.lock before use
+    - LP: #893741
+  * drm/radeon/kms: make an aux failure debug only
+    - LP: #893741
+  * ALSA: usb-audio - Check the dB-range validity in the later read, too
+    - LP: #893741
+  * ALSA: usb-audio - Fix the missing volume quirks at delayed init
+    - LP: #893741
+  * KEYS: Fix a NULL pointer deref in the user-defined key type
+    - LP: #893741
+  * hfs: add sanity check for file name length
+    - LP: #893741
+  * drm/radeon: add some missing FireMV pci ids
+    - LP: #893741
+  * sfi: table irq 0xFF means 'no interrupt'
+    - LP: #893741
+  * x86, mrst: use a temporary variable for SFI irq
+    - LP: #893741
+  * b43: refuse to load unsupported firmware
+    - LP: #893741
+  * md/raid5: abort any pending parity operations when array fails.
+    - LP: #893741
+  * mfd: Fix twl4030 dependencies for audio codec
+    - LP: #893741
+  * xen:pvhvm: enable PVHVM VCPU placement when using more than 32 CPUs.
+    - LP: #893741
+  * xen-gntalloc: integer overflow in gntalloc_ioctl_alloc()
+    - LP: #893741
+  * xen-gntalloc: signedness bug in add_grefs()
+    - LP: #893741
+  * powerpc/ps3: Fix lost SMP IPIs
+    - LP: #893741
+  * powerpc: Copy down exception vectors after feature fixups
+    - LP: #893741
+  * backing-dev: ensure wakeup_timer is deleted
+    - LP: #893741
+  * block: Always check length of all iov entries in blk_rq_map_user_iov()
+    - LP: #893741
+  * Linux 3.0.10
+    - LP: #893741
+  * drm/i915: add multi-threaded forcewake support
+    - LP: #891270
+  * (pre-stable) HID: bump maximum global item tag report size to 96 bytes
+    - LP: #724831
+  * eCryptfs: Prevent file create race condition
+    - LP: #813146
+  * eCryptfs: Flush file in vma close
+    - LP: #870326
+  * drm/i915: Fix inconsistent backlight level during disabled
+    - LP: #872652
+  * fix WARNING: at drivers/scsi/scsi_lib.c:1704
+    - LP: #897514
+  * hpsa: Disable ASPM
+    - LP: #897514
+  * aacraid: controller hangs if kernel uses non-default ASPM policy
+    - LP: #897514
+  * saa7164: Add support for another HVR2200 hardware revision
+    - LP: #897514
+  * drm/i915/pch: Save/restore PCH_PORT_HOTPLUG across suspend
+    - LP: #897514
+  * ARM: 7150/1: Allow kernel unaligned accesses on ARMv6+ processors
+    - LP: #897514
+  * Net, libertas: Resolve memory leak in if_spi_host_to_card()
+    - LP: #897514
+  * rt2x00: Fix sleep-while-atomic bug in powersaving code.
+    - LP: #897514
+  * mac80211: fix NULL dereference in radiotap code
+    - LP: #897514
+  * mac80211: fix bug in ieee80211_build_probe_req
+    - LP: #897514
+  * nl80211: fix HT capability attribute validation
+    - LP: #897514
+  * cfg80211: fix bug on regulatory core exit on access to last_request
+    - LP: #897514
+  * ip6_tunnel: copy parms.name after register_netdevice
+    - LP: #897514
+  * PM / driver core: disable device's runtime PM during shutdown
+    - LP: #897514
+  * pch_phub: Support new device LAPIS Semiconductor ML7831 IOH
+    - LP: #897514
+  * pch_phub: Fix MAC address writing issue for LAPIS ML7831
+    - LP: #897514
+  * pch_uart: Fix hw-flow control issue
+    - LP: #897514
+  * pch_uart: Fix DMA resource leak issue
+    - LP: #897514
+  * pch_uart: Support new device LAPIS Semiconductor ML7831 IOH
+    - LP: #897514
+  * tty: hvc_dcc: Fix duplicate character inputs
+    - LP: #897514
+  * TTY: ldisc, allow waiting for ldisc arbitrarily long
+    - LP: #897514
+  * TTY: ldisc, move wait idle to caller
+    - LP: #897514
+  * TTY: ldisc, wait for ldisc infinitely in hangup
+    - LP: #897514
+  * nfs: when attempting to open a directory, fall back on normal lookup
+    (try #5)
+    - LP: #897514
+  * pcie-gadget-spear: Add "platform:" prefix for platform modalias
+    - LP: #897514
+  * drivers/base/node.c: fix compilation error with older versions of gcc
+    - LP: #897514
+  * xhci: Set slot and ep0 flags for address command.
+    - LP: #897514
+  * usb, xhci: Clear warm reset change event during init
+    - LP: #897514
+  * usb, xhci: fix lockdep warning on endpoint timeout
+    - LP: #897514
+  * USB: XHCI: resume root hubs when the controller resumes
+    - LP: #897514
+  * USB: option: release new PID for ZTE 3G modem
+    - LP: #897514
+  * USB: option: add PID of Huawei E173s 3G modem
+    - LP: #897514
+  * USB: serial: pl2303: rm duplicate id
+    - LP: #897514
+  * USB: cdc-acm: Fix disconnect() vs close() race
+    - LP: #897514
+  * USB: workaround for bug in old version of GCC
+    - LP: #897514
+  * USB: ark3116 initialisation fix
+    - LP: #897514
+  * USB: Fix Corruption issue in USB ftdi driver ftdi_sio.c
+    - LP: #897514
+  * usb-storage: Accept 8020i-protocol commands longer than 12 bytes
+    - LP: #897514
+  * USB: add quirk for Logitech C600 web cam
+    - LP: #897514
+  * USB: quirks: adding more quirky webcams to avoid squeaky audio
+    - LP: #897514
+  * xfs: fix error handling for synchronous writes
+    - LP: #897514
+  * xfs: fix xfs_mark_inode_dirty during umount
+    - LP: #897514
+  * xfs: dont serialise direct IO reads on page cache
+    - LP: #897514
+  * xfs: avoid direct I/O write vs buffered I/O race
+    - LP: #897514
+  * xfs: Return -EIO when xfs_vn_getattr() failed
+    - LP: #897514
+  * xfs: fix buffer flushing during unmount
+    - LP: #897514
+  * xfs: use doalloc flag in xfs_qm_dqattach_one()
+    - LP: #897514
+  * xfs: fix ->write_inode return values
+    - LP: #897514
+  * Linux 3.0.11
+    - LP: #897514
+  * Linux 3.0.12
+    - LP: #897514
+  * Platform: Brightness quirk for samsung laptop driver
+    - LP: #897378
+  * Platform: Detect samsung laptop quirk when initial level is zero
+    - LP: #810093
+  * hfs: fix hfs_find_init() sb->ext_tree NULL ptr oops, CVE-2011-2203
+    - LP: #899466
+    - CVE-2011-2203
+  * net: ipv4: relax AF_INET check in bind()
+    - LP: #900396
+  * igb: Add support of SerDes Forced mode for certain hardware
+    - LP: #865523
+  * drm/i915: Use DRM_DEBUG_KMS for all messages in intel_bios.c
+    - LP: #614238
+  * drm/i915: split out PCH refclk update code
+    - LP: #614238
+  * drm/i915: Fix wrong initializer for "locked" variable in
+    assert_panel_unlocked
+    - LP: #614238
+  * drv/i915: Pull display_clock_mode out of VBT table
+    - LP: #614238
+  * drm/i915: Document a few more BDB_GENERAL_FEATURES bits from PCH BIOS
+    - LP: #614238
+  * drm/i915: Allow SSC parameter to override VBT value
+    - LP: #614238
+  * drm/i915: Fix PCH SSC reference clock settings
+    - LP: #614238
+  * drm/i915: Use CK505 as non-SSC source where available
+    - LP: #614238
+  * drm/i915: All PCH refclks are 120MHz
+    - LP: #614238
+  * drm/i915: Initialize PCH refclks at modeset init time
+    - LP: #614238
+  * drm/i915/dp: Fix the math in intel_dp_link_required
+    - LP: #899598
+  * x86, kdump, ioapic: Reset remote-IRR in clear_IO_APIC
+    - LP: #901830
+  * i2c-algo-bit: Generate correct i2c address sequence for 10-bit target
+    - LP: #902312
+  * eCryptfs: Extend array bounds for all filename chars
+    - LP: #902312
+  * crypto: mv_cesa - fix hashing of chunks > 1920 bytes
+    - LP: #902312
+  * drm: integer overflow in drm_mode_dirtyfb_ioctl()
+    - LP: #902312
+  * drm/radeon/kms: fix up gpio i2c mask bits for r4xx for real
+    - LP: #902312
+  * drm/i915: Ivybridge still has fences!
+    - LP: #902312
+  * drm/i915: Turn on a required 3D clock gating bit on Sandybridge.
+    - LP: #902312
+  * drm/i915: Turn on another required clock gating bit on gen6.
+    - LP: #902312
+  * drm/ttm: request zeroed system memory pages for new TT buffer objects
+    - LP: #902312
+  * PCI hotplug: shpchp: don't blindly claim non-AMD 0x7450 device IDs
+    - LP: #902312
+  * drm/radeon/kms: fix up gpio i2c mask bits for r4xx
+    - LP: #902312
+  * viafb: correct sync polarity for OLPC DCON
+    - LP: #902312
+  * ARM: pxa: fix inconsistent CONFIG_USB_PXA27X
+    - LP: #902312
+  * arm: mx28: fix bit operation in clock setting
+    - LP: #902312
+  * ARM: OMAP: smartreflex: fix IRQ handling bug
+    - LP: #902312
+  * ARM: OMAP2: select ARM_AMBA if OMAP3_EMU is defined
+    - LP: #902312
+  * ARM: 7161/1: errata: no automatic store buffer drain
+    - LP: #902312
+  * ALSA: lx6464es - fix device communication via command bus
+    - LP: #902312
+  * ASoC: fsl_ssi: properly initialize the sysfs attribute object
+    - LP: #902312
+  * ASoC: wm8753: Skip noop reconfiguration of DAI mode
+    - LP: #902312
+  * ASoC: Ensure WM8731 register cache is synced when resuming from
+    disabled
+    - LP: #902312
+  * SUNRPC: Ensure we return EAGAIN in xs_nospace if congestion is cleared
+    - LP: #902312
+  * genirq: fix regression in irqfixup, irqpoll
+    - LP: #902312
+  * cgroup_freezer: fix freezing groups with stopped tasks
+    - LP: #902312
+  * timekeeping: add arch_offset hook to ktime_get functions
+    - LP: #902312
+  * hrtimer: Fix extra wakeups from __remove_hrtimer()
+    - LP: #902312
+  * p54spi: Add missing spin_lock_init
+    - LP: #902312
+  * p54spi: Fix workqueue deadlock
+    - LP: #902312
+  * rt2x00: Fix efuse EEPROM reading on PPC32.
+    - LP: #902312
+  * nl80211: fix MAC address validation
+    - LP: #902312
+  * cfg80211: fix regulatory NULL dereference
+    - LP: #902312
+  * mac80211: don't stop a single aggregation session twice
+    - LP: #902312
+  * mac80211: fix race between the AGG SM and the Tx data path
+    - LP: #902312
+  * hwmon: (coretemp) Fix oops on driver load
+    - LP: #902312
+  * revert "mfd: Fix twl4030 dependencies for audio codec"
+    - LP: #902312
+  * SCSI: Silencing 'killing requests for dead queue'
+    - LP: #902312
+  * hugetlb: release pages in the error path of hugetlb_cow()
+    - LP: #902312
+  * drm/radeon/kms: add some new pci ids
+    - LP: #902312
+  * drm/radeon/kms: add some loop timeouts in pageflip code
+    - LP: #902312
+  * firmware: Sigma: Prevent out of bounds memory access
+    - LP: #902312
+  * firmware: Sigma: Skip header during CRC generation
+    - LP: #902312
+  * firmware: Sigma: Fix endianess issues
+    - LP: #902312
+  * staging: usbip: bugfix for deadlock
+    - LP: #902312
+  * staging: comedi: fix oops for USB DAQ devices.
+    - LP: #902312
+  * Staging: comedi: fix mmap_count
+    - LP: #902312
+  * Staging: comedi: fix signal handling in read and write
+    - LP: #902312
+  * USB: whci-hcd: fix endian conversion in qset_clear()
+    - LP: #902312
+  * HID: Correct General touch PID
+    - LP: #902312
+  * usb: ftdi_sio: add PID for Propox ISPcable III
+    - LP: #902312
+  * usb: option: add Huawei E353 controlling interfaces
+    - LP: #902312
+  * usb: option: add SIMCom SIM5218
+    - LP: #902312
+  * USB: usb-storage: unusual_devs entry for Kingston DT 101 G2
+    - LP: #902312
+  * USB: EHCI: fix HUB TT scheduling issue with iso transfer
+    - LP: #902312
+  * EHCI : Fix a regression in the ISO scheduler
+    - LP: #902312
+  * xHCI: fix bug in xhci_clear_command_ring()
+    - LP: #902312
+  * sched, x86: Avoid unnecessary overflow in sched_clock
+    - LP: #902312
+  * x86/mpparse: Account for bus types other than ISA and PCI
+    - LP: #902312
+  * x86: Fix "Acer Aspire 1" reboot hang
+    - LP: #902312
+  * perf/x86: Fix PEBS instruction unwind
+    - LP: #902312
+  * oprofile, x86: Fix crash when unloading module (nmi timer mode)
+    - LP: #902312
+  * add missing .set function for NT_S390_LAST_BREAK regset
+    - LP: #902312
+  * cfg80211: fix race on init and driver registration
+    - LP: #902312
+  * cfg80211: amend regulatory NULL dereference fix
+    - LP: #902312
+  * genirq: Fix race condition when stopping the irq thread
+    - LP: #902312
+  * NFS: Prevent 3.0 from crashing if it receives a partial layout
+    - LP: #902312
+  * xfs: validate acl count
+    - LP: #902312
+  * xfs: force buffer writeback before blocking on the ilock in inode
+    reclaim
+    - LP: #902312
+  * xfs: fix attr2 vs large data fork assert
+    - LP: #902312
+  * trace_events_filter: Use rcu_assign_pointer() when setting
+    ftrace_event_call->filter
+    - LP: #902312
+  * rtc: Disable the alarm in the hardware
+    - LP: #902312
+  * tracing: fix event_subsystem ref counting
+    - LP: #902312
+  * tick-broadcast: Stop active broadcast device when replacing it
+    - LP: #902312
+  * perf: Fix parsing of __print_flags() in TP_printk()
+    - LP: #902312
+  * jump_label: jump_label_inc may return before the code is patched
+    - LP: #902312
+  * oprofile: Fix crash when unloading module (hr timer mode)
+    - LP: #902312
+  * clocksource: Fix bug with max_deferment margin calculation
+    - LP: #902312
+  * clockevents: Set noop handler in clockevents_exchange_device()
+    - LP: #902312
+  * Linux 3.0.13
+    - LP: #902312
+
  -- Paolo Pisati <paolo.pisati@canonical.com>  Wed, 14 Dec 2011 16:55:33 +0100
 
 linux-ti-omap4 (3.0.0-1206.13) oneiric-proposed; urgency=low
