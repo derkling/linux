@@ -4,6 +4,13 @@ linux-ti-omap4 (3.0.0-1206.15) UNRELEASED; urgency=low
   CHANGELOG: Use the printchanges target to see the curent changes.
   CHANGELOG: Use the insertchanges target to create the final log.
 
+  [ Ubuntu: 3.0.0-15.25 ]
+
+  * Release Tracking Bug
+    - LP: #910894
+  * Revert "clockevents: Set noop handler in clockevents_exchange_device()"
+    - LP: #904569
+
  -- Paolo Pisati <paolo.pisati@canonical.com>  Wed, 04 Jan 2012 12:48:56 +0100
 
 linux-ti-omap4 (3.0.0-1206.14) oneiric-proposed; urgency=low
