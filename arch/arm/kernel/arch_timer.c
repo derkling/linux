@@ -242,6 +242,7 @@ static struct clocksource clocksource_counter = {
 	.flags	= CLOCK_SOURCE_IS_CONTINUOUS,
 };
 
+#ifdef CONFIG_LOCAL_TIMERS
 static void __cpuinit arch_timer_stop(struct clock_event_device *clk)
 {
 	pr_debug("arch_timer_teardown disable IRQ%d cpu #%d\n",
@@ -256,6 +257,9 @@ static struct local_timer_ops arch_timer_ops __cpuinitdata = {
 	.setup	= arch_timer_setup,
 	.stop	= arch_timer_stop,
 };
+#else
+static struct clock_event_device arch_timer_global_evt;
+#endif
 
 static struct clock_event_device arch_timer_global_evt;
 
@@ -293,14 +297,12 @@ static int __init arch_timer_common_register(void)
 		}
 	}
 
-	err = local_timer_register(&arch_timer_ops);
-	if (err) {
-		/*
-		 * We couldn't register as a local timer (could be
-		 * because we're on a UP platform, or because some
-		 * other local timer is already present...). Try as a
-		 * global timer instead.
-		 */
+#ifdef CONFIG_LOCAL_TIMERS
+	if (is_smp())
+		err = local_timer_register(&arch_timer_ops);
+	else
+#endif
+	{
 		arch_timer_global_evt.cpumask = cpumask_of(0);
 		err = arch_timer_setup(&arch_timer_global_evt);
 	}
