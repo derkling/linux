@@ -217,6 +217,18 @@ static u32 notrace arch_counter_get_cntvct32(void)
 	return (u32)(cntvct & (u32)~0);
 }
 
+static u32 notrace arch_counter_get_cntvct32(void)
+{
+	cycle_t cntvct = arch_counter_get_cntvct();
+
+	/*
+	 * The sched_clock infrastructure only knows about counters
+	 * with at most 32bits. Forget about the upper 24 bits for the
+	 * time being...
+	 */
+	return (u32)(cntvct & (u32)~0);
+}
+
 static cycle_t arch_counter_read(struct clocksource *cs)
 {
 	return arch_counter_get_cntpct();
