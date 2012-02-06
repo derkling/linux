@@ -42,6 +42,9 @@ config ARM
 config ARM_HAS_SG_CHAIN
 	bool
 
+config ARCH_HAS_RET_TO_USER
+	bool
+
 config HAVE_PWM
 	bool
 
@@ -473,6 +476,7 @@ config ARCH_H720X
 config ARCH_IOP13XX
 	bool "IOP13xx-based"
 	depends on MMU
+	select ARCH_HAS_RET_TO_USER
 	select CPU_XSC3
 	select PLAT_IOP
 	select PCI
@@ -485,6 +489,7 @@ config ARCH_IOP13XX
 config ARCH_IOP32X
 	bool "IOP32x-based"
 	depends on MMU
+	select ARCH_HAS_RET_TO_USER
 	select CPU_XSCALE
 	select PLAT_IOP
 	select PCI
@@ -496,6 +501,7 @@ config ARCH_IOP32X
 config ARCH_IOP33X
 	bool "IOP33x-based"
 	depends on MMU
+	select ARCH_HAS_RET_TO_USER
 	select CPU_XSCALE
 	select PLAT_IOP
 	select PCI
