@@ -132,6 +132,7 @@ enum ap_pwrst {
  * @APEXECUTE_TO_APIDLE: Power state transition from ApExecute to ApIdle
  */
 enum ap_pwrst_trans {
+	NO_TRANSITION			= 0x00,
 	PRCMU_AP_NO_CHANGE		= 0x00,
 	APEXECUTE_TO_APSLEEP		= 0x01,
 	APIDLE_TO_APSLEEP		= 0x02, /* To be removed */
