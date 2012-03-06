@@ -817,6 +817,7 @@ static struct of_dev_auxdata v2m_dt_auxdata_lookup[] __initdata = {
 	OF_DEV_AUXDATA("arm,vexpress-flash", 0x08000000, "physmap-flash",
 			&v2m_flash_data),
 	OF_DEV_AUXDATA("arm,primecell", 0x1c050000, "mb:mmci", &v2m_mmci_data),
+	OF_DEV_AUXDATA("arm,primecell", 0x1c1f0000, "mb:clcd", &v2m_clcd_data),
 	{}
 };
 
