@@ -308,7 +308,7 @@ static struct mmci_platform_data v2m_mmci_data = {
 static void v2m_clcd_enable(struct clcd_fb *fb)
 {
 	v2m_cfg_write(SYS_CFG_MUXFPGA | SYS_CFG_SITE_MB, 0);
-	v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_MB, 2);
+/*	v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_MB, 2); */
 }
 
 static int v2m_clcd_setup(struct clcd_fb *fb)
