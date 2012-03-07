@@ -1,0 +1,18 @@
+menu "Columbus Compute Subsystem type"
+	depends on ARCH_COLUMBUS
+
+config COLUMBUS_MODEL
+	bool "Columbus RTSM model support"
+	select CPU_V7
+	select ARM_AMBA
+	select ARM_GIC
+	select HAVE_MACH_CLKDEV
+	select HAVE_SMP
+	select SPARSE_IRQ
+	select GENERIC_IRQ_CHIP
+	select PL330
+	help
+	  This option enables support for the Columbus Compute Subsystem
+	  as modelled by the RTSM1 release.
+
+endmenu

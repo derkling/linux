@@ -379,6 +379,13 @@ static void __init gic_dist_init(struct gic_chip_data *gic)
 	for (i = 32; i < gic_irqs; i += 4)
 		writel_relaxed(0xa0a0a0a0, base + GIC_DIST_PRI + i * 4 / 4);
 
+#ifdef CONFIG_ARCH_COLUMBUS
+	/* Temporary hack until UEFI gets it's stupid setup of secure world fixed */
+	/* Make sure the secure PPIs are set into the correct group */
+	for (i = 0; i <= gic_irqs; i+= 32)
+		writel_relaxed(0, base + GIC_DIST_IGROUP + i * 4 / 32);
+#endif
+
 	/*
 	 * Disable all interrupts.  Leave the PPI and SGIs alone
 	 * as these enables are banked registers.
@@ -653,7 +660,7 @@ void __init gic_init_bases(unsigned int gic_nr, int irq_start,
 {
 	struct gic_chip_data *gic;
 	struct irq_domain *domain;
-	int gic_irqs;
+	unsigned int gic_irqs;
 
 	BUG_ON(gic_nr >= MAX_GIC_NR);
 

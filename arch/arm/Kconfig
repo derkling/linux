@@ -319,6 +319,18 @@ config ARCH_VEXPRESS
 	help
 	  This enables support for the ARM Ltd Versatile Express boards.
 
+config ARCH_COLUMBUS
+	bool "ARM Ltd. Columbus Compute Subsystem family"
+	select ARM_LPAE
+	select ARM_PATCH_PHYS_VIRT
+	select AUTO_ZRELADDR
+	select CLKDEV_LOOKUP
+	select HAVE_SCHED_CLOCK
+	select GENERIC_CLOCKEVENTS
+	select USE_OF
+	help
+	  This enables support for the ARM Ltd Columbus Compute Subsystem boards.
+
 config ARCH_AT91
 	bool "Atmel AT91"
 	select ARCH_REQUIRE_GPIOLIB
@@ -1004,6 +1016,8 @@ source "arch/arm/mach-clps711x/Kconfig"
 
 source "arch/arm/mach-cns3xxx/Kconfig"
 
+source "arch/arm/mach-columbus/Kconfig"
+
 source "arch/arm/mach-davinci/Kconfig"
 
 source "arch/arm/mach-dove/Kconfig"
@@ -1590,7 +1604,7 @@ config LOCAL_TIMERS
 config ARCH_NR_GPIO
 	int
 	default 1024 if ARCH_SHMOBILE || ARCH_TEGRA
-	default 350 if ARCH_U8500
+	default 350 if ARCH_U8500 || ARCH_COLUMBUS
 	default 0
 	help
 	  Maximum number of GPIOs in the system.

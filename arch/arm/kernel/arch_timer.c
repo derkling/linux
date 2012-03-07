@@ -24,10 +24,12 @@
 #include <asm/localtimer.h>
 #include <asm/arch_timer.h>
 #include <asm/sched_clock.h>
+#include <asm/smp_plat.h>
 
 static unsigned long arch_timer_rate;
 static int arch_timer_ppi;
 static int arch_timer_ppi2;
+static int global_timer_set = 0;
 
 static struct clock_event_device __percpu **arch_timer_evt;
 
@@ -217,18 +219,6 @@ static u32 notrace arch_counter_get_cntvct32(void)
 	return (u32)(cntvct & (u32)~0);
 }
 
-static u32 notrace arch_counter_get_cntvct32(void)
-{
-	cycle_t cntvct = arch_counter_get_cntvct();
-
-	/*
-	 * The sched_clock infrastructure only knows about counters
-	 * with at most 32bits. Forget about the upper 24 bits for the
-	 * time being...
-	 */
-	return (u32)(cntvct & (u32)~0);
-}
-
 static cycle_t arch_counter_read(struct clocksource *cs)
 {
 	return arch_counter_get_cntpct();
@@ -242,7 +232,6 @@ static struct clocksource clocksource_counter = {
 	.flags	= CLOCK_SOURCE_IS_CONTINUOUS,
 };
 
-#ifdef CONFIG_LOCAL_TIMERS
 static void __cpuinit arch_timer_stop(struct clock_event_device *clk)
 {
 	pr_debug("arch_timer_teardown disable IRQ%d cpu #%d\n",
@@ -257,12 +246,8 @@ static struct local_timer_ops arch_timer_ops __cpuinitdata = {
 	.setup	= arch_timer_setup,
 	.stop	= arch_timer_stop,
 };
-#else
-static struct clock_event_device arch_timer_global_evt;
-#endif
 
 static struct clock_event_device arch_timer_global_evt;
-
 
 static int __init arch_timer_common_register(void)
 {
@@ -297,14 +282,15 @@ static int __init arch_timer_common_register(void)
 		}
 	}
 
-#ifdef CONFIG_LOCAL_TIMERS
-	if (is_smp())
+	if (global_timer_set)
 		err = local_timer_register(&arch_timer_ops);
 	else
-#endif
 	{
+		printk(KERN_INFO "arch_timer: registering global timer\n");
 		arch_timer_global_evt.cpumask = cpumask_of(0);
 		err = arch_timer_setup(&arch_timer_global_evt);
+		if (!err)
+			global_timer_set = 1;
 	}
 
 	if (err)
@@ -366,7 +352,7 @@ int __init arch_timer_of_register(void)
 }
 #endif
 
-int arch_timer_sched_clock_init(void)
+int __init arch_timer_sched_clock_init(void)
 {
 	int err;
 

@@ -1,0 +1,1 @@
+dtb-$(CONFIG_COLUMBUS_MODEL)	+= columbus.dtb

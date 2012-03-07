@@ -10,4 +10,8 @@ struct arch_timer {
 int arch_timer_register(struct arch_timer *);
 int arch_timer_sched_clock_init(void);
 
+#ifdef CONFIG_OF
+int arch_timer_of_register(void);
+#endif
+
 #endif
