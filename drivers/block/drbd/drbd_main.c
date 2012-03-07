@@ -3794,7 +3794,7 @@ int drbd_md_read(struct drbd_conf *mdev, struct drbd_backing_dev *bdev)
  * the meta-data super block. This function sets MD_DIRTY, and starts a
  * timer that ensures that within five seconds you have to call drbd_md_sync().
  */
-#ifdef DEBUG
+#ifdef DRBD_DEBUG_MD_SYNC
 void drbd_md_mark_dirty_(struct drbd_conf *mdev, unsigned int line, const char *func)
 {
 	if (!test_and_set_bit(MD_DIRTY, &mdev->flags)) {
@@ -4097,7 +4097,7 @@ static void md_sync_timer_fn(unsigned long data)
 static int w_md_sync(struct drbd_conf *mdev, struct drbd_work *w, int unused)
 {
 	dev_warn(DEV, "md_sync_timer expired! Worker calls drbd_md_sync().\n");
-#ifdef DEBUG
+#ifdef DRBD_DEBUG_MD_SYNC
 	dev_warn(DEV, "last md_mark_dirty: %s:%u\n",
 		mdev->last_md_mark_dirty.func, mdev->last_md_mark_dirty.line);
 #endif
