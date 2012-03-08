@@ -92,6 +92,8 @@ struct cpuidle_driver columbus_idle_driver = {
 static DEFINE_SPINLOCK(cluster_lock);
 static DEFINE_PER_CPU(struct cpuidle_device, columbus_idle_dev);
 
+static DEFINE_PER_CPU(u32, cur_residency);
+static DEFINE_PER_CPU(s64, next_event);
 static cpumask_t idle_mask = { CPU_BITS_NONE };
 
 extern int shutdown_smc(u32, u32, u32, u32);
@@ -112,6 +114,27 @@ static inline int arch_wakeup_ts(u64 *ts)
 
 	return 0;
 }
+
+static inline int event_shutdown(void)
+{
+	int idx;
+	ktime_t exp, now = ktime_get();
+	u32 exp_res;
+
+	if (!(cpumask_weight(&idle_mask) == num_online_cpus()))
+		return 1;
+
+	for_each_online_cpu(idx) {
+		exp.tv64 = per_cpu(next_event, idx) - now.tv64;
+		exp_res = (u32) ktime_to_us(exp);
+
+		if ((exp.tv64 < 0) || (per_cpu(cur_residency, idx) > exp_res))
+			return 1;
+	}
+
+	return 0;
+}
+
 union wakeup {
 	struct {
 		u32 wakeup_l;
@@ -180,7 +203,11 @@ static int columbus_enter_idle(struct cpuidle_device *dev,
 	if (cx->type > COLUMBUS_STATE_C2)
 		__cpu_set(dev->cpu, &idle_mask);
 
-	cluster_down = (cpumask_weight(&idle_mask) == num_online_cpus());
+	per_cpu(cur_residency, dev->cpu) = drv->states[idx].target_residency;
+
+	per_cpu(next_event, dev->cpu) = tdev->evtdev->next_event.tv64;
+
+	cluster_down = !event_shutdown();
 
 	if (cluster_down) {
 		cpu_cluster_pm_enter();
@@ -225,6 +252,8 @@ static int columbus_enter_idle(struct cpuidle_device *dev,
 	/* Restore the per-cpu timer event */
 	clockevents_program_event(tdev->evtdev, tdev->evtdev->next_event, 1);
 out:
+	per_cpu(cur_residency, dev->cpu) = 0;
+	per_cpu(next_event, dev->cpu) = 0;
 
 	if (cx->type > COLUMBUS_STATE_C2)
 		__cpu_clear(dev->cpu, &idle_mask);
