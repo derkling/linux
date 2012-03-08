@@ -13,6 +13,7 @@
 #include <linux/cpumask.h>
 #include <linux/cpu_pm.h>
 #include <linux/clockchips.h>
+#include <linux/debugfs.h>
 #include <linux/hrtimer.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -92,8 +93,13 @@ struct cpuidle_driver columbus_idle_driver = {
 static DEFINE_SPINLOCK(cluster_lock);
 static DEFINE_PER_CPU(struct cpuidle_device, columbus_idle_dev);
 
+static DECLARE_BITMAP(cpu_pm_bits, CONFIG_NR_CPUS) __read_mostly
+	= CPU_BITS_NONE;
+const struct cpumask *const cpu_pm_mask = to_cpumask(cpu_pm_bits);
+
 static DEFINE_PER_CPU(u32, cur_residency);
 static DEFINE_PER_CPU(s64, next_event);
+
 static cpumask_t idle_mask = { CPU_BITS_NONE };
 
 extern int shutdown_smc(u32, u32, u32, u32);
@@ -181,7 +187,8 @@ static int columbus_enter_idle(struct cpuidle_device *dev,
 	/* Used to keep track of the total time in idle */
 	getnstimeofday(&ts_preidle);
 
-	if (cx->type == COLUMBUS_STATE_C1) {
+	if (cx->type == COLUMBUS_STATE_C1 ||
+		!cpu_isset(smp_processor_id(), *to_cpumask(cpu_pm_bits))) {
 
 		/* Used to keep track of the total time in idle */
 		asm volatile("wfi");
@@ -271,6 +278,55 @@ out:
 	return idx;
 }
 
+static int idle_mask_show(struct seq_file *f, void *p)
+{
+	char buf[256];
+	bitmap_scnlistprintf(buf, 256, cpu_pm_bits, CONFIG_NR_CPUS);
+
+	seq_printf(f, "%s\n", buf);
+
+	return 0;
+}
+
+static int idle_mask_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, idle_mask_show, inode->i_private);
+}
+
+static const struct file_operations cpuidle_fops = {
+	.open		= idle_mask_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static int idle_debug_set(void *data, u64 val)
+{
+	int i, cpus = num_possible_cpus();
+
+	if ((val > cpus || val < 0) && val != 0xff) {
+		pr_warning("Wrong parameter passed\n");
+		return -EINVAL;
+	}
+
+	if (val == 0xff) {
+		cpumask_clear(to_cpumask(cpu_pm_bits));
+		return 0;
+	}
+
+	if (val == cpus) {
+		cpumask_copy(to_cpumask(cpu_pm_bits), cpu_possible_mask);
+		return 0;
+	}
+
+	for (i = 0; i < cpus; i++)
+		if (val == i)
+			cpumask_set_cpu(i, to_cpumask(cpu_pm_bits));
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(idle_debug_fops, NULL, idle_debug_set, "%llu\n");
+
 /*
  * columbus_idle_init
  *
@@ -283,6 +339,7 @@ int __init columbus_idle_init(void)
 	struct cpuidle_state *state;
 	struct cpuidle_device *dev;
 	int i, cpu_id, count;
+	struct dentry *idle_debug, *file_debug;
 
 	cpuidle_register_driver(&columbus_idle_driver);
 
@@ -326,6 +383,26 @@ int __init columbus_idle_init(void)
 		}
 	}
 
+	idle_debug = debugfs_create_dir("idle_debug", NULL);
+
+	if (IS_ERR_OR_NULL(idle_debug)) {
+		printk(KERN_INFO "Error in creating idle debugfs directory\n");
+		return 0;
+	}
+
+	file_debug = debugfs_create_file("enable_idle", S_IRUGO | S_IWGRP,
+				   idle_debug, NULL, &idle_debug_fops);
+
+	if (IS_ERR_OR_NULL(file_debug)) {
+		printk(KERN_INFO "Error in creating enable_idle file\n");
+		return 0;
+	}
+
+	file_debug = debugfs_create_file("enable_mask", S_IRUGO | S_IWGRP,
+					idle_debug, NULL, &cpuidle_fops);
+
+	if (IS_ERR_OR_NULL(file_debug))
+		printk(KERN_INFO "Error in creating enable_mask file\n");
 
 	return 0;
 }
