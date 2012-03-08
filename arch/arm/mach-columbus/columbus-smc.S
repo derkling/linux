@@ -1,0 +1,37 @@
+/*
+ * Columbus secure APIs file.
+ *
+ * Copyright (C) 2012 ARM Ltd.
+ * Author: Lorenzo Pieralisi <lorenzo.pieralisi@arm.com>
+ *
+ * This program is free software,you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+#include <linux/linkage.h>
+
+	.syntax unified
+	.arch_extension sec
+
+/*
+ * This function implements the SMC call stub for powerdown API.
+ *
+ * Function C-prototype is:
+ * shutdown_smc(u32 unused, u32 cstate, u32 wakeup_h, u32 wakeup_l)
+ * r1: target C-state
+ * r2: wake-up timestamp (63:32)
+ * r3: wake-up timestamp (31:0)
+ *
+ * Return value:
+ * 	does not return on success
+ * 	-1 on failure
+ */
+
+ENTRY(shutdown_smc)
+	mov 	r0, #0x84000000
+	dsb
+	smc	#0
+	mvn	r0, #1
+	mov	pc, lr
+ENDPROC(shutdown_smc)
