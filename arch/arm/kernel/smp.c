@@ -25,6 +25,7 @@
 #include <linux/percpu.h>
 #include <linux/clockchips.h>
 #include <linux/completion.h>
+#include <linux/tick.h>
 
 #include <linux/atomic.h>
 #include <asm/cacheflush.h>
@@ -495,6 +496,7 @@ static void ipi_cpu_stop(unsigned int cpu)
 static void ipi_cpuset_update_nohz(unsigned int cpu)
 {
 	irq_enter();
+	tick_nohz_check_adaptive();
 	irq_exit();
 }
 
