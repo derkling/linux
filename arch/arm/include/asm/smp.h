@@ -42,6 +42,14 @@ void handle_IPI(int ipinr, struct pt_regs *regs);
  */
 extern void smp_init_cpus(void);
 
+void smp_send_cpuset_update_nohz(int cpu);
+
+static inline void smp_cpuset_update_nohz(int cpu)
+{
+#if defined(CONFIG_CPUSETS_NO_HZ)
+	smp_send_cpuset_update_nohz(cpu);
+#endif
+}
 
 /*
  * Provide a function to raise an IPI cross call on CPUs in callmap.

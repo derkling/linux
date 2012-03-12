@@ -56,6 +56,7 @@ enum ipi_msg_type {
 	IPI_CALL_FUNC,
 	IPI_CALL_FUNC_SINGLE,
 	IPI_CPU_STOP,
+	IPI_CPUSET_UPDATE_NOHZ,
 };
 
 static DECLARE_COMPLETION(cpu_running);
@@ -353,6 +354,7 @@ static const char *ipi_types[NR_IPI] = {
 	S(IPI_CALL_FUNC, "Function call interrupts"),
 	S(IPI_CALL_FUNC_SINGLE, "Single function call interrupts"),
 	S(IPI_CPU_STOP, "CPU stop interrupts"),
+	S(IPI_CPUSET_UPDATE_NOHZ, "cpuset update nohz interrupts"),
 };
 
 void show_ipi_list(struct seq_file *p, int prec)
@@ -488,6 +490,15 @@ static void ipi_cpu_stop(unsigned int cpu)
 }
 
 /*
+ * ipi_cpuset_update_nohz - handle IPI from smp_send_cpuset_update_nohz()
+ */
+static void ipi_cpuset_update_nohz(unsigned int cpu)
+{
+	irq_enter();
+	irq_exit();
+}
+
+/*
  * Main handler for inter-processor interrupts
  */
 asmlinkage void __exception_irq_entry do_IPI(int ipinr, struct pt_regs *regs)
@@ -532,6 +543,12 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
 		irq_exit();
 		break;
 
+#if defined(CONFIG_CPUSETS_NO_HZ)
+	case IPI_CPUSET_UPDATE_NOHZ:
+		ipi_cpuset_update_nohz(cpu);
+		break;
+#endif
+
 	default:
 		printk(KERN_CRIT "CPU%u: Unknown IPI message 0x%x\n",
 		       cpu, ipinr);
@@ -575,6 +592,17 @@ void smp_send_stop(void)
 
 	smp_kill_cpus(&mask);
 }
+
+#if defined(CONFIG_CPUSETS_NO_HZ)
+void smp_send_cpuset_update_nohz(int cpu)
+{
+	if (unlikely(cpu_is_offline(cpu))) {
+		WARN_ON(1);
+		return;
+	}
+	smp_cross_call(cpumask_of(cpu), IPI_CPUSET_UPDATE_NOHZ);
+}
+#endif
 
 /*
  * not supported here
