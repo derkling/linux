@@ -25,6 +25,7 @@
 #include <linux/regset.h>
 #include <linux/audit.h>
 #include <linux/tracehook.h>
+#include <linux/tick.h>
 
 #include <asm/pgtable.h>
 #include <asm/traps.h>
@@ -910,12 +911,16 @@ long arch_ptrace(struct task_struct *child, long request,
 asmlinkage int syscall_trace(int why, struct pt_regs *regs, int scno)
 {
 	unsigned long ip;
+	int ret;
 
 	if (why)
 		audit_syscall_exit(regs);
-	else
+	else {
+		/* Notify nohz task syscall early so the rest can use rcu */
+		tick_nohz_enter_kernel();
 		audit_syscall_entry(AUDIT_ARCH_ARM, scno, regs->ARM_r0,
 				    regs->ARM_r1, regs->ARM_r2, regs->ARM_r3);
+	}
 
 	if (!test_thread_flag(TIF_SYSCALL_TRACE))
 		return scno;
@@ -936,5 +941,14 @@ asmlinkage int syscall_trace(int why, struct pt_regs *regs, int scno)
 
 	regs->ARM_ip = ip;
 
-	return current_thread_info()->syscall;
+	ret = current_thread_info()->syscall;
+
+	/*
+	 * Notify nohz task exit syscall at last so the rest can
+	 * use rcu.
+	 */
+	if (why)
+		tick_nohz_exit_kernel();
+
+	return ret;
 }
