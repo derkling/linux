@@ -19,6 +19,7 @@
 #include <linux/sched.h>
 #include <linux/highmem.h>
 #include <linux/perf_event.h>
+#include <linux/tick.h>
 
 #include <asm/exception.h>
 #include <asm/pgtable.h>
@@ -268,6 +269,8 @@ do_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 	if (notify_page_fault(regs, fsr))
 		return 0;
 
+	tick_nohz_enter_exception(regs);
+
 	tsk = current;
 	mm  = tsk->mm;
 
@@ -383,11 +386,13 @@ retry:
 	}
 
 	__do_user_fault(tsk, addr, fsr, sig, code, regs);
-	return 0;
+	goto nohz_exit;
 
 no_context:
 	__do_kernel_fault(mm, addr, fsr, regs);
-	return 0;
+nohz_exit:
+	tick_nohz_exit_exception(regs);
+ 	return 0;
 }
 #else					/* CONFIG_MMU */
 static int
