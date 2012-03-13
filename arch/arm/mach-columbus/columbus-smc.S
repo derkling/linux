@@ -17,6 +17,8 @@
 /*
  * This function implements the SMC call stub for powerdown API.
  *
+ * Currently a stubbed out version just executing wfi for testing purposes.
+ *
  * Function C-prototype is:
  * shutdown_smc(u32 unused, u32 cstate, u32 wakeup_h, u32 wakeup_l)
  * r1: target C-state
@@ -31,7 +33,7 @@
 ENTRY(shutdown_smc)
 	mov 	r0, #0x84000000
 	dsb
-	smc	#0
+	wfi
 	mvn	r0, #1
 	mov	pc, lr
 ENDPROC(shutdown_smc)
