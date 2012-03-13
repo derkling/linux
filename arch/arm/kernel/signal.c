@@ -13,6 +13,7 @@
 #include <linux/freezer.h>
 #include <linux/uaccess.h>
 #include <linux/tracehook.h>
+#include <linux/tick.h>
 
 #include <asm/elf.h>
 #include <asm/cacheflush.h>
@@ -676,6 +677,7 @@ static void do_signal(struct pt_regs *regs, int syscall)
 asmlinkage void
 do_notify_resume(struct pt_regs *regs, unsigned int thread_flags, int syscall)
 {
+	tick_nohz_enter_kernel();
 	if (thread_flags & _TIF_SIGPENDING)
 		do_signal(regs, syscall);
 
@@ -683,4 +685,5 @@ do_notify_resume(struct pt_regs *regs, unsigned int thread_flags, int syscall)
 		clear_thread_flag(TIF_NOTIFY_RESUME);
 		tracehook_notify_resume(regs);
 	}
+	tick_nohz_exit_kernel();
 }
