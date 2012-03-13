@@ -67,7 +67,7 @@ work_pending:
 	b	ret_slow_syscall		@ Check work again
 
 work_resched:
-	bl	schedule
+	bl	schedule_user
 /*
  * "slow" syscall return path.  "why" tells us if this was a real syscall.
  */
