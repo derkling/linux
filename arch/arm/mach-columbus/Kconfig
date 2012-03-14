@@ -11,6 +11,7 @@ config COLUMBUS_MODEL
 	select SPARSE_IRQ
 	select GENERIC_IRQ_CHIP
 	select PL330
+	select ARM_CPU_SUSPEND if PM
 	help
 	  This option enables support for the Columbus Compute Subsystem
 	  as modelled by the RTSM1 release.
