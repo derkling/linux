@@ -1,0 +1,46 @@
+* Columbus CPU idle driver
+
+The Columbus CPU idle driver manages all CPU and Cluster power states
+allowed by the power controller HW (stubbed out functionality for Q1 release).
+
+In particular C-states are defined as follows:
+
+C0 - running
+C1 - standby wfi
+C2 - CPU shutdown
+C3 - CPU shutdown and Cluster in L2 retention
+C4 - CPU shutdown and Cluster complete shutdown (L2 cleaned)
+
+The driver keeps track of CPUs in states higher than C2 to manage cluster
+shutdown properly. next_event are saved for all CPUs in a state higher than
+C2 so that the last CPU standing can check if shutting down the cluster logic
+(cleaning L2 and shutting down the GIC) is something beneficial in terms of
+low-power operations.
+
+next_event timeout is passed to secure FW through an SMC interface as a
+timestamp in the future, used to wake up the CPU from a shutdown state.
+Upon resume the CPU reprogrammes the next_event through the clock event IF
+and returns to the governor.
+
+Peripheral state (VFP, GIC) is saved/restored through CPU PM notifiers.
+
+* debugfs entries for enabling deep C-states
+
+By default C-states deeper than C1 are not enabled.
+
+To enable deep C-states a bitmap can be programmed using a simple debugfs
+entry accordingly, by echoing values in:
+
+/sys/kernel/debug/idle_debug/enable_idle
+
+[0-N]*                  enable deep C-states for the given CPU
+[num_possible_cpus]     enable deep C-states for all CPUs and cluster
+[0xff]                  disable C-states for all CPUs
+
+(*) N = (num_possible_cpus - 1)
+
+The current deep C-states enabled cpumask can be obtained by reading
+
+/sys/kernel/debug/idle_debug/enable_mask
+
+The output value is provided as a list of enabled CPUs.
