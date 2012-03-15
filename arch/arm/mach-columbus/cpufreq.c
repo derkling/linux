@@ -22,14 +22,20 @@
 #include <linux/init.h>
 #include <linux/io.h>
 #include <linux/opp.h>
+#include <linux/slab.h>
 #include <linux/sysfs.h>
 
-#define COLUMBUS_BL_LITTLE_ID	0x1	/* (MPIDR & 0xF00) >> 8 */
-#define COLUMBUS_BL_BIG_ID	0x0	/* (MPIDR & 0xF00) >> 8 */
+#include <mach/mhu.h>
+
+enum clusters {
+	COLUMBUS_BL_BIG_ID = 0x0,	/* (MPIDR & 0xF00) >> 8 */
+	COLUMBUS_BL_LITTLE_ID = 0x1,	/* (MPIDR & 0xF00) >> 8 */
+	COLUMBUS_MAX_CLUSTER
+};
 
 static struct cpufreq_frequency_table *freq_table;
-
-static unsigned int current_freq;
+static struct cpufreq_frequency_table *ind_table[COLUMBUS_MAX_CLUSTER];
+static atomic_t freq_table_users = ATOMIC_INIT(0);
 
 static unsigned long clk_big_min;	/* Minimum (Big) clock frequency */
 static unsigned long clk_little_max;	/* Maximum clock frequency (Little) */
@@ -86,7 +92,7 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 	uint32_t cpu = policy->cpu;
 	struct cpufreq_freqs freqs;
 	uint32_t freq_tab_idx;
-	uint32_t cur_cluster, do_switch = 0;
+	uint32_t cur_cluster, new_cluster, do_switch = 0;
 
 	/* Prevent thread cpu migration - not sure if necessary */
 	cpus_allowed = current->cpus_allowed;
@@ -97,7 +103,9 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 	/* Read current clock rate */
 	cur_cluster = columbus_cpufreq_get_bl_cluster();
 
-	freqs.old = current_freq;
+	get_performance(cur_cluster, cpu, &freq_tab_idx);
+	freqs.old = ind_table[cur_cluster][freq_tab_idx].frequency;
+
 	/* Make sure that target_freq is within supported range */
 	if (target_freq > policy->max)
 		target_freq = policy->max;
@@ -151,17 +159,24 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 
 	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
 
-	/* TODO:
+	/*
 	 * Set new clock divider rate with MHU calls to set OPP
 	 */
+	if (do_switch)
+		new_cluster = (cur_cluster == COLUMBUS_BL_LITTLE_ID) ?
+			COLUMBUS_BL_BIG_ID : COLUMBUS_BL_LITTLE_ID;
+	else
+		new_cluster = cur_cluster;
+
+	cpufreq_frequency_table_target(policy, ind_table[new_cluster],
+					freqs.new, relation, &freq_tab_idx);
+	if (set_performance(new_cluster, policy->cpu, freq_tab_idx))
+		pr_err("failed to set the required OPP\n");
 
 	if (do_switch)
-		columbus_cpufreq_switch_bl_cluster(
-			cur_cluster == COLUMBUS_BL_LITTLE_ID ?
-			COLUMBUS_BL_BIG_ID : COLUMBUS_BL_LITTLE_ID);
-	cur_cluster = columbus_cpufreq_get_bl_cluster();
+		columbus_cpufreq_switch_bl_cluster(new_cluster);
 
-	policy->cur = current_freq = freqs.new;
+	policy->cur = freqs.new;
 
 	set_cpus_allowed(current, cpus_allowed);
 	cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
@@ -173,6 +188,8 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 static unsigned int columbus_cpufreq_get(unsigned int cpu)
 {
 	cpumask_t cpus_allowed;
+	uint32_t freq_tab_idx = 0;
+	uint32_t cur_cluster = columbus_cpufreq_get_bl_cluster();
 
 	/* Prevent thread cpu migration - not sure if necessary */
 	cpus_allowed = current->cpus_allowed;
@@ -180,19 +197,100 @@ static unsigned int columbus_cpufreq_get(unsigned int cpu)
 	set_cpus_allowed(current, cpumask_of_cpu(cpu));
 	BUG_ON(cpu != smp_processor_id());
 
-	/* TODO:
+	/*
 	 * Read current clock rate with MHU call
 	 */
+	get_performance(columbus_cpufreq_get_bl_cluster(), cpu, &freq_tab_idx);
 
 	set_cpus_allowed(current, cpus_allowed);
 
-	return current_freq;
+	return ind_table[cur_cluster][freq_tab_idx].frequency;
+}
+
+static int columbus_cpufreq_init_table(void)
+{
+	unsigned int opp_sz[COLUMBUS_MAX_CLUSTER], opp_size = 0;
+	struct cpufreq_frequency_table *freqtable;
+	struct cpufreq_frequency_table *indtable[COLUMBUS_MAX_CLUSTER];
+	unsigned long *table[COLUMBUS_MAX_CLUSTER];
+	int loop, i, ret;
+
+	for (loop = 0; loop < COLUMBUS_MAX_CLUSTER; loop++) {
+		int j;
+		ret = get_dvfs_size(loop, 0, &opp_sz[loop]);
+		if (ret)
+			return ret;
+		opp_size += opp_sz[loop];
+		table[loop] = kzalloc(sizeof(unsigned long) *
+					(opp_sz[loop] + 1), GFP_KERNEL);
+		indtable[loop] = kzalloc(sizeof(struct cpufreq_frequency_table)
+					* (opp_sz[loop] + 1), GFP_KERNEL);
+		if (!table[loop] || !indtable[loop]) {
+			ret = -ENOMEM;
+			goto free_mem;
+		}
+		ret = get_dvfs_capabilities(loop, 0, (u32 *)table[loop],
+							opp_sz[loop]);
+		if (ret) {
+			ret = -EIO;
+			goto free_mem;
+		}
+		for (j = 0; j < opp_sz[loop]; j++) {
+			indtable[loop][j].index = loop;
+			indtable[loop][j].frequency = table[loop][j];
+		}
+		indtable[loop][j].index = j;
+		indtable[loop][j].frequency = CPUFREQ_TABLE_END;
+
+		ind_table[loop] = &indtable[loop][0];
+	}
+
+	freqtable = kzalloc(sizeof(struct cpufreq_frequency_table) *
+					(opp_size + 1), GFP_KERNEL);
+	if (!freqtable) {
+		ret = -ENOMEM;
+		goto free_mem;
+	}
+	loop = 0;
+	for (i = 0; i < COLUMBUS_MAX_CLUSTER; i++) {
+		int j;
+		for (j = 0; j < opp_sz[i]; j++) {
+			freqtable[loop].index = loop;
+			freqtable[loop++].frequency = table[i][j];
+		}
+	}
+	freqtable[loop].index = loop;
+	freqtable[loop].frequency = CPUFREQ_TABLE_END;
+
+	freq_table = &freqtable[0];
+
+	/* Assuming 2 cluster, set clk_big_min and clk_little_max */
+	clk_little_max = table[COLUMBUS_BL_LITTLE_ID]
+				[opp_sz[COLUMBUS_BL_LITTLE_ID] - 1];
+	clk_big_min
+		= table[COLUMBUS_BL_BIG_ID][opp_sz[COLUMBUS_BL_BIG_ID] - 1];
+
+	for (loop = 0; loop < COLUMBUS_MAX_CLUSTER; loop++)
+		kfree(table[loop]);
+	return 0;
+free_mem:
+	while (loop >= 0) {
+		kfree(table[loop]);
+		kfree(indtable[loop]);
+	}
+	return ret;
 }
 
 /* Per-CPU initialization */
 static int columbus_cpufreq_init(struct cpufreq_policy *policy)
 {
 	int result = 0;
+
+	if (atomic_inc_return(&freq_table_users) == 1)
+		result = columbus_cpufreq_init_table();
+
+	if (result)
+		return result;
 
 	result = cpufreq_frequency_table_cpuinfo(policy, freq_table);
 	if (result)
@@ -211,9 +309,6 @@ static int columbus_cpufreq_init(struct cpufreq_policy *policy)
 	cpumask_copy(policy->cpus, cpu_active_mask);	/* affected_cpus */
 	cpumask_copy(policy->related_cpus, cpu_active_mask);
 	policy->shared_type = CPUFREQ_SHARED_TYPE_HW;
-
-	/* TODO: Read current clock rate */
-	current_freq = policy->max;
 
 	return 0;
 }
