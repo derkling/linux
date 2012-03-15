@@ -147,4 +147,10 @@ config ISCSI_IBFT
 
 source "drivers/firmware/google/Kconfig"
 
+config ARM_MHU
+       bool "ARM MHU Driver"
+       default y if COLUMBUS_MODEL
+       help
+         ARM MHU Device Driver for Columbus Platform
+
 endmenu

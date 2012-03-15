@@ -15,4 +15,4 @@ obj-$(CONFIG_FIRMWARE_MEMMAP)	+= memmap.o
 
 obj-$(CONFIG_GOOGLE_FIRMWARE)	+= google/
 
-obj-y				+= arm_mhu.o
+obj-$(CONFIG_ARM_MHU)		+= arm_mhu.o
