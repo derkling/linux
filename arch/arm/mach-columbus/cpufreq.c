@@ -27,15 +27,15 @@
 #define COLUMBUS_BL_LITTLE_ID	0x1	/* (MPIDR & 0xF00) >> 8 */
 #define COLUMBUS_BL_BIG_ID	0x0	/* (MPIDR & 0xF00) >> 8 */
 
-/* TODO try getting these from platform struct */
-#define COLUMBUS_CLK_BIG_MIN	400000	/* Minimum (Big) clock frequency */
-#define COLUMBUS_CLK_LITTLE_MAX	500000	/* Maximum clock frequency (Little) */
-
 static struct cpufreq_frequency_table *freq_table;
-static atomic_t freq_table_users = ATOMIC_INIT(0);
 
 static unsigned int current_freq;
 
+static unsigned long clk_big_min;	/* Minimum (Big) clock frequency */
+static unsigned long clk_little_max;	/* Maximum clock frequency (Little) */
+
+static unsigned int bl_up_hyst, bl_down_hyst;
+static unsigned int bl_hyst_cnt = 3;
 /*
  * HVC Encoding is used directly as GCC doesn't support it yet
  * Currently <imm> = 2 - to get cluster ID, 1 - to switch cluster
@@ -83,10 +83,10 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 			     unsigned int target_freq, unsigned int relation)
 {
 	cpumask_t cpus_allowed;
-	int cpu = policy->cpu;
+	uint32_t cpu = policy->cpu;
 	struct cpufreq_freqs freqs;
-	u_int freq_tab_idx;
-	u_int cur_cluster;
+	uint32_t freq_tab_idx;
+	uint32_t cur_cluster, do_switch = 0;
 
 	/* Prevent thread cpu migration - not sure if necessary */
 	cpus_allowed = current->cpus_allowed;
@@ -116,25 +116,51 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 		return 0;
 	}
 
-	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
-
 	pr_debug("Requested Freq %d on %s cpu %d\n", freqs.new,
 		cur_cluster == COLUMBUS_BL_LITTLE_ID ? "LITTLE" : "big", cpu);
-	if (freqs.new < COLUMBUS_CLK_BIG_MIN &&
-				cur_cluster == COLUMBUS_BL_BIG_ID) {
-		/* Switch to Little */
-		columbus_cpufreq_switch_bl_cluster(COLUMBUS_BL_LITTLE_ID);
-	} else if (freqs.new > COLUMBUS_CLK_LITTLE_MAX &&
-				cur_cluster == COLUMBUS_BL_LITTLE_ID) {
-		/* Switch to Big */
-		columbus_cpufreq_switch_bl_cluster(COLUMBUS_BL_BIG_ID);
-	}
-	cur_cluster = columbus_cpufreq_get_bl_cluster();
 
 	/* TODO:
-	 * Set new clock divider rate
-	 * SCP / MHU calls to set OPP
+	 * Apply hysteresis only for ondemand, conservative or interactive
+	 * governors for now. Not applicable for powersave, performance and
+	 * userspace governors.
+	 * Need to make this independent of governor or move it outside driver
+	 * bl_down_hyst/bl_up_hyst needs to be per-CPU if we need to support
+	 * per-CPU switching
 	 */
+	if (strcmp(policy->governor->name, "powersave") == 0 ||
+		strcmp(policy->governor->name, "performance") == 0 ||
+		strcmp(policy->governor->name, "userspace") == 0) {
+		bl_down_hyst = bl_up_hyst = bl_hyst_cnt;
+	}
+	if (freqs.new < clk_big_min &&
+			cur_cluster == COLUMBUS_BL_BIG_ID &&
+			++bl_down_hyst >= bl_hyst_cnt) {
+			do_switch = 1;	/* Switch to Little */
+	} else if (freqs.new > clk_little_max &&
+			cur_cluster == COLUMBUS_BL_LITTLE_ID &&
+			++bl_up_hyst >= bl_hyst_cnt) {
+			do_switch = 1;	/* Switch to Big */
+	}
+
+	if (bl_up_hyst >= bl_hyst_cnt || bl_down_hyst >= bl_hyst_cnt) {
+		bl_down_hyst = bl_up_hyst = 0;
+	} else if (bl_down_hyst || bl_up_hyst) {
+		set_cpus_allowed(current, cpus_allowed);
+		return 0;
+	}
+
+	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
+
+	/* TODO:
+	 * Set new clock divider rate with MHU calls to set OPP
+	 */
+
+	if (do_switch)
+		columbus_cpufreq_switch_bl_cluster(
+			cur_cluster == COLUMBUS_BL_LITTLE_ID ?
+			COLUMBUS_BL_BIG_ID : COLUMBUS_BL_LITTLE_ID);
+	cur_cluster = columbus_cpufreq_get_bl_cluster();
+
 	policy->cur = current_freq = freqs.new;
 
 	set_cpus_allowed(current, cpus_allowed);
@@ -155,8 +181,7 @@ static unsigned int columbus_cpufreq_get(unsigned int cpu)
 	BUG_ON(cpu != smp_processor_id());
 
 	/* TODO:
-	 * Read current clock rate
-	 * current_freq = policy->max;
+	 * Read current clock rate with MHU call
 	 */
 
 	set_cpus_allowed(current, cpus_allowed);
@@ -168,9 +193,6 @@ static unsigned int columbus_cpufreq_get(unsigned int cpu)
 static int columbus_cpufreq_init(struct cpufreq_policy *policy)
 {
 	int result = 0;
-
-	if (atomic_inc_return(&freq_table_users) == 1)
-		result = 0; /* TODO Initialization SCP/MHU calls*/
 
 	result = cpufreq_frequency_table_cpuinfo(policy, freq_table);
 	if (result)
