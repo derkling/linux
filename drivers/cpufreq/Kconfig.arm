@@ -2,6 +2,24 @@
 # ARM CPU Frequency scaling drivers
 #
 
+config ARM_BL_CPUFREQ
+	depends on EXPERIMENTAL
+	depends on ARCH_VEXPRESS_DT
+	tristate "Simple cpufreq interface for the ARM big.LITTLE switcher"
+	help
+	  Provides a simple cpufreq interface to control the ARM
+	  big.LITTLE switcher.
+
+	  Note that this code is not currently safe unless the
+	  big.LITTLE switcher binary has been loaded separately by an
+	  external bootloader or firmware before entering the kernel.
+	  Otherwise, you can still build this code as a module,
+	  providing that you don't load it.
+
+	  Refer to Documentation/cpufreq/cpufreq-arm-bl.txt for details.
+
+	  If unsure, say N.
+
 config ARM_OMAP2PLUS_CPUFREQ
 	bool "TI OMAP2+"
 	depends on ARCH_OMAP2PLUS
