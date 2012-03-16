@@ -44,7 +44,7 @@ static inline void wait_for_mhu_lo(void)
 	do {
 		status = mhu_reg_readl(gdata, SCP_INTR_L_STAT);
 		cpu_relax();
-	} while (status);	          
+	} while (status);
 }
 
 int get_dvfs_size(int cluster, int cpu, u32 *size)
@@ -62,17 +62,17 @@ int get_dvfs_size(int cluster, int cpu, u32 *size)
 
 #ifndef INTERRUPTS_ARE_NOT_WORKING
 	append_req(req, &lo_mutex, &lo_head);
-	
+
 	/* Check if SPC can deal with us.  */
 	wait_for_mhu_lo();
 
 	/* Fill payload.  */
 	mhu_mem_writel(gdata, SCP_LOW, 1);
 	/* Write set register.  */
-	mhu_reg_writel(gdata, SCP_INTR_L_SET, 
-		       (1 << 20) | 
-		       (0 /* flags  */ << 16) | 
-		       (cluster << 12) | 
+	mhu_reg_writel(gdata, SCP_INTR_L_SET,
+		       (1 << 20) |
+		       (0 /* flags  */ << 16) |
+		       (cluster << 12) |
 		       (cpu << 8) |
 		       GET_CAPABILITIES);
 
@@ -89,7 +89,7 @@ int get_dvfs_size(int cluster, int cpu, u32 *size)
 #else
 	kfree(req->payload);
 	kfree(req);
-	
+
 	return -EBUSY;
 #endif
 }
@@ -113,17 +113,17 @@ int get_dvfs_capabilities(int cluster, int cpu, u32 *freqs, u32 size)
 
 #ifndef INTERRUPTS_ARE_NOT_WORKING
 	append_req(req, &lo_mutex, &lo_head);
-	
+
 	/* Check if SPC can deal with us.  */
 	wait_for_mhu_lo();
 
 	/* Fill payload.  */
 	mhu_mem_writel(gdata, SCP_LOW, 1);
 	/* Write set register.  */
-	mhu_reg_writel(gdata, SCP_INTR_L_SET, 
-		       (1 << 20) | 
-		       (0 /* flags  */ << 16) | 
-		       (cluster << 12) | 
+	mhu_reg_writel(gdata, SCP_INTR_L_SET,
+		       (1 << 20) |
+		       (0 /* flags  */ << 16) |
+		       (cluster << 12) |
 		       (cpu << 8) |
 		       GET_CAPABILITIES);
 
@@ -163,17 +163,17 @@ int get_performance(int cluster, int cpu, u32 *perf)
 
 #ifndef INTERRUPTS_ARE_NOT_WORKING
 	append_req(req, &lo_mutex, &lo_head);
-	      
+
 	/* Check if SPC can deal with us.  */
 	wait_for_mhu_lo();
 
 	/* Fill payload.  */
 	mhu_mem_writel(gdata, SCP_LOW, cluster & 0xFF);
 	wmb();
-	mhu_reg_writel(gdata, SCP_INTR_L_SET, (1 << 20) | 
-		       (0 /* flags  */ << 16) | 
-		       (cluster << 12) | 
-		       (cpu << 8) | 
+	mhu_reg_writel(gdata, SCP_INTR_L_SET, (1 << 20) |
+		       (0 /* flags  */ << 16) |
+		       (cluster << 12) |
+		       (cpu << 8) |
 		       GET_PERFORMANCE);
 
 	/* Wait for response.  */
@@ -215,17 +215,17 @@ int set_performance(int cluster, int cpu, u32 index)
 
 #ifndef INTERRUPTS_ARE_NOT_WORKING
 	append_req(req, &hi_mutex, &hi_head);
-	      
+
 	/* Check if SPC can deal with us.  */
 	wait_for_mhu_hi();
 
 	/* Fill payload.  */
 	mhu_mem_writel(gdata, SCP_HIGH, (cluster & 0xFF) | ((index << 8) && 0xFF00));
 	wmb();
-	mhu_reg_writel(gdata, SCP_INTR_H_SET, (2 << 20) | 
-		       (0 /* flags  */ << 16) | 
-		       (cluster << 12) | 
-		       (cpu << 8) | 
+	mhu_reg_writel(gdata, SCP_INTR_H_SET, (2 << 20) |
+		       (0 /* flags  */ << 16) |
+		       (cluster << 12) |
+		       (cpu << 8) |
 		       SET_PERFORMANCE);
 
 	/* Wait for response.  */
@@ -239,7 +239,7 @@ int set_performance(int cluster, int cpu, u32 index)
 		ret = 0;
 
 	kfree(req->payload);
-	kfree(req);	
+	kfree(req);
 
 	return ret;
 #else
@@ -253,7 +253,7 @@ int set_performance(int cluster, int cpu, u32 index)
 static irqreturn_t arm_mhu_hi_irq_handler(int irq, void *dev_id)
 {
 	struct arm_mhu_data *data = dev_id;
-	u32 status = mhu_reg_readl(dev_id, SCP_INTR_H_STAT);	
+	u32 status = mhu_reg_readl(dev_id, SCP_INTR_H_STAT);
 	u32 cmd = status & 0xFF;
 	struct list_head *pos;
 	struct arm_mhu_request *req = 0;
@@ -267,7 +267,7 @@ static irqreturn_t arm_mhu_hi_irq_handler(int irq, void *dev_id)
 			break;
 		}
 	}
-	mutex_unlock(&hi_mutex);	
+	mutex_unlock(&hi_mutex);
 
 	req->payload_size = (status & 0x7ff00000) >> 20;
 	req->payload = kzalloc(sizeof(u8) * req->payload_size, GFP_KERNEL);
@@ -291,7 +291,7 @@ out:
 static irqreturn_t arm_mhu_lo_irq_handler(int irq, void *dev_id)
 {
 	struct arm_mhu_data *data = dev_id;
-	u32 status = mhu_reg_readl(dev_id, SCP_INTR_L_STAT);	
+	u32 status = mhu_reg_readl(dev_id, SCP_INTR_L_STAT);
 	u32 cmd = status & 0xFF;
 	struct list_head *pos;
 	struct arm_mhu_request *req = 0;
@@ -305,7 +305,7 @@ static irqreturn_t arm_mhu_lo_irq_handler(int irq, void *dev_id)
 			break;
 		}
 	}
-	mutex_unlock(&lo_mutex);	
+	mutex_unlock(&lo_mutex);
 
 	req->payload_size = (status & 0x7ff00000) >> 20;
 	req->payload = kzalloc(sizeof(u32) * req->payload_size, GFP_KERNEL);
@@ -331,6 +331,8 @@ static __devinit int arm_mhu_probe(struct platform_device *pdev)
 	struct arm_mhu_data *data;
 	struct resource *res;
 	int ret = 0;
+
+	printk(KERN_INFO "Columbus: MHU probe\n");
 
 	data = kzalloc(sizeof(*data), GFP_KERNEL);
 	if (!data) {
@@ -380,7 +382,7 @@ static __devinit int arm_mhu_probe(struct platform_device *pdev)
 		ret = -EINVAL;
 		goto remap_free;
 	}
-	data->lo_irq = res->start;     
+	data->lo_irq = res->start;
 
 	ret = request_threaded_irq(data->hi_irq, 0, arm_mhu_hi_irq_handler, 0, "arm_mhu_hi_irq", data);
 	if (ret) {
@@ -393,7 +395,7 @@ static __devinit int arm_mhu_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(&pdev->dev, "lo priority irq request failed\n");
 		ret = -ENODEV;
-		goto irq_free;		
+		goto irq_free;
 	}
 
 	platform_set_drvdata(pdev, data);
