@@ -6,6 +6,8 @@
 #include <asm/io.h>
 #include "arm_mhu.h"
 
+#define INTERRUPTS_ARE_NOT_WORKING
+
 static struct arm_mhu_data *gdata;
 static struct list_head lo_head;
 static struct mutex lo_mutex;
@@ -25,7 +27,17 @@ static inline void append_req(struct arm_mhu_request *req, struct mutex *mutex, 
 	mutex_unlock(mutex);
 }
 
-static inline void wait_for_mhu(void)
+static inline void wait_for_mhu_hi(void)
+{
+	volatile u32 status;
+
+	do {
+		status = mhu_reg_readl(gdata, SCP_INTR_H_STAT);
+		cpu_relax();
+	} while (status);
+}
+
+static inline void wait_for_mhu_lo(void)
 {
 	volatile u32 status;
 
@@ -47,10 +59,12 @@ int get_dvfs_size(int cluster, int cpu, u32 *size)
 		return -ENOMEM;
 
 	init_req(req, GET_CAPABILITIES);
+
+#ifndef INTERRUPTS_ARE_NOT_WORKING
 	append_req(req, &lo_mutex, &lo_head);
 	
 	/* Check if SPC can deal with us.  */
-	wait_for_mhu();
+	wait_for_mhu_lo();
 
 	/* Fill payload.  */
 	mhu_mem_writel(gdata, SCP_LOW, 1);
@@ -63,15 +77,21 @@ int get_dvfs_size(int cluster, int cpu, u32 *size)
 		       GET_CAPABILITIES);
 
 	/* Wait for response.  */
-	if (!wait_for_completion_timeout(&req->sync, 1)) {
+	if (!wait_for_completion_timeout(&req->sync, usecs_to_jiffies(200))) {
 		return -ETIMEDOUT;
 	}
 
 	*size = req->payload_size;
-
+	kfree(req->payload);
 	kfree(req);
 
 	return 0;
+#else
+	kfree(req->payload);
+	kfree(req);
+	
+	return -EBUSY;
+#endif
 }
 
 int get_dvfs_capabilities(int cluster, int cpu, u32 *freqs, u32 size)
@@ -87,10 +107,12 @@ int get_dvfs_capabilities(int cluster, int cpu, u32 *freqs, u32 size)
 		return -ENOMEM;
 
 	init_req(req, GET_CAPABILITIES);
+
+#ifndef INTERRUPTS_ARE_NOT_WORKING
 	append_req(req, &lo_mutex, &lo_head);
 	
 	/* Check if SPC can deal with us.  */
-	wait_for_mhu();
+	wait_for_mhu_lo();
 
 	/* Fill payload.  */
 	mhu_mem_writel(gdata, SCP_LOW, 1);
@@ -103,7 +125,7 @@ int get_dvfs_capabilities(int cluster, int cpu, u32 *freqs, u32 size)
 		       GET_CAPABILITIES);
 
 	/* Wait for response.  */
-	if (!wait_for_completion_timeout(&req->sync, 1)) {
+	if (!wait_for_completion_timeout(&req->sync, usecs_to_jiffies(200))) {
 		return -ETIMEDOUT;
 	}
 
@@ -115,6 +137,12 @@ int get_dvfs_capabilities(int cluster, int cpu, u32 *freqs, u32 size)
 	kfree(req);
 
 	return 0;
+#else
+	kfree(req->payload);
+	kfree(req);
+
+	return -EBUSY;
+#endif
 }
 
 int get_performance(int cluster, int cpu, u32 *perf)
@@ -129,10 +157,12 @@ int get_performance(int cluster, int cpu, u32 *perf)
 		return -ENOMEM;
 
 	init_req(req, GET_PERFORMANCE);
+
+#ifndef INTERRUPTS_ARE_NOT_WORKING
 	append_req(req, &lo_mutex, &lo_head);
 	      
 	/* Check if SPC can deal with us.  */
-	wait_for_mhu();
+	wait_for_mhu_lo();
 
 	/* Fill payload.  */
 	mhu_mem_writel(gdata, SCP_LOW, cluster & 0xFF);
@@ -144,7 +174,7 @@ int get_performance(int cluster, int cpu, u32 *perf)
 		       GET_PERFORMANCE);
 
 	/* Wait for response.  */
-	if (!wait_for_completion_timeout(&req->sync, 1)) {
+	if (!wait_for_completion_timeout(&req->sync, usecs_to_jiffies(200))) {
 		return -ETIMEDOUT;
 	}
 
@@ -159,6 +189,12 @@ int get_performance(int cluster, int cpu, u32 *perf)
 	kfree(req);
 
 	return 0;
+#else
+	kfree(req->payload);
+	kfree(req);
+
+	return -EBUSY;
+#endif
 }
 
 int set_performance(int cluster, int cpu, u32 index)
@@ -171,10 +207,12 @@ int set_performance(int cluster, int cpu, u32 index)
 		return -ENOMEM;
 
 	init_req(req, SET_PERFORMANCE);
+
+#ifndef INTERRUPTS_ARE_NOT_WORKING
 	append_req(req, &hi_mutex, &hi_head);
 	      
 	/* Check if SPC can deal with us.  */
-	wait_for_mhu();
+	wait_for_mhu_hi();
 
 	/* Fill payload.  */
 	mhu_mem_writel(gdata, SCP_HIGH, (cluster & 0xFF) | ((index << 8) && 0xFF00));
@@ -186,7 +224,7 @@ int set_performance(int cluster, int cpu, u32 index)
 		       SET_PERFORMANCE);
 
 	/* Wait for response.  */
-	if (!wait_for_completion_timeout(&req->sync, 1)) {
+	if (!wait_for_completion_timeout(&req->sync, usecs_to_jiffies(200))) {
 		return -ETIMEDOUT;
 	}
 
@@ -199,6 +237,12 @@ int set_performance(int cluster, int cpu, u32 index)
 	kfree(req);	
 
 	return ret;
+#else
+	kfree(req->payload);
+	kfree(req);
+
+	return -EBUSY;
+#endif
 }
 
 static irqreturn_t arm_mhu_hi_irq_handler(int irq, void *dev_id)
@@ -411,7 +455,7 @@ void arm_mhu_exit(void)
 	platform_driver_unregister(&arm_mhu_driver);
 }
 
-module_init(arm_mhu_init);
+arch_initcall(arm_mhu_init);
 module_exit(arm_mhu_exit);
 
 MODULE_LICENSE("GPL");
