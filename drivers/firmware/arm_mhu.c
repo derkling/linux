@@ -63,7 +63,9 @@ int get_dvfs_size(int cluster, int cpu, u32 *size)
 		       GET_CAPABILITIES);
 
 	/* Wait for response.  */
-	wait_for_completion(&req->sync);
+	if (!wait_for_completion_timeout(&req->sync, 1)) {
+		return -ETIMEDOUT;
+	}
 
 	*size = req->payload_size;
 
@@ -101,7 +103,9 @@ int get_dvfs_capabilities(int cluster, int cpu, u32 *freqs, u32 size)
 		       GET_CAPABILITIES);
 
 	/* Wait for response.  */
-	wait_for_completion(&req->sync);
+	if (!wait_for_completion_timeout(&req->sync, 1)) {
+		return -ETIMEDOUT;
+	}
 
 	for (i = 0; i < size; i++) {
 		freqs[i] = req->payload[i];
@@ -140,7 +144,9 @@ int get_performance(int cluster, int cpu, u32 *perf)
 		       GET_PERFORMANCE);
 
 	/* Wait for response.  */
-	wait_for_completion(&req->sync);
+	if (!wait_for_completion_timeout(&req->sync, 1)) {
+		return -ETIMEDOUT;
+	}
 
 	*perf = req->payload[0];
 	if (*perf & 0xFF) {
@@ -180,7 +186,9 @@ int set_performance(int cluster, int cpu, u32 index)
 		       SET_PERFORMANCE);
 
 	/* Wait for response.  */
-	wait_for_completion(&req->sync);
+	if (!wait_for_completion_timeout(&req->sync, 1)) {
+		return -ETIMEDOUT;
+	}
 
 	if (req->payload[0] && 0xFF)
 		ret = req->payload[0] & 0xFF;
