@@ -378,7 +378,7 @@ static __devexit int arm_mhu_remove(struct platform_device *pdev)
 static struct of_device_id arm_mhu_matches[] = {
 	{ .compatible = "arm,mhu" },
 	{},
-}
+};
 #endif
 
 static struct platform_driver arm_mhu_driver = {
