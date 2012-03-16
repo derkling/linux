@@ -19,6 +19,7 @@
 #include <linux/module.h>
 #include <linux/tick.h>
 #include <trace/events/power.h>
+#include <asm/uaccess.h>
 #include <asm/smp_plat.h>
 #include <asm/suspend.h>
 
@@ -280,8 +281,8 @@ out:
 
 static int idle_mask_show(struct seq_file *f, void *p)
 {
-	char buf[256];
-	bitmap_scnlistprintf(buf, 256, cpu_pm_bits, CONFIG_NR_CPUS);
+	char buf[32];
+	bitmap_scnlistprintf(buf, 32, cpu_pm_bits, CONFIG_NR_CPUS);
 
 	seq_printf(f, "%s\n", buf);
 
@@ -293,39 +294,57 @@ static int idle_mask_open(struct inode *inode, struct file *file)
 	return single_open(file, idle_mask_show, inode->i_private);
 }
 
-static const struct file_operations cpuidle_fops = {
-	.open		= idle_mask_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-
-static int idle_debug_set(void *data, u64 val)
+static ssize_t idle_mask_write(struct file *file,
+	       const char __user *user_buf, size_t count, loff_t *ppos)
 {
-	int i, cpus = num_possible_cpus();
+	int i, ret, cpus = num_possible_cpus();
+	char buf[1 + sizeof(unsigned int) * 8 + 1 + 1];
+	unsigned int val;
 
-	if ((val > cpus || val < 0) && val != 0xff) {
-		pr_warning("Wrong parameter passed\n");
-		return -EINVAL;
+	count = min(count, (sizeof(buf)-1));
+	if (copy_from_user(buf, user_buf, count))
+		return -EFAULT;
+
+	buf[count] = '\0';
+
+	if (sysfs_streq(buf, "clear")) {
+		cpumask_clear(to_cpumask(cpu_pm_bits));
+		return count;
 	}
 
-	if (val == 0xff) {
-		cpumask_clear(to_cpumask(cpu_pm_bits));
-		return 0;
+	ret = kstrtouint(buf, 10, &val);
+
+	if (ret) {
+		pr_warning("Badly formatted string passed\n");
+		return ret;
+	}
+
+	if (val > cpus || val < 0) {
+		pr_warning("Wrong value passed\n");
+		return -EINVAL;
 	}
 
 	if (val == cpus) {
 		cpumask_copy(to_cpumask(cpu_pm_bits), cpu_possible_mask);
-		return 0;
+		return count;
 	}
 
 	for (i = 0; i < cpus; i++)
-		if (val == i)
+		if (val == i) {
 			cpumask_set_cpu(i, to_cpumask(cpu_pm_bits));
+			return count;
+		}
 
-	return 0;
+	return -EINVAL;
 }
-DEFINE_SIMPLE_ATTRIBUTE(idle_debug_fops, NULL, idle_debug_set, "%llu\n");
+
+static const struct file_operations cpuidle_fops = {
+	.open		= idle_mask_open,
+	.write		= idle_mask_write,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
 
 /*
  * columbus_idle_init
@@ -390,15 +409,7 @@ int __init columbus_idle_init(void)
 		return 0;
 	}
 
-	file_debug = debugfs_create_file("enable_idle", S_IRUGO | S_IWGRP,
-				   idle_debug, NULL, &idle_debug_fops);
-
-	if (IS_ERR_OR_NULL(file_debug)) {
-		printk(KERN_INFO "Error in creating enable_idle file\n");
-		return 0;
-	}
-
-	file_debug = debugfs_create_file("enable_mask", S_IRUGO | S_IWGRP,
+	file_debug = debugfs_create_file("idle_enable", S_IRUGO | S_IWGRP,
 					idle_debug, NULL, &cpuidle_fops);
 
 	if (IS_ERR_OR_NULL(file_debug))

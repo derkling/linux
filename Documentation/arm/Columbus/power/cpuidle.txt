@@ -29,18 +29,19 @@ Peripheral state (VFP, GIC) is saved/restored through CPU PM notifiers.
 By default C-states deeper than C1 are not enabled.
 
 To enable deep C-states a bitmap can be programmed using a simple debugfs
-entry accordingly, by echoing values in:
+entry accordingly, by echoing string values in:
 
-/sys/kernel/debug/idle_debug/enable_idle
+/sys/kernel/debug/idle_debug/idle_enable
 
-[0-N]*                  enable deep C-states for the given CPU
-[num_possible_cpus]     enable deep C-states for all CPUs and cluster
-[0xff]                  disable C-states for all CPUs
+[0-N]*                enable deep C-states for the given CPU
+[num_possible_cpus]** enable deep C-states for all CPUs and cluster
+"clear"               disable C-states for all CPUs
 
-(*) N = (num_possible_cpus - 1)
+(*)  N = (num_possible_cpus - 1)
+(**) Expressed as an integer string
 
 The current deep C-states enabled cpumask can be obtained by reading
 
-/sys/kernel/debug/idle_debug/enable_mask
+/sys/kernel/debug/idle_debug/idle_enable
 
 The output value is provided as a list of enabled CPUs.
