@@ -374,12 +374,22 @@ static __devexit int arm_mhu_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_OF
+static struct of_device_id arm_mhu_matches[] = {
+	{ .compatible = "arm,mhu" },
+	{},
+}
+#endif
+
 static struct platform_driver arm_mhu_driver = {
 	.probe  = arm_mhu_probe,
 	.remove = __devexit_p(arm_mhu_remove),
 	.driver = {
 		.name  = "arm_mhu",
 		.owner = THIS_MODULE,
+#ifdef CONFIG_OF
+		.of_match_table = arm_mhu_matches,
+#endif
 	},
 };
 

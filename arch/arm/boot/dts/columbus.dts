@@ -77,6 +77,14 @@
 		clock-frequency = <240000000>;
 	};
 
+	mhu@2b1f0000 {
+		compatible = "arm,mhu";
+		reg = <0x00 0x2b1f0000 0x00 0x10000>,
+		      <0x00 0xce000000 0x00 0x1000>;
+		interrupts = <0 35 4
+			      0 36 4>;
+	};
+
 	rtsm2_model {
 		ranges = <0 0 0x0 0x08000000 0x0 0x04000000>,
 		         <1 0 0x0 0x14000000 0x0 0x04000000>,
