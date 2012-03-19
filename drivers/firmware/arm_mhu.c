@@ -97,7 +97,10 @@ int get_dvfs_size(int cluster, int cpu, u32 *size)
 int get_dvfs_capabilities(int cluster, int cpu, u32 *freqs, u32 size)
 {
 	struct arm_mhu_request *req;
+
+#ifndef INTERRUPTS_ARE_NOT_WORKING
 	int i;
+#endif
 
 	if (!freqs)
 		return -EFAULT;
@@ -200,7 +203,9 @@ int get_performance(int cluster, int cpu, u32 *perf)
 int set_performance(int cluster, int cpu, u32 index)
 {
 	struct arm_mhu_request *req;
+#ifndef INTERRUPTS_ARE_NOT_WORKING
 	int ret;
+#endif
 
 	req = kzalloc(sizeof(*req), GFP_KERNEL);
 	if (!req)
