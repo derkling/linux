@@ -321,6 +321,7 @@ config ARCH_VEXPRESS
 
 config ARCH_COLUMBUS
 	bool "ARM Ltd. Columbus Compute Subsystem family"
+	select ARCH_HAS_CPUFREQ
 	select ARM_LPAE
 	select ARM_PATCH_PHYS_VIRT
 	select AUTO_ZRELADDR
@@ -2122,6 +2123,16 @@ config CPU_FREQ_INTEGRATOR
 	default y
 	help
 	  This enables the CPUfreq driver for ARM Integrator CPUs.
+
+	  For details, take a look at <file:Documentation/cpu-freq>.
+
+	  If in doubt, say Y.
+
+config CPU_FREQ_COLUMBUS
+	tristate "CPUfreq driver for ARM COLUMBUS CPUs"
+	depends on ARCH_COLUMBUS && CPU_FREQ
+	help
+	  This enables the CPUfreq driver for ARM COLUMBUS CPUs.
 
 	  For details, take a look at <file:Documentation/cpu-freq>.
 
