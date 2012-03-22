@@ -14,7 +14,7 @@
 	};
 	
 	chosen {
-		bootargs = "console=ttyAMA0 debug earlyprintk root=/dev/mmcblk0 lpj=14784 rootwait verbose rw";
+		bootargs = "console=ttyAMA0,115200 debug earlyprintk root=/dev/mmcblk0 lpj=14784 rootwait verbose rw";
 	};
 
 	clusters {
