@@ -14,24 +14,82 @@
 	};
 	
 	chosen {
-		bootargs = "console=ttyAMA0@115200 debug earlyprintk root=/dev/mmcblk0 rootwait";
+		bootargs = "console=ttyAMA0 debug earlyprintk root=/dev/mmcblk0 lpj=14784 rootwait verbose rw";
+	};
+
+	clusters {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cluster0: cluster@0 {
+			reg = <0>;
+			cores {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				core0: core@0 {
+					reg = <0>;
+				};
+
+				core1: core@1 {
+					reg = <1>;
+				};
+
+			};
+		};
+
+		cluster1: cluster@1 {
+			reg = <1>;
+			cores {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				core2: core@0 {
+					reg = <0>;
+				};
+
+				core3: core@1 {
+					reg = <1>;
+				};
+			};
+		};
 	};
 
 	cpus {
 		#address-cells = <1>;
 		#size-cells = <0>;
 
-		cpu@0 {
+		cpu0: cpu@0 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a15";
 			reg = <0>;
+			cluster = <&cluster0>;
+			core = <&core0>;
 		};
 
-		cpu@1 {
+/*		cpu1: cpu@1 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a15";
 			reg = <1>;
+			cluster = <&cluster0>;
+			core = <&core1>;
 		};
+
+		cpu2: cpu@2 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a7";
+			reg = <2>;
+			cluster = <&cluster1>;
+			core = <&core2>;
+		};
+
+		cpu3: cpu@3 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a7";
+			reg = <3>;
+			cluster = <&cluster1>;
+			core = <&core3>;
+		}; */
 	};
 
 	memory {
@@ -47,7 +105,31 @@
 		#interrupt-cells = <3>;
 		#address-cells = <0>;
 		reg = <0x00 0x2c001000 0x0 0x1000>,
-		      <0x00 0x2c002000 0x0 0x2000>;
+		      <0x00 0x2c002000 0x0 0x100>;
+
+		gic-cpuif@0 {
+			compatible = "arm,gic-cpuif";
+			cpuif-id = <0>;
+			cpu = <&cpu0>;
+		};
+
+/*		gic-cpuif@1 {
+			compatible = "arm,gic-cpuif";
+			cpuif-id = <1>;
+			cpu = <&cpu1>;
+		};
+
+		gic-cpuif@2 {
+			compatible = "arm,gic-cpuif";
+			cpuif-id = <2>;
+			cpu = <&cpu2>;
+		};
+
+		gic-cpuif@3 {
+			compatible = "arm,gic-cpuif";
+			cpuif-id = <3>;
+			cpu = <&cpu3>;
+		}; */
 	};
 
 	localtimer {
@@ -86,13 +168,6 @@
 	};
 
 	rtsm2_model {
-		ranges = <0 0 0x0 0x08000000 0x0 0x04000000>,
-		         <1 0 0x0 0x14000000 0x0 0x04000000>,
-			 <2 0 0x0 0x18000000 0x0 0x04000000>,
-			 <3 0 0x0 0x1c000000 0x0 0x04000000>,
-			 <4 0 0x0 0x0c000000 0x0 0x04000000>,
-			 <5 0 0x0 0x10000000 0x0 0x04000000>;
-
 		interrupt-map-mask = <0 0 63>;
 		interrupt-map = <0 0  0 &gic 0  0 4>,
 			        <0 0  1 &gic 0  1 4>,

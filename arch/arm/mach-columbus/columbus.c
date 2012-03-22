@@ -41,49 +41,6 @@
 #include <mach/columbus.h>
 
 
-static int columbus_init_cpu(unsigned long node, const char *uname,
-			int depth, void *data)
-{
-	//if (of_flat_dt_is_compatible(node, "arm,cortex-a15")) {
-	//}
-
-	return 0;
-}
-
-void __init smp_init_cpus(void)
-{
-	int ncores;
-
-	// columbus_scu = of_scan_flat_dt(columbus_init_cpu, NULL);
-}
-
-void __init platform_smp_prepare_cpus(unsigned int max_cpus)
-{
-}
-
-void __cpuinit platform_secondary_init(unsigned int cpu)
-{
-}
-
-int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
-{
-	return 0;
-}
-
-int platform_cpu_kill(unsigned int cpu)
-{
-	return 1;
-}
-
-void platform_cpu_die(unsigned int cpu)
-{
-}
-
-int platform_cpu_disable(unsigned int cpu)
-{
-	return 0;
-}
-
 int clk_enable(struct clk *clk)
 {
 	return 0;
@@ -133,6 +90,9 @@ static struct map_desc columbus_io_desc[] __initdata = {
 void __init columbus_map_common_io(void)
 {
 	iotable_init(columbus_io_desc, ARRAY_SIZE(columbus_io_desc));
+#ifdef CONFIG_SMP
+	columbus_smp_map_io();
+#endif
 }
 
 static struct of_device_id columbus_irq_match[] __initdata = {
