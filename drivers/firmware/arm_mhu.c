@@ -20,7 +20,8 @@ static inline void init_req(struct arm_mhu_request *req, u32 cmd)
 	init_completion(&req->sync);
 }
 
-static inline void append_req(struct arm_mhu_request *req, struct mutex *mutex, struct list_head *head)
+static inline void append_req(struct arm_mhu_request *req, struct mutex *mutex,
+			      struct list_head *head)
 {
 	mutex_lock(mutex);
 	list_add_tail(&req->list, head);
@@ -39,12 +40,9 @@ static inline void wait_for_mhu_hi(void)
 
 static inline void wait_for_mhu_lo(void)
 {
-	volatile u32 status;
-
-	do {
-		status = mhu_reg_readl(gdata, SCP_INTR_L_STAT);
+	while (mhu_reg_readl(gdata, SCP_INTR_L_STAT)) {
 		cpu_relax();
-	} while (status);
+	}
 }
 
 int get_dvfs_size(int cluster, int cpu, u32 *size)
@@ -169,7 +167,6 @@ int get_performance(int cluster, int cpu, u32 *perf)
 
 	/* Fill payload.  */
 	mhu_mem_writel(gdata, SCP_LOW, cluster & 0xFF);
-	wmb();
 	mhu_reg_writel(gdata, SCP_INTR_L_SET, (1 << 20) |
 		       (0 /* flags  */ << 16) |
 		       (cluster << 12) |
@@ -220,8 +217,8 @@ int set_performance(int cluster, int cpu, u32 index)
 	wait_for_mhu_hi();
 
 	/* Fill payload.  */
-	mhu_mem_writel(gdata, SCP_HIGH, (cluster & 0xFF) | ((index << 8) && 0xFF00));
-	wmb();
+	mhu_mem_writel(gdata, SCP_HIGH,
+		       (cluster & 0xFF) | ((index << 8) && 0xFF00));
 	mhu_reg_writel(gdata, SCP_INTR_H_SET, (2 << 20) |
 		       (0 /* flags  */ << 16) |
 		       (cluster << 12) |
@@ -233,10 +230,7 @@ int set_performance(int cluster, int cpu, u32 index)
 		return -ETIMEDOUT;
 	}
 
-	if (req->payload[0] && 0xFF)
-		ret = req->payload[0] & 0xFF;
-	else
-		ret = 0;
+	ret = req->payload[0] & 0xFF;
 
 	kfree(req->payload);
 	kfree(req);
@@ -273,7 +267,7 @@ static irqreturn_t arm_mhu_hi_irq_handler(int irq, void *dev_id)
 	req->payload = kzalloc(sizeof(u8) * req->payload_size, GFP_KERNEL);
 	if (!req->payload) {
 		printk(KERN_ERR "MHU: can't allocate memory for payload.\n");
-		goto out;
+		return IRQ_HANDLED;
 	}
 
 	for (i = 0; i < req->payload_size; i++)
@@ -284,7 +278,6 @@ static irqreturn_t arm_mhu_hi_irq_handler(int irq, void *dev_id)
 
 	complete(&req->sync);
 
-out:
 	return IRQ_HANDLED;
 }
 
@@ -384,14 +377,16 @@ static __devinit int arm_mhu_probe(struct platform_device *pdev)
 	}
 	data->lo_irq = res->start;
 
-	ret = request_threaded_irq(data->hi_irq, 0, arm_mhu_hi_irq_handler, 0, "arm_mhu_hi_irq", data);
+	ret = request_threaded_irq(data->hi_irq, 0, arm_mhu_hi_irq_handler,
+				   0, "arm_mhu_hi_irq", data);
 	if (ret) {
 		dev_err(&pdev->dev, "hi priority irq request failed\n");
 		ret = -ENODEV;
 		goto remap_free;
 	}
 
-	ret = request_threaded_irq(data->lo_irq, 0, arm_mhu_lo_irq_handler, 0, "arm_mhu_hi_irq", data);
+	ret = request_threaded_irq(data->lo_irq, 0, arm_mhu_lo_irq_handler,
+				   0, "arm_mhu_hi_irq", data);
 	if (ret) {
 		dev_err(&pdev->dev, "lo priority irq request failed\n");
 		ret = -ENODEV;
@@ -406,8 +401,7 @@ static __devinit int arm_mhu_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&hi_head);
 	gdata = data;
 
-out:
-	return ret;
+	return 0;
 
 irq_free:
 	free_irq(data->hi_irq, data);
@@ -417,7 +411,7 @@ remap_free:
 
 data_free:
 	kfree(data);
-	goto out;
+	return ret;
 }
 
 static __devexit int arm_mhu_remove(struct platform_device *pdev)
@@ -433,12 +427,10 @@ static __devexit int arm_mhu_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_OF
 static struct of_device_id arm_mhu_matches[] = {
 	{ .compatible = "arm,mhu" },
 	{},
 };
-#endif
 
 static struct platform_driver arm_mhu_driver = {
 	.probe  = arm_mhu_probe,
