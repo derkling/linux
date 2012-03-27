@@ -1,8 +1,9 @@
 /*
- * linux/arch/arm/mach-columbus/cpufreq.c
+ * Columbus CPUFreq support
+ * Based on mach-integrator
  *
- * ARM COLUMBUS cpufreq support
- * Based on linux/arch/arm/mach-integrator/cpu.c
+ * Copyright (C) 2012 ARM Ltd.
+ * Author: Sudeep KarkadaNagesha <sudeep.karkadanagesha@arm.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -13,20 +14,21 @@
  * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-#include <linux/module.h>
-#include <linux/types.h>
-#include <linux/kernel.h>
 #include <linux/cpufreq.h>
-#include <linux/sched.h>
-#include <linux/smp.h>
 #include <linux/init.h>
 #include <linux/io.h>
+#include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/opp.h>
+#include <linux/sched.h>
 #include <linux/slab.h>
+#include <linux/smp.h>
 #include <linux/sysfs.h>
+#include <linux/types.h>
 
 #include <mach/mhu.h>
 
+#define BL_HYST_DEFAULT_COUNT	3
 enum clusters {
 	COLUMBUS_BL_BIG_ID = 0x0,	/* (MPIDR & 0xF00) >> 8 */
 	COLUMBUS_BL_LITTLE_ID = 0x1,	/* (MPIDR & 0xF00) >> 8 */
@@ -41,7 +43,24 @@ static unsigned long clk_big_min;	/* Minimum (Big) clock frequency */
 static unsigned long clk_little_max;	/* Maximum clock frequency (Little) */
 
 static unsigned int bl_up_hyst, bl_down_hyst;
-static unsigned int bl_hyst_cnt = 3;
+static unsigned int bl_hyst_cfg_cnt = BL_HYST_DEFAULT_COUNT;
+static unsigned int bl_hyst_current_cnt = BL_HYST_DEFAULT_COUNT;
+
+static ssize_t show_bl_hyst_config(struct cpufreq_policy *p, char *buf)
+{
+	return sprintf(buf, "%d\n", bl_hyst_cfg_cnt);
+}
+
+static ssize_t store_bl_hyst_config(struct cpufreq_policy *p,
+					const char *buf, size_t n)
+{
+	if (sscanf(buf, "%u", &bl_hyst_cfg_cnt) != 1)
+		return -EINVAL;
+	return n;
+}
+
+cpufreq_freq_attr_rw(bl_hyst_config);
+
 /*
  * HVC Encoding is used directly as GCC doesn't support it yet
  * Currently <imm> = 2 - to get cluster ID, 1 - to switch cluster
@@ -127,7 +146,8 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 	pr_debug("Requested Freq %d on %s cpu %d\n", freqs.new,
 		cur_cluster == COLUMBUS_BL_LITTLE_ID ? "LITTLE" : "big", cpu);
 
-	/* TODO:
+	/*
+	 * TODO:
 	 * Apply hysteresis only for ondemand, conservative or interactive
 	 * governors for now. Not applicable for powersave, performance and
 	 * userspace governors.
@@ -135,24 +155,20 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 	 * bl_down_hyst/bl_up_hyst needs to be per-CPU if we need to support
 	 * per-CPU switching
 	 */
-	if (strcmp(policy->governor->name, "powersave") == 0 ||
-		strcmp(policy->governor->name, "performance") == 0 ||
-		strcmp(policy->governor->name, "userspace") == 0) {
-		bl_down_hyst = bl_up_hyst = bl_hyst_cnt;
-	}
 	if (freqs.new < clk_big_min &&
 			cur_cluster == COLUMBUS_BL_BIG_ID &&
-			++bl_down_hyst >= bl_hyst_cnt) {
+			++bl_down_hyst >= bl_hyst_current_cnt) {
 			do_switch = 1;	/* Switch to Little */
+			bl_down_hyst = 0;
 	} else if (freqs.new > clk_little_max &&
 			cur_cluster == COLUMBUS_BL_LITTLE_ID &&
-			++bl_up_hyst >= bl_hyst_cnt) {
+			++bl_up_hyst >= bl_hyst_current_cnt) {
 			do_switch = 1;	/* Switch to Big */
+			bl_up_hyst = 0;
 	}
 
-	if (bl_up_hyst >= bl_hyst_cnt || bl_down_hyst >= bl_hyst_cnt) {
-		bl_down_hyst = bl_up_hyst = 0;
-	} else if (bl_down_hyst || bl_up_hyst) {
+	/* Skipping for hysteresis management */
+	if (bl_down_hyst || bl_up_hyst) {
 		set_cpus_allowed(current, cpus_allowed);
 		return 0;
 	}
@@ -236,13 +252,13 @@ static int columbus_cpufreq_init_table(void)
 			goto free_mem;
 		}
 		for (j = 0; j < opp_sz[loop]; j++) {
-			indtable[loop][j].index = loop;
+			indtable[loop][j].index = j;
 			indtable[loop][j].frequency = table[loop][j];
 		}
 		indtable[loop][j].index = j;
 		indtable[loop][j].frequency = CPUFREQ_TABLE_END;
 
-		ind_table[loop] = &indtable[loop][0];
+		ind_table[loop] = indtable[loop];
 	}
 
 	freqtable = kzalloc(sizeof(struct cpufreq_frequency_table) *
@@ -251,18 +267,17 @@ static int columbus_cpufreq_init_table(void)
 		ret = -ENOMEM;
 		goto free_mem;
 	}
-	loop = 0;
-	for (i = 0; i < COLUMBUS_MAX_CLUSTER; i++) {
+	for (loop = 0, i = 0; i < COLUMBUS_MAX_CLUSTER; i++) {
 		int j;
-		for (j = 0; j < opp_sz[i]; j++) {
+		for (j = 0; j < opp_sz[i]; j++, loop++) {
 			freqtable[loop].index = loop;
-			freqtable[loop++].frequency = table[i][j];
+			freqtable[loop].frequency = table[i][j];
 		}
 	}
 	freqtable[loop].index = loop;
 	freqtable[loop].frequency = CPUFREQ_TABLE_END;
 
-	freq_table = &freqtable[0];
+	freq_table = freqtable;
 
 	/* Assuming 2 cluster, set clk_big_min and clk_little_max */
 	clk_little_max = table[COLUMBUS_BL_LITTLE_ID]
@@ -281,6 +296,27 @@ free_mem:
 	return ret;
 }
 
+static int columbus_cpufreq_notifier_policy(struct notifier_block *nb,
+		unsigned long val, void *data)
+{
+	struct cpufreq_policy *policy = data;
+	if (val != CPUFREQ_NOTIFY)
+		return 0;
+	if (strcmp(policy->governor->name, "powersave") == 0 ||
+		strcmp(policy->governor->name, "performance") == 0 ||
+		strcmp(policy->governor->name, "userspace") == 0) {
+		bl_hyst_current_cnt = 1;
+	} else {
+		bl_hyst_current_cnt = bl_hyst_cfg_cnt;
+	}
+	bl_down_hyst = bl_up_hyst = 0;
+	return 0;
+}
+
+static struct notifier_block notifier_policy_block = {
+	.notifier_call = columbus_cpufreq_notifier_policy
+};
+
 /* Per-CPU initialization */
 static int columbus_cpufreq_init(struct cpufreq_policy *policy)
 {
@@ -289,8 +325,10 @@ static int columbus_cpufreq_init(struct cpufreq_policy *policy)
 	if (atomic_inc_return(&freq_table_users) == 1)
 		result = columbus_cpufreq_init_table();
 
-	if (result)
+	if (result) {
+		atomic_dec_return(&freq_table_users);
 		return result;
+	}
 
 	result = cpufreq_frequency_table_cpuinfo(policy, freq_table);
 	if (result)
@@ -306,16 +344,25 @@ static int columbus_cpufreq_init(struct cpufreq_policy *policy)
 	policy->cur = policy->max;
 
 	/* Set up frequency dependencies */
-	cpumask_copy(policy->cpus, cpu_active_mask);	/* affected_cpus */
-	cpumask_copy(policy->related_cpus, cpu_active_mask);
-	policy->shared_type = CPUFREQ_SHARED_TYPE_HW;
+	cpumask_copy(policy->cpus, cpu_possible_mask);	/* affected_cpus */
+	cpumask_copy(policy->related_cpus, cpu_possible_mask);
 
+	result = cpufreq_register_notifier(&notifier_policy_block,
+				CPUFREQ_POLICY_NOTIFIER);
+	return result;
+}
+
+static int columbus_cpufreq_exit(struct cpufreq_policy *policy)
+{
+	cpufreq_unregister_notifier(&notifier_policy_block,
+			CPUFREQ_POLICY_NOTIFIER);
 	return 0;
 }
 
 /* Export freq_table to sysfs */
 static struct freq_attr *columbus_cpufreq_attr[] = {
 	&cpufreq_freq_attr_scaling_available_freqs,
+	&bl_hyst_config,
 	NULL,
 };
 
@@ -325,6 +372,7 @@ static struct cpufreq_driver columbus_cpufreq_driver = {
 	.target	= columbus_cpufreq_set_target,
 	.get	= columbus_cpufreq_get,
 	.init	= columbus_cpufreq_init,
+	.exit	= columbus_cpufreq_exit,
 	.name	= "cpufreq_columbus",
 	.attr	= columbus_cpufreq_attr,
 };
