@@ -54,17 +54,34 @@ static struct cpufreq_frequency_table __read_mostly bl_freqs[] = {
 
 /* Miscellaneous helpers */
 
-static unsigned int cluster_to_freq(int cluster)
+static unsigned int entry_to_freq(
+	struct cpufreq_frequency_table const *entry)
+{
+	return entry->frequency;
+}
+
+static unsigned int entry_to_cluster(
+	struct cpufreq_frequency_table const *entry)
+{
+	return entry->index;
+}
+
+static struct cpufreq_frequency_table const *find_entry_by_cluster(int cluster)
 {
 	unsigned int i;
 
-	for(i = 0; bl_freqs[i].frequency != CPUFREQ_TABLE_END; i++)
-		if(bl_freqs[i].index == cluster)
-			return bl_freqs[i].frequency;
+	for(i = 0; entry_to_freq(&bl_freqs[i]) != CPUFREQ_TABLE_END; i++)
+		if(entry_to_cluster(&bl_freqs[i]) == cluster)
+			return &bl_freqs[i];
 
 	WARN(1, pr_fmt("%s(): invalid cluster number %d, assuming 0\n"),
 		__func__, cluster);
-	return bl_freqs[0].frequency;
+	return &bl_freqs[0];
+}
+
+static unsigned int cluster_to_freq(int cluster)
+{
+	return entry_to_freq(find_entry_by_cluster(cluster));
 }
 
 /*
@@ -89,13 +106,30 @@ static unsigned int get_current_freq(void)
  * There is no "switch_to_frequency" function, because the cpufreq frequency
  * table helpers can easily look up the appropriate cluster number for us.
  */
-static void switch_to_cluster(int cluster)
+static void switch_to_entry(struct cpufreq_frequency_table const *target)
 {
-	pr_info("Switching to cluster %d\n", cluster);
+	int old_cluster;
+	struct cpufreq_freqs freqs;
+
+	pr_info("Switching to cluster %d\n", entry_to_cluster(target));
 
 	spin_lock(&switcher_lock);
-	if(cluster != get_current_cluster())
+
+	old_cluster = get_current_cluster();
+	if(entry_to_cluster(target) != old_cluster) {
+		freqs.old = cluster_to_freq(old_cluster);
+		freqs.new = entry_to_freq(target);
+
+		for_each_cpu(freqs.cpu, cpu_present_mask)
+			cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
+
 		__arm_bl_switch_cluster();
+
+		for_each_cpu(freqs.cpu, cpu_present_mask)
+			cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
+
+	}
+
 	spin_unlock(&switcher_lock);
 }
 
@@ -160,7 +194,7 @@ static int bl_cpufreq_target(struct cpufreq_policy *policy,
 	if(err)
 		return err;
 
-	switch_to_cluster(bl_freqs[index].index);
+	switch_to_entry(&bl_freqs[index]);
 	return 0;
 }
 
@@ -204,7 +238,7 @@ static void __exit bl_cpufreq_module_exit(void)
 	cpufreq_unregister_driver(&bl_cpufreq_driver);
 
 	/* Restore the "default" cluster: */
-	switch_to_cluster(CLUSTER_BIG);
+	switch_to_entry(find_entry_by_cluster(CLUSTER_BIG));
 
 	pr_info("cpufreq backend driver unloaded.\n");
 }
