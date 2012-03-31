@@ -194,6 +194,10 @@ smp_call_function_any(const struct cpumask *mask, smp_call_func_t func,
 	return smp_call_function_single(0, func, info, wait);
 }
 
+static inline void smp_cpuset_update_nohz(__maybe_unused int cpu)
+{
+}
+
 static inline void kick_all_cpus_sync(void) {  }
 
 #endif /* !SMP */

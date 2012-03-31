@@ -928,8 +928,10 @@ static inline void inc_nr_running(struct rq *rq)
 		 * the CPU that receives the IPI is guaranteed to see
 		 * the update on nr_running without the rq->lock.
 		 */
+#if defined(CONFIG_SMP)
 		if (cpuset_cpu_adaptive_nohz(rq->cpu))
 			smp_cpuset_update_nohz(rq->cpu);
+#endif
 	}
 }
 
