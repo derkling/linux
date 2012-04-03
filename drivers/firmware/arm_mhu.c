@@ -3,10 +3,9 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/irq.h>
 #include <asm/io.h>
 #include "arm_mhu.h"
-
-#define INTERRUPTS_ARE_NOT_WORKING
 
 static struct arm_mhu_data *gdata;
 static struct list_head lo_head;
@@ -30,17 +29,14 @@ static inline void append_req(struct arm_mhu_request *req, struct mutex *mutex,
 
 static inline void wait_for_mhu_hi(void)
 {
-	volatile u32 status;
-
-	do {
-		status = mhu_reg_readl(gdata, SCP_INTR_H_STAT);
+	while (mhu_reg_readl(gdata, CPU_INTR_H_STAT)) {
 		cpu_relax();
-	} while (status);
+	}
 }
 
 static inline void wait_for_mhu_lo(void)
 {
-	while (mhu_reg_readl(gdata, SCP_INTR_L_STAT)) {
+	while (mhu_reg_readl(gdata, CPU_INTR_L_STAT)) {
 		cpu_relax();
 	}
 }
@@ -48,6 +44,7 @@ static inline void wait_for_mhu_lo(void)
 int get_dvfs_size(int cluster, int cpu, u32 *size)
 {
 	struct arm_mhu_request *req;
+	int ret = 0;
 
 	if (!size)
 		return -EFAULT;
@@ -58,16 +55,15 @@ int get_dvfs_size(int cluster, int cpu, u32 *size)
 
 	init_req(req, GET_CAPABILITIES);
 
-#ifndef INTERRUPTS_ARE_NOT_WORKING
 	append_req(req, &lo_mutex, &lo_head);
 
-	/* Check if SPC can deal with us.  */
+	/* Check if SCP can deal with us */
 	wait_for_mhu_lo();
 
 	/* Fill payload.  */
-	mhu_mem_writel(gdata, SCP_LOW, 1);
+	mhu_mem_writel(gdata, CPU_LOW, 1);
 	/* Write set register.  */
-	mhu_reg_writel(gdata, SCP_INTR_L_SET,
+	mhu_reg_writel(gdata, CPU_INTR_L_SET,
 		       (1 << 20) |
 		       (0 /* flags  */ << 16) |
 		       (cluster << 12) |
@@ -79,26 +75,21 @@ int get_dvfs_size(int cluster, int cpu, u32 *size)
 		return -ETIMEDOUT;
 	}
 
-	*size = req->payload_size;
-	kfree(req->payload);
+	if (req->payload_size) {
+		*size = req->payload_size;
+		kfree(req->payload);
+	} else {
+		ret = -EIO;
+	}
 	kfree(req);
 
-	return 0;
-#else
-	kfree(req->payload);
-	kfree(req);
-
-	return -EBUSY;
-#endif
+	return ret;
 }
 
 int get_dvfs_capabilities(int cluster, int cpu, u32 *freqs, u32 size)
 {
 	struct arm_mhu_request *req;
-
-#ifndef INTERRUPTS_ARE_NOT_WORKING
-	int i;
-#endif
+	int ret = 0;
 
 	if (!freqs)
 		return -EFAULT;
@@ -109,16 +100,15 @@ int get_dvfs_capabilities(int cluster, int cpu, u32 *freqs, u32 size)
 
 	init_req(req, GET_CAPABILITIES);
 
-#ifndef INTERRUPTS_ARE_NOT_WORKING
 	append_req(req, &lo_mutex, &lo_head);
 
 	/* Check if SPC can deal with us.  */
 	wait_for_mhu_lo();
 
 	/* Fill payload.  */
-	mhu_mem_writel(gdata, SCP_LOW, 1);
+	mhu_mem_writel(gdata, CPU_LOW, 1);
 	/* Write set register.  */
-	mhu_reg_writel(gdata, SCP_INTR_L_SET,
+	mhu_reg_writel(gdata, CPU_INTR_L_SET,
 		       (1 << 20) |
 		       (0 /* flags  */ << 16) |
 		       (cluster << 12) |
@@ -130,25 +120,21 @@ int get_dvfs_capabilities(int cluster, int cpu, u32 *freqs, u32 size)
 		return -ETIMEDOUT;
 	}
 
-	for (i = 0; i < size; i++) {
-		freqs[i] = req->payload[i];
+	if (req->payload_size) {
+		memcpy(freqs, req->payload, size);
+		kfree(req->payload);
+	} else {
+		ret = -EIO;
 	}
-
-	kfree(req->payload);
 	kfree(req);
 
-	return 0;
-#else
-	kfree(req->payload);
-	kfree(req);
-
-	return -EBUSY;
-#endif
+	return ret;
 }
 
 int get_performance(int cluster, int cpu, u32 *perf)
 {
 	struct arm_mhu_request *req;
+	int ret = 0;
 
 	if (!perf)
 		return -EFAULT;
@@ -159,15 +145,14 @@ int get_performance(int cluster, int cpu, u32 *perf)
 
 	init_req(req, GET_PERFORMANCE);
 
-#ifndef INTERRUPTS_ARE_NOT_WORKING
 	append_req(req, &lo_mutex, &lo_head);
 
 	/* Check if SPC can deal with us.  */
 	wait_for_mhu_lo();
 
 	/* Fill payload.  */
-	mhu_mem_writel(gdata, SCP_LOW, cluster & 0xFF);
-	mhu_reg_writel(gdata, SCP_INTR_L_SET, (1 << 20) |
+	mhu_mem_writel(gdata, CPU_LOW, cluster & 0xFF);
+	mhu_reg_writel(gdata, CPU_INTR_L_SET, (1 << 20) |
 		       (0 /* flags  */ << 16) |
 		       (cluster << 12) |
 		       (cpu << 8) |
@@ -178,31 +163,26 @@ int get_performance(int cluster, int cpu, u32 *perf)
 		return -ETIMEDOUT;
 	}
 
-	*perf = req->payload[0];
-	if (*perf & 0xFF) {
-		printk(KERN_ERR "MHU Cmd failed\n");
-		return -EFAULT;
+	if (req->payload_size) {
+		*perf = req->payload[0];
+		if (*perf & 0xFF) {
+			printk(KERN_ERR "MHU Cmd failed\n");
+			return -EFAULT;
+		}
+		*perf = (*perf >> 16) & 0xFF;
+		kfree(req->payload);
+	} else {
+		ret = -EIO;
 	}
-	*perf = (*perf >> 16) & 0xFF;
-
-	kfree(req->payload);
 	kfree(req);
 
-	return 0;
-#else
-	kfree(req->payload);
-	kfree(req);
-
-	return -EBUSY;
-#endif
+	return ret;
 }
 
 int set_performance(int cluster, int cpu, u32 index)
 {
 	struct arm_mhu_request *req;
-#ifndef INTERRUPTS_ARE_NOT_WORKING
-	int ret;
-#endif
+	int ret = 0;
 
 	req = kzalloc(sizeof(*req), GFP_KERNEL);
 	if (!req)
@@ -210,16 +190,15 @@ int set_performance(int cluster, int cpu, u32 index)
 
 	init_req(req, SET_PERFORMANCE);
 
-#ifndef INTERRUPTS_ARE_NOT_WORKING
 	append_req(req, &hi_mutex, &hi_head);
 
 	/* Check if SPC can deal with us.  */
 	wait_for_mhu_hi();
 
 	/* Fill payload.  */
-	mhu_mem_writel(gdata, SCP_HIGH,
+	mhu_mem_writel(gdata, CPU_HIGH,
 		       (cluster & 0xFF) | ((index << 8) && 0xFF00));
-	mhu_reg_writel(gdata, SCP_INTR_H_SET, (2 << 20) |
+	mhu_reg_writel(gdata, CPU_INTR_H_SET, (2 << 20) |
 		       (0 /* flags  */ << 16) |
 		       (cluster << 12) |
 		       (cpu << 8) |
@@ -230,28 +209,25 @@ int set_performance(int cluster, int cpu, u32 index)
 		return -ETIMEDOUT;
 	}
 
-	ret = req->payload[0] & 0xFF;
-
-	kfree(req->payload);
+	if (req->payload_size) {
+		ret = req->payload[0] & 0xFF;
+		kfree(req->payload);
+	} else {
+		ret = -EIO;
+	}
 	kfree(req);
 
 	return ret;
-#else
-	kfree(req->payload);
-	kfree(req);
-
-	return -EBUSY;
-#endif
 }
 
 static irqreturn_t arm_mhu_hi_irq_handler(int irq, void *dev_id)
 {
 	struct arm_mhu_data *data = dev_id;
 	u32 status = mhu_reg_readl(dev_id, SCP_INTR_H_STAT);
+	u32 payload_stat = mhu_mem_readb(gdata, SCP_HIGH);
 	u32 cmd = status & 0xFF;
 	struct list_head *pos;
 	struct arm_mhu_request *req = 0;
-	int i;
 
 	mutex_lock(&hi_mutex);
 	list_for_each(pos, &hi_head) {
@@ -263,16 +239,19 @@ static irqreturn_t arm_mhu_hi_irq_handler(int irq, void *dev_id)
 	}
 	mutex_unlock(&hi_mutex);
 
+	if (payload_stat & 0xFF) {
+		printk(KERN_ERR "MHU: error in the message\n");
+		goto out;
+	}
 	req->payload_size = (status & 0x7ff00000) >> 20;
 	req->payload = kzalloc(sizeof(u8) * req->payload_size, GFP_KERNEL);
 	if (!req->payload) {
 		printk(KERN_ERR "MHU: can't allocate memory for payload.\n");
 		return IRQ_HANDLED;
 	}
+	memcpy(req->payload, gdata->mem + SCP_HIGH + 1, req->payload_size - 1);
 
-	for (i = 0; i < req->payload_size; i++)
-		req->payload[i] = mhu_mem_readl(gdata, SCP_LOW + 4 * i);
-
+out:
 	/* Clear SPC interrupt.  */
 	mhu_reg_writel(data, SCP_INTR_H_CLEAR, status);
 
@@ -285,10 +264,10 @@ static irqreturn_t arm_mhu_lo_irq_handler(int irq, void *dev_id)
 {
 	struct arm_mhu_data *data = dev_id;
 	u32 status = mhu_reg_readl(dev_id, SCP_INTR_L_STAT);
+	u32 payload_stat = mhu_mem_readb(gdata, SCP_LOW);
 	u32 cmd = status & 0xFF;
 	struct list_head *pos;
 	struct arm_mhu_request *req = 0;
-	int i;
 
 	mutex_lock(&lo_mutex);
 	list_for_each(pos, &lo_head) {
@@ -300,22 +279,24 @@ static irqreturn_t arm_mhu_lo_irq_handler(int irq, void *dev_id)
 	}
 	mutex_unlock(&lo_mutex);
 
+	if (payload_stat & 0xFF) {
+		printk(KERN_ERR "MHU: error in the message\n");
+		goto out;
+	}
 	req->payload_size = (status & 0x7ff00000) >> 20;
 	req->payload = kzalloc(sizeof(u32) * req->payload_size, GFP_KERNEL);
 	if (!req->payload) {
 		printk(KERN_ERR "MHU: can't allocate memory for payload.\n");
 		goto out;
 	}
+	memcpy(req->payload, gdata->mem + SCP_LOW + 1, req->payload_size - 1);
 
-	for (i = 0; i < req->payload_size; i++)
-		req->payload[i] = mhu_mem_readl(gdata, SCP_LOW + 4 * i);
-
+out:
 	/* Clear SPC interrupt.  */
 	mhu_reg_writel(data, SCP_INTR_L_CLEAR, status);
 
 	complete(&req->sync);
 
-out:
 	return IRQ_HANDLED;
 }
 
@@ -378,7 +359,7 @@ static __devinit int arm_mhu_probe(struct platform_device *pdev)
 	data->lo_irq = res->start;
 
 	ret = request_threaded_irq(data->hi_irq, 0, arm_mhu_hi_irq_handler,
-				   0, "arm_mhu_hi_irq", data);
+				IRQ_TYPE_EDGE_RISING, "arm_mhu_hi_irq", data);
 	if (ret) {
 		dev_err(&pdev->dev, "hi priority irq request failed\n");
 		ret = -ENODEV;
@@ -386,7 +367,7 @@ static __devinit int arm_mhu_probe(struct platform_device *pdev)
 	}
 
 	ret = request_threaded_irq(data->lo_irq, 0, arm_mhu_lo_irq_handler,
-				   0, "arm_mhu_hi_irq", data);
+				IRQ_TYPE_EDGE_RISING, "arm_mhu_lo_irq", data);
 	if (ret) {
 		dev_err(&pdev->dev, "lo priority irq request failed\n");
 		ret = -ENODEV;
