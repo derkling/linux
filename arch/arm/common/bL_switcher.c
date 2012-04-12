@@ -249,9 +249,71 @@ out:
 
 EXPORT_SYMBOL_GPL(bL_switch_to);
 
+#ifdef CONFIG_BL_SWITCHER_DUMMY_IF
+
+/*
+ * Dummy interface to user space (to be replaced by cpufreq based interface).
+ */
+
+#include <linux/fs.h>
+#include <linux/miscdevice.h>
+#include <asm/uaccess.h>
+
+static void __bL_switch_to(void *_new_cluster_id)
+{
+	unsigned int new_cluster_id = (unsigned int)_new_cluster_id;
+	bL_switch_to(new_cluster_id);
+}
+
+static ssize_t bL_switcher_write(struct file *file, const char __user *buf,
+			size_t len, loff_t *pos)
+{
+	unsigned char val[3];
+	unsigned int cpu, cluster;
+	int ret;
+
+	pr_debug("%s\n", __func__);
+
+	if (len < 3)
+		return -EINVAL;
+
+	if (copy_from_user(val, buf, 3))
+		return -EFAULT;
+
+	/* format: <cpu#>,<cluster#> */
+	if (val[0] < '0' || val[0] > '4' ||
+	    val[1] != ',' ||
+	    val[2] < '0' || val[2] > '1')
+		return -EINVAL;
+
+	cpu = val[0] - '0';
+	cluster = val[2] - '0';
+	ret = smp_call_function_single(cpu, __bL_switch_to, (void *)cluster, 0);
+	if (ret)
+		return ret;
+
+	return len;
+}
+
+static const struct file_operations bL_switcher_fops = {
+	.write		= bL_switcher_write,
+	.owner	= THIS_MODULE,
+};
+
+static struct miscdevice bL_switcher_device = {
+        MISC_DYNAMIC_MINOR,
+        "b.L_switcher",
+        &bL_switcher_fops
+};
+
+#endif
+
 int __init bL_switcher_init(const struct bL_power_ops *ops)
 {
 	bL_platform_ops = ops;
+#ifdef CONFIG_BL_SWITCHER_DUMMY_IF
+	misc_register(&bL_switcher_device);
+#endif
 	pr_info("big.LITTLE switcher initialized\n");
 	return 0;
 }
