@@ -24,12 +24,10 @@
 #include <asm/localtimer.h>
 #include <asm/arch_timer.h>
 #include <asm/sched_clock.h>
-#include <asm/smp_plat.h>
 
 static unsigned long arch_timer_rate;
 static int arch_timer_ppi;
 static int arch_timer_ppi2;
-static int global_timer_set = 0;
 
 static struct clock_event_device __percpu **arch_timer_evt;
 
@@ -182,10 +180,10 @@ static int arch_timer_available(void)
 		}
 
 		arch_timer_rate = freq;
-		pr_info("Architected local timer running at %lu.%02luMHz.\n",
-			arch_timer_rate / 1000000, (arch_timer_rate / 10000) % 100);
 	}
 
+	pr_info_once("Architected local timer running at %lu.%02luMHz.\n",
+		     arch_timer_rate / 1000000, (arch_timer_rate / 10000) % 100);
 	return 0;
 }
 
@@ -282,15 +280,16 @@ static int __init arch_timer_common_register(void)
 		}
 	}
 
-	if (global_timer_set)
-		err = local_timer_register(&arch_timer_ops);
-	else
-	{
-		printk(KERN_INFO "arch_timer: registering global timer\n");
+	err = local_timer_register(&arch_timer_ops);
+	if (err) {
+		/*
+		 * We couldn't register as a local timer (could be
+		 * because we're on a UP platform, or because some
+		 * other local timer is already present...). Try as a
+		 * global timer instead.
+		 */
 		arch_timer_global_evt.cpumask = cpumask_of(0);
 		err = arch_timer_setup(&arch_timer_global_evt);
-		if (!err)
-			global_timer_set = 1;
 	}
 
 	if (err)
