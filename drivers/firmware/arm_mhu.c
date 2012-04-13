@@ -4,7 +4,7 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/irq.h>
-#include <asm/io.h>
+#include <linux/io.h>
 #include "arm_mhu.h"
 
 static struct arm_mhu_data *gdata;
@@ -29,16 +29,14 @@ static inline void append_req(struct arm_mhu_request *req, struct mutex *mutex,
 
 static inline void wait_for_mhu_hi(void)
 {
-	while (mhu_reg_readl(gdata, CPU_INTR_H_STAT)) {
+	while (mhu_reg_readl(gdata, CPU_INTR_H_STAT))
 		cpu_relax();
-	}
 }
 
 static inline void wait_for_mhu_lo(void)
 {
-	while (mhu_reg_readl(gdata, CPU_INTR_L_STAT)) {
+	while (mhu_reg_readl(gdata, CPU_INTR_L_STAT))
 		cpu_relax();
-	}
 }
 
 int get_dvfs_size(int cluster, int cpu, u32 *size)
@@ -64,16 +62,12 @@ int get_dvfs_size(int cluster, int cpu, u32 *size)
 	mhu_mem_writel(gdata, CPU_LOW, 1);
 	/* Write set register.  */
 	mhu_reg_writel(gdata, CPU_INTR_L_SET,
-		       (1 << 20) |
-		       (0 /* flags  */ << 16) |
-		       (cluster << 12) |
-		       (cpu << 8) |
-		       GET_CAPABILITIES);
+		       (1 << 20) | (0 /* flags  */  << 16) |
+		       (cluster << 12) | (cpu << 8) | GET_CAPABILITIES);
 
 	/* Wait for response.  */
-	if (!wait_for_completion_timeout(&req->sync, usecs_to_jiffies(200))) {
+	if (!wait_for_completion_timeout(&req->sync, usecs_to_jiffies(200)))
 		return -ETIMEDOUT;
-	}
 
 	if (req->payload_size) {
 		*size = req->payload_size;
@@ -109,16 +103,12 @@ int get_dvfs_capabilities(int cluster, int cpu, u32 *freqs, u32 size)
 	mhu_mem_writel(gdata, CPU_LOW, 1);
 	/* Write set register.  */
 	mhu_reg_writel(gdata, CPU_INTR_L_SET,
-		       (1 << 20) |
-		       (0 /* flags  */ << 16) |
-		       (cluster << 12) |
-		       (cpu << 8) |
-		       GET_CAPABILITIES);
+		       (1 << 20) | (0 /* flags  */  << 16) |
+		       (cluster << 12) | (cpu << 8) | GET_CAPABILITIES);
 
 	/* Wait for response.  */
-	if (!wait_for_completion_timeout(&req->sync, usecs_to_jiffies(200))) {
+	if (!wait_for_completion_timeout(&req->sync, usecs_to_jiffies(200)))
 		return -ETIMEDOUT;
-	}
 
 	if (req->payload_size) {
 		memcpy(freqs, req->payload, size);
@@ -153,15 +143,12 @@ int get_performance(int cluster, int cpu, u32 *perf)
 	/* Fill payload.  */
 	mhu_mem_writel(gdata, CPU_LOW, cluster & 0xFF);
 	mhu_reg_writel(gdata, CPU_INTR_L_SET, (1 << 20) |
-		       (0 /* flags  */ << 16) |
-		       (cluster << 12) |
-		       (cpu << 8) |
-		       GET_PERFORMANCE);
+		       (0 /* flags  */  << 16) |
+		       (cluster << 12) | (cpu << 8) | GET_PERFORMANCE);
 
 	/* Wait for response.  */
-	if (!wait_for_completion_timeout(&req->sync, usecs_to_jiffies(200))) {
+	if (!wait_for_completion_timeout(&req->sync, usecs_to_jiffies(200)))
 		return -ETIMEDOUT;
-	}
 
 	if (req->payload_size) {
 		*perf = req->payload[0];
@@ -199,15 +186,12 @@ int set_performance(int cluster, int cpu, u32 index)
 	mhu_mem_writel(gdata, CPU_HIGH,
 		       (cluster & 0xFF) | ((index << 8) && 0xFF00));
 	mhu_reg_writel(gdata, CPU_INTR_H_SET, (2 << 20) |
-		       (0 /* flags  */ << 16) |
-		       (cluster << 12) |
-		       (cpu << 8) |
-		       SET_PERFORMANCE);
+		       (0 /* flags  */  << 16) |
+		       (cluster << 12) | (cpu << 8) | SET_PERFORMANCE);
 
 	/* Wait for response.  */
-	if (!wait_for_completion_timeout(&req->sync, usecs_to_jiffies(200))) {
+	if (!wait_for_completion_timeout(&req->sync, usecs_to_jiffies(200)))
 		return -ETIMEDOUT;
-	}
 
 	if (req->payload_size) {
 		ret = req->payload[0] & 0xFF;
@@ -359,7 +343,8 @@ static __devinit int arm_mhu_probe(struct platform_device *pdev)
 	data->lo_irq = res->start;
 
 	ret = request_threaded_irq(data->hi_irq, 0, arm_mhu_hi_irq_handler,
-				IRQ_TYPE_EDGE_RISING, "arm_mhu_hi_irq", data);
+				   IRQ_TYPE_EDGE_RISING, "arm_mhu_hi_irq",
+				   data);
 	if (ret) {
 		dev_err(&pdev->dev, "hi priority irq request failed\n");
 		ret = -ENODEV;
@@ -367,7 +352,8 @@ static __devinit int arm_mhu_probe(struct platform_device *pdev)
 	}
 
 	ret = request_threaded_irq(data->lo_irq, 0, arm_mhu_lo_irq_handler,
-				IRQ_TYPE_EDGE_RISING, "arm_mhu_lo_irq", data);
+				   IRQ_TYPE_EDGE_RISING, "arm_mhu_lo_irq",
+				   data);
 	if (ret) {
 		dev_err(&pdev->dev, "lo priority irq request failed\n");
 		ret = -ENODEV;
@@ -409,20 +395,18 @@ static __devexit int arm_mhu_remove(struct platform_device *pdev)
 }
 
 static struct of_device_id arm_mhu_matches[] = {
-	{ .compatible = "arm,mhu" },
+	{.compatible = "arm,mhu"},
 	{},
 };
 
 static struct platform_driver arm_mhu_driver = {
-	.probe  = arm_mhu_probe,
+	.probe = arm_mhu_probe,
 	.remove = __devexit_p(arm_mhu_remove),
 	.driver = {
-		.name  = "arm_mhu",
-		.owner = THIS_MODULE,
-#ifdef CONFIG_OF
-		.of_match_table = arm_mhu_matches,
-#endif
-	},
+			.name = "arm_mhu",
+			.owner = THIS_MODULE,
+			.of_match_table = arm_mhu_matches,
+		   },
 };
 
 int arm_mhu_init(void)

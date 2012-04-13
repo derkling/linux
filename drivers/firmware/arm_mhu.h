@@ -92,7 +92,8 @@ static inline u32 mhu_mem_readl(struct arm_mhu_data *data, u32 addr)
 	return readl(data->mem + addr);
 }
 
-static inline void mhu_mem_writel(struct arm_mhu_data *data, u32 addr, u32 value)
+static inline void mhu_mem_writel(struct arm_mhu_data *data, u32 addr,
+				  u32 value)
 {
 	writel(value, data->mem + addr);
 }
