@@ -25,6 +25,7 @@
 #include <linux/smp.h>
 #include <linux/sysfs.h>
 #include <linux/types.h>
+#include <linux/of_platform.h>
 
 #include <mach/mhu.h>
 
@@ -272,7 +273,8 @@ static inline void _cpufreq_copy_table_from_array(uint32_t *table,
 	int i;
 	for (i = 0; i < size; i++) {
 		freq_table[i].index = i;
-		freq_table[i].frequency = table[i];
+		/* SCP provides in Hz, CPUFreq needs in kHz */
+		freq_table[i].frequency = table[i] / 1000;
 	}
 	freq_table[i].index = size;
 	freq_table[i].frequency = CPUFREQ_TABLE_END;
@@ -356,6 +358,56 @@ free_mem:
 	return ret;
 }
 
+static int columbus_cpufreq_of_init(void)
+{
+	uint32_t cpu_opp_num, total_opp_num = 0;
+	struct cpufreq_frequency_table *indtable[COLUMBUS_MAX_CLUSTER];
+	uint32_t *cpu_freqs;
+	int ret = 0, cluster_id = 0, len;
+	struct device_node *cluster = NULL;
+	const struct property *pp;
+	const u32 *hwid;
+
+	while ((cluster = of_find_node_by_name(cluster, "cluster"))) {
+		hwid = of_get_property(cluster, "reg", &len);
+		if (hwid && len == 4)
+			cluster_id = be32_to_cpup(hwid);
+
+		pp = of_find_property(cluster, "freqs", NULL);
+		if (!pp)
+			return -EINVAL;
+		cpu_opp_num = pp->length / sizeof(u32);
+		if (!cpu_opp_num)
+			return -ENODATA;
+
+		total_opp_num += cpu_opp_num;
+		cpu_freqs = kzalloc(sizeof(uint32_t) * cpu_opp_num, GFP_KERNEL);
+		indtable[cluster_id] =
+			kzalloc(sizeof(struct cpufreq_frequency_table) *
+						(cpu_opp_num + 1), GFP_KERNEL);
+		if (!cpu_freqs || !indtable[cluster_id]) {
+			ret = -ENOMEM;
+			goto free_mem;
+		}
+		of_property_read_u32_array(cluster, "freqs",
+							cpu_freqs, cpu_opp_num);
+		_cpufreq_copy_table_from_array(cpu_freqs,
+				indtable[cluster_id], cpu_opp_num);
+		ind_table[cluster_id] = indtable[cluster_id];
+
+		kfree(cpu_freqs);
+	}
+	ret = columbus_cpufreq_merge_tables(total_opp_num);
+	if (ret)
+		goto free_mem;
+	return ret;
+free_mem:
+	while (cluster_id >= 0)
+		kfree(indtable[cluster_id]);
+	kfree(cpu_freqs);
+	return ret;
+}
+
 static int columbus_cpufreq_notifier_policy(struct notifier_block *nb,
 		unsigned long val, void *data)
 {
@@ -382,11 +434,15 @@ static int columbus_cpufreq_init(struct cpufreq_policy *policy)
 {
 	int result = 0;
 
-	if (atomic_inc_return(&freq_table_users) == 1)
-		result = columbus_cpufreq_init_from_scp();
+	if (atomic_inc_return(&freq_table_users) == 1) {
+		result = columbus_cpufreq_of_init();
+		if (result)
+			result = columbus_cpufreq_init_from_scp();
+	}
 
 	if (result) {
 		atomic_dec_return(&freq_table_users);
+		pr_err("CPUFreq for CPU %d failed to initialize\n", policy->cpu);
 		return result;
 	}
 
@@ -409,6 +465,8 @@ static int columbus_cpufreq_init(struct cpufreq_policy *policy)
 
 	result = cpufreq_register_notifier(&notifier_policy_block,
 				CPUFREQ_POLICY_NOTIFIER);
+
+	pr_info("CPUFreq for CPU %d initialized\n", policy->cpu);
 	return result;
 }
 
