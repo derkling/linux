@@ -232,76 +232,127 @@ static unsigned int columbus_cpufreq_get(unsigned int cpu)
 	return ind_table[cur_cluster][freq_tab_idx].frequency;
 }
 
-static int columbus_cpufreq_init_table(void)
+/* get the number of entries in the cpufreq_frequency_table */
+static inline int _cpufreq_get_table_size(struct cpufreq_frequency_table *table)
 {
-	unsigned int opp_sz[COLUMBUS_MAX_CLUSTER], opp_size = 0;
-	struct cpufreq_frequency_table *freqtable;
-	struct cpufreq_frequency_table *indtable[COLUMBUS_MAX_CLUSTER];
-	unsigned long *table[COLUMBUS_MAX_CLUSTER];
-	int loop, i, ret;
+	int size = 0;
+	for (; (table[size].frequency != CPUFREQ_TABLE_END); size++)
+		;
+	return size;
+}
 
-	for (loop = 0; loop < COLUMBUS_MAX_CLUSTER; loop++) {
-		int j;
-		ret = get_dvfs_size(loop, 0, &opp_sz[loop]);
+/* get the minimum frequency in the cpufreq_frequency_table */
+static inline uint32_t _cpufreq_get_table_min(
+			struct cpufreq_frequency_table *table)
+{
+	int i;
+	uint32_t min_freq = ~0;
+	for (i = 0; (table[i].frequency != CPUFREQ_TABLE_END); i++)
+		if (table[i].frequency < min_freq)
+			min_freq = table[i].frequency;
+	return min_freq;
+}
+
+/* get the maximum frequency in the cpufreq_frequency_table */
+static inline uint32_t _cpufreq_get_table_max(
+			struct cpufreq_frequency_table *table)
+{
+	int i;
+	uint32_t max_freq = 0;
+	for (i = 0; (table[i].frequency != CPUFREQ_TABLE_END); i++)
+		if (table[i].frequency > max_freq)
+			max_freq = table[i].frequency;
+	return max_freq;
+}
+
+/* translate the integer array into cpufreq_frequency_table entries */
+static inline void _cpufreq_copy_table_from_array(uint32_t *table,
+			struct cpufreq_frequency_table *freq_table, int size)
+{
+	int i;
+	for (i = 0; i < size; i++) {
+		freq_table[i].index = i;
+		freq_table[i].frequency = table[i];
+	}
+	freq_table[i].index = size;
+	freq_table[i].frequency = CPUFREQ_TABLE_END;
+}
+
+/*
+ * copy entries of all the per-cluster cpufreq_frequency_table entries into a
+ * single frequency table which is published to cpufreq core
+ */
+static int columbus_cpufreq_merge_tables(uint32_t total_sz)
+{
+	int cluster_id, i;
+	struct cpufreq_frequency_table *freqtable;
+
+	freqtable = kzalloc(sizeof(struct cpufreq_frequency_table) *
+						(total_sz + 1), GFP_KERNEL);
+	if (!freqtable)
+		return -ENOMEM;
+
+	freq_table = freqtable;
+	for (cluster_id = 0; cluster_id < COLUMBUS_MAX_CLUSTER; cluster_id++) {
+		int size = _cpufreq_get_table_size(ind_table[cluster_id]);
+		memcpy(freqtable, ind_table[cluster_id],
+			size * sizeof(struct cpufreq_frequency_table));
+		freqtable += size;
+	}
+	freq_table[total_sz].frequency = CPUFREQ_TABLE_END;
+
+	/* Adjust the indices for merged table */
+	for (i = 0; i <= total_sz; i++)
+		freq_table[i].index = i;
+
+	/* Assuming 2 cluster, set clk_big_min and clk_little_max */
+	clk_big_min = _cpufreq_get_table_min(ind_table[COLUMBUS_BL_BIG_ID]);
+	clk_little_max =
+		_cpufreq_get_table_max(ind_table[COLUMBUS_BL_LITTLE_ID]);
+
+	return 0;
+}
+
+static int columbus_cpufreq_init_from_scp(void)
+{
+	uint32_t cpu_opp_num, total_opp_num = 0;
+	struct cpufreq_frequency_table *indtable[COLUMBUS_MAX_CLUSTER];
+	uint32_t *cpu_freqs;
+	int ret = 0, cluster_id = 0;
+
+	for (cluster_id = 0; cluster_id < COLUMBUS_MAX_CLUSTER; cluster_id++) {
+		ret = get_dvfs_size(cluster_id, 0, &cpu_opp_num);
 		if (ret)
 			return ret;
-		opp_size += opp_sz[loop];
-		table[loop] = kzalloc(sizeof(unsigned long) *
-					(opp_sz[loop] + 1), GFP_KERNEL);
-		indtable[loop] = kzalloc(sizeof(struct cpufreq_frequency_table)
-					* (opp_sz[loop] + 1), GFP_KERNEL);
-		if (!table[loop] || !indtable[loop]) {
+		total_opp_num += cpu_opp_num;
+		cpu_freqs = kzalloc(sizeof(uint32_t) * cpu_opp_num, GFP_KERNEL);
+		indtable[cluster_id] =
+			kzalloc(sizeof(struct cpufreq_frequency_table) *
+						(cpu_opp_num + 1), GFP_KERNEL);
+		if (!cpu_freqs || !indtable[cluster_id]) {
 			ret = -ENOMEM;
 			goto free_mem;
 		}
-		ret = get_dvfs_capabilities(loop, 0, (u32 *)table[loop],
-							opp_sz[loop]);
+		ret = get_dvfs_capabilities(cluster_id, 0, (u32 *)cpu_freqs,
+								cpu_opp_num);
 		if (ret) {
 			ret = -EIO;
 			goto free_mem;
 		}
-		for (j = 0; j < opp_sz[loop]; j++) {
-			indtable[loop][j].index = j;
-			indtable[loop][j].frequency = table[loop][j];
-		}
-		indtable[loop][j].index = j;
-		indtable[loop][j].frequency = CPUFREQ_TABLE_END;
+		_cpufreq_copy_table_from_array(cpu_freqs,
+				indtable[cluster_id], cpu_opp_num);
+		ind_table[cluster_id] = indtable[cluster_id];
 
-		ind_table[loop] = indtable[loop];
+		kfree(cpu_freqs);
 	}
-
-	freqtable = kzalloc(sizeof(struct cpufreq_frequency_table) *
-					(opp_size + 1), GFP_KERNEL);
-	if (!freqtable) {
-		ret = -ENOMEM;
+	ret = columbus_cpufreq_merge_tables(total_opp_num);
+	if (ret)
 		goto free_mem;
-	}
-	for (loop = 0, i = 0; i < COLUMBUS_MAX_CLUSTER; i++) {
-		int j;
-		for (j = 0; j < opp_sz[i]; j++, loop++) {
-			freqtable[loop].index = loop;
-			freqtable[loop].frequency = table[i][j];
-		}
-	}
-	freqtable[loop].index = loop;
-	freqtable[loop].frequency = CPUFREQ_TABLE_END;
-
-	freq_table = freqtable;
-
-	/* Assuming 2 cluster, set clk_big_min and clk_little_max */
-	clk_little_max = table[COLUMBUS_BL_LITTLE_ID]
-				[opp_sz[COLUMBUS_BL_LITTLE_ID] - 1];
-	clk_big_min
-		= table[COLUMBUS_BL_BIG_ID][opp_sz[COLUMBUS_BL_BIG_ID] - 1];
-
-	for (loop = 0; loop < COLUMBUS_MAX_CLUSTER; loop++)
-		kfree(table[loop]);
-	return 0;
+	return ret;
 free_mem:
-	while (loop >= 0) {
-		kfree(table[loop]);
-		kfree(indtable[loop]);
-	}
+	while (cluster_id >= 0)
+		kfree(indtable[cluster_id]);
+	kfree(cpu_freqs);
 	return ret;
 }
 
@@ -332,7 +383,7 @@ static int columbus_cpufreq_init(struct cpufreq_policy *policy)
 	int result = 0;
 
 	if (atomic_inc_return(&freq_table_users) == 1)
-		result = columbus_cpufreq_init_table();
+		result = columbus_cpufreq_init_from_scp();
 
 	if (result) {
 		atomic_dec_return(&freq_table_users);
