@@ -17,8 +17,6 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-/* WARNING: This code is experimental and depends on external firmware */
-
 #define MODULE_NAME "arm-bl-cpufreq"
 #define pr_fmt(fmt) MODULE_NAME ": " fmt
 
@@ -33,7 +31,8 @@
 #include <linux/string.h>
 #include <linux/spinlock.h>
 
-#include "arm-bl-cpufreq.h"
+#include <asm/bL_switcher.h>
+
 
 /* Dummy frequencies representing the big and little clusters: */
 #define FREQ_BIG	1000000
@@ -49,13 +48,14 @@
  */
 #define BL_CPUFREQ_FAKE_LATENCY 1
 
-static DEFINE_SPINLOCK(switcher_lock);
-
 static struct cpufreq_frequency_table __read_mostly bl_freqs[] = {
 	{ CLUSTER_BIG,		FREQ_BIG		},
 	{ CLUSTER_LITTLE,	FREQ_LITTLE		},
 	{ 0,			CPUFREQ_TABLE_END	},
 };
+
+/* Cached current cluster for each CPU to save on IPIs */
+static DEFINE_PER_CPU(unsigned int, cpu_cur_cluster);
 
 
 /* Miscellaneous helpers */
@@ -93,50 +93,110 @@ static unsigned int cluster_to_freq(int cluster)
 /*
  * Functions to get the current status.
  *
- * If you intend to use the result (i.e., it's not just for diagnostic
- * purposes) then you should be holding switcher_lock ... otherwise
- * the current cluster may change unexpectedly.
+ * Beware that the cluster for another CPU may change unexpectedly.
  */
-static int get_current_cluster(void)
+
+static unsigned int get_local_cluster(void)
 {
-	return (__arm_bl_get_cluster() >> 8) & 0xF;
+	unsigned int mpidr;
+	asm ("mrc\tp15, 0, %0, c0, c0, 5" : "=r" (mpidr));
+	return (mpidr >> 8) & 0xf;
 }
 
-static unsigned int get_current_freq(void)
+static void __get_current_cluster(void *_data)
 {
-	return cluster_to_freq(get_current_cluster());
+	unsigned int *_cluster = _data;
+	*_cluster = get_local_cluster();
+}
+
+static int get_current_cluster(unsigned int cpu)
+{
+	unsigned int cluster = 0;
+	smp_call_function_single(cpu, __get_current_cluster, &cluster, 1);
+	return cluster;
+}
+
+static int get_current_cached_cluster(unsigned int cpu)
+{
+	return per_cpu(cpu_cur_cluster, cpu);
+}
+
+static unsigned int get_current_freq(unsigned int cpu)
+{
+	return cluster_to_freq(get_current_cluster(cpu));
 }
 
 /*
  * Switch to the requested cluster.
- * There is no "switch_to_frequency" function, because the cpufreq frequency
- * table helpers can easily look up the appropriate cluster number for us.
+ *
+ * The __switch_to_entry version must be called with IRQs off on the
+ * target CPU.  It is meant to be invoked via switch_to_entry() which
+ * provides the necessary wrapping.
  */
-static void switch_to_entry(struct cpufreq_frequency_table const *target)
+
+static void __switch_to_entry(void *_data)
 {
-	int old_cluster;
+	struct cpufreq_frequency_table const *target = _data;
+	unsigned int cpu = smp_processor_id();
+	int old_cluster, new_cluster;
 	struct cpufreq_freqs freqs;
 
-	pr_info("Switching to cluster %d\n", entry_to_cluster(target));
+	old_cluster = get_local_cluster();
+	new_cluster = entry_to_cluster(target);
 
-	spin_lock(&switcher_lock);
+	/*
+	 * IRQs are disabled here, including IPIs, so the cluster can't
+	 * be changed by anyone else at this point.  Let's go ahead only
+	 * if we really need to do something.
+	 */
+	if(new_cluster == old_cluster)
+		return;
 
-	old_cluster = get_current_cluster();
-	if(entry_to_cluster(target) != old_cluster) {
-		freqs.old = cluster_to_freq(old_cluster);
-		freqs.new = entry_to_freq(target);
+	freqs.cpu = cpu;
+	freqs.old = cluster_to_freq(old_cluster);
+	freqs.new = entry_to_freq(target);
 
-		for_each_cpu(freqs.cpu, cpu_present_mask)
-			cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
+	/* FIXME: cpufreq_notify_transition() can't be called in IRQ context */
+	//cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
+	per_cpu(cpu_cur_cluster, cpu) = new_cluster;
+	bL_switch_to(new_cluster);
+	//cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
+}
 
-		__arm_bl_switch_cluster();
+static void switch_to_entry(unsigned int cpu,
+			    struct cpufreq_frequency_table const *target)
+{
+	int old_cluster, new_cluster;
+	struct cpufreq_freqs freqs;
 
-		for_each_cpu(freqs.cpu, cpu_present_mask)
-			cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
+	old_cluster = get_current_cached_cluster(cpu);
+	new_cluster = entry_to_cluster(target);
 
-	}
+	pr_debug("Switching to cluster %d on CPU %d\n", new_cluster, cpu);
 
-	spin_unlock(&switcher_lock);
+	/*
+	 * This test is there only to avoid the IPI when unneeded.
+	 * We don't care about possible races here. The definite test
+	 * is performed in __switch_to_entry().
+	 */
+	if(new_cluster == old_cluster)
+		return;
+
+	freqs.cpu = cpu;
+	freqs.old = cluster_to_freq(old_cluster);
+	freqs.new = entry_to_freq(target);
+	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
+
+#if 0
+	smp_call_function_single(cpu, __switch_to_entry, (void *)target, 0);
+#else
+	/*
+	 * FIXME: forcing smp_call_function_single() to wait just for the
+	 * purpose of running the POSTCHANGE notifyer is bad for latency.
+	 */
+	smp_call_function_single(cpu, __switch_to_entry, (void *)target, 1);
+	cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
+#endif
 }
 
 
@@ -144,6 +204,7 @@ static void switch_to_entry(struct cpufreq_frequency_table const *target)
 
 static int bl_cpufreq_init(struct cpufreq_policy *policy)
 {
+	unsigned int cluster, cpu = policy->cpu;
 	int err;
 
 	/*
@@ -158,27 +219,15 @@ static int bl_cpufreq_init(struct cpufreq_policy *policy)
 	 */
 	cpufreq_frequency_table_get_attr(bl_freqs, policy->cpu);
 
+	cluster = get_current_cluster(cpu);
+	per_cpu(cpu_cur_cluster, cpu) = cluster;
+
 	/*
-	 * No need for locking here:
-	 * cpufreq is not active until initialisation has finished.
 	 * Ideally, transition_latency should be calibrated here.
 	 */
 	policy->cpuinfo.transition_latency = BL_CPUFREQ_FAKE_LATENCY;
-	policy->cur = get_current_freq();
-
-	/*
-	 * A b.L switch can be triggered from any CPU, but will affect them all.
-	 * The set of related CPUs should perhaps be determined from the
-	 * system CPU topology, rather than just the set of CPUs present...
-	 */
-	policy->shared_type = CPUFREQ_SHARED_TYPE_ANY;
-	cpumask_copy(policy->related_cpus, cpu_present_mask);
-	/*
-	 * We do not set ->cpus here, because it doesn't actually matter if
-	 * we try to switch on two CPUs at the same time.  Setting ->cpus
-	 * to cpu_present_mask might provide a way to avoid the need to take
-	 * switcher_lock when switching, though.
-	 */
+	policy->cur = cluster_to_freq(cluster);
+	policy->shared_type = CPUFREQ_SHARED_TYPE_NONE;
 
 	pr_info("cpufreq initialised successfully\n");
 	return 0;
@@ -205,17 +254,13 @@ static int bl_cpufreq_target(struct cpufreq_policy *policy,
 	if(err)
 		return err;
 
-	switch_to_entry(&bl_freqs[index]);
+	switch_to_entry(policy->cpu, &bl_freqs[index]);
 	return 0;
 }
 
-static unsigned int bl_cpufreq_get(unsigned int __always_unused cpu)
+static unsigned int bl_cpufreq_get(unsigned int cpu)
 {
-	/*
-	 * The cpu argument is ignored, because all CPUs have the same
-	 * performance point, by definition.
-	 */
-	return get_current_freq();
+	return get_current_freq(cpu);
 }
 
 static struct freq_attr *bl_cpufreq_attrs[] = {
@@ -253,7 +298,6 @@ module_init(bl_cpufreq_module_init);
 static void __exit bl_cpufreq_module_exit(void)
 {
 	cpufreq_unregister_driver(&bl_cpufreq_driver);
-
 	pr_info("cpufreq backend driver unloaded.\n");
 }
 module_exit(bl_cpufreq_module_exit);

@@ -4,19 +4,13 @@
 
 config ARM_BL_CPUFREQ
 	depends on EXPERIMENTAL
-	depends on ARCH_VEXPRESS_DT
+	depends on BL_SWITCHER
 	tristate "Simple cpufreq interface for the ARM big.LITTLE switcher"
 	help
 	  Provides a simple cpufreq interface to control the ARM
 	  big.LITTLE switcher.
 
-	  Note that this code is not currently safe unless the
-	  big.LITTLE switcher binary has been loaded separately by an
-	  external bootloader or firmware before entering the kernel.
-	  Otherwise, you can still build this code as a module,
-	  providing that you don't load it.
-
-	  Refer to Documentation/cpufreq/cpufreq-arm-bl.txt for details.
+	  Refer to Documentation/cpu-freq/cpufreq-arm-bl.txt for details.
 
 	  If unsure, say N.
 
