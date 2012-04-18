@@ -112,6 +112,7 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 	struct cpufreq_freqs freqs;
 	uint32_t freq_tab_idx;
 	uint32_t cur_cluster, new_cluster, do_switch = 0;
+	int ret = 0;
 
 	/* Prevent thread cpu migration - not sure if necessary */
 	cpus_allowed = current->cpus_allowed;
@@ -122,7 +123,9 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 	/* Read current clock rate */
 	cur_cluster = columbus_cpufreq_get_bl_cluster();
 
-	get_performance(cur_cluster, cpu, &freq_tab_idx);
+	if (get_performance(cur_cluster, cpu, &freq_tab_idx))
+		return -EIO;
+
 	freqs.old = ind_table[cur_cluster][freq_tab_idx].frequency;
 
 	/* Make sure that target_freq is within supported range */
@@ -170,7 +173,7 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 	/* Skipping for hysteresis management */
 	if (bl_down_hyst || bl_up_hyst) {
 		set_cpus_allowed(current, cpus_allowed);
-		return 0;
+		return ret;
 	}
 
 	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
@@ -186,8 +189,12 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 
 	cpufreq_frequency_table_target(policy, ind_table[new_cluster],
 					freqs.new, relation, &freq_tab_idx);
-	if (set_performance(new_cluster, policy->cpu, freq_tab_idx))
+	ret = set_performance(new_cluster, policy->cpu, freq_tab_idx);
+	if (ret) {
 		pr_err("failed to set the required OPP\n");
+		set_cpus_allowed(current, cpus_allowed);
+		return ret;
+	}
 
 	if (do_switch)
 		columbus_cpufreq_switch_bl_cluster(new_cluster);
@@ -197,7 +204,7 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 	set_cpus_allowed(current, cpus_allowed);
 	cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
 
-	return 0;
+	return ret;
 }
 
 /* Get current clock frequency */
@@ -216,7 +223,9 @@ static unsigned int columbus_cpufreq_get(unsigned int cpu)
 	/*
 	 * Read current clock rate with MHU call
 	 */
-	get_performance(columbus_cpufreq_get_bl_cluster(), cpu, &freq_tab_idx);
+	if (get_performance(columbus_cpufreq_get_bl_cluster(), cpu,
+		&freq_tab_idx))
+		return -EIO;
 
 	set_cpus_allowed(current, cpus_allowed);
 
