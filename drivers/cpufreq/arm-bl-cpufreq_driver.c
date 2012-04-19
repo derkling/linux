@@ -243,9 +243,6 @@ static void __exit bl_cpufreq_module_exit(void)
 {
 	cpufreq_unregister_driver(&bl_cpufreq_driver);
 
-	/* Restore the "default" cluster: */
-	switch_to_entry(find_entry_by_cluster(CLUSTER_BIG));
-
 	pr_info("cpufreq backend driver unloaded.\n");
 }
 module_exit(bl_cpufreq_module_exit);
