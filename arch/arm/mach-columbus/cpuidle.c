@@ -144,8 +144,11 @@ static inline int event_shutdown(void)
 
 union wakeup {
 	struct {
-		u32 wakeup_l;
-		u32 wakeup_h;
+# ifdef __BIG_ENDIAN
+		u32 wakeup_h, wakeup_l;
+#else
+		u32 wakeup_l, wakeup_h;
+#endif
 	} ts32;
 	u64 ts64;
 };
