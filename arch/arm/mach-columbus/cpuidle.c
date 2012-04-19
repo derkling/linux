@@ -198,6 +198,9 @@ static int columbus_enter_idle(struct cpuidle_device *dev,
 	/* Used to keep track of the total time in idle */
 	getnstimeofday(&ts_preidle);
 
+	local_fiq_disable();
+	local_irq_disable();
+
 	if (cx->type == COLUMBUS_STATE_C1 ||
 		!cpu_isset(smp_processor_id(), *to_cpumask(cpu_pm_bits))) {
 
@@ -286,6 +289,7 @@ out:
 	dev->last_residency = ts_idle.tv_nsec / NSEC_PER_USEC +
 					ts_idle.tv_sec * USEC_PER_SEC;
 	local_irq_enable();
+	local_fiq_enable();
 	return idx;
 }
 
