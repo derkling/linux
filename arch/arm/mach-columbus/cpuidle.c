@@ -23,11 +23,13 @@
 #include <asm/smp_plat.h>
 #include <asm/suspend.h>
 
-#define COLUMBUS_STATE_C1 0
-#define COLUMBUS_STATE_C2 1
-#define COLUMBUS_STATE_C3 2
-#define COLUMBUS_STATE_C4 3
-#define COLUMBUS_MAX_STATES (COLUMBUS_STATE_C4 + 1)
+enum {
+	COLUMBUS_STATE_C1,
+	COLUMBUS_STATE_C2,
+	COLUMBUS_STATE_C3,
+	COLUMBUS_STATE_C4,
+	COLUMBUS_MAX_STATES
+};	
 
 /* four bits reserved to cpu state */
 #define CPU_ST(x) (x & 0xf)
