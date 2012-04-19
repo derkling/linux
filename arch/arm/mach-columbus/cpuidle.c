@@ -105,7 +105,12 @@ static DEFINE_PER_CPU(s64, next_event);
 
 static cpumask_t idle_mask = CPU_MASK_NONE;
 
-extern int shutdown_smc(u32, u32, u32, u32);
+extern int _shutdown_smc(u32, u32, u32, u32);
+
+static inline int shutdown_smc(u32 cstate, u32 wakeup_h, u32 wakeup_l)
+{
+	return _shutdown_smc(0, cstate, wakeup_h, wakeup_l);
+}
 
 static inline int arch_wakeup_ts(u64 *ts)
 {
@@ -166,7 +171,7 @@ int columbus_finisher(unsigned long arg)
 	if (arch_wakeup_ts(&w.ts64))
 		return 1;
 
-	ret = shutdown_smc(0, arg, w.ts32.wakeup_h, w.ts32.wakeup_l);
+	ret = shutdown_smc(arg, w.ts32.wakeup_h, w.ts32.wakeup_l);
 	return ret;
 }
 

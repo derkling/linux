@@ -20,7 +20,7 @@
  * Currently a stubbed out version just executing wfi for testing purposes.
  *
  * Function C-prototype is:
- * shutdown_smc(u32 unused, u32 cstate, u32 wakeup_h, u32 wakeup_l)
+ * _shutdown_smc(u32 unused, u32 cstate, u32 wakeup_h, u32 wakeup_l)
  * r1: target C-state
  * r2: wake-up timestamp (63:32)
  * r3: wake-up timestamp (31:0)
@@ -30,10 +30,10 @@
  * 	-1 on failure
  */
 
-ENTRY(shutdown_smc)
+ENTRY(_shutdown_smc)
 	mov 	r0, #0x84000000
 	dsb
 	wfi
 	mvn	r0, #1
 	mov	pc, lr
-ENDPROC(shutdown_smc)
+ENDPROC(_shutdown_smc)
