@@ -219,7 +219,7 @@ static int columbus_enter_idle(struct cpuidle_device *dev,
 	cpu_pm_enter();
 
 	if (cx->type > COLUMBUS_STATE_C2)
-		__cpu_set(dev->cpu, &idle_mask);
+		cpu_set(dev->cpu, idle_mask);
 
 	per_cpu(cur_residency, dev->cpu) = drv->states[idx].target_residency;
 
@@ -274,7 +274,7 @@ out:
 	per_cpu(next_event, dev->cpu) = 0;
 
 	if (cx->type > COLUMBUS_STATE_C2)
-		__cpu_clear(dev->cpu, &idle_mask);
+		cpu_clear(dev->cpu, idle_mask);
 
 	cluster_down = 0;
 
