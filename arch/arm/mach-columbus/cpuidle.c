@@ -192,7 +192,7 @@ static int columbus_enter_idle(struct cpuidle_device *dev,
 		!cpu_isset(smp_processor_id(), *to_cpumask(cpu_pm_bits))) {
 
 		/* Used to keep track of the total time in idle */
-		asm volatile("wfi");
+		wfi();
 		getnstimeofday(&ts_postidle);
 		ts_idle = timespec_sub(ts_postidle, ts_preidle);
 
