@@ -103,7 +103,7 @@ const struct cpumask *const cpu_pm_mask = to_cpumask(cpu_pm_bits);
 static DEFINE_PER_CPU(u32, cur_residency);
 static DEFINE_PER_CPU(s64, next_event);
 
-static cpumask_t idle_mask = { CPU_BITS_NONE };
+static cpumask_t idle_mask = CPU_MASK_NONE;
 
 extern int shutdown_smc(u32, u32, u32, u32);
 
