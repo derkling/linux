@@ -67,4 +67,11 @@ config ARCH_VEXPRESS_DT
 	  If your bootloader supports Flattened Device Tree based booting,
 	  say Y here.
 
+config ARCH_VEXPRESS_KINGFISHER
+	bool "RTSM/Kingfisher support"
+	depends on ARCH_VEXPRESS_DT
+	default y if BL_SWITCHER
+	help
+	  Support for the Kingfisher cluster management block.
+
 endmenu
