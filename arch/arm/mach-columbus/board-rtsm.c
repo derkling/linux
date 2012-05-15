@@ -41,6 +41,7 @@ static unsigned int rtsm_mmci_status(struct device *dev)
 static struct mmci_platform_data rtsm_mmci_data = {
 	.ocr_mask	= MMC_VDD_32_33 | MMC_VDD_33_34,
 	.status		= rtsm_mmci_status,
+	.capabilities	= MMC_CAP_NONREMOVABLE,
 };
 
 struct of_dev_auxdata columbus_rtsm_auxdata_lookup[] __initdata = {
