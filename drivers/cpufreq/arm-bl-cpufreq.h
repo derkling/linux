@@ -30,6 +30,7 @@ static unsigned int entry_to_cluster(
 static struct cpufreq_frequency_table const *find_entry_by_cluster(int cluster);
 static unsigned int cluster_to_freq(int cluster);
 static int get_current_cluster(unsigned int cpu);
+static int get_current_cached_cluster(unsigned int cpu);
 static unsigned int get_current_freq(unsigned int cpu);
 static unsigned int bl_cpufreq_get(unsigned int cpu);
 

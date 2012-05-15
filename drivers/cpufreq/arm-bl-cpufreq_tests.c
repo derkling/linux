@@ -206,7 +206,7 @@ static int test_bl_cpufreq_get(void)
 			++failCount;
 		} else
 			testResult = 1;
-		pr_info("name=post-init/bl_cpufreq_get/%d:bl_cpufreq_get-origin(%u) result=%s\n",
+		pr_info("name=post-init/bl_cpufreq_get/%d:origin(%u) result=%s\n",
 				nTest, cpu, (testResult ? "PASS" : "FAIL"));
 
 		/*
@@ -222,7 +222,7 @@ static int test_bl_cpufreq_get(void)
 			++failCount;
 		} else
 			testResult = 1;
-		pr_info("name=post-init/bl_cpufreq_get/%d:bl_cpufreq_get-other(%u) result=%s\n",
+		pr_info("name=post-init/bl_cpufreq_get/%d:other(%u) result=%s\n",
 				nTest, cpu, (testResult ? "PASS" : "FAIL"));
 
 		/*
@@ -266,7 +266,7 @@ static int test_get_current_freq(void)
 			++failCount;
 		} else
 			testResult = 1;
-		pr_info("name=post-init/bl_cpufreq_get/%d:get_current_freq-origin(%u) result=%s\n",
+		pr_info("name=post-init/get_current_freq/%d:origin(%u) result=%s\n",
 				nTest, cpu, (testResult ? "PASS" : "FAIL"));
 
 		/*
@@ -282,7 +282,7 @@ static int test_get_current_freq(void)
 			++failCount;
 		} else
 			testResult = 1;
-		pr_info("name=post-init/bl_cpufreq_get/%d:get_current_freq-other(%u) result=%s\n",
+		pr_info("name=post-init/get_current_freq/%d:other(%u) result=%s\n",
 				nTest, cpu, (testResult ? "PASS" : "FAIL"));
 
 		/*
@@ -295,6 +295,68 @@ static int test_get_current_freq(void)
 	}
 
 	pr_info("name=post-init/get_current_freq run=%d result=%s pass=%d fail=%d\n",
+				nTest, (failCount == 0 ? "PASS" : "FAIL"),
+				(nTest - failCount), failCount);
+	if (failCount != 0)
+		return -1;
+
+	return 0;
+}
+
+static int test_get_current_cached_cluster(void)
+{
+	int nTest = 0, failCount = 0, testResult = 0;
+	unsigned int cpu, cluster;
+	struct cpufreq_frequency_table const *other_entry = NULL;
+	struct cpufreq_frequency_table const *origin_entry = NULL;
+	struct cpufreq_policy *policy = NULL;
+
+	/*
+	 * Check if get_current_cached_cluster() return a consistent value, ie
+	 * CLUSTER_BIG while on big cluster and CLUSTER_LITTLE on little cluster
+	 */
+	for_each_cpu(cpu, cpu_present_mask) {
+		policy = cpufreq_cpu_get(cpu);
+		origin_entry = find_entry_by_cluster(get_current_cluster(cpu));
+		other_entry = get_other_entry(origin_entry);
+
+		++nTest;
+		cluster = get_current_cached_cluster(cpu);
+		if (cluster != entry_to_cluster(origin_entry)) {
+			testResult = 0;
+			++failCount;
+		} else
+			testResult = 1;
+		pr_info("name=post-init/get_current_cached_cluster/%d:origin(%u) result=%s\n",
+				nTest, cpu, (testResult ? "PASS" : "FAIL"));
+
+		/*
+		 * Switch to "other" cluster, ie cluster not used at module
+		 * loading time
+		 */
+		cpufreq_driver_target(policy, entry_to_freq(other_entry),
+							CPUFREQ_RELATION_H);
+
+		++nTest;
+		cluster = get_current_cached_cluster(cpu);
+		if (cluster != entry_to_cluster(other_entry)) {
+			testResult = 0;
+			++failCount;
+		} else
+			testResult = 1;
+		pr_info("name=post-init/get_current_cached_cluster/%d:other(%u) result=%s\n",
+				nTest, cpu, (testResult ? "PASS" : "FAIL"));
+
+		/*
+		 * Switch back to "origin" cluster, ie cluster used at module
+		 * loading time
+		 */
+		cpufreq_driver_target(policy, entry_to_freq(origin_entry),
+							CPUFREQ_RELATION_H);
+		cpufreq_cpu_put(policy);
+	}
+
+	pr_info("name=post-init/get_current_cached_cluster run=%d result=%s pass=%d fail=%d\n",
 				nTest, (failCount == 0 ? "PASS" : "FAIL"),
 				(nTest - failCount), failCount);
 	if (failCount != 0)
@@ -563,6 +625,11 @@ static int post_init_tests(void)
 	mdelay(POST_INIT_TESTS_DELAY);
 	++nTest;
 	if (test_bl_cpufreq_get() < 0)
+		++failCount;
+
+	mdelay(POST_INIT_TESTS_DELAY);
+	++nTest;
+	if (test_get_current_cached_cluster() < 0)
 		++failCount;
 
 	pr_info("name=post-init run=%d result=%s pass=%d fail=%d\n",
