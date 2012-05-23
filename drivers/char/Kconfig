@@ -49,6 +49,9 @@ config SGI_MBCS
          If you have an SGI Altix with an attached SABrick
          say Y or M here, otherwise say N.
 
+config ARM_SPC
+       bool "ARM SPC driver support"
+
 source "drivers/tty/serial/Kconfig"
 
 config TTY_PRINTK
