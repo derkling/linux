@@ -12,7 +12,7 @@
 #include <asm/ftrace.h>
 #include <asm/unwind.h>
 
-#ifdef CONFIG_ARCH_HAS_RET_TO_USER
+#ifdef CONFIG_NEED_RET_TO_USER
 #include <mach/entry-macro.S>
 #else
 	.macro  arch_ret_to_user, tmp1, tmp2
