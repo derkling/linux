@@ -65,7 +65,7 @@ int clk_set_rate(struct clk *clk, unsigned long rate)
 EXPORT_SYMBOL(clk_set_rate);
 
 static struct map_desc columbus_io_desc[] __initdata = {
-#ifdef CONFIG_COLUMBUS_MODEL
+#if defined(CONFIG_COLUMBUS_MODEL) || defined(CONFIG_COLUMBUS_TC2)
 	{
 		.virtual	= DEBUG_LL_UART_VIRT_BASE + DEBUG_LL_UART_OFFSET,
 		.pfn		= __phys_to_pfn(DEBUG_LL_UART_PHYS_BASE + DEBUG_LL_UART_OFFSET),
@@ -77,12 +77,6 @@ static struct map_desc columbus_io_desc[] __initdata = {
 		.virtual	= COLUMBUS_MMCI_VIRT_BASE,
 		.pfn		= __phys_to_pfn(COLUMBUS_MMCI_PHYS_BASE),
 		.length		= SZ_64K,
-		.type		= MT_DEVICE,
-	},
-	{
-		.virtual	= COLUMBUS_PERIPH_VIRT_BASE,
-		.pfn		= __phys_to_pfn(COLUMBUS_PERIPH_PHYS_BASE),
-		.length		= SZ_1M,
 		.type		= MT_DEVICE,
 	},
 };
@@ -97,7 +91,7 @@ void __init columbus_map_common_io(void)
 
 static struct of_device_id columbus_irq_match[] __initdata = {
 	{
-		.compatible	= "arm,cortex-a9-gic",
+		.compatible	= "arm,cortex-a15-gic",
 		.data		= gic_of_init,
 	},
 	{}
@@ -108,12 +102,15 @@ void __init columbus_init_irq(void)
 	of_irq_init(columbus_irq_match);
 }
 
-static void __init columbus_init_timer(void)
+void __init columbus_init_timer(void)
 {
 	int err = arch_timer_of_register();
 
+#if 0
 	if (!err)
 		err = arch_timer_sched_clock_init();
+#endif
+
 	if (err)
 		printk(KERN_INFO "Columbus: Failed to register architected timers. err=%d\n", err);
 }

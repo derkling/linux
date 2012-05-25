@@ -3,7 +3,7 @@
 /dts-v1/;
 
 / {
-	model = "ARM TestChip 2";
+	model = "RTSM model";
 	compatible = "arm,columbus";
 	interrupt-parent = <&gic>;
 	#address-cells = <2>;
@@ -14,7 +14,7 @@
 	};
 	
 	chosen {
-		bootargs = "console=ttyAMA0,38400 debug earlyprintk root=/dev/sda1 lpj=1478400 rootwait verbose rw";
+		bootargs = "console=ttyAMA0,115200 debug earlyprintk root=/dev/mmcblk0 lpj=14784 rootwait verbose rw";
 	};
 
 	clusters {
@@ -50,10 +50,6 @@
 
 				core3: core@1 {
 					reg = <1>;
-				};
-
-				core4: core@2 {
-					reg = <2>;
 				};
 			};
 		};
@@ -92,21 +88,13 @@
 			cluster = <&cluster1>;
 			core = <&core3>;
 		};
-
-		cpu4: cpu@4 {
-			device_type = "cpu";
-			compatible = "arm,cortex-a7";
-			reg = <0x102>;
-			cluster = <&cluster1>;
-			core = <&core4>;
-		};
 	};
 
 	memory {
 		device_type = "memory";
-		reg = <0x00 0x80000000 0x00 0x40000000>;
-		//       0x08 0x80000000 0x07 0x80000000
-		//       0x88 0x00000000 0x78 0x00000000>;
+		reg = <0x00 0x80000000 0x00 0x40000000
+		       0x08 0x80000000 0x07 0x80000000
+		       0x88 0x00000000 0x78 0x00000000>;
 	};
 
 	gic: interrupt-controller@2c001000 {
@@ -137,12 +125,6 @@
 			compatible = "arm,gic-cpuif";
 			cpuif-id = <3>;
 			cpu = <&cpu3>;
-		};
-
-		gic-cpuif@4 {
-			compatible = "arm,gic-cpuif";
-			cpuif-id = <4>;
-			cpu = <&cpu4>;
 		};
 	};
 
@@ -181,7 +163,7 @@
 			      0 36 4>;
 	};
 
-	tc2_coretile {
+	rtsm2_model {
 		interrupt-map-mask = <0 0 127>;
 		interrupt-map = <0 0  0 &gic 0  0 4>,
 			        <0 0  1 &gic 0  1 4>,
