@@ -88,7 +88,7 @@ void __init columbus_smp_map_io(void)
 	int i, found = 0;
 
 	WARN_ON(of_scan_flat_dt(columbus_find_release_addr, NULL));
-#ifdef CONFIG_COLUMBUS_MODEL
+#if defined(CONFIG_COLUMBUS_MODEL) || defined(CONFIG_COLUMBUS_TC2)
 	/*
 	 * if no support in device tree for cpu-release-addr then
 	 * fall back to the legacy address for pen release
