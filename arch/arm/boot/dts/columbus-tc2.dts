@@ -162,6 +162,10 @@
 		mode = "1680x1050-32@60";
 		arm,vexpress-osc = <5>;
 		framebuffer = <0x0 0xbf000000 0x0 0x01000000>;
+
+	spc@2b000000 {
+		compatible = "arm,spc";
+		reg = <0x7FFF0000 0x1000>;
 	};
 
 	motherboard {
