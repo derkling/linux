@@ -17,6 +17,23 @@ config COLUMBUS_MODEL
 	  This option enables support for the Columbus Compute Subsystem
 	  as modelled by the RTSM1 release.
 
+config COLUMBUS_TC2
+	bool "Columbus TC2 CoreTile support"
+	select CPU_V7
+	select ARM_AMBA
+	select ARM_GIC
+	select HAVE_MACH_CLKDEV
+	select HAVE_SMP
+	select SPARSE_IRQ
+	select GENERIC_IRQ_CHIP
+	select PL330
+	select ARM_MHU
+	select ARM_CPU_SUSPEND if PM
+	select ARM_TIMER_SP804
+	help
+	  This option enables support for the Columbus Compute Subsystem
+	  as modelled by the TC2 Core Tile.
+
 source "drivers/firmware/Kconfig"
 
 endmenu
