@@ -20,5 +20,5 @@ struct bL_power_ops {
 int __init bL_switcher_init(const struct bL_power_ops *ops);
 
 int bL_switch_to(unsigned int new_cluster_id);
-
+void bL_switch_request(unsigned int cpu, unsigned int new_cluster_id);
 #endif
