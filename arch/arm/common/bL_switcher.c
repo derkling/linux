@@ -23,6 +23,7 @@
 #include <linux/interrupt.h>
 #include <linux/cpu_pm.h>
 #include <linux/cpumask.h>
+#include <linux/workqueue.h>
 #include <linux/clockchips.h>
 #include <linux/hrtimer.h>
 #include <linux/tick.h>
@@ -155,7 +156,7 @@ static int bL_switchpoint(unsigned long handshake_p)
  * bL_switch_to - Switch to a specific cluster for the current CPU
  * @new_cluster_id: the ID of the cluster to switch to.
  *
- * This function must be called on the CPU to be switched, with IRQs off.
+ * This function must be called on the CPU to be switched.
  * Returns 0 on success, else a negative status code.
  */
 int bL_switch_to(unsigned int new_cluster_id)
@@ -165,7 +166,9 @@ int bL_switch_to(unsigned int new_cluster_id)
 	struct tick_device *tdev;
 	enum clock_event_mode tdev_mode;
 	int ret = 0;
+	unsigned long flags;
 
+	local_irq_save(flags);
 	local_fiq_disable();
 
 	mpidr = read_mpidr();
@@ -244,10 +247,54 @@ out:
 	if (ret)
 		pr_err("%s exiting with error %d\n", __func__, ret);
 	local_fiq_enable();
+	local_irq_restore(flags);
 	return ret;
 }
 
 EXPORT_SYMBOL_GPL(bL_switch_to);
+
+struct switch_args {
+	unsigned int cluster;
+	struct work_struct work;
+};
+
+static void __bL_switch_to(struct work_struct *work)
+{
+	struct switch_args *args = container_of(work, struct switch_args, work);
+	bL_switch_to(args->cluster);
+}
+
+/*
+ * bL_switch_request - Switch to a specific cluster for the given CPU
+ *
+ * @cpu: the CPU to switch
+ * @new_cluster_id: the ID of the cluster to switch to.
+ *
+ * This function causes a cluster switch on the given CPU.  If the given
+ * CPU is the same as the calling CPU then the switch happens right away.
+ * Otherwise the request is put on a work queue to be scheduled on the
+ * remote CPU.
+ */
+void bL_switch_request(unsigned int cpu, unsigned int new_cluster_id)
+{
+	unsigned int this_cpu = get_cpu();
+	struct switch_args args;
+
+	if (cpu == this_cpu) {
+		bL_switch_to(new_cluster_id);
+		put_cpu();
+		return;
+	}
+	put_cpu();
+
+	args.cluster = new_cluster_id;
+	INIT_WORK_ONSTACK(&args.work, __bL_switch_to);
+	schedule_work_on(cpu, &args.work);
+	flush_work(&args.work);
+}
+
+EXPORT_SYMBOL_GPL(bL_switch_request);
+
 
 #ifdef CONFIG_BL_SWITCHER_DUMMY_IF
 
@@ -259,18 +306,11 @@ EXPORT_SYMBOL_GPL(bL_switch_to);
 #include <linux/miscdevice.h>
 #include <asm/uaccess.h>
 
-static void __bL_switch_to(void *_new_cluster_id)
-{
-	unsigned int new_cluster_id = (unsigned int)_new_cluster_id;
-	bL_switch_to(new_cluster_id);
-}
-
 static ssize_t bL_switcher_write(struct file *file, const char __user *buf,
 			size_t len, loff_t *pos)
 {
 	unsigned char val[3];
 	unsigned int cpu, cluster;
-	int ret;
 
 	pr_debug("%s\n", __func__);
 
@@ -288,9 +328,7 @@ static ssize_t bL_switcher_write(struct file *file, const char __user *buf,
 
 	cpu = val[0] - '0';
 	cluster = val[2] - '0';
-	ret = smp_call_function_single(cpu, __bL_switch_to, (void *)cluster, 0);
-	if (ret)
-		return ret;
+	bL_switch_request(cpu, cluster);
 
 	return len;
 }
