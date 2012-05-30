@@ -29,10 +29,12 @@
 
 #include "edid.h"
 
-#ifdef CONFIG_SERIAL_AMBA_PCU_UART
 /* set the DVI output mode using the firmware */
 int set_dvi_mode(u8 *msgbuf);
+
+#ifdef CONFIG_SERIAL_AMBA_PCU_UART
 int get_edid(u8 *msgbuf);
+#else
 #endif
 
 #define to_hdlcd_device(info)	container_of(info, struct hdlcd_device, fb)
@@ -165,6 +167,23 @@ static int hdlcd_set_output_mode(int xres, int yres)
 #else
 inline int hdlcd_set_output_mode(int xres, int yres)
 {
+	/* default resolution: 640 x 480 */
+	u8 mode = 0;
+
+	if (xres == 800 && yres <= 600)
+		mode = 1;	/* SVGA: 800 * 600 */
+	else if (xres == 1024 && yres <= 768)
+		mode = 2;	/* XGA: 1024 * 768 */
+	else if (xres == 1280 && yres <= 1024)
+		mode = 3;	/* SXGA: 1280 * 1024 */
+	else if (xres == 1600 && yres <= 1200)
+		mode = 4;	/* UXGA: 1600 * 1200 */
+	else if (xres == 1920 && yres <= 1200)
+		mode = 5;	/* WUXGA: 1920 * 1200 */
+
+	if (mode)
+		set_dvi_mode(&mode);
+
 	return 0;
 }
 #endif
@@ -569,8 +588,10 @@ static int __devinit hdlcd_probe(struct platform_device *pdev)
 			strncpy(fb_mode, prop, len);
 		prop = of_get_property(of_node, "framebuffer", &len);
 		if (prop) {
-			hdlcd->fb.fix.smem_start = of_read_ulong((const __be32 *) prop, 1);
-			framebuffer_size = of_read_ulong((const __be32 *)prop, 1);
+			hdlcd->fb.fix.smem_start = of_read_ulong((const __be32 *) prop,
+					of_n_addr_cells(of_node));
+			framebuffer_size = of_read_ulong((const __be32 *)prop,
+					of_n_size_cells(of_node));
 			if (framebuffer_size > HDLCD_MAX_FRAMEBUFFER_SIZE)
 				framebuffer_size = HDLCD_MAX_FRAMEBUFFER_SIZE;
 			dev_dbg(&pdev->dev, "HDLCD: phys_addr = 0x%lx, size = 0x%lx\n",
