@@ -23,6 +23,7 @@
 #include <linux/clkdev.h>
 #include <linux/amba/mmci.h>
 #include <linux/io.h>
+#include <linux/memblock.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 
@@ -142,6 +143,76 @@ int v2m_cfg_write(u32 devfn, u32 data)
 	return !!(val & SYS_CFG_ERR);
 }
 
+static u32 v2m_dt_hdlcd_clk_devfn;
+
+static long tc2_osc_round(struct clk *clk, unsigned long rate)
+{
+	return rate;
+}
+
+static int tc2_hdlcd_clk_set(struct clk *clk, unsigned long rate)
+{
+	printk(KERN_INFO "%s: set rate %lu\n", __func__, rate);
+	return v2m_cfg_write(v2m_dt_hdlcd_clk_devfn, rate);
+}
+
+static const struct clk_ops v2m_dt_hdlcd_clk_ops = {
+	.round	= tc2_osc_round,
+	.set	= tc2_hdlcd_clk_set,
+};
+
+static struct clk tc2_hdlcd_clk = {
+	.ops	= &v2m_dt_hdlcd_clk_ops,
+	.rate	= 109000000,
+};
+
+static struct clk_lookup v2m_dt_hdlcd_clk_lookup = {
+	.dev_id	= "hdlcd",
+	.clk	= &tc2_hdlcd_clk,
+};
+
+int set_dvi_mode(u8 *msgbuf) {
+	return v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_MB, msgbuf[0]);
+}
+
+static void __init v2m_dt_hdlcd_init(void)
+{
+	struct device_node *node;
+	const void *prop;
+	phys_addr_t framebuffer, framebuffer_size;
+	u32 osc;
+	u8 default_mode = 3;	/* SXGA */
+
+	node = of_find_compatible_node(NULL, NULL, "arm,hdlcd");
+	if (WARN_ON(!node))
+		return;
+
+	prop = of_get_property(node, "framebuffer", NULL);
+	if (WARN_ON(!prop))
+		return;
+
+	framebuffer = of_read_number((const __be32 *)prop, of_n_addr_cells(node));
+	framebuffer_size = of_read_number((const __be32 *)prop, of_n_size_cells(node));
+
+	if (WARN_ON(of_property_read_u32(node, "arm,vexpress-osc", &osc)))
+		return;
+
+	if (WARN_ON(memblock_remove(framebuffer, framebuffer_size)))
+		return;
+
+	v2m_dt_hdlcd_clk_devfn = SYS_CFG_OSC | osc;
+	if (!(readl(v2m_sysreg_base + V2M_SYS_MISC) & SYS_MISC_MASTERSITE)) {
+		v2m_cfg_write(SYS_CFG_MUXFPGA | SYS_CFG_SITE_DB1, 1);
+		v2m_dt_hdlcd_clk_devfn |= SYS_CFG_SITE_DB1;
+	} else {
+		v2m_cfg_write(SYS_CFG_MUXFPGA | SYS_CFG_SITE_DB2, 2);
+		v2m_dt_hdlcd_clk_devfn |= SYS_CFG_SITE_DB2;
+	}
+	clkdev_add(&v2m_dt_hdlcd_clk_lookup);
+
+	set_dvi_mode(&default_mode);
+};
+
 static void v2m_power_off(void)
 {
 	if (v2m_cfg_write(SYS_CFG_SHUTDOWN | SYS_CFG_SITE_MB, 0))
@@ -167,6 +238,8 @@ static void __init columbus_tc2_init(void)
 	v2m_sysreg_base = of_iomap(node, 0);
 	if (WARN_ON(!v2m_sysreg_base))
 		return;
+
+	v2m_dt_hdlcd_init();
 
 	of_platform_populate(NULL, of_default_bus_match_table,
 			columbus_tc2_auxdata_lookup, NULL);

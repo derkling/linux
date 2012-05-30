@@ -19,6 +19,12 @@
 #define COLUMBUS_PERIPH_VIRT_BASE	0xf9000000
 
 /*
+ * Miscellaneous
+ */
+#define SYS_MISC_MASTERSITE	(1 << 14)
+#define SYS_PROCIDx_HBI_MASK	0xfff
+
+/*
  * Configuration
  */
 #define SYS_CFG_START		(1 << 31)
@@ -42,6 +48,7 @@
 #define SYS_CFG_ERR		(1 << 1)
 #define SYS_CFG_COMPLETE	(1 << 0)
 
+#define V2M_SYS_MISC		0x060
 #define V2M_SYS_CFGDATA		0x0a0
 #define V2M_SYS_CFGCTRL		0x0a4
 #define V2M_SYS_CFGSTAT		0x0a8

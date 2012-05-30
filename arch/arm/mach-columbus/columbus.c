@@ -60,6 +60,9 @@ EXPORT_SYMBOL(clk_get_rate);
 
 int clk_set_rate(struct clk *clk, unsigned long rate)
 {
+	if (clk->ops && clk->ops->set)
+		clk->ops->set(clk, rate);
+	clk->rate = rate;
 	return 0;
 }
 EXPORT_SYMBOL(clk_set_rate);
