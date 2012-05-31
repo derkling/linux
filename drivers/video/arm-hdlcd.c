@@ -142,51 +142,29 @@ static int hdlcd_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 	return hdlcd_set_bitfields(hdlcd, var);
 }
 
-#ifdef CONFIG_SERIAL_AMBA_PCU_UART
 static int hdlcd_set_output_mode(int xres, int yres)
 {
-	/* firmware uses some stupid protocol: 5 bytes (only byte 1 used)
+	/* some firmware uses some stupid protocol: 5 bytes (only byte 1 used)
 	   to send 3 bits of information (value between 0 - 5) */
 	u8 msgbuffer[5];
 
 	memset(msgbuffer, 0, sizeof(msgbuffer));
-	/* default resolution: 640 x 480 */
-	if (xres == 800 && yres <= 600)
+
+	if (xres < 800 && yres < 600)
+		msgbuffer[0] = 0;	/* default resolution: 640 x 480 */
+	else if (xres < 1024 && yres < 768)
 		msgbuffer[0] = 1;	/* SVGA: 800 * 600 */
-	else if (xres == 1024 && yres <= 768)
+	else if (xres < 1280 && yres < 1024)
 		msgbuffer[0] = 2;	/* XGA: 1024 * 768 */
-	else if (xres == 1280 && yres <= 1024)
+	else if (xres < 1600 && yres < 1200)
 		msgbuffer[0] = 3;	/* SXGA: 1280 * 1024 */
-	else if (xres == 1600 && yres <= 1200)
+	else if (xres < 1920 && yres <= 1200)
 		msgbuffer[0] = 4;	/* UXGA: 1600 * 1200 */
-	else if (xres == 1920 && yres <= 1200)
+	else
 		msgbuffer[0] = 5;	/* WUXGA: 1920 * 1200 */
 
 	return set_dvi_mode(msgbuffer);
 }
-#else
-inline int hdlcd_set_output_mode(int xres, int yres)
-{
-	/* default resolution: 640 x 480 */
-	u8 mode = 0;
-
-	if (xres == 800 && yres <= 600)
-		mode = 1;	/* SVGA: 800 * 600 */
-	else if (xres == 1024 && yres <= 768)
-		mode = 2;	/* XGA: 1024 * 768 */
-	else if (xres == 1280 && yres <= 1024)
-		mode = 3;	/* SXGA: 1280 * 1024 */
-	else if (xres == 1600 && yres <= 1200)
-		mode = 4;	/* UXGA: 1600 * 1200 */
-	else if (xres == 1920 && yres <= 1200)
-		mode = 5;	/* WUXGA: 1920 * 1200 */
-
-	if (mode)
-		set_dvi_mode(&mode);
-
-	return 0;
-}
-#endif
 
 #define WRITE_HDLCD_REG(reg, value)	writel((value), hdlcd->base + (reg))
 #define READ_HDLCD_REG(reg)		readl(hdlcd->base + (reg))
