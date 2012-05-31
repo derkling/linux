@@ -178,7 +178,7 @@ int set_dvi_mode(u8 *msgbuf) {
 static void __init v2m_dt_hdlcd_init(void)
 {
 	struct device_node *node;
-	const void *prop;
+	const __be32 *prop;
 	phys_addr_t framebuffer, framebuffer_size;
 	u32 osc;
 	u8 default_mode = 3;	/* SXGA */
@@ -191,8 +191,9 @@ static void __init v2m_dt_hdlcd_init(void)
 	if (WARN_ON(!prop))
 		return;
 
-	framebuffer = of_read_number((const __be32 *)prop, of_n_addr_cells(node));
-	framebuffer_size = of_read_number((const __be32 *)prop, of_n_size_cells(node));
+	framebuffer = of_read_number(prop, of_n_addr_cells(node));
+	prop += of_n_addr_cells(node);
+	framebuffer_size = of_read_number(prop, of_n_size_cells(node));
 
 	if (WARN_ON(of_property_read_u32(node, "arm,vexpress-osc", &osc)))
 		return;
