@@ -561,14 +561,15 @@ static int __devinit hdlcd_probe(struct platform_device *pdev)
 	if (of_node) {
 		int len;
 		const u8 *edid;
-		const void *prop = of_get_property(of_node, "mode", &len);
+		const __be32 *prop = of_get_property(of_node, "mode", &len);
 		if (prop)
-			strncpy(fb_mode, prop, len);
+			strncpy(fb_mode, (char *)prop, len);
 		prop = of_get_property(of_node, "framebuffer", &len);
 		if (prop) {
-			hdlcd->fb.fix.smem_start = of_read_ulong((const __be32 *) prop,
+			hdlcd->fb.fix.smem_start = of_read_ulong(prop,
 					of_n_addr_cells(of_node));
-			framebuffer_size = of_read_ulong((const __be32 *)prop,
+			prop += of_n_addr_cells(of_node);
+			framebuffer_size = of_read_ulong(prop,
 					of_n_size_cells(of_node));
 			if (framebuffer_size > HDLCD_MAX_FRAMEBUFFER_SIZE)
 				framebuffer_size = HDLCD_MAX_FRAMEBUFFER_SIZE;
