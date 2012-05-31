@@ -146,7 +146,8 @@ void spc_wfi_cpureset(int cluster, int cpu, int enable)
 	//spin_lock(&info->lock);
 	val = readl_relaxed(info->baseaddr + rsthold_reg);
 	if (enable)
-		val |= (1 << cpu) | (1 << cpu) << prst_shift;
+		//val |= (1 << cpu) | (1 << cpu) << prst_shift;
+		val |= (1 << cpu);
 	else
 		val &= ~((1 << cpu) | (1 << cpu) << prst_shift);
 	writel_relaxed(val, info->baseaddr + rsthold_reg);
