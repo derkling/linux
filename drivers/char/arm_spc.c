@@ -132,6 +132,10 @@ void spc_wfi_cpureset(int cluster, int cpu, int enable)
 {
 	u32 rsthold_reg, prst_shift;
 	u32 val;
+	
+	if (!info)
+		return;
+
 	if (cluster) {
 		rsthold_reg = KF_RESET_HOLD;
 		prst_shift = 3;
@@ -139,14 +143,14 @@ void spc_wfi_cpureset(int cluster, int cpu, int enable)
 		rsthold_reg = EAG_RESET_HOLD;
 		prst_shift = 2;
 	}
-	spin_lock(&info->lock);
-	val = readl(info->baseaddr + rsthold_reg);
+	//spin_lock(&info->lock);
+	val = readl_relaxed(info->baseaddr + rsthold_reg);
 	if (enable)
 		val |= (1 << cpu) | (1 << cpu) << prst_shift;
 	else
 		val &= ~((1 << cpu) | (1 << cpu) << prst_shift);
-	writel(val, info->baseaddr + rsthold_reg);
-	spin_unlock(&info->lock);
+	writel_relaxed(val, info->baseaddr + rsthold_reg);
+	//spin_unlock(&info->lock);
 	return;
 }
 EXPORT_SYMBOL_GPL(spc_wfi_cpureset);
