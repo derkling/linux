@@ -76,7 +76,7 @@ static inline void hdlcd_enable(struct hdlcd_device *hdlcd)
 static inline void hdlcd_disable(struct hdlcd_device *hdlcd)
 {
 	dev_dbg(hdlcd->dev, "HDLCD: output disabled\n");
-	writel(0, hdlcd->base + HDLCD_REG_COMMAND);
+//	writel(0, hdlcd->base + HDLCD_REG_COMMAND);
 }
 
 static int hdlcd_set_bitfields(struct hdlcd_device *hdlcd,
