@@ -124,8 +124,6 @@ int v2m_cfg_write(u32 devfn, u32 data)
 	/* Configuration interface broken? */
 	u32 val;
 
-	printk("%s: writing %08x to %08x\n", __func__, data, devfn);
-
 	devfn |= SYS_CFG_START | SYS_CFG_WRITE;
 
 	spin_lock(&v2m_cfg_lock);
@@ -152,7 +150,6 @@ static long tc2_osc_round(struct clk *clk, unsigned long rate)
 
 static int tc2_hdlcd_clk_set(struct clk *clk, unsigned long rate)
 {
-	printk(KERN_INFO "%s: set rate %lu\n", __func__, rate);
 	return v2m_cfg_write(v2m_dt_hdlcd_clk_devfn, rate);
 }
 
