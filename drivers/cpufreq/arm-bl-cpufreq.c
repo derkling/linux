@@ -30,7 +30,6 @@
 #include <linux/module.h>
 #include <linux/printk.h>
 #include <linux/string.h>
-#include <linux/spinlock.h>
 
 #include <asm/bL_switcher.h>
 
@@ -124,41 +123,7 @@ static unsigned int get_current_freq(unsigned int cpu)
 
 /*
  * Switch to the requested cluster.
- *
- * The __switch_to_entry version must be called with IRQs off on the
- * target CPU.  It is meant to be invoked via switch_to_entry() which
- * provides the necessary wrapping.
  */
-
-static void __switch_to_entry(void *_data)
-{
-	struct cpufreq_frequency_table const *target = _data;
-	unsigned int cpu = smp_processor_id();
-	int old_cluster, new_cluster;
-	struct cpufreq_freqs freqs;
-
-	old_cluster = get_local_cluster();
-	new_cluster = entry_to_cluster(target);
-
-	/*
-	 * IRQs are disabled here, including IPIs, so the cluster can't
-	 * be changed by anyone else at this point.  Let's go ahead only
-	 * if we really need to do something.
-	 */
-	if(new_cluster == old_cluster)
-		return;
-
-	freqs.cpu = cpu;
-	freqs.old = cluster_to_freq(old_cluster);
-	freqs.new = entry_to_freq(target);
-
-	/* FIXME: cpufreq_notify_transition() can't be called in IRQ context */
-	//cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
-	per_cpu(cpu_cur_cluster, cpu) = new_cluster;
-	bL_switch_to(new_cluster);
-	//cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
-}
-
 static void switch_to_entry(unsigned int cpu,
 			    struct cpufreq_frequency_table const *target)
 {
@@ -170,29 +135,17 @@ static void switch_to_entry(unsigned int cpu,
 
 	pr_debug("Switching to cluster %d on CPU %d\n", new_cluster, cpu);
 
-	/*
-	 * This test is there only to avoid the IPI when unneeded.
-	 * We don't care about possible races here. The definite test
-	 * is performed in __switch_to_entry().
-	 */
 	if(new_cluster == old_cluster)
 		return;
 
 	freqs.cpu = cpu;
 	freqs.old = cluster_to_freq(old_cluster);
 	freqs.new = entry_to_freq(target);
-	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
 
-#if 0
-	smp_call_function_single(cpu, __switch_to_entry, (void *)target, 0);
-#else
-	/*
-	 * FIXME: forcing smp_call_function_single() to wait just for the
-	 * purpose of running the POSTCHANGE notifyer is bad for latency.
-	 */
-	smp_call_function_single(cpu, __switch_to_entry, (void *)target, 1);
+	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
+	bL_switch_request(cpu, new_cluster);
+	per_cpu(cpu_cur_cluster, cpu) = new_cluster;
 	cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
-#endif
 }
 
 
