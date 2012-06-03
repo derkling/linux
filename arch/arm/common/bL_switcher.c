@@ -23,6 +23,7 @@
 #include <linux/interrupt.h>
 #include <linux/cpu_pm.h>
 #include <linux/cpumask.h>
+#include <linux/time.h>
 #include <linux/workqueue.h>
 #include <linux/clockchips.h>
 #include <linux/hrtimer.h>
@@ -34,6 +35,9 @@
 #include <asm/hardware/gic.h>
 #include <asm/bL_switcher.h>
 #include <asm/bL_entry.h>
+
+#define CREATE_TRACE_POINTS
+#include <trace/events/power_cpu_migrate.h>
 
 
 /*
@@ -47,6 +51,16 @@ static int read_mpidr(void)
 	unsigned int id;
 	asm volatile ("mrc\tp15, 0, %0, c0, c0, 5" : "=r" (id));
 	return id;
+}
+
+/*
+ * Get a global nanosecond time stamp for tracing.
+ */
+static s64 get_ns(void)
+{
+	struct timespec ts;
+	getnstimeofday(&ts);
+	return timespec_to_ns(&ts);
 }
 
 /*
@@ -185,6 +199,8 @@ int bL_switch_to(unsigned int new_cluster_id)
 		goto out;
 	}
 
+	trace_cpu_migrate_begin(get_ns(), cpuid, ob_cluster, cpuid, ib_cluster);
+
 	pr_debug("before switch: CPU %d in cluster %d\n", cpuid, clusterid);
 
 	/* Close the gate for our entry vectors */
@@ -243,6 +259,8 @@ int bL_switch_to(unsigned int new_cluster_id)
 	*handshake_ptr = bL_platform_ops->power_down(cpuid, ob_cluster);
 	dsb_sev();
        
+	trace_cpu_migrate_finish(get_ns(), cpuid, ob_cluster, cpuid, ib_cluster);
+
 out:
 	if (ret)
 		pr_err("%s exiting with error %d\n", __func__, ret);

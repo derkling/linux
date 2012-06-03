@@ -21,19 +21,16 @@
 #define __module_pr_fmt(prefix, fmt) MODULE_NAME ": " prefix fmt
 #define pr_fmt(fmt) __module_pr_fmt("", fmt)
 
-#include <linux/atomic.h>
 #include <linux/bug.h>
 #include <linux/cache.h>
 #include <linux/cpufreq.h>
 #include <linux/cpumask.h>
 #include <linux/init.h>
-#include <linux/irqflags.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/printk.h>
 #include <linux/string.h>
 #include <linux/spinlock.h>
-#include <linux/time.h>
 
 #include <asm/bL_switcher.h>
 
@@ -48,9 +45,6 @@
 
 #define ARM_BL_CPUFREQ_DEFINE_TESTS
 #include "arm-bl-cpufreq_tests.c"
-
-#define CREATE_TRACE_POINTS
-#include <trace/events/power_cpu_migrate.h>
 
 /* Dummy frequencies representing the big and little clusters: */
 #define FREQ_BIG	1000000
@@ -142,7 +136,6 @@ static void __switch_to_entry(void *_data)
 	unsigned int cpu = smp_processor_id();
 	int old_cluster, new_cluster;
 	struct cpufreq_freqs freqs;
-	struct timespec ts;
 
 	old_cluster = get_local_cluster();
 	new_cluster = entry_to_cluster(target);
@@ -162,19 +155,7 @@ static void __switch_to_entry(void *_data)
 	/* FIXME: cpufreq_notify_transition() can't be called in IRQ context */
 	//cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
 	per_cpu(cpu_cur_cluster, cpu) = new_cluster;
-
-	getnstimeofday(&ts);
-	trace_cpu_migrate_begin(timespec_to_ns(&ts),
-				cpu, old_cluster,
-				cpu, new_cluster);
-
 	bL_switch_to(new_cluster);
-
-	getnstimeofday(&ts);
-	trace_cpu_migrate_finish(timespec_to_ns(&ts),
-				 cpu, old_cluster,
-				 cpu, new_cluster);
-
 	//cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
 }
 
