@@ -38,32 +38,11 @@ void __cpu_suspend_save(u32 *ptr, u32 ptrsz, u32 sp, u32 *save_ptr)
  */
 int cpu_suspend(unsigned long arg, int (*fn)(unsigned long))
 {
-	struct mm_struct mm;
-	unsigned long ttb0, ctx_id;
+	struct mm_struct *mm = current->active_mm;
 	int ret;
 
 	if (!idmap_pgd)
 		return -EINVAL;
-
-	/*
-	 * We can't rely on current->active_mm because the installed
-	 * mm and the current task pointer are not always in sync.
-	 * There is a small window in context_switch() between
-	 * switch_mm() and switch_to() where this is definitely the case.
-	 * It is even possible for current->active_mm to be NULL at that
-	 * point.  Let's populate a dummy mm_struct with data from the
-	 * hardware instead, in order to satisfy cpu_switch_mm()'s needs.
-	 */
-#ifdef CONFIG_ARM_LPAE
-	asm volatile ("mrrc p15, 0, %0, %1, c2" : "=r" (ttb0), "=r" (ctx_id));
-	mm.pgd = phys_to_virt(ttb0);
-	mm.context.id = ctx_id >> (48 - 32);
-#else
-	asm volatile ("mrc p15, 0, %0, c2, c0, 0" : "=r" (ttb0));
-	asm volatile ("mrc p15, 0, %0, c13, c0, 1" : "=r" (ctx_id));
-	mm.pgd = phys_to_virt(ttb0);
-	mm.context.id = ctx_id;
-#endif
 
 	/*
 	 * Provide a temporary page table with an identity mapping for
@@ -73,7 +52,7 @@ int cpu_suspend(unsigned long arg, int (*fn)(unsigned long))
 	 */
 	ret = __cpu_suspend(arg, fn);
 	if (ret == 0) {
-		cpu_switch_mm(mm.pgd, &mm);
+		cpu_switch_mm(mm->pgd, mm);
 		local_flush_tlb_all();
 	}
 
