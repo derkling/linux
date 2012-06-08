@@ -8,6 +8,7 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+#include <linux/cpumask.h>
 #include <linux/kernel.h>
 #include <linux/errno.h>
 #include <linux/smp.h>
@@ -21,6 +22,14 @@ extern volatile int pen_release;
 extern void disable_clean_inv_dcache(void);
 static inline void cpu_enter_lowpower(void)
 {
+	struct cpumask tmp;
+	int cpu = smp_processor_id();
+
+	cpumask_and(&tmp, cpu_online_mask, topology_core_cpumask(cpu));
+
+	if (!cpumask_weight(&tmp) == cpumask_weight(topology_core_cpumask(cpu)))
+		flush_cache_all();
+
 	disable_clean_inv_dcache();
 #if 0
 	unsigned int v;
@@ -46,7 +55,7 @@ static inline void cpu_enter_lowpower(void)
 static inline void cpu_leave_lowpower(void)
 {
 	unsigned int v;
-
+#if 0
 	asm volatile(
 		"mrc	p15, 0, %0, c1, c0, 0\n"
 	"	orr	%0, %0, %1\n"
@@ -57,6 +66,7 @@ static inline void cpu_leave_lowpower(void)
 	  : "=&r" (v)
 	  : "Ir" (CR_C), "Ir" (0x40)
 	  : "cc");
+#endif
 }
 
 static inline void platform_do_lowpower(unsigned int cpu, int *spurious)

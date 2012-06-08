@@ -22,6 +22,8 @@
 #include <linux/spinlock.h>
 #include <mach/spc.h>
 
+#define SNOOP_CTL_EAG		0x404
+#define SNOOP_CTL_KF		0x504
 #define PERF_LVL_EAG		0xB00
 #define PERF_REQ_EAG		0xB04
 #define PERF_LVL_KF		0xB08
@@ -127,6 +129,23 @@ void spc_adb400_pd_enable(int cluster, int enable)
 	return;
 }
 EXPORT_SYMBOL_GPL(spc_adb400_pd_enable);
+
+void scc_ctl_snoops(int cluster, int enable)
+{
+	u32 val;
+	u32 snoop_reg = cluster ? SNOOP_CTL_KF : SNOOP_CTL_EAG;
+	u32 or = cluster ? 0x20 : 0x18;
+	spin_lock(&info->lock);
+	val = readl(info->baseaddr + snoop_reg);
+	if (enable) {
+		or = ~or;
+		val &= or;
+	} else {
+		val |=or;
+	}
+	writel(val, info->baseaddr + snoop_reg);
+	spin_unlock(&info->lock);
+}
 
 void spc_wfi_cpureset(int cluster, int cpu, int enable)
 {
