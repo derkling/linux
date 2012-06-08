@@ -221,7 +221,8 @@ void __cpuinit platform_secondary_init(unsigned int cpu)
 	spin_lock(&boot_lock);
 	spin_unlock(&boot_lock);
 }
-
+extern int _smc_up(unsigned int unused, unsigned int mpidr,
+		unsigned int resume_vector, unsigned int contextid);
 int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 {
 	unsigned long timeout;
@@ -241,12 +242,11 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 	write_pen_release(cpu_logical_map(cpu));
 
 	/*
-	 * Send the secondary CPU a soft interrupt, thereby causing
-	 * the boot monitor to read the system wide flags register,
-	 * and branch to the address found there.
+	 * Ask secure firmware to wake-up the core to be booted
 	 */
 	udelay(100);
-	gic_raise_softirq(cpumask_of(cpu), 1);
+
+	_smc_up(0, cpu_logical_map(cpu), 0, 0);
 
 	timeout = jiffies + (1 * HZ);
 	while (time_before(jiffies, timeout)) {
