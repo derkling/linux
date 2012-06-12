@@ -1168,6 +1168,15 @@ struct load_weight {
 	unsigned long weight, inv_weight;
 };
 
+struct sched_avg {
+	u64 runnable_avg_sum, runnable_avg_period;
+	u64 last_runnable_update, decay_count;
+	u32 usage_avg_sum;
+	unsigned long load_avg_contrib;
+
+	int contributes_blocked_load;
+};
+
 #ifdef CONFIG_SCHEDSTATS
 struct sched_statistics {
 	u64			wait_start;
@@ -1227,6 +1236,8 @@ struct sched_entity {
 	struct cfs_rq		*cfs_rq;
 	/* rq "owned" by this entity/group: */
 	struct cfs_rq		*my_q;
+
+	struct sched_avg	avg;
 #endif
 };
 
