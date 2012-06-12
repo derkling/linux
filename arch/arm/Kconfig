@@ -1568,6 +1568,11 @@ config SCHED_SMT
 	  MultiThreading at a cost of slightly increased overhead in some
 	  places. If unsure say N here.
 
+config BL_SEPARATE_SCHED_DOMAINS
+	bool
+	help
+	  This option enables separate sched_domains setup
+
 config HAVE_ARM_SCU
 	bool
 	help
