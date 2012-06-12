@@ -236,13 +236,13 @@ static irqreturn_t arm_mhu_hi_irq_handler(int irq, void *dev_id)
 	mutex_unlock(&hi_mutex);
 
 	if (payload_stat) {
-		printk(KERN_ERR "MHU: error in the message\n");
+		pr_err("MHU: error in the message\n");
 		goto out;
 	}
 	req->payload_size = (status & 0x7ff00000) >> 20;
 	req->payload = kzalloc(sizeof(u8) * req->payload_size, GFP_KERNEL);
 	if (!req->payload) {
-		printk(KERN_ERR "MHU: can't allocate memory for payload.\n");
+		pr_err("MHU: can't allocate memory for payload.\n");
 		return IRQ_HANDLED;
 	}
 	memcpy(req->payload, gdata->mem + SCP_HIGH, req->payload_size);
@@ -276,13 +276,13 @@ static irqreturn_t arm_mhu_lo_irq_handler(int irq, void *dev_id)
 	mutex_unlock(&lo_mutex);
 
 	if (payload_stat) {
-		printk(KERN_ERR "MHU: error in the message\n");
+		pr_err("MHU: error in the message 0x%x\n", payload_stat);
 		goto out;
 	}
 	req->payload_size = (status & 0x7ff00000) >> 20;
 	req->payload = kzalloc(sizeof(u32) * req->payload_size, GFP_KERNEL);
 	if (!req->payload) {
-		printk(KERN_ERR "MHU: can't allocate memory for payload.\n");
+		pr_err("MHU: can't allocate memory for payload.\n");
 		goto out;
 	}
 	memcpy(req->payload, gdata->mem + SCP_LOW, req->payload_size);
@@ -301,8 +301,6 @@ static __devinit int arm_mhu_probe(struct platform_device *pdev)
 	struct arm_mhu_data *data;
 	struct resource *res;
 	int ret = 0;
-
-	printk(KERN_INFO "Columbus: MHU probe\n");
 
 	data = kzalloc(sizeof(*data), GFP_KERNEL);
 	if (!data) {
@@ -379,6 +377,8 @@ static __devinit int arm_mhu_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&lo_head);
 	INIT_LIST_HEAD(&hi_head);
 	gdata = data;
+
+	pr_info("Columbus: MHU loaded @ 0x%p\n", data->regs);
 
 	return 0;
 
