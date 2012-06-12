@@ -1,7 +1,9 @@
+#include <linux/io.h>
 #include <linux/suspend.h>
 #include <asm/cacheflush.h>
 #include <asm/system_misc.h>
 #include <asm/suspend.h>
+#include <mach/columbus.h>
 #include <mach/spc.h>
 
 static int tc2_finisher(unsigned long arg)
@@ -11,6 +13,8 @@ static int tc2_finisher(unsigned long arg)
 	spc_powerdown_enable(1, 1);
 	scc_ctl_snoops(0, 0);
 	scc_ctl_snoops(1, 0);
+	writel(0x0, COLUMBUS_CCI400_VIRT_BASE + COLUMBUS_CCI400_EAG_OFFSET);
+	writel(0x0, COLUMBUS_CCI400_VIRT_BASE + COLUMBUS_CCI400_KF_OFFSET);
 	dsb();
 	wfi();
 	return 1;
@@ -44,6 +48,13 @@ static int tc2_pm_enter(suspend_state_t suspend_state)
 	default:
 		ret = -EINVAL;
 	}
+
+	spc_powerdown_enable(0, 0);
+	spc_powerdown_enable(1, 0);
+	scc_ctl_snoops(0, 1);
+	scc_ctl_snoops(1, 1);
+	writel(0x1, COLUMBUS_CCI400_VIRT_BASE + COLUMBUS_CCI400_EAG_OFFSET);
+	writel(0x1, COLUMBUS_CCI400_VIRT_BASE + COLUMBUS_CCI400_KF_OFFSET);
 
 	return ret;
 }

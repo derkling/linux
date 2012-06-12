@@ -27,7 +27,7 @@ static inline void cpu_enter_lowpower(void)
 
 	cpumask_and(&tmp, cpu_online_mask, topology_core_cpumask(cpu));
 
-	if (!cpumask_weight(&tmp) == cpumask_weight(topology_core_cpumask(cpu)))
+	if (!cpumask_weight(&tmp))
 		flush_cache_all();
 
 	disable_clean_inv_dcache();
