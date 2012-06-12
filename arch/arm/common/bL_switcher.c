@@ -121,11 +121,14 @@ static void bL_do_switch(void *_handshake_ptr)
 	 * shutting ourself down.  If we're the last CPU in this cluster,
 	 * clean L2 too.
 	 */
-	setup_mm_for_reboot();
 	cpu_proc_fin();
-	flush_cache_all();
-	if (handshake_result != 0)
+	if (handshake_result != 0) {
+		/* last man standing */
+		flush_cache_all();
 		outer_flush_all();
+	} else {
+		flush_dcache_level(flush_cache_level_cpu());
+	}
 
 	/* And our own life ends right here... */
 	wfi();
@@ -136,6 +139,7 @@ static void bL_do_switch(void *_handshake_ptr)
 	 * we had the chance to enter it.  Let's turn off the MMU and
 	 * branch back directly through our kernel entry point.
 	 */
+	setup_mm_for_reboot();
 	phys_reset = (phys_reset_t)(unsigned long)virt_to_phys(cpu_reset);
 	phys_reset(virt_to_phys(bl_entry_point));
 
