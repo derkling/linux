@@ -113,6 +113,7 @@ static void bL_do_switch(void *_handshake_ptr)
 	if (handshake_result != 0)
 		outer_flush_all();
 
+	bL_platform_ops->power_down(cpuid, ob_cluster);
 	/* And our own life ends right here... */
 	wfi();
 
@@ -198,7 +199,7 @@ int bL_switch_to(unsigned int new_cluster_id)
 	bL_platform_ops->power_up(cpuid, ib_cluster);
 
 	/* redirect GIC's SGIs to our counterpart */
-	gic_migrate_target(cpuid + ib_cluster*4);
+	gic_migrate_target(cpuid + ib_cluster*2);
 
 	/*
 	 * Raise a SGI on the inbound CPU to make sure it doesn't stall
@@ -240,7 +241,7 @@ int bL_switch_to(unsigned int new_cluster_id)
 	}
 
 	/* Now let's take care of shutting the outbound CPU down. */
-	*handshake_ptr = bL_platform_ops->power_down(cpuid, ob_cluster);
+	*handshake_ptr = 0;
 	dsb_sev();
        
 out:
@@ -321,7 +322,7 @@ static ssize_t bL_switcher_write(struct file *file, const char __user *buf,
 		return -EFAULT;
 
 	/* format: <cpu#>,<cluster#> */
-	if (val[0] < '0' || val[0] > '4' ||
+	if (val[0] < '0' || val[0] > '1' ||
 	    val[1] != ',' ||
 	    val[2] < '0' || val[2] > '1')
 		return -EINVAL;

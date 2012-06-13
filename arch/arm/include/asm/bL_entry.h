@@ -12,7 +12,7 @@
 #ifndef BL_ENTRY_H
 #define BL_ENTRY_H
 
-#define BL_CPUS_PER_CLUSTER	4
+#define BL_CPUS_PER_CLUSTER	2
 #define BL_NR_CLUSTERS		2
 
 #ifndef __ASSEMBLY__
