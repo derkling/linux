@@ -31,8 +31,7 @@ extern int _smc_down(unsigned int, unsigned int, unsigned int, unsigned int);
 
 static inline void smc_up(unsigned int cpu, unsigned int cluster)
 {
-	unsigned int value;
-	_smc_up(0, cpu_logical_map(cpu), 0, 0);
+	_smc_up(0, (cluster << 8) | cpu, 0, 0);
 }
 
 static inline bool smc_down(unsigned int cpu, unsigned int cluster)
@@ -55,4 +54,4 @@ static int __init columbus_pmif_init(void)
 				COLUMBUS_SYS_FLAGS_SET_OFFSET);
 	return bL_switcher_init(&bL_columbus_power_ops);
 }
-__initcall(columbus_pmif_init);
+arch_initcall(columbus_pmif_init);
