@@ -31,9 +31,19 @@
  */
 
 ENTRY(shutdown_smc)
-	mov 	r0, #0x84000000
-	dsb
-	wfi
-	mvn	r0, #1
+	ldr 	r0, =#0x80100001
+	smc #0
 	mov	pc, lr
 ENDPROC(shutdown_smc)
+
+ENTRY(_smc_down)
+	ldr 	r0, =#0x80100001
+	smc #0
+	mov	pc, lr
+ENDPROC(_smc_down)
+
+ENTRY(_smc_up)
+	ldr 	r0, =0x80100002
+	smc #0
+	mov	pc, lr
+ENDPROC(_smc_up)

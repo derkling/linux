@@ -52,7 +52,8 @@
 struct secondary_data secondary_data;
 
 enum ipi_msg_type {
-	IPI_TIMER = 2,
+	IPI_PING = 1,
+	IPI_TIMER,
 	IPI_RESCHEDULE,
 	IPI_CALL_FUNC,
 	IPI_CALL_FUNC_SINGLE,
@@ -367,6 +368,11 @@ void __init set_smp_cross_call(void (*fn)(const struct cpumask *, unsigned int))
 	smp_cross_call = fn;
 }
 
+void arm_send_ping_ipi(int cpu)
+{
+	smp_cross_call(cpumask_of(cpu), IPI_PING);
+}
+
 void arch_send_call_function_ipi_mask(const struct cpumask *mask)
 {
 	smp_cross_call(mask, IPI_CALL_FUNC);
@@ -535,6 +541,9 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
 		__inc_irq_stat(cpu, ipi_irqs[ipinr - IPI_TIMER]);
 
 	switch (ipinr) {
+	case IPI_PING:
+		break;
+
 	case IPI_TIMER:
 		irq_enter();
 		ipi_timer();
