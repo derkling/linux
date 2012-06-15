@@ -10,9 +10,13 @@ ENTRY(disable_clean_inv_dcache)
 	bic	r3, #4			@ clear C bit
 	mcr	p15, 0, r3, c1, c0, 0
 	isb
+	cmp	r0, #0
 	mrc	p15, 1, r0, c0, c0, 1
-	ands	r0, r0, #0xe00000
-	mov	r0, r0, lsr #21
+	andeq	r0, r0, #0xe00000
+	moveq	r0, r0, lsr #21
+	andne	r0, r0, #0x7000000
+	movne	r0, r0, lsr #24
+	movs	r0, r0
 	blne	v7_flush_dcache_level
 	mrc	p15, 0, r3, c1, c0, 1
 	bic	r3, #0x40		@ clear SMP bit

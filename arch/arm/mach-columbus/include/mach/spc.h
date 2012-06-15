@@ -34,6 +34,7 @@ extern u32 spc_get_wake_intr(int raw);
 extern void spc_powerdown_enable(int cluster, int enable);
 extern void spc_adb400_pd_enable(int cluster, int enable);
 extern void spc_wfi_cpureset(int cluster, int cpu, int enable);
+extern int spc_wfi_cpustat(int cluster);
 extern void spc_wfi_cluster_reset(int cluster, int enable);
 extern void scc_ctl_snoops(int cluster, int enable);
 #else
@@ -46,6 +47,7 @@ static inline u32 spc_get_wake_intr(int raw) { return 0; }
 static inline void spc_powerdown_enable(int cluster, int enable) { }
 static inline void spc_adb400_pd_enable(int cluster, int enable) { }
 static inline void spc_wfi_cpureset(int cluster, int cpu, int enable) { }
+static inline int spc_wfi_cpustat(int cluster) { return 0; }
 static inline void spc_wfi_cluster_reset(int cluster, int enable) { }
 static inline void scc_ctl_snoops(int cluster, int enable) { }
 #endif

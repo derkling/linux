@@ -112,9 +112,7 @@ EXPORT_SYMBOL_GPL(spc_get_wake_intr);
 void spc_powerdown_enable(int cluster, int enable)
 {
 	u32 pwdrn_reg = cluster ? KF_PWRDN_EN : EAG_PWRDN_EN;
-	spin_lock(&info->lock);
 	writel(!!enable, info->baseaddr + pwdrn_reg);
-	spin_unlock(&info->lock);
 	return;
 }
 EXPORT_SYMBOL_GPL(spc_powerdown_enable);
@@ -134,17 +132,17 @@ void scc_ctl_snoops(int cluster, int enable)
 {
 	u32 val;
 	u32 snoop_reg = cluster ? SNOOP_CTL_KF : SNOOP_CTL_EAG;
-	u32 or = cluster ? 0x20 : 0x18;
-	spin_lock(&info->lock);
-	val = readl(info->baseaddr + snoop_reg);
+	u32 or = cluster ? 0x2000 : 0x180;
+	//spin_lock(&info->lock);
+	val = readl_relaxed(info->baseaddr + snoop_reg);
 	if (enable) {
 		or = ~or;
 		val &= or;
 	} else {
 		val |=or;
 	}
-	writel(val, info->baseaddr + snoop_reg);
-	spin_unlock(&info->lock);
+	writel_relaxed(val, info->baseaddr + snoop_reg);
+	//spin_unlock(&info->lock);
 }
 
 void spc_wfi_cpureset(int cluster, int cpu, int enable)
@@ -197,6 +195,22 @@ void spc_wfi_cluster_reset(int cluster, int enable)
 	return;
 }
 EXPORT_SYMBOL_GPL(spc_wfi_cluster_reset);
+
+int spc_wfi_cpustat(int cluster)
+{
+	u32 rststat_reg, res_mask;
+	u32 val;
+	
+	if (!info)
+		return 0;
+
+	rststat_reg = STANDBYWFI_STAT;
+
+	//spin_lock(&info->lock);
+	val = readl_relaxed(info->baseaddr + rststat_reg);
+	return cluster ? ((val & 0x38) >> 3) : (val & 0x3);
+}
+EXPORT_SYMBOL_GPL(spc_wfi_cpustat);
 
 static int __devinit spc_driver_probe(struct platform_device *pdev)
 {

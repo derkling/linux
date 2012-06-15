@@ -29,6 +29,7 @@ config COLUMBUS_TC2
 	select PL330
 	select ARM_MHU
 	select ARM_CPU_SUSPEND if PM
+	select ARCH_NEEDS_CPU_IDLE_COUPLED if PM
 	select ARM_TIMER_SP804
 	help
 	  This option enables support for the Columbus Compute Subsystem

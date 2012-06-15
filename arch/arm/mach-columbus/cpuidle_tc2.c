@@ -25,6 +25,9 @@
 #include <asm/smp_plat.h>
 #include <asm/suspend.h>
 
+#include <mach/columbus.h>
+#include <mach/spc.h>
+
 #define TC2_STATE_C1 0
 #define TC2_STATE_C2 1
 #define TC2_STATE_C3 2
@@ -120,21 +123,13 @@ static inline int event_shutdown(void)
 }
 
 typedef void (*phys_reset_t)(unsigned long);
-extern void disable_clean_inv_dcache(void);
 
 static inline int smc_down(unsigned int state, unsigned int affinity)
 {
 	return 1;
 }
-/*
- * Power down SCP command passed as an argument from cpu_suspend
- */
-int tc2_finisher(unsigned long arg)
-{
-	smc_down(0x1, 0x0);
-	return 1;
-}
 
+extern void disable_clean_inv_dcache(int);
 static atomic_t abort_barrier;
 static bool abort_flag;
 static inline int scc_pending_wakeups(void)
@@ -147,14 +142,44 @@ static inline int scc_pending_wakeups(void)
  */
 int tc2_coupled_finisher(unsigned long arg)
 {
+	unsigned int mpidr = read_cpuid_mpidr();
+	unsigned int cpu = smp_processor_id();
+	unsigned int cluster = (mpidr >> 8) & 0xf;
+	unsigned int weight = cpumask_weight(topology_core_cpumask(cpu));
+	volatile u8 wfi_weight = 0;
+
 	if (scc_pending_wakeups() && event_shutdown())
 		abort_flag = 1;
 
+	writel(~0, COLUMBUS_SYS_FLAGS_VIRT_BASE +
+				COLUMBUS_SYS_FLAGS_CLR_OFFSET);
+	writel(virt_to_phys(cpu_resume), COLUMBUS_SYS_FLAGS_VIRT_BASE +
+				COLUMBUS_SYS_FLAGS_SET_OFFSET);
+
 	cpuidle_coupled_parallel_barrier((struct cpuidle_device *)arg,
 					&abort_barrier);
-	if (!abort_flag)
-		smc_down(0x1, 0x1);
+	if (!abort_flag) {
+		if (mpidr & 0xf) {
+			//spc_wfi_cpureset(cluster, mpidr & 0xf, 1);
+			disable_clean_inv_dcache(0);
+			wfi();
+			/* not reached */
+		}
+		while (wfi_weight != (weight - 1)) {
+			wfi_weight = spc_wfi_cpustat(cluster);
+			wfi_weight = hweight8(wfi_weight);
+		}
 
+		spc_powerdown_enable(cluster, 1);
+		disable_clean_inv_dcache(1);
+		if (cluster)
+			writel_relaxed(0x0, COLUMBUS_CCI400_VIRT_BASE + COLUMBUS_CCI400_KF_OFFSET);
+		else
+			writel_relaxed(0x0, COLUMBUS_CCI400_VIRT_BASE + COLUMBUS_CCI400_EAG_OFFSET);
+		scc_ctl_snoops(cluster, 0);
+		wfi();
+
+	}
 	abort_flag = 0;
 	return 1;
 }
@@ -174,6 +199,7 @@ static int tc2_enter_coupled(struct cpuidle_device *dev,
 	struct tick_device *tdev = tick_get_device(dev->cpu);
 	struct timespec ts_preidle, ts_postidle, ts_idle;
 	int i, ret;
+	int cluster = (read_cpuid_mpidr() >> 8) & 0xf;
 
 	/* Used to keep track of the total time in idle */
 	getnstimeofday(&ts_preidle);
@@ -188,20 +214,21 @@ static int tc2_enter_coupled(struct cpuidle_device *dev,
 
 	per_cpu(next_event, dev->cpu) = tdev->evtdev->next_event.tv64;
 
-	if (!dev->cpu)
-		cpu_cluster_pm_enter();
-
 	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &dev->cpu);
 
 	ret = cpu_suspend((unsigned long) dev, tc2_coupled_finisher);
 
-	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &dev->cpu);
-
 	if (ret)
 		goto deep_out;
 
-	if (!dev->cpu)
-		cpu_cluster_pm_exit();
+	spc_powerdown_enable(cluster, 0);
+	scc_ctl_snoops(cluster, 1);
+	if (cluster)
+		writel_relaxed(0x1, COLUMBUS_CCI400_VIRT_BASE + COLUMBUS_CCI400_KF_OFFSET);
+	else
+		writel_relaxed(0x1, COLUMBUS_CCI400_VIRT_BASE + COLUMBUS_CCI400_EAG_OFFSET);
+
+	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &dev->cpu);
 
 	cpu_pm_exit();
 
@@ -232,34 +259,13 @@ static int tc2_enter_idle(struct cpuidle_device *dev,
 	struct tc2_processor_cx *cx =
 		cpuidle_get_statedata(&dev->states_usage[idx]);
 
-	struct tick_device *tdev = tick_get_device(dev->cpu);
 	struct timespec ts_preidle, ts_postidle, ts_idle;
 	int ret;
 
 	/* Used to keep track of the total time in idle */
 	getnstimeofday(&ts_preidle);
-	
-	if (cx->type == TC2_STATE_C1 ||
-		!cpu_isset(smp_processor_id(), *to_cpumask(cpu_pm_bits))) {
 
-		wfi();
-		goto out;
-	}
-
-	cpu_pm_enter();
-
-	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &dev->cpu);
-
-	ret = cpu_suspend(0, tc2_finisher);
-
-	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &dev->cpu);
-
-	if (ret)
-		goto out;
-
-	cpu_pm_exit();
-
-out:
+	wfi();
 
 	getnstimeofday(&ts_postidle);
 	ts_idle = timespec_sub(ts_postidle, ts_preidle);
