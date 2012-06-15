@@ -15,16 +15,20 @@
  * GNU General Public License for more details.
  */
 #include <linux/cpufreq.h>
+#include <linux/cpumask.h>
 #include <linux/init.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/opp.h>
+#include <linux/of_platform.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/smp.h>
+#include <linux/spinlock.h>
 #include <linux/sysfs.h>
 #include <linux/types.h>
+
+#include <asm/bL_switcher.h>
 
 #include <mach/mhu.h>
 
@@ -42,9 +46,13 @@ static atomic_t freq_table_users = ATOMIC_INIT(0);
 static unsigned long clk_big_min;	/* Minimum (Big) clock frequency */
 static unsigned long clk_little_max;	/* Maximum clock frequency (Little) */
 
-static unsigned int bl_up_hyst, bl_down_hyst;
 static unsigned int bl_hyst_cfg_cnt = BL_HYST_DEFAULT_COUNT;
 static unsigned int bl_hyst_current_cnt = BL_HYST_DEFAULT_COUNT;
+
+/* Cached current cluster for each CPU to save on IPIs */
+static DEFINE_PER_CPU(unsigned int, cpu_cur_cluster);
+static DEFINE_PER_CPU(unsigned int, bl_up_hyst);
+static DEFINE_PER_CPU(unsigned int, bl_down_hyst);
 
 static ssize_t show_bl_hyst_config(struct cpufreq_policy *p, char *buf)
 {
@@ -62,67 +70,90 @@ static ssize_t store_bl_hyst_config(struct cpufreq_policy *p,
 cpufreq_freq_attr_rw(bl_hyst_config);
 
 /*
- * HVC Encoding is used directly as GCC doesn't support it yet
- * Currently <imm> = 2 - to get cluster ID, 1 - to switch cluster
- * Encoding A1 ARMv7V - HVC #<imm>
- * 31-28 : 27-24 : 23-20 : 19-16 : 15-12 : 11-8 : 7-4 : 3-0
- *  1110 :  0001 :  0100 :         imm12       : 0111 : imm4
+ * Functions to get the current status.
+ *
+ * Beware that the cluster for another CPU may change unexpectedly.
  */
-/* Determine the currently active big-little cluster */
-static inline int columbus_cpufreq_get_bl_cluster(void)
+
+static unsigned int get_local_cluster(void)
 {
-	int cluster = 0;
-	asm volatile (".inst 0xe1400072\n mov %0, r0\n" :
-				"=r" (cluster) : : "r0", "cc");
-	/* Mask MPIDR value */
-	cluster = (cluster & 0x00000F00) >> 8;
+	unsigned int mpidr;
+	asm ("mrc\tp15, 0, %0, c0, c0, 5" : "=r" (mpidr));
+	return (mpidr >> 8) & 0xf;
+}
+
+static void __get_current_cluster(void *_data)
+{
+	unsigned int *_cluster = _data;
+	*_cluster = get_local_cluster();
+}
+
+static int get_current_cluster(unsigned int cpu)
+{
+	unsigned int cluster = 0;
+	smp_call_function_single(cpu, __get_current_cluster, &cluster, 1);
 	return cluster;
 }
 
-static int columbus_cpufreq_switch_bl_cluster(int cluster)
+static int get_current_cached_cluster(unsigned int cpu)
 {
-	int cur_cluster;
+	return per_cpu(cpu_cur_cluster, cpu);
+}
 
-	cur_cluster = columbus_cpufreq_get_bl_cluster();
-	if (cur_cluster != cluster) {
-		asm volatile (".inst 0xe1400071\n" : : : "cc");
-		pr_debug("Switched to cluster %d!\n",
-				columbus_cpufreq_get_bl_cluster());
-	} else {
-		pr_debug("Already on cluster %d!\n",
-				columbus_cpufreq_get_bl_cluster());
-	}
-	return 0;
+/*
+ * Switch to the requested cluster.
+ *
+ * The __switch_to_entry version must be called with IRQs off on the
+ * target CPU.  It is meant to be invoked via switch_to_entry() which
+ * provides the necessary wrapping.
+ */
+
+static void __switch_to_entry(void *_data)
+{
+	unsigned int cpu = smp_processor_id();
+	int old_cluster, new_cluster;
+
+	old_cluster = get_local_cluster();
+	new_cluster = *(int *)_data;
+
+	/*
+	 * IRQs are disabled here, including IPIs, so the cluster can't
+	 * be changed by anyone else at this point.  Let's go ahead only
+	 * if we really need to do something.
+	 */
+	if (new_cluster == old_cluster)
+		return;
+
+	/* FIXME:cpufreq_notify_transition can't be called with IRQs disabled */
+	/* cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);*/
+	if (!bL_switch_to(new_cluster))
+		per_cpu(cpu_cur_cluster, cpu) = new_cluster;
+	/* cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);*/
 }
 
 /* Validate policy frequency range */
 static int columbus_cpufreq_verify_policy(struct cpufreq_policy *policy)
 {
 	/* This call takes care of it all using freq_table */
-	cpufreq_frequency_table_verify(policy, freq_table);
-	return 0;
+	return cpufreq_frequency_table_verify(policy, freq_table);
 }
 
 /* Set clock frequency */
 static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 			     unsigned int target_freq, unsigned int relation)
 {
-	cpumask_t cpus_allowed;
 	uint32_t cpu = policy->cpu;
 	struct cpufreq_freqs freqs;
 	uint32_t freq_tab_idx;
 	uint32_t cur_cluster, new_cluster, do_switch = 0;
-
-	/* Prevent thread cpu migration - not sure if necessary */
-	cpus_allowed = current->cpus_allowed;
-
-	set_cpus_allowed(current, cpumask_of_cpu(cpu));
-	BUG_ON(cpu != smp_processor_id());
+	int ret = 0;
 
 	/* Read current clock rate */
-	cur_cluster = columbus_cpufreq_get_bl_cluster();
+	cur_cluster = get_current_cached_cluster(cpu);
 
-	get_performance(cur_cluster, cpu, &freq_tab_idx);
+	if (get_performance(cur_cluster, cpu, &freq_tab_idx))
+		return -EIO;
+
 	freqs.old = ind_table[cur_cluster][freq_tab_idx].frequency;
 
 	/* Make sure that target_freq is within supported range */
@@ -138,10 +169,8 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 
 	freqs.cpu = policy->cpu;
 
-	if (freqs.old == freqs.new) {
-		set_cpus_allowed(current, cpus_allowed);
+	if (freqs.old == freqs.new)
 		return 0;
-	}
 
 	pr_debug("Requested Freq %d on %s cpu %d\n", freqs.new,
 		cur_cluster == COLUMBUS_BL_LITTLE_ID ? "LITTLE" : "big", cpu);
@@ -157,21 +186,19 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 	 */
 	if (freqs.new < clk_big_min &&
 			cur_cluster == COLUMBUS_BL_BIG_ID &&
-			++bl_down_hyst >= bl_hyst_current_cnt) {
+			++per_cpu(bl_down_hyst, cpu) >= bl_hyst_current_cnt) {
 			do_switch = 1;	/* Switch to Little */
-			bl_down_hyst = 0;
+			per_cpu(bl_down_hyst, cpu) = 0;
 	} else if (freqs.new > clk_little_max &&
 			cur_cluster == COLUMBUS_BL_LITTLE_ID &&
-			++bl_up_hyst >= bl_hyst_current_cnt) {
+			++per_cpu(bl_up_hyst, cpu) >= bl_hyst_current_cnt) {
 			do_switch = 1;	/* Switch to Big */
-			bl_up_hyst = 0;
+			per_cpu(bl_up_hyst, cpu) = 0;
 	}
 
 	/* Skipping for hysteresis management */
-	if (bl_down_hyst || bl_up_hyst) {
-		set_cpus_allowed(current, cpus_allowed);
-		return 0;
-	}
+	if (per_cpu(bl_down_hyst, cpu) || per_cpu(bl_up_hyst, cpu))
+		return ret;
 
 	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
 
@@ -186,113 +213,214 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 
 	cpufreq_frequency_table_target(policy, ind_table[new_cluster],
 					freqs.new, relation, &freq_tab_idx);
-	if (set_performance(new_cluster, policy->cpu, freq_tab_idx))
-		pr_err("failed to set the required OPP\n");
+	ret = set_performance(new_cluster, policy->cpu, freq_tab_idx);
+	if (ret) {
+		pr_err("Error %d while setting required OPP\n", ret);
+		return ret;
+	}
 
 	if (do_switch)
-		columbus_cpufreq_switch_bl_cluster(new_cluster);
+		/*
+		 * FIXME: forcing smp_call_function_single() to wait just for
+		 * the purpose of running the notifyers is wasteful.
+		 */
+		smp_call_function_single(cpu, __switch_to_entry,
+						(void *)&new_cluster, 1);
 
 	policy->cur = freqs.new;
 
-	set_cpus_allowed(current, cpus_allowed);
 	cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
 
-	return 0;
+	return ret;
 }
 
 /* Get current clock frequency */
 static unsigned int columbus_cpufreq_get(unsigned int cpu)
 {
-	cpumask_t cpus_allowed;
 	uint32_t freq_tab_idx = 0;
-	uint32_t cur_cluster = columbus_cpufreq_get_bl_cluster();
-
-	/* Prevent thread cpu migration - not sure if necessary */
-	cpus_allowed = current->cpus_allowed;
-
-	set_cpus_allowed(current, cpumask_of_cpu(cpu));
-	BUG_ON(cpu != smp_processor_id());
+	uint32_t cur_cluster = get_current_cluster(cpu);
 
 	/*
 	 * Read current clock rate with MHU call
 	 */
-	get_performance(columbus_cpufreq_get_bl_cluster(), cpu, &freq_tab_idx);
-
-	set_cpus_allowed(current, cpus_allowed);
+	if (get_performance(cur_cluster, cpu, &freq_tab_idx))
+		return -EIO;
 
 	return ind_table[cur_cluster][freq_tab_idx].frequency;
 }
 
-static int columbus_cpufreq_init_table(void)
+/* get the number of entries in the cpufreq_frequency_table */
+static inline int _cpufreq_get_table_size(struct cpufreq_frequency_table *table)
 {
-	unsigned int opp_sz[COLUMBUS_MAX_CLUSTER], opp_size = 0;
-	struct cpufreq_frequency_table *freqtable;
-	struct cpufreq_frequency_table *indtable[COLUMBUS_MAX_CLUSTER];
-	unsigned long *table[COLUMBUS_MAX_CLUSTER];
-	int loop, i, ret;
+	int size = 0;
+	for (; (table[size].frequency != CPUFREQ_TABLE_END); size++)
+		;
+	return size;
+}
 
-	for (loop = 0; loop < COLUMBUS_MAX_CLUSTER; loop++) {
-		int j;
-		ret = get_dvfs_size(loop, 0, &opp_sz[loop]);
+/* get the minimum frequency in the cpufreq_frequency_table */
+static inline uint32_t _cpufreq_get_table_min(
+			struct cpufreq_frequency_table *table)
+{
+	int i;
+	uint32_t min_freq = ~0;
+	for (i = 0; (table[i].frequency != CPUFREQ_TABLE_END); i++)
+		if (table[i].frequency < min_freq)
+			min_freq = table[i].frequency;
+	return min_freq;
+}
+
+/* get the maximum frequency in the cpufreq_frequency_table */
+static inline uint32_t _cpufreq_get_table_max(
+			struct cpufreq_frequency_table *table)
+{
+	int i;
+	uint32_t max_freq = 0;
+	for (i = 0; (table[i].frequency != CPUFREQ_TABLE_END); i++)
+		if (table[i].frequency > max_freq)
+			max_freq = table[i].frequency;
+	return max_freq;
+}
+
+/* translate the integer array into cpufreq_frequency_table entries */
+static inline void _cpufreq_copy_table_from_array(uint32_t *table,
+			struct cpufreq_frequency_table *freq_table, int size)
+{
+	int i;
+	for (i = 0; i < size; i++) {
+		freq_table[i].index = i;
+		/* SCP provides in Hz, CPUFreq needs in kHz */
+		freq_table[i].frequency = table[i] / 1000;
+	}
+	freq_table[i].index = size;
+	freq_table[i].frequency = CPUFREQ_TABLE_END;
+}
+
+/*
+ * copy entries of all the per-cluster cpufreq_frequency_table entries into a
+ * single frequency table which is published to cpufreq core
+ */
+static int columbus_cpufreq_merge_tables(uint32_t total_sz)
+{
+	int cluster_id, i;
+	struct cpufreq_frequency_table *freqtable;
+
+	freqtable = kzalloc(sizeof(struct cpufreq_frequency_table) *
+						(total_sz + 1), GFP_KERNEL);
+	if (!freqtable)
+		return -ENOMEM;
+
+	freq_table = freqtable;
+	for (cluster_id = 0; cluster_id < COLUMBUS_MAX_CLUSTER; cluster_id++) {
+		int size = _cpufreq_get_table_size(ind_table[cluster_id]);
+		memcpy(freqtable, ind_table[cluster_id],
+			size * sizeof(struct cpufreq_frequency_table));
+		freqtable += size;
+	}
+	freq_table[total_sz].frequency = CPUFREQ_TABLE_END;
+
+	/* Adjust the indices for merged table */
+	for (i = 0; i <= total_sz; i++)
+		freq_table[i].index = i;
+
+	/* Assuming 2 cluster, set clk_big_min and clk_little_max */
+	clk_big_min = _cpufreq_get_table_min(ind_table[COLUMBUS_BL_BIG_ID]);
+	clk_little_max =
+		_cpufreq_get_table_max(ind_table[COLUMBUS_BL_LITTLE_ID]);
+
+	return 0;
+}
+
+static int columbus_cpufreq_init_from_scp(void)
+{
+	uint32_t cpu_opp_num, total_opp_num = 0;
+	struct cpufreq_frequency_table *indtable[COLUMBUS_MAX_CLUSTER];
+	uint32_t *cpu_freqs;
+	int ret = 0, cluster_id = 0;
+
+	for (cluster_id = 0; cluster_id < COLUMBUS_MAX_CLUSTER; cluster_id++) {
+		ret = get_dvfs_size(cluster_id, 0, &cpu_opp_num);
 		if (ret)
 			return ret;
-		opp_size += opp_sz[loop];
-		table[loop] = kzalloc(sizeof(unsigned long) *
-					(opp_sz[loop] + 1), GFP_KERNEL);
-		indtable[loop] = kzalloc(sizeof(struct cpufreq_frequency_table)
-					* (opp_sz[loop] + 1), GFP_KERNEL);
-		if (!table[loop] || !indtable[loop]) {
+		total_opp_num += cpu_opp_num;
+		cpu_freqs = kzalloc(sizeof(uint32_t) * cpu_opp_num, GFP_KERNEL);
+		indtable[cluster_id] =
+			kzalloc(sizeof(struct cpufreq_frequency_table) *
+						(cpu_opp_num + 1), GFP_KERNEL);
+		if (!cpu_freqs || !indtable[cluster_id]) {
 			ret = -ENOMEM;
 			goto free_mem;
 		}
-		ret = get_dvfs_capabilities(loop, 0, (u32 *)table[loop],
-							opp_sz[loop]);
+		ret = get_dvfs_capabilities(cluster_id, 0, (u32 *)cpu_freqs,
+								cpu_opp_num);
 		if (ret) {
 			ret = -EIO;
 			goto free_mem;
 		}
-		for (j = 0; j < opp_sz[loop]; j++) {
-			indtable[loop][j].index = j;
-			indtable[loop][j].frequency = table[loop][j];
-		}
-		indtable[loop][j].index = j;
-		indtable[loop][j].frequency = CPUFREQ_TABLE_END;
+		_cpufreq_copy_table_from_array(cpu_freqs,
+				indtable[cluster_id], cpu_opp_num);
+		ind_table[cluster_id] = indtable[cluster_id];
 
-		ind_table[loop] = indtable[loop];
+		kfree(cpu_freqs);
 	}
-
-	freqtable = kzalloc(sizeof(struct cpufreq_frequency_table) *
-					(opp_size + 1), GFP_KERNEL);
-	if (!freqtable) {
-		ret = -ENOMEM;
+	ret = columbus_cpufreq_merge_tables(total_opp_num);
+	if (ret)
 		goto free_mem;
-	}
-	for (loop = 0, i = 0; i < COLUMBUS_MAX_CLUSTER; i++) {
-		int j;
-		for (j = 0; j < opp_sz[i]; j++, loop++) {
-			freqtable[loop].index = loop;
-			freqtable[loop].frequency = table[i][j];
-		}
-	}
-	freqtable[loop].index = loop;
-	freqtable[loop].frequency = CPUFREQ_TABLE_END;
-
-	freq_table = freqtable;
-
-	/* Assuming 2 cluster, set clk_big_min and clk_little_max */
-	clk_little_max = table[COLUMBUS_BL_LITTLE_ID]
-				[opp_sz[COLUMBUS_BL_LITTLE_ID] - 1];
-	clk_big_min
-		= table[COLUMBUS_BL_BIG_ID][opp_sz[COLUMBUS_BL_BIG_ID] - 1];
-
-	for (loop = 0; loop < COLUMBUS_MAX_CLUSTER; loop++)
-		kfree(table[loop]);
-	return 0;
+	return ret;
 free_mem:
-	while (loop >= 0) {
-		kfree(table[loop]);
-		kfree(indtable[loop]);
+	while (cluster_id >= 0)
+		kfree(indtable[cluster_id]);
+	kfree(cpu_freqs);
+	return ret;
+}
+
+static int columbus_cpufreq_of_init(void)
+{
+	uint32_t cpu_opp_num, total_opp_num = 0;
+	struct cpufreq_frequency_table *indtable[COLUMBUS_MAX_CLUSTER];
+	uint32_t *cpu_freqs;
+	int ret = 0, cluster_id = 0, len;
+	struct device_node *cluster = NULL;
+	const struct property *pp;
+	const u32 *hwid;
+
+	while ((cluster = of_find_node_by_name(cluster, "cluster"))) {
+		hwid = of_get_property(cluster, "reg", &len);
+		if (hwid && len == 4)
+			cluster_id = be32_to_cpup(hwid);
+
+		pp = of_find_property(cluster, "freqs", NULL);
+		if (!pp)
+			return -EINVAL;
+		cpu_opp_num = pp->length / sizeof(u32);
+		if (!cpu_opp_num)
+			return -ENODATA;
+
+		total_opp_num += cpu_opp_num;
+		cpu_freqs = kzalloc(sizeof(uint32_t) * cpu_opp_num, GFP_KERNEL);
+		indtable[cluster_id] =
+			kzalloc(sizeof(struct cpufreq_frequency_table) *
+						(cpu_opp_num + 1), GFP_KERNEL);
+		if (!cpu_freqs || !indtable[cluster_id]) {
+			ret = -ENOMEM;
+			goto free_mem;
+		}
+		of_property_read_u32_array(cluster, "freqs",
+							cpu_freqs, cpu_opp_num);
+		_cpufreq_copy_table_from_array(cpu_freqs,
+				indtable[cluster_id], cpu_opp_num);
+		ind_table[cluster_id] = indtable[cluster_id];
+
+		kfree(cpu_freqs);
 	}
+	ret = columbus_cpufreq_merge_tables(total_opp_num);
+	if (ret)
+		goto free_mem;
+	return ret;
+free_mem:
+	while (cluster_id >= 0)
+		kfree(indtable[cluster_id]);
+	kfree(cpu_freqs);
 	return ret;
 }
 
@@ -300,6 +428,7 @@ static int columbus_cpufreq_notifier_policy(struct notifier_block *nb,
 		unsigned long val, void *data)
 {
 	struct cpufreq_policy *policy = data;
+	uint32_t cpu = policy->cpu;
 	if (val != CPUFREQ_NOTIFY)
 		return 0;
 	if (strcmp(policy->governor->name, "powersave") == 0 ||
@@ -309,7 +438,7 @@ static int columbus_cpufreq_notifier_policy(struct notifier_block *nb,
 	} else {
 		bl_hyst_current_cnt = bl_hyst_cfg_cnt;
 	}
-	bl_down_hyst = bl_up_hyst = 0;
+	per_cpu(bl_down_hyst, cpu) = per_cpu(bl_up_hyst, cpu) = 0;
 	return 0;
 }
 
@@ -322,11 +451,15 @@ static int columbus_cpufreq_init(struct cpufreq_policy *policy)
 {
 	int result = 0;
 
-	if (atomic_inc_return(&freq_table_users) == 1)
-		result = columbus_cpufreq_init_table();
+	if (atomic_inc_return(&freq_table_users) == 1) {
+		result = columbus_cpufreq_of_init();
+		if (result)
+			result = columbus_cpufreq_init_from_scp();
+	}
 
 	if (result) {
 		atomic_dec_return(&freq_table_users);
+		pr_err("CPUFreq for CPU %d failed to initialize\n", policy->cpu);
 		return result;
 	}
 
@@ -336,6 +469,9 @@ static int columbus_cpufreq_init(struct cpufreq_policy *policy)
 
 	cpufreq_frequency_table_get_attr(freq_table, policy->cpu);
 
+	per_cpu(cpu_cur_cluster, policy->cpu) =
+				get_current_cluster(policy->cpu);
+
 	/* set default policy and cpuinfo */
 	policy->min = policy->cpuinfo.min_freq;
 	policy->max = policy->cpuinfo.max_freq;
@@ -343,12 +479,11 @@ static int columbus_cpufreq_init(struct cpufreq_policy *policy)
 	policy->cpuinfo.transition_latency = 1000000;	/* 1 ms assumed */
 	policy->cur = policy->max;
 
-	/* Set up frequency dependencies */
-	cpumask_copy(policy->cpus, cpu_possible_mask);	/* affected_cpus */
-	cpumask_copy(policy->related_cpus, cpu_possible_mask);
-
-	result = cpufreq_register_notifier(&notifier_policy_block,
+	if (atomic_read(&freq_table_users) == 1)
+		result = cpufreq_register_notifier(&notifier_policy_block,
 				CPUFREQ_POLICY_NOTIFIER);
+
+	pr_info("CPUFreq for CPU %d initialized\n", policy->cpu);
 	return result;
 }
 
@@ -387,7 +522,7 @@ static void __exit columbus_cpufreq_modexit(void)
 	cpufreq_unregister_driver(&columbus_cpufreq_driver);
 }
 
-MODULE_DESCRIPTION("cpufreq driver for ARM columbus platform");
+MODULE_DESCRIPTION("cpufreq driver for ARM Columbus platform with big.LITTLE switcher");
 MODULE_LICENSE("GPL");
 
 module_init(columbus_cpufreq_modinit);
