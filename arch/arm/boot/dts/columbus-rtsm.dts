@@ -59,20 +59,6 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 
-		cpu0: cpu@0 {
-			device_type = "cpu";
-			compatible = "arm,cortex-a15";
-			reg = <0>;
-			cluster = <&cluster0>;
-			core = <&core0>;
-		};
-		cpu1: cpu@1 {
-			device_type = "cpu";
-			compatible = "arm,cortex-a15";
-			reg = <1>;
-			cluster = <&cluster0>;
-			core = <&core1>;
-		};
 		cpu2: cpu@2 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a7";
@@ -105,16 +91,6 @@
 		reg = <0x00 0x2c001000 0x0 0x1000>,
 		      <0x00 0x2c002000 0x0 0x100>;
 
-		gic-cpuif@0 {
-			compatible = "arm,gic-cpuif";
-			cpuif-id = <0>;
-			cpu = <&cpu0>;
-		};
-		gic-cpuif@1 {
-			compatible = "arm,gic-cpuif";
-			cpuif-id = <1>;
-			cpu = <&cpu1>;
-		};
 		gic-cpuif@2 {
 			compatible = "arm,gic-cpuif";
 			cpuif-id = <2>;
