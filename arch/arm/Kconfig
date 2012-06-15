@@ -1568,6 +1568,15 @@ config SCHED_SMT
 	  MultiThreading at a cost of slightly increased overhead in some
 	  places. If unsure say N here.
 
+config SCHED_BL
+	bool "(EXPERIMENTAL) big.LITTLE (heterogenous platform) scheduling"
+	depends on BL_SEPARATE_SCHED_DOMAINS && SCHED_MC
+	help
+	  Experimental scheduler optimizations for big.LITTLE platforms.
+	  Attempts introspectively select task affinity to optimize power
+	  and performance on big.LITTLE platforms. Assumes cpu 0,2 to be
+	  little cores and cpu 1,3 to be big cores.
+
 config BL_SEPARATE_SCHED_DOMAINS
 	bool
 	help

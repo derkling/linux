@@ -1173,6 +1173,7 @@ struct sched_avg {
 	u64 last_runnable_update, decay_count;
 	u32 usage_avg_sum;
 	unsigned long load_avg_contrib;
+	unsigned long load_avg_ratio;
 
 	int contributes_blocked_load;
 };

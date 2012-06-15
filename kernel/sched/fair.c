@@ -1062,10 +1062,10 @@ static inline void __update_task_entity_contrib(struct sched_entity *se)
 	se->avg.load_avg_contrib = div64_u64(se->avg.runnable_avg_sum *
 					     se->load.weight,
 					     se->avg.runnable_avg_period + 1);
+	se->avg.load_avg_ratio = div64_u64(se->avg.runnable_avg_sum * 1024,
+					se->avg.runnable_avg_period + 1);
 	trace_sched_task_load_contrib(task_of(se), se->avg.load_avg_contrib);
-	trace_sched_task_runnable_ratio(task_of(se),
-		div64_u64(se->avg.runnable_avg_sum * 1024,
-			se->avg.runnable_avg_period + 1));
+	trace_sched_task_runnable_ratio(task_of(se), se->avg.load_avg_ratio);
 	trace_sched_task_usage_ratio(task_of(se),
 		div64_u64(se->avg.usage_avg_sum * 1024,
 			se->avg.runnable_avg_period + 1));
@@ -3047,6 +3047,22 @@ done:
 	return target;
 }
 
+#ifdef CONFIG_SCHED_BL
+/* big.LITTLE optimizations
+ * It is assumed that all big CPU's has lower cpuid than the little CPU's.
+ * little_cpu_target should be the lowest cpuid of a little CPU.
+ * Ideally these should be replaced by cpumasks. */
+unsigned int big_cpu_target = 1;
+unsigned int little_cpu_target = 2;
+/* Migration thresholds should be in the range [0..1023] */
+unsigned int bl_big_threshold = 512;
+unsigned int bl_little_threshold = 256;
+unsigned int bl_big_prio = 125;
+unsigned int bl_little_force_prio = 130;
+static unsigned int big_migration(int cpu, struct sched_entity *se);
+static unsigned int little_migration(int cpu, struct sched_entity *se);
+#endif
+
 /*
  * sched_balance_self: balance the current task (running on cpu) in domains
  * that have the 'flag' flag set. In practice, this is SD_BALANCE_FORK and
@@ -3175,6 +3191,13 @@ select_task_rq_fair(struct task_struct *p, int sd_flag, int wake_flags)
 	}
 unlock:
 	rcu_read_unlock();
+
+#ifdef CONFIG_SCHED_BL
+	if (big_migration(new_cpu, &p->se))
+		return big_cpu_target;
+	if (little_migration(new_cpu, &p->se))
+		return little_cpu_target;
+#endif
 
 	return new_cpu;
 }
@@ -5479,6 +5502,35 @@ need_kick:
 #else
 static void nohz_idle_balance(int this_cpu, enum cpu_idle_type idle) { }
 #endif
+
+#ifdef CONFIG_SCHED_BL
+/* Check if task should migrate to a big core (cpu 0,1) */
+static unsigned int big_migration(int cpu, struct sched_entity *se)
+{
+	struct task_struct *p = task_of(se);
+	if (p->prio < bl_big_prio && p->prio > 100
+		&& (cpu >= little_cpu_target)
+		&& se->avg.load_avg_ratio > bl_big_threshold) {
+		if (cpumask_test_cpu(big_cpu_target, &p->cpus_allowed))
+			return 1;
+	}
+	return 0;
+}
+
+/* Check if task should migrate to a little core (cpu 2-4) */
+static unsigned int little_migration(int cpu, struct sched_entity *se)
+{
+	struct task_struct *p = task_of(se);
+	if (p->prio >= bl_little_force_prio || ((cpu < little_cpu_target)
+		&& se->avg.load_avg_ratio < bl_little_threshold)) {
+		if (cpumask_test_cpu(little_cpu_target, &p->cpus_allowed))
+			return 1;
+	}
+	return 0;
+}
+#else
+static void force_big_little_migration(int this_cpu) { }
+#endif /* CONFIG_SCHED_BL */
 
 /*
  * run_rebalance_domains is triggered when needed from the scheduler tick.
