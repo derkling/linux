@@ -30,6 +30,7 @@ config COLUMBUS_TC2
 	select ARM_MHU
 	select ARM_CPU_SUSPEND if PM
 	select ARM_TIMER_SP804
+	select BL_SEPARATE_SCHED_DOMAINS
 	help
 	  This option enables support for the Columbus Compute Subsystem
 	  as modelled by the TC2 Core Tile.

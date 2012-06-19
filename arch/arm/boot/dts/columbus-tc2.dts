@@ -17,7 +17,7 @@
 	};
 	
 	chosen {
-		bootargs = "console=ttyAMA0,38400 debug earlyprintk root=/dev/sda1 rootwait verbose rw";
+		bootargs = "console=ttyAMA0,38400 debug earlyprintk root=/dev/sdb1 rootwait verbose rw";
 	};
 
 	clusters {
