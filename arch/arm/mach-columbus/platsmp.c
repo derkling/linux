@@ -41,44 +41,48 @@ static struct map_desc columbus_release_addr_map __initdata = {
 };
 
 static void *cpu_release_addr_table[CONFIG_NR_CPUS] __initdata;
+static phys_addr_t cpu_release_phys_addr_table[CONFIG_NR_CPUS] __initdata;
 
 
 #define SPIN_TABLE_STRLEN	10
 
-static int __init columbus_find_release_addr(unsigned long node, 
+static int __init columbus_find_release_addr(unsigned long node,
 		const char *uname, int depth, void *data)
 {
-	int cpu_count = 0;
-	phys_addr_t cpu_release_addr;
-
-	if (strncmp(uname, "cpu", 3) == 0) {
+	if (strncmp(uname, "cpu@", 4) == 0) {
 		unsigned long len;
 		const u64 *cpu_release_addr_prop;
-		const void *enable_method_prop = of_get_flat_dt_prop(node, "enable-method", &len);
-		if (enable_method_prop != NULL && len == SPIN_TABLE_STRLEN &&
-			!strncmp(enable_method_prop, "spin-table", SPIN_TABLE_STRLEN)) {
-			cpu_release_addr_prop = of_get_flat_dt_prop(node, "cpu-release-addr", NULL);
+		const void *enable_method_prop = of_get_flat_dt_prop(node,
+			"enable-method", &len);
+		if (enable_method_prop != NULL &&
+			len == SPIN_TABLE_STRLEN + 1 &&
+			!strncmp(enable_method_prop, "spin-table",
+				SPIN_TABLE_STRLEN)) {
+			int err;
+			unsigned long idx = 0;
+
+			cpu_release_addr_prop = of_get_flat_dt_prop(node,
+				"cpu-release-addr", NULL);
 			if (!cpu_release_addr_prop) {
-				printk(KERN_ERR "cpu-release-addr not found!");
+				printk(KERN_ERR "cpu-release-addr not found!\n");
 				return -EFAULT;
 			}
 
-			cpu_release_addr = be64_to_cpup(cpu_release_addr_prop);
-
-			columbus_release_addr_map.pfn = __phys_to_pfn(cpu_release_addr);
-			iotable_init(&columbus_release_addr_map, 1);
-			cpu_release_addr_table[cpu_count] = ioremap(cpu_release_addr, SZ_128);
-			if (!cpu_release_addr_table[cpu_count]) {
-				printk(KERN_ERR "Failed to map cpu release address for CPU %d\n", cpu_count);
-				while (--cpu_count >= 0) {
-					iounmap(cpu_release_addr_table[cpu_count]);
-				}
-				return -EFAULT;
+			err = kstrtol(uname+4, 10, &idx);
+			if (err) {
+				printk(KERN_ERR "could not retrieve cpu #!\n");
+				return err;
 			}
-			cpu_count++;
+
+			if (CONFIG_NR_CPUS <= idx) {
+				printk(KERN_ERR "cpu # out of boundary!\n");
+				return -EINVAL;
+			}
+
+			cpu_release_phys_addr_table[idx] =
+				be64_to_cpup(cpu_release_addr_prop);
 		}
 	}
-
 	return 0;
 }
 
@@ -93,30 +97,47 @@ void __init columbus_smp_map_io(void)
 	 * if no support in device tree for cpu-release-addr then
 	 * fall back to the legacy address for pen release
 	 */
+
+	/*
+	 * cpu-release-addr support in device tree is broken, fall back
+	 * to the legacy address for pen release in any case
+	 */
+#if 0
 	for (i = 0; i < CONFIG_NR_CPUS; i++) {
 		if (cpu_release_addr_table[i]) {
 			found = 1;
 			break;
 		}
 	}
+#endif
+
+	printk(KERN_INFO "Columbus: cpu_release_phys_addr_table from dtb scan:\n");
+	for (i = 0; i < CONFIG_NR_CPUS; i++) {
+		printk(KERN_INFO "  cpu_release_phys_addr_table[%d] = 0x%llx\n",
+			i, cpu_release_phys_addr_table[i]);
+	}
 
 	if (!found) {
-		void *legacy_cpu_release_addr;
-		printk(KERN_INFO "Columbus: cpu-release-addr not found, "
-			"using legacy address\n");
-		columbus_release_addr_map.pfn = __phys_to_pfn(COLUMBUS_SYS_FLAGS_PHYS_BASE);
+		void *cpu_release_addr;
+		printk(KERN_INFO "Columbus: Using legacy cpu-release-addr "
+			"adress\n");
+		columbus_release_addr_map.pfn =
+			__phys_to_pfn(COLUMBUS_SYS_FLAGS_PHYS_BASE);
 		iotable_init(&columbus_release_addr_map, 1);
-		legacy_cpu_release_addr = ioremap(COLUMBUS_SYS_FLAGS_PHYS_BASE, SZ_128);
+		cpu_release_addr = ioremap(COLUMBUS_SYS_FLAGS_PHYS_BASE,
+					SZ_128);
 
-		if (!legacy_cpu_release_addr) {
-			printk(KERN_ERR "Failed to map legacy cpu-release-addr address\n");
+		if (!cpu_release_addr) {
+			printk(KERN_ERR "Failed to map legacy "
+				"cpu-release-addr address\n");
 			return;
 		}
 
-		writel(~0, legacy_cpu_release_addr + COLUMBUS_SYS_FLAGS_CLR_OFFSET);
-		writel(virt_to_phys(columbus_boot_secondary), legacy_cpu_release_addr +	COLUMBUS_SYS_FLAGS_SET_OFFSET);
+		writel(~0, cpu_release_addr + COLUMBUS_SYS_FLAGS_CLR_OFFSET);
+		writel(virt_to_phys(columbus_boot_secondary),
+			cpu_release_addr + COLUMBUS_SYS_FLAGS_SET_OFFSET);
 	}
-#endif
+#endif /* defined(CONFIG_COLUMBUS_MODEL) || defined(CONFIG_COLUMBUS_TC2) */
 }
 
 static int __init columbus_get_cpus_num(unsigned long node, const char *uname,
