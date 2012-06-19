@@ -15,6 +15,7 @@
  */
 
 #include <linux/device.h>
+#include <linux/err.h>
 #include <linux/io.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
@@ -69,15 +70,34 @@ static inline int read_wait_to(void __iomem *reg, int status, int timeout)
 		return 0;
 }
 
+int spc_get_performance(int cluster, int *perf)
+{
+	u32 perf_cfg_reg = cluster ? PERF_LVL_KF : PERF_LVL_EAG;
+	int ret = 0;
+
+	if (IS_ERR_OR_NULL(info))
+		return -ENXIO;
+
+	spin_lock(&info->lock);
+	*perf = readl(info->baseaddr + perf_cfg_reg);
+	spin_unlock(&info->lock);
+
+	return ret;
+
+}
+EXPORT_SYMBOL_GPL(spc_get_performance);
+
 int spc_set_performance(int cluster, int perf)
 {
 	u32 perf_cfg_reg = cluster ? PERF_LVL_KF : PERF_LVL_EAG;
 	u32 perf_stat_reg = cluster ? PERF_REQ_KF : PERF_REQ_EAG;
 	int ret = 0;
 
-	if (perf < 0 || perf >= 200)
+	if (IS_ERR_OR_NULL(info))
+		return -ENXIO;
+
+	if (perf < 0 || perf > 7)
 		return -EINVAL;
-	perf = (perf << 8) / 100;
 
 	spin_lock(&info->lock);
 	writel(perf, info->baseaddr + perf_cfg_reg);
@@ -91,28 +111,29 @@ EXPORT_SYMBOL_GPL(spc_set_performance);
 
 void spc_set_wake_intr(u32 mask)
 {
-	spin_lock(&info->lock);
-	writel(mask & WAKE_INTR_MASK, info->baseaddr + WAKE_INT_MASK);
-	spin_unlock(&info->lock);
+	if (!IS_ERR_OR_NULL(info))
+		writel(mask & WAKE_INTR_MASK, info->baseaddr + WAKE_INT_MASK);
 	return;
 }
 EXPORT_SYMBOL_GPL(spc_set_wake_intr);
 
 u32 spc_get_wake_intr(int raw)
 {
-	u32 val;
 	u32 wake_intr_reg = raw ? WAKE_INT_RAW : WAKE_INT_STAT;
-	spin_lock(&info->lock);
-	val = readl(info->baseaddr + wake_intr_reg);
-	spin_unlock(&info->lock);
-	return val;
+
+	if (!IS_ERR_OR_NULL(info))
+		return readl(info->baseaddr + wake_intr_reg);
+	else
+		return 0;
 }
 EXPORT_SYMBOL_GPL(spc_get_wake_intr);
 
 void spc_powerdown_enable(int cluster, int enable)
 {
 	u32 pwdrn_reg = cluster ? KF_PWRDN_EN : EAG_PWRDN_EN;
-	writel(!!enable, info->baseaddr + pwdrn_reg);
+
+	if (!IS_ERR_OR_NULL(info))
+		writel(!!enable, info->baseaddr + pwdrn_reg);
 	return;
 }
 EXPORT_SYMBOL_GPL(spc_powerdown_enable);
@@ -121,6 +142,10 @@ void spc_adb400_pd_enable(int cluster, int enable)
 {
 	u32 pwdrn_reg = cluster ? KF_PWRDNREQ : EAG_PWRDNREQ;
 	u32 val = enable ? 0xF : 0x0;	/* all adb bridges ?? */
+
+	if (IS_ERR_OR_NULL(info))
+		return;
+
 	spin_lock(&info->lock);
 	writel(val, info->baseaddr + pwdrn_reg);
 	spin_unlock(&info->lock);
@@ -133,7 +158,10 @@ void scc_ctl_snoops(int cluster, int enable)
 	u32 val;
 	u32 snoop_reg = cluster ? SNOOP_CTL_KF : SNOOP_CTL_EAG;
 	u32 or = cluster ? 0x2000 : 0x180;
-	//spin_lock(&info->lock);
+
+	if (IS_ERR_OR_NULL(info))
+		return;
+
 	val = readl_relaxed(info->baseaddr + snoop_reg);
 	if (enable) {
 		or = ~or;
@@ -142,15 +170,15 @@ void scc_ctl_snoops(int cluster, int enable)
 		val |=or;
 	}
 	writel_relaxed(val, info->baseaddr + snoop_reg);
-	//spin_unlock(&info->lock);
 }
+EXPORT_SYMBOL_GPL(scc_ctl_snoops);
 
 void spc_wfi_cpureset(int cluster, int cpu, int enable)
 {
 	u32 rsthold_reg, prst_shift;
 	u32 val;
 	
-	if (!info)
+	if (IS_ERR_OR_NULL(info))
 		return;
 
 	if (cluster) {
@@ -160,15 +188,12 @@ void spc_wfi_cpureset(int cluster, int cpu, int enable)
 		rsthold_reg = EAG_RESET_HOLD;
 		prst_shift = 2;
 	}
-	//spin_lock(&info->lock);
 	val = readl_relaxed(info->baseaddr + rsthold_reg);
 	if (enable)
-		//val |= (1 << cpu) | (1 << cpu) << prst_shift;
 		val |= (1 << cpu);
 	else
-		val &= ~((1 << cpu) | (1 << cpu) << prst_shift);
+		val &= ~(1 << cpu);
 	writel_relaxed(val, info->baseaddr + rsthold_reg);
-	//spin_unlock(&info->lock);
 	return;
 }
 EXPORT_SYMBOL_GPL(spc_wfi_cpureset);
@@ -177,6 +202,9 @@ void spc_wfi_cluster_reset(int cluster, int enable)
 {
 	u32 rsthold_reg, shift;
 	u32 val;
+	if (IS_ERR_OR_NULL(info))
+		return;
+
 	if (cluster) {
 		rsthold_reg = KF_RESET_HOLD;
 		shift = 6;
@@ -198,15 +226,14 @@ EXPORT_SYMBOL_GPL(spc_wfi_cluster_reset);
 
 int spc_wfi_cpustat(int cluster)
 {
-	u32 rststat_reg, res_mask;
+	u32 rststat_reg;
 	u32 val;
 	
-	if (!info)
+	if (IS_ERR_OR_NULL(info))
 		return 0;
 
 	rststat_reg = STANDBYWFI_STAT;
 
-	//spin_lock(&info->lock);
 	val = readl_relaxed(info->baseaddr + rststat_reg);
 	return cluster ? ((val & 0x38) >> 3) : (val & 0x3);
 }

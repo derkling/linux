@@ -28,6 +28,7 @@
 #define	WAKE_INTR_MASK			0xFFF
 
 #ifdef CONFIG_ARM_SPC
+extern int spc_get_performance(int cluster, int *perf);
 extern int spc_set_performance(int cluster, int perf);
 extern void spc_set_wake_intr(u32 mask);
 extern u32 spc_get_wake_intr(int raw);
@@ -38,10 +39,16 @@ extern int spc_wfi_cpustat(int cluster);
 extern void spc_wfi_cluster_reset(int cluster, int enable);
 extern void scc_ctl_snoops(int cluster, int enable);
 #else
+static inline int spc_get_performance(int cluster, int perf)
+{
+	return -EINVAL;
+}
+
 static inline int spc_set_performance(int cluster, int perf)
 {
 	return -EINVAL;
 }
+
 static inline void spc_set_wake_intr(u32 mask) { }
 static inline u32 spc_get_wake_intr(int raw) { return 0; }
 static inline void spc_powerdown_enable(int cluster, int enable) { }
