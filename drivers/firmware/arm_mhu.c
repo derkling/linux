@@ -55,7 +55,7 @@ int get_dvfs_size(int cluster, int cpu, u32 *size)
 	if (!req)
 		return -ENOMEM;
 
-	init_req(req, GET_CAPABILITIES);
+	init_req(req, GET_DVFS_INFO);
 
 	append_req(req, &lo_mutex, &lo_head);
 
@@ -63,18 +63,18 @@ int get_dvfs_size(int cluster, int cpu, u32 *size)
 	wait_for_mhu_lo();
 
 	/* Fill payload.  */
-	mhu_mem_writel(gdata, CPU_LOW, 1);
+	mhu_mem_writel(gdata, CPU_LOW, cluster);
 	/* Write set register.  */
 	mhu_reg_writel(gdata, CPU_INTR_L_SET,
 		       (1 << 20) | (0 /* flags  */  << 16) |
-		       (cluster << 12) | (cpu << 8) | GET_CAPABILITIES);
+		       (cluster << 12) | (cpu << 8) | req->cmd);
 
 	/* Wait for response.  */
 	if (!wait_for_completion_timeout(&req->sync, usecs_to_jiffies(200)))
 		return -ETIMEDOUT;
 
 	if (req->payload_size) {
-		*size = req->payload_size;
+		*size = req->payload[5];
 		kfree(req->payload);
 	} else {
 		ret = -EIO;
@@ -99,7 +99,7 @@ int get_dvfs_capabilities(int cluster, int cpu, u32 *freqs, u32 size)
 	if (!req)
 		return -ENOMEM;
 
-	init_req(req, GET_CAPABILITIES);
+	init_req(req, GET_DVFS_INFO);
 
 	append_req(req, &lo_mutex, &lo_head);
 
@@ -107,18 +107,18 @@ int get_dvfs_capabilities(int cluster, int cpu, u32 *freqs, u32 size)
 	wait_for_mhu_lo();
 
 	/* Fill payload.  */
-	mhu_mem_writel(gdata, CPU_LOW, 1);
+	mhu_mem_writel(gdata, CPU_LOW, cluster);
 	/* Write set register.  */
 	mhu_reg_writel(gdata, CPU_INTR_L_SET,
 		       (1 << 20) | (0 /* flags  */  << 16) |
-		       (cluster << 12) | (cpu << 8) | GET_CAPABILITIES);
+		       (cluster << 12) | (cpu << 8) | req->cmd);
 
 	/* Wait for response.  */
 	if (!wait_for_completion_timeout(&req->sync, usecs_to_jiffies(200)))
 		return -ETIMEDOUT;
 
 	if (req->payload_size) {
-		memcpy(freqs, req->payload, size);
+		memcpy(freqs, &req->payload[8], size * sizeof(u32));
 		kfree(req->payload);
 	} else {
 		ret = -EIO;
@@ -143,7 +143,7 @@ int get_performance(int cluster, int cpu, u32 *perf)
 	if (!req)
 		return -ENOMEM;
 
-	init_req(req, GET_PERFORMANCE);
+	init_req(req, GET_DVFS);
 
 	append_req(req, &lo_mutex, &lo_head);
 
@@ -154,19 +154,18 @@ int get_performance(int cluster, int cpu, u32 *perf)
 	mhu_mem_writel(gdata, CPU_LOW, cluster & 0xFF);
 	mhu_reg_writel(gdata, CPU_INTR_L_SET, (1 << 20) |
 		       (0 /* flags  */  << 16) |
-		       (cluster << 12) | (cpu << 8) | GET_PERFORMANCE);
+		       (cluster << 12) | (cpu << 8) | req->cmd);
 
 	/* Wait for response.  */
 	if (!wait_for_completion_timeout(&req->sync, usecs_to_jiffies(200)))
 		return -ETIMEDOUT;
 
 	if (req->payload_size) {
-		*perf = req->payload[0];
-		if (*perf & 0xFF) {
-			printk(KERN_ERR "MHU Cmd failed\n");
+		*perf = req->payload[4];
+		if (req->payload[0]) {
+			pr_err("MHU Cmd failed\n");
 			return -EFAULT;
 		}
-		*perf = (*perf >> 16) & 0xFF;
 		kfree(req->payload);
 	} else {
 		ret = -EIO;
@@ -188,7 +187,7 @@ int set_performance(int cluster, int cpu, u32 index)
 	if (!req)
 		return -ENOMEM;
 
-	init_req(req, SET_PERFORMANCE);
+	init_req(req, SET_DVFS);
 
 	append_req(req, &hi_mutex, &hi_head);
 
@@ -200,14 +199,14 @@ int set_performance(int cluster, int cpu, u32 index)
 		       (cluster & 0xFF) | ((index << 8) && 0xFF00));
 	mhu_reg_writel(gdata, CPU_INTR_H_SET, (2 << 20) |
 		       (0 /* flags  */  << 16) |
-		       (cluster << 12) | (cpu << 8) | SET_PERFORMANCE);
+		       (cluster << 12) | (cpu << 8) | req->cmd);
 
 	/* Wait for response.  */
 	if (!wait_for_completion_timeout(&req->sync, usecs_to_jiffies(200)))
 		return -ETIMEDOUT;
 
 	if (req->payload_size) {
-		ret = req->payload[0] & 0xFF;
+		ret = req->payload[0];
 		kfree(req->payload);
 	} else {
 		ret = -EIO;
@@ -221,7 +220,7 @@ static irqreturn_t arm_mhu_hi_irq_handler(int irq, void *dev_id)
 {
 	struct arm_mhu_data *data = dev_id;
 	u32 status = mhu_reg_readl(dev_id, SCP_INTR_H_STAT);
-	u32 payload_stat = mhu_mem_readb(gdata, SCP_HIGH);
+	u32 payload_stat = mhu_mem_readl(gdata, SCP_HIGH);
 	u32 cmd = status & 0xFF;
 	struct list_head *pos;
 	struct arm_mhu_request *req = 0;
@@ -236,17 +235,17 @@ static irqreturn_t arm_mhu_hi_irq_handler(int irq, void *dev_id)
 	}
 	mutex_unlock(&hi_mutex);
 
-	if (payload_stat & 0xFF) {
-		printk(KERN_ERR "MHU: error in the message\n");
+	if (payload_stat) {
+		pr_err("MHU: error in the message\n");
 		goto out;
 	}
 	req->payload_size = (status & 0x7ff00000) >> 20;
 	req->payload = kzalloc(sizeof(u8) * req->payload_size, GFP_KERNEL);
 	if (!req->payload) {
-		printk(KERN_ERR "MHU: can't allocate memory for payload.\n");
+		pr_err("MHU: can't allocate memory for payload.\n");
 		return IRQ_HANDLED;
 	}
-	memcpy(req->payload, gdata->mem + SCP_HIGH + 1, req->payload_size - 1);
+	memcpy(req->payload, gdata->mem + SCP_HIGH, req->payload_size);
 
 out:
 	/* Clear SPC interrupt.  */
@@ -261,7 +260,7 @@ static irqreturn_t arm_mhu_lo_irq_handler(int irq, void *dev_id)
 {
 	struct arm_mhu_data *data = dev_id;
 	u32 status = mhu_reg_readl(dev_id, SCP_INTR_L_STAT);
-	u32 payload_stat = mhu_mem_readb(gdata, SCP_LOW);
+	u32 payload_stat = mhu_mem_readl(gdata, SCP_LOW);
 	u32 cmd = status & 0xFF;
 	struct list_head *pos;
 	struct arm_mhu_request *req = 0;
@@ -276,17 +275,17 @@ static irqreturn_t arm_mhu_lo_irq_handler(int irq, void *dev_id)
 	}
 	mutex_unlock(&lo_mutex);
 
-	if (payload_stat & 0xFF) {
-		printk(KERN_ERR "MHU: error in the message\n");
+	if (payload_stat) {
+		pr_err("MHU: error in the message 0x%x\n", payload_stat);
 		goto out;
 	}
 	req->payload_size = (status & 0x7ff00000) >> 20;
 	req->payload = kzalloc(sizeof(u32) * req->payload_size, GFP_KERNEL);
 	if (!req->payload) {
-		printk(KERN_ERR "MHU: can't allocate memory for payload.\n");
+		pr_err("MHU: can't allocate memory for payload.\n");
 		goto out;
 	}
-	memcpy(req->payload, gdata->mem + SCP_LOW + 1, req->payload_size - 1);
+	memcpy(req->payload, gdata->mem + SCP_LOW, req->payload_size);
 
 out:
 	/* Clear SPC interrupt.  */
@@ -302,8 +301,6 @@ static __devinit int arm_mhu_probe(struct platform_device *pdev)
 	struct arm_mhu_data *data;
 	struct resource *res;
 	int ret = 0;
-
-	printk(KERN_INFO "Columbus: MHU probe\n");
 
 	data = kzalloc(sizeof(*data), GFP_KERNEL);
 	if (!data) {
@@ -380,6 +377,8 @@ static __devinit int arm_mhu_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&lo_head);
 	INIT_LIST_HEAD(&hi_head);
 	gdata = data;
+
+	pr_info("Columbus: MHU loaded @ 0x%p\n", data->regs);
 
 	return 0;
 

@@ -33,9 +33,9 @@
 #define CPU_HIGH     0x600
 
 /* Commands list.  */
-#define GET_CAPABILITIES 1
-#define SET_PERFORMANCE  6
-#define GET_PERFORMANCE  7
+#define GET_DVFS_INFO	0x9
+#define SET_DVFS	0xA
+#define GET_DVFS	0xB
 
 struct arm_mhu_data {
 	void *regs;
