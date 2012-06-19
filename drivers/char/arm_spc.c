@@ -295,7 +295,7 @@ static void __exit spc_exit(void)
 	platform_driver_unregister(&spc_platform_driver);
 }
 
-module_init(spc_init);
+arch_initcall(spc_init);
 module_exit(spc_exit);
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Serial Power Controller (SPC) support");

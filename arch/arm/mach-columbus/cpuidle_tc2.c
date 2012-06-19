@@ -10,7 +10,7 @@
  */
 
 #include <linux/cpuidle.h>
-#include <linux/cpumask.h>
+#include <linux/bitmap.h>
 #include <linux/cpu_pm.h>
 #include <linux/clockchips.h>
 #include <linux/debugfs.h>
@@ -31,8 +31,7 @@
 #define TC2_STATE_C1 0
 #define TC2_STATE_C2 1
 #define TC2_STATE_C3 2
-#define TC2_STATE_C4 3
-#define TC2_MAX_STATES (TC2_STATE_C4 + 1)
+#define TC2_MAX_STATES (TC2_STATE_C3 + 1)
 
 /* four bits reserved to cpu state */
 #define CPU_ST(x) (x & 0xf)
@@ -60,6 +59,7 @@ struct tc2_processor_cx tc2_power_states[TC2_MAX_STATES] = {
 		.cr = 0x1, /* wfi */
 		.flags = CPUIDLE_FLAG_TIME_VALID,
 	},
+#if 0
 	{
 		.valid = 1,
 		.type = TC2_STATE_C2,
@@ -69,9 +69,10 @@ struct tc2_processor_cx tc2_power_states[TC2_MAX_STATES] = {
 		.cr = 0x3, /* CPU shut down cluster on - clocked */
 		.flags = CPUIDLE_FLAG_TIME_VALID,
 	},
+#endif
 	{
 		.valid = 1,
-		.type = TC2_STATE_C3,
+		.type = TC2_STATE_C2,
 		.sleep_latency = 50,
 		.wakeup_latency = 50,
 		.threshold = 300,
@@ -80,7 +81,7 @@ struct tc2_processor_cx tc2_power_states[TC2_MAX_STATES] = {
 	},
 	{
 		.valid = 1,
-		.type = TC2_STATE_C4,
+		.type = TC2_STATE_C3,
 		.sleep_latency = 1500,
 		.wakeup_latency = 1800,
 		.threshold = 4000,
@@ -98,9 +99,8 @@ struct cpuidle_driver tc2_idle_driver = {
 
 static DEFINE_PER_CPU(struct cpuidle_device, tc2_idle_dev);
 
-static DECLARE_BITMAP(cpu_pm_bits, CONFIG_NR_CPUS) __read_mostly
-	= CPU_BITS_NONE;
-static const struct cpumask *const cpu_pm_mask = to_cpumask(cpu_pm_bits);
+#define NR_CLUSTERS 2
+static cpumask_t cluster_mask = CPU_MASK_NONE;
 
 static DEFINE_PER_CPU(u32, cur_residency);
 static DEFINE_PER_CPU(s64, next_event);
@@ -130,13 +130,13 @@ static inline int smc_down(unsigned int state, unsigned int affinity)
 }
 
 extern void disable_clean_inv_dcache(int);
-static atomic_t abort_barrier;
+static atomic_t abort_barrier[2];
 static bool abort_flag;
 static inline int scc_pending_wakeups(void)
 {
 	return 0;
 }
-
+extern void tc2_cpu_resume(void);
 /*
  * Power down SCP command passed as an argument from cpu_suspend
  */
@@ -151,13 +151,9 @@ int tc2_coupled_finisher(unsigned long arg)
 	if (scc_pending_wakeups() && event_shutdown())
 		abort_flag = 1;
 
-	writel(~0, COLUMBUS_SYS_FLAGS_VIRT_BASE +
-				COLUMBUS_SYS_FLAGS_CLR_OFFSET);
-	writel(virt_to_phys(cpu_resume), COLUMBUS_SYS_FLAGS_VIRT_BASE +
-				COLUMBUS_SYS_FLAGS_SET_OFFSET);
 
 	cpuidle_coupled_parallel_barrier((struct cpuidle_device *)arg,
-					&abort_barrier);
+					&abort_barrier[cluster]);
 	if (!abort_flag) {
 		if (mpidr & 0xf) {
 			//spc_wfi_cpureset(cluster, mpidr & 0xf, 1);
@@ -176,6 +172,8 @@ int tc2_coupled_finisher(unsigned long arg)
 			writel_relaxed(0x0, COLUMBUS_CCI400_VIRT_BASE + COLUMBUS_CCI400_KF_OFFSET);
 		else
 			writel_relaxed(0x0, COLUMBUS_CCI400_VIRT_BASE + COLUMBUS_CCI400_EAG_OFFSET);
+		dsb();
+		isb();
 		scc_ctl_snoops(cluster, 0);
 		wfi();
 
@@ -198,16 +196,15 @@ static int tc2_enter_coupled(struct cpuidle_device *dev,
 {
 	struct tick_device *tdev = tick_get_device(dev->cpu);
 	struct timespec ts_preidle, ts_postidle, ts_idle;
-	int i, ret;
+	int ret;
 	int cluster = (read_cpuid_mpidr() >> 8) & 0xf;
 
 	/* Used to keep track of the total time in idle */
 	getnstimeofday(&ts_preidle);
-
-	for_each_cpu(i, topology_core_cpumask(dev->cpu))
-		if (!cpumask_test_cpu(i, to_cpumask(cpu_pm_bits)))
+#if 1
+	if (!cpu_isset(cluster, cluster_mask))
 			goto shallow_out;
-
+#endif
 	cpu_pm_enter();
 
 	per_cpu(cur_residency, dev->cpu) = drv->states[idx].target_residency;
@@ -256,11 +253,7 @@ shallow_out:
 static int tc2_enter_idle(struct cpuidle_device *dev,
 				struct cpuidle_driver *drv, int idx)
 {
-	struct tc2_processor_cx *cx =
-		cpuidle_get_statedata(&dev->states_usage[idx]);
-
 	struct timespec ts_preidle, ts_postidle, ts_idle;
-	int ret;
 
 	/* Used to keep track of the total time in idle */
 	getnstimeofday(&ts_preidle);
@@ -280,7 +273,7 @@ static int tc2_enter_idle(struct cpuidle_device *dev,
 static int idle_mask_show(struct seq_file *f, void *p)
 {
 	char buf[256];
-	bitmap_scnlistprintf(buf, 256, cpu_pm_bits, CONFIG_NR_CPUS);
+	bitmap_scnlistprintf(buf, 256, cpumask_bits(&cluster_mask), NR_CLUSTERS);
 
 	seq_printf(f, "%s\n", buf);
 
@@ -301,27 +294,22 @@ static const struct file_operations cpuidle_fops = {
 
 static int idle_debug_set(void *data, u64 val)
 {
-	int i, cpus = num_possible_cpus();
+	int i;
 
-	if ((val > cpus || val < 0) && val != 0xff) {
+	if ((val > NR_CLUSTERS || val < 0) && val != 0xff) {
 		pr_warning("Wrong parameter passed\n");
 		return -EINVAL;
 	}
-
+	cpuidle_pause_and_lock();
 	if (val == 0xff) {
-		cpumask_clear(to_cpumask(cpu_pm_bits));
+		cpumask_clear(&cluster_mask);
 		return 0;
 	}
 
-	if (val == cpus) {
-		cpumask_copy(to_cpumask(cpu_pm_bits), cpu_possible_mask);
-		return 0;
-	}
-
-	for (i = 0; i < cpus; i++)
+	for (i = 0; i < NR_CLUSTERS; i++)
 		if (val == i)
-			cpumask_set_cpu(i, to_cpumask(cpu_pm_bits));
-
+			cpumask_set_cpu(i, &cluster_mask);
+	cpuidle_resume_and_unlock();
 	return 0;
 }
 DEFINE_SIMPLE_ATTRIBUTE(idle_debug_fops, NULL, idle_debug_set, "%llu\n");
@@ -365,7 +353,7 @@ int __init tc2_idle_init(void)
 		pr_err("CPUidle for CPU%d registered\n", cpu_id);
 		dev = &per_cpu(tc2_idle_dev, cpu_id);
 		dev->cpu = cpu_id;
-		dev->safe_state_index = 1;
+		dev->safe_state_index = 0;
 
 		cpumask_copy(&dev->coupled_cpus,
 				topology_core_cpumask(cpu_id));
@@ -409,6 +397,16 @@ int __init tc2_idle_init(void)
 	if (IS_ERR_OR_NULL(file_debug))
 		printk(KERN_INFO "Error in creating enable_mask file\n");
 
+	/* enable all wake-up IRQs by default */
+	spc_set_wake_intr(0x7ff);
+
+	writel(~0, COLUMBUS_SYS_FLAGS_VIRT_BASE +
+				COLUMBUS_SYS_FLAGS_CLR_OFFSET);
+	writel(virt_to_phys(tc2_cpu_resume), COLUMBUS_SYS_FLAGS_VIRT_BASE +
+				COLUMBUS_SYS_FLAGS_SET_OFFSET);
+
+
 	return 0;
 }
-device_initcall(tc2_idle_init);
+
+late_initcall_sync(tc2_idle_init);

@@ -81,14 +81,6 @@ ENDPROC(cpu_resume_after_mmu)
 	.data
 	.align
 ENTRY(cpu_resume)
-	adr	r0, value
-	ldmia	r0, {r1, r2, r3}
-	mvn	r3, r3
-	ldr	r0, [r2]
-	and	r4, r0, r3
-	str	r4, [r2]
-	mov	r0, #1
-	str	r0, [r1]
 #ifdef CONFIG_SMP
 	ALT_SMP(mrc p15, 0, r0, c0, c0, 5)
 	ALT_SMP(bfc	r0, #24, #8)
@@ -107,10 +99,6 @@ THUMB(	mov	sp, r2			)
 THUMB(	bx	r3			)
 ENDPROC(cpu_resume)
 
-value:
-	.long 	0x2c094000
-	.long 	0x7fff0404
-	.long 	0x180
 
 sleep_save_sp:
 	.rept	CONFIG_NR_CPUS

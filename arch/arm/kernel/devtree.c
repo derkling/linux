@@ -19,6 +19,7 @@
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 
+#include <asm/cacheflush.h>
 #include <asm/cputype.h>
 #include <asm/setup.h>
 #include <asm/page.h>
@@ -99,6 +100,9 @@ void __init arm_dt_init_cpu_maps(void)
 
 		set_cpu_possible(i, true);
 	}
+	
+	__cpuc_flush_dcache_area(__cpu_logical_map,
+			sizeof(__cpu_logical_map[0]) * NR_CPUS);
 }
 
 /**
