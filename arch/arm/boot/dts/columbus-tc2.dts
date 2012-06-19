@@ -26,6 +26,7 @@
 
 		cluster0: cluster@0 {
 			reg = <0>;
+                       freqs = <500000 600000 700000 800000 900000 1000000 1100000 1200000>;
 			cores {
 				#address-cells = <1>;
 				#size-cells = <0>;
@@ -43,6 +44,7 @@
 
 		cluster1: cluster@1 {
 			reg = <1>;
+                       freqs = <350000 400000 500000 600000 700000 800000 900000 1000000>;
 			cores {
 				#address-cells = <1>;
 				#size-cells = <0>;
