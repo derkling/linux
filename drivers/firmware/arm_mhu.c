@@ -1,4 +1,5 @@
 #include <linux/completion.h>
+#include <linux/err.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
@@ -44,6 +45,9 @@ int get_dvfs_size(int cluster, int cpu, u32 *size)
 	struct arm_mhu_request *req;
 	int ret = 0;
 
+	if (IS_ERR_OR_NULL(gdata))
+		return -ENXIO;
+
 	if (!size)
 		return -EFAULT;
 
@@ -85,6 +89,9 @@ int get_dvfs_capabilities(int cluster, int cpu, u32 *freqs, u32 size)
 	struct arm_mhu_request *req;
 	int ret = 0;
 
+	if (IS_ERR_OR_NULL(gdata))
+		return -ENXIO;
+
 	if (!freqs)
 		return -EFAULT;
 
@@ -125,6 +132,9 @@ int get_performance(int cluster, int cpu, u32 *perf)
 {
 	struct arm_mhu_request *req;
 	int ret = 0;
+
+	if (IS_ERR_OR_NULL(gdata))
+		return -ENXIO;
 
 	if (!perf)
 		return -EFAULT;
@@ -170,6 +180,9 @@ int set_performance(int cluster, int cpu, u32 index)
 {
 	struct arm_mhu_request *req;
 	int ret = 0;
+
+	if (IS_ERR_OR_NULL(gdata))
+		return -ENXIO;
 
 	req = kzalloc(sizeof(*req), GFP_KERNEL);
 	if (!req)
