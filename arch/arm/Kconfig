@@ -2172,6 +2172,16 @@ config CPU_FREQ_COLUMBUS
 
 	  If in doubt, say Y.
 
+config CPU_FREQ_COLUMBUS_MP
+	tristate "CPUfreq driver for ARM big.LITTLE MP CPUs"
+	depends on ARCH_COLUMBUS && CPU_FREQ
+	help
+	  This enables the CPUfreq driver for ARM big.LITTLE CPUs.
+
+	  For details, take a look at <file:Documentation/cpu-freq>.
+
+	  If in doubt, say Y.
+
 config CPU_FREQ_PXA
 	bool
 	depends on CPU_FREQ && ARCH_PXA && PXA25x

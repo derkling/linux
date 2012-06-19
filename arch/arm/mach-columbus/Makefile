@@ -9,3 +9,4 @@ obj-$(CONFIG_SMP)		+= platsmp.o headsmp.o
 obj-$(CONFIG_HOTPLUG)		+= hotplug.o hotplug-asm.o
 obj-$(CONFIG_SUSPEND)		+= pm.o
 obj-$(CONFIG_CPU_FREQ_COLUMBUS)	+= cpufreq.o
+obj-$(CONFIG_CPU_FREQ_COLUMBUS_MP)	+= cpufreq_tc2.o
