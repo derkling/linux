@@ -28,8 +28,11 @@
 #include <linux/sysfs.h>
 #include <linux/types.h>
 
+#ifdef CONFIG_BL_SWITCHER
 #include <asm/bL_switcher.h>
+#endif
 
+#include <mach/spc.h>
 #include <mach/mhu.h>
 
 #define BL_HYST_DEFAULT_COUNT	3
@@ -100,6 +103,7 @@ static int get_current_cached_cluster(unsigned int cpu)
 	return per_cpu(cpu_cur_cluster, cpu);
 }
 
+#ifdef CONFIG_BL_SWITCHER
 /*
  * Switch to the requested cluster.
  *
@@ -130,6 +134,7 @@ static void __switch_to_entry(void *_data)
 		per_cpu(cpu_cur_cluster, cpu) = new_cluster;
 	/* cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);*/
 }
+#endif
 
 /* Validate policy frequency range */
 static int columbus_cpufreq_verify_policy(struct cpufreq_policy *policy)
@@ -151,7 +156,7 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 	/* Read current clock rate */
 	cur_cluster = get_current_cached_cluster(cpu);
 
-	if (get_performance(cur_cluster, cpu, &freq_tab_idx))
+	if (spc_get_performance(cur_cluster, &freq_tab_idx))
 		return -EIO;
 
 	freqs.old = ind_table[cur_cluster][freq_tab_idx].frequency;
@@ -200,7 +205,8 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 	if (per_cpu(bl_down_hyst, cpu) || per_cpu(bl_up_hyst, cpu))
 		return ret;
 
-	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
+	for_each_cpu(freqs.cpu, policy->cpus)
+		cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
 
 	/*
 	 * Set new clock divider rate with MHU calls to set OPP
@@ -229,7 +235,8 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 
 	policy->cur = freqs.new;
 
-	cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
+	for_each_cpu(freqs.cpu, policy->cpus)
+		cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
 
 	return ret;
 }
@@ -238,12 +245,12 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 static unsigned int columbus_cpufreq_get(unsigned int cpu)
 {
 	uint32_t freq_tab_idx = 0;
-	uint32_t cur_cluster = get_current_cluster(cpu);
+	uint32_t cur_cluster = get_current_cached_cluster(cpu);
 
 	/*
-	 * Read current clock rate with MHU call
+	 * Read current clock rate with SPC call
 	 */
-	if (get_performance(cur_cluster, cpu, &freq_tab_idx))
+	if (spc_get_performance(cur_cluster, &freq_tab_idx))
 		return -EIO;
 
 	return ind_table[cur_cluster][freq_tab_idx].frequency;
@@ -289,8 +296,7 @@ static inline void _cpufreq_copy_table_from_array(uint32_t *table,
 	int i;
 	for (i = 0; i < size; i++) {
 		freq_table[i].index = i;
-		/* SCP provides in Hz, CPUFreq needs in kHz */
-		freq_table[i].frequency = table[i] / 1000;
+		freq_table[i].frequency = table[i];
 	}
 	freq_table[i].index = size;
 	freq_table[i].frequency = CPUFREQ_TABLE_END;
@@ -450,6 +456,7 @@ static struct notifier_block notifier_policy_block = {
 static int columbus_cpufreq_init(struct cpufreq_policy *policy)
 {
 	int result = 0;
+	uint32_t cur_cluster = get_current_cluster(policy->cpu);
 
 	if (atomic_inc_return(&freq_table_users) == 1) {
 		result = columbus_cpufreq_of_init();
@@ -459,7 +466,7 @@ static int columbus_cpufreq_init(struct cpufreq_policy *policy)
 
 	if (result) {
 		atomic_dec_return(&freq_table_users);
-		pr_err("CPUFreq for CPU %d failed to initialize\n", policy->cpu);
+		pr_err("CPUFreq - CPU %d failed to initialize\n", policy->cpu);
 		return result;
 	}
 
@@ -469,8 +476,7 @@ static int columbus_cpufreq_init(struct cpufreq_policy *policy)
 
 	cpufreq_frequency_table_get_attr(freq_table, policy->cpu);
 
-	per_cpu(cpu_cur_cluster, policy->cpu) =
-				get_current_cluster(policy->cpu);
+	per_cpu(cpu_cur_cluster, policy->cpu) = cur_cluster;
 
 	/* set default policy and cpuinfo */
 	policy->min = policy->cpuinfo.min_freq;
