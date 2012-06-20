@@ -122,6 +122,11 @@ static void bL_do_switch(void *_unused)
 	} else {
 		flush_dcache_level(flush_cache_level_cpu());
 	}
+	asm volatile (
+		"mrc	p15, 0, ip, c1, c0, 1 \n\t"
+		"bic	ip, ip, #(1 << 6) @ clear SMP bit \n\t"
+		"mcr	p15, 0, ip, c1, c0, 1"
+		: : : "ip" );
 
 	/* And our own life ends right here... */
 	wfi();
