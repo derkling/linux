@@ -73,17 +73,13 @@ extern void setup_mm_for_reboot(void);
 
 typedef void (*phys_reset_t)(unsigned long);
 
-static void bL_do_switch(void *_handshake_ptr)
+static void bL_do_switch(void *_unused)
 {
 	unsigned mpidr, cpuid, clusterid, ob_cluster, ib_cluster;
-	long volatile handshake = -1, **handshake_ptr = _handshake_ptr;
-	long handshake_result;
+	bool last_man;
 	phys_reset_t phys_reset;
 	
 	pr_debug("%s\n", __func__);
-
-	/* Advertise our handshake location */
-	*handshake_ptr = &handshake;
 
 	mpidr = read_mpidr();
 	cpuid = mpidr & 0xf;
@@ -91,6 +87,14 @@ static void bL_do_switch(void *_handshake_ptr)
 	ob_cluster = clusterid;
 	ib_cluster = clusterid ^ 1;
 
+	/*
+	 * Let's signal our intention to go down before letting the
+	 * inbound CPU run.  This must be done here in case the inbound
+	 * decides to switch back before we actually get to shut ourself
+	 * down.
+	 */
+	last_man = bL_platform_ops->power_down(cpuid, ob_cluster);
+       
 	/*
 	 * Our state has been saved at this point.  Let's release our
 	 * inbound CPU.
@@ -107,23 +111,12 @@ static void bL_do_switch(void *_handshake_ptr)
 	 */
 
 	/*
-	 * Let's wait for our counterpart to set our power state
-	 * and shake our hand good-bye.
-	 */
-	do {
-		wfe();
-		smp_mb();
-		handshake_result = handshake;
-	} while (handshake_result == -1);
-
-	/*
 	 * Now let's take care of cleaning our cache and
 	 * shutting ourself down.  If we're the last CPU in this cluster,
 	 * clean L2 too.
 	 */
 	cpu_proc_fin();
-	if (handshake_result != 0) {
-		/* last man standing */
+	if (last_man) {
 		flush_cache_all();
 		outer_flush_all();
 	} else {
@@ -136,7 +129,7 @@ static void bL_do_switch(void *_handshake_ptr)
 	/*
 	 * Hey, we're not dead!  This means a request to switch back
 	 * has come from our counterpart and reset was deasserted before
-	 * we had the chance to enter it.  Let's turn off the MMU and
+	 * we had the chance to enter WFI.  Let's turn off the MMU and
 	 * branch back directly through our kernel entry point.
 	 */
 	setup_mm_for_reboot();
@@ -153,16 +146,16 @@ static void bL_do_switch(void *_handshake_ptr)
 
 static unsigned long __attribute__((__aligned__(L1_CACHE_BYTES)))
 	stacks[BL_CPUS_PER_CLUSTER][BL_NR_CLUSTERS][128];
-	
+
 extern void call_with_stack(void (*fn)(void *), void *arg, void *sp);
 
-static int bL_switchpoint(unsigned long handshake_p)
+static int bL_switchpoint(unsigned long _unused)
 {
 	unsigned int mpidr = read_mpidr();
 	unsigned int cpuid = mpidr & 0xf;
 	unsigned int clusterid = (mpidr >> 8) & 0xf;
 	void *stack = stacks[cpuid][clusterid] + ARRAY_SIZE(stacks[0][0]);
-	call_with_stack(bL_do_switch, (void*)handshake_p, stack);
+	call_with_stack(bL_do_switch, NULL, stack);
 	BUG();
 }
 
@@ -180,7 +173,6 @@ static int bL_switchpoint(unsigned long handshake_p)
 int bL_switch_to(unsigned int new_cluster_id)
 {
 	unsigned int mpidr, cpuid, clusterid, ob_cluster, ib_cluster, this_cpu;
-	long volatile *handshake_ptr;
 	struct tick_device *tdev;
 	enum clock_event_mode tdev_mode;
 	int ret = 0;
@@ -240,7 +232,7 @@ int bL_switch_to(unsigned int new_cluster_id)
 		goto out;
 
 	/* Let's do the actual CPU switch. */
-	ret = cpu_suspend((unsigned long)&handshake_ptr, bL_switchpoint);
+	ret = cpu_suspend((unsigned long)NULL, bL_switchpoint);
 	if (ret > 0)
 		ret = -EINVAL;
 
@@ -259,10 +251,6 @@ int bL_switch_to(unsigned int new_cluster_id)
 					  tdev->evtdev->next_event, 1);
 	}
 
-	/* Now let's take care of shutting the outbound CPU down. */
-	*handshake_ptr = bL_platform_ops->power_down(cpuid, ob_cluster);
-	dsb_sev();
-       
 	trace_cpu_migrate_finish(get_ns(), cpuid, ob_cluster, cpuid, ib_cluster);
 
 out:
