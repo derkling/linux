@@ -23,11 +23,13 @@
 #include <asm/smp_plat.h>
 #include <asm/suspend.h>
 
-#define COLUMBUS_STATE_C1 0
-#define COLUMBUS_STATE_C2 1
-#define COLUMBUS_STATE_C3 2
-#define COLUMBUS_STATE_C4 3
-#define COLUMBUS_MAX_STATES (COLUMBUS_STATE_C4 + 1)
+enum {
+	COLUMBUS_STATE_C1,
+	COLUMBUS_STATE_C2,
+	COLUMBUS_STATE_C3,
+	COLUMBUS_STATE_C4,
+	COLUMBUS_MAX_STATES
+};	
 
 /* four bits reserved to cpu state */
 #define CPU_ST(x) (x & 0xf)
@@ -101,9 +103,14 @@ const struct cpumask *const cpu_pm_mask = to_cpumask(cpu_pm_bits);
 static DEFINE_PER_CPU(u32, cur_residency);
 static DEFINE_PER_CPU(s64, next_event);
 
-static cpumask_t idle_mask = { CPU_BITS_NONE };
+static cpumask_t idle_mask = CPU_MASK_NONE;
 
-extern int shutdown_smc(u32, u32, u32, u32);
+extern int _shutdown_smc(u32, u32, u32, u32);
+
+static inline int shutdown_smc(u32 cstate, u32 wakeup_h, u32 wakeup_l)
+{
+	return _shutdown_smc(0, cstate, wakeup_h, wakeup_l);
+}
 
 static inline int arch_wakeup_ts(u64 *ts)
 {
@@ -144,8 +151,11 @@ static inline int event_shutdown(void)
 
 union wakeup {
 	struct {
-		u32 wakeup_l;
-		u32 wakeup_h;
+# ifdef __BIG_ENDIAN
+		u32 wakeup_h, wakeup_l;
+#else
+		u32 wakeup_l, wakeup_h;
+#endif
 	} ts32;
 	u64 ts64;
 };
@@ -161,7 +171,7 @@ int columbus_finisher(unsigned long arg)
 	if (arch_wakeup_ts(&w.ts64))
 		return 1;
 
-	ret = shutdown_smc(0, arg, w.ts32.wakeup_h, w.ts32.wakeup_l);
+	ret = shutdown_smc(arg, w.ts32.wakeup_h, w.ts32.wakeup_l);
 	return ret;
 }
 
@@ -188,11 +198,14 @@ static int columbus_enter_idle(struct cpuidle_device *dev,
 	/* Used to keep track of the total time in idle */
 	getnstimeofday(&ts_preidle);
 
+	local_fiq_disable();
+	local_irq_disable();
+
 	if (cx->type == COLUMBUS_STATE_C1 ||
 		!cpu_isset(smp_processor_id(), *to_cpumask(cpu_pm_bits))) {
 
 		/* Used to keep track of the total time in idle */
-		asm volatile("wfi");
+		wfi();
 		getnstimeofday(&ts_postidle);
 		ts_idle = timespec_sub(ts_postidle, ts_preidle);
 
@@ -209,7 +222,7 @@ static int columbus_enter_idle(struct cpuidle_device *dev,
 	cpu_pm_enter();
 
 	if (cx->type > COLUMBUS_STATE_C2)
-		__cpu_set(dev->cpu, &idle_mask);
+		cpu_set(dev->cpu, idle_mask);
 
 	per_cpu(cur_residency, dev->cpu) = drv->states[idx].target_residency;
 
@@ -264,7 +277,7 @@ out:
 	per_cpu(next_event, dev->cpu) = 0;
 
 	if (cx->type > COLUMBUS_STATE_C2)
-		__cpu_clear(dev->cpu, &idle_mask);
+		cpu_clear(dev->cpu, idle_mask);
 
 	cluster_down = 0;
 
@@ -276,6 +289,7 @@ out:
 	dev->last_residency = ts_idle.tv_nsec / NSEC_PER_USEC +
 					ts_idle.tv_sec * USEC_PER_SEC;
 	local_irq_enable();
+	local_fiq_enable();
 	return idx;
 }
 
