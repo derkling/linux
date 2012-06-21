@@ -30,6 +30,7 @@
 #include <asm/mach/map.h>
 
 #include <mach/columbus.h>
+#include <mach/spc.h>
 
 extern void columbus_boot_secondary(void);
 
@@ -225,6 +226,7 @@ void __cpuinit platform_secondary_init(unsigned int cpu)
 int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 {
 	unsigned long timeout;
+	unsigned int mpidr = cpu_logical_map(cpu);
 
 	/*
 	 * Set synchronisation state between this boot processor
@@ -232,12 +234,15 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 	 */
 	spin_lock(&boot_lock);
 
+	writel(~0, COLUMBUS_SYS_FLAGS_VIRT_BASE + COLUMBUS_SYS_FLAGS_CLR_OFFSET);
+	writel(virt_to_phys(columbus_boot_secondary), COLUMBUS_SYS_FLAGS_VIRT_BASE + COLUMBUS_SYS_FLAGS_SET_OFFSET);
 	/*
 	 * This is really belt and braces; we hold unintended secondary
 	 * CPUs in the holding pen until we're ready for them.  However,
 	 * since we haven't sent them a soft interrupt, they shouldn't
 	 * be there.
 	 */
+	spc_wfi_cpureset((mpidr & 0xff00) >> 8, mpidr & 0xff, 0);
 	write_pen_release(cpu_logical_map(cpu));
 
 	/*
@@ -264,18 +269,4 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 	spin_unlock(&boot_lock);
 
 	return pen_release != -1 ? -ENOSYS : 0;
-}
-
-int platform_cpu_kill(unsigned int cpu)
-{
-	return 1;
-}
-
-void platform_cpu_die(unsigned int cpu)
-{
-}
-
-int platform_cpu_disable(unsigned int cpu)
-{
-	return 0;
 }

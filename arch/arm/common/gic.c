@@ -586,7 +586,8 @@ static void gic_cpu_save(unsigned int gic_nr)
 	ptr = __this_cpu_ptr(gic_data[gic_nr].saved_ppi_conf);
 	for (i = 0; i < DIV_ROUND_UP(32, 16); i++)
 		ptr[i] = readl_relaxed(dist_base + GIC_DIST_CONFIG + i * 4);
-
+	/* Massive temporary hack to disable IRQs bypass */
+	writel_relaxed(0x1e0, cpu_base + GIC_CPU_CTRL);
 }
 
 static void gic_cpu_restore(unsigned int gic_nr)

@@ -139,8 +139,10 @@ static void __switch_to_entry(void *_data)
 /* Validate policy frequency range */
 static int columbus_cpufreq_verify_policy(struct cpufreq_policy *policy)
 {
+	uint32_t cur_cluster = get_current_cached_cluster(policy->cpu);
+
 	/* This call takes care of it all using freq_table */
-	return cpufreq_frequency_table_verify(policy, freq_table);
+	return cpufreq_frequency_table_verify(policy, ind_table[cur_cluster]);
 }
 
 /* Set clock frequency */
@@ -150,7 +152,7 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 	uint32_t cpu = policy->cpu;
 	struct cpufreq_freqs freqs;
 	uint32_t freq_tab_idx;
-	uint32_t cur_cluster, new_cluster, do_switch = 0;
+	uint32_t cur_cluster;
 	int ret = 0;
 
 	/* Read current clock rate */
@@ -168,9 +170,9 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 		target_freq = policy->min;
 
 	/* Determine valid target frequency using freq_table */
-	cpufreq_frequency_table_target(policy, freq_table, target_freq,
-				       relation, &freq_tab_idx);
-	freqs.new = freq_table[freq_tab_idx].frequency;
+	cpufreq_frequency_table_target(policy, ind_table[cur_cluster],
+				       target_freq, relation, &freq_tab_idx);
+	freqs.new = ind_table[cur_cluster][freq_tab_idx].frequency;
 
 	freqs.cpu = policy->cpu;
 
@@ -178,60 +180,16 @@ static int columbus_cpufreq_set_target(struct cpufreq_policy *policy,
 		return 0;
 
 	pr_debug("Requested Freq %d on %s cpu %d\n", freqs.new,
-		cur_cluster == COLUMBUS_BL_LITTLE_ID ? "LITTLE" : "big", cpu);
-
-	/*
-	 * TODO:
-	 * Apply hysteresis only for ondemand, conservative or interactive
-	 * governors for now. Not applicable for powersave, performance and
-	 * userspace governors.
-	 * Need to make this independent of governor or move it outside driver
-	 * bl_down_hyst/bl_up_hyst needs to be per-CPU if we need to support
-	 * per-CPU switching
-	 */
-	if (freqs.new < clk_big_min &&
-			cur_cluster == COLUMBUS_BL_BIG_ID &&
-			++per_cpu(bl_down_hyst, cpu) >= bl_hyst_current_cnt) {
-			do_switch = 1;	/* Switch to Little */
-			per_cpu(bl_down_hyst, cpu) = 0;
-	} else if (freqs.new > clk_little_max &&
-			cur_cluster == COLUMBUS_BL_LITTLE_ID &&
-			++per_cpu(bl_up_hyst, cpu) >= bl_hyst_current_cnt) {
-			do_switch = 1;	/* Switch to Big */
-			per_cpu(bl_up_hyst, cpu) = 0;
-	}
-
-	/* Skipping for hysteresis management */
-	if (per_cpu(bl_down_hyst, cpu) || per_cpu(bl_up_hyst, cpu))
-		return ret;
+		 cur_cluster == COLUMBUS_BL_LITTLE_ID ? "LITTLE" : "big", cpu);
 
 	for_each_cpu(freqs.cpu, policy->cpus)
 		cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
 
-	/*
-	 * Set new clock divider rate with MHU calls to set OPP
-	 */
-	if (do_switch)
-		new_cluster = (cur_cluster == COLUMBUS_BL_LITTLE_ID) ?
-			COLUMBUS_BL_BIG_ID : COLUMBUS_BL_LITTLE_ID;
-	else
-		new_cluster = cur_cluster;
-
-	cpufreq_frequency_table_target(policy, ind_table[new_cluster],
-					freqs.new, relation, &freq_tab_idx);
-	ret = set_performance(new_cluster, policy->cpu, freq_tab_idx);
+	ret = spc_set_performance(cur_cluster, freq_tab_idx);
 	if (ret) {
 		pr_err("Error %d while setting required OPP\n", ret);
 		return ret;
 	}
-
-	if (do_switch)
-		/*
-		 * FIXME: forcing smp_call_function_single() to wait just for
-		 * the purpose of running the notifyers is wasteful.
-		 */
-		smp_call_function_single(cpu, __switch_to_entry,
-						(void *)&new_cluster, 1);
 
 	policy->cur = freqs.new;
 
@@ -364,7 +322,8 @@ static int columbus_cpufreq_init_from_scp(void)
 			goto free_mem;
 		}
 		_cpufreq_copy_table_from_array(cpu_freqs,
-				indtable[cluster_id], cpu_opp_num);
+					       indtable[cluster_id],
+					       cpu_opp_num);
 		ind_table[cluster_id] = indtable[cluster_id];
 
 		kfree(cpu_freqs);
@@ -419,9 +378,6 @@ static int columbus_cpufreq_of_init(void)
 
 		kfree(cpu_freqs);
 	}
-	ret = columbus_cpufreq_merge_tables(total_opp_num);
-	if (ret)
-		goto free_mem;
 	return ret;
 free_mem:
 	while (cluster_id >= 0)
@@ -470,11 +426,12 @@ static int columbus_cpufreq_init(struct cpufreq_policy *policy)
 		return result;
 	}
 
-	result = cpufreq_frequency_table_cpuinfo(policy, freq_table);
+	result =
+	    cpufreq_frequency_table_cpuinfo(policy, ind_table[cur_cluster]);
 	if (result)
 		return result;
 
-	cpufreq_frequency_table_get_attr(freq_table, policy->cpu);
+	cpufreq_frequency_table_get_attr(ind_table[cur_cluster], policy->cpu);
 
 	per_cpu(cpu_cur_cluster, policy->cpu) = cur_cluster;
 
@@ -485,9 +442,8 @@ static int columbus_cpufreq_init(struct cpufreq_policy *policy)
 	policy->cpuinfo.transition_latency = 1000000;	/* 1 ms assumed */
 	policy->cur = policy->max;
 
-	if (atomic_read(&freq_table_users) == 1)
-		result = cpufreq_register_notifier(&notifier_policy_block,
-				CPUFREQ_POLICY_NOTIFIER);
+	cpumask_copy(policy->cpus, topology_core_cpumask(policy->cpu));
+	cpumask_copy(policy->related_cpus, policy->cpus);
 
 	pr_info("CPUFreq for CPU %d initialized\n", policy->cpu);
 	return result;

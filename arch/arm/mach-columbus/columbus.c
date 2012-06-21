@@ -75,6 +75,14 @@ static struct map_desc columbus_io_desc[] __initdata = {
 		.length		= SZ_4K,
 		.type		= MT_DEVICE,
 	},
+#if 1
+	{
+		.virtual	= COLUMBUS_CCI400_VIRT_BASE + COLUMBUS_CCI400_EAG_OFFSET,
+		.pfn		= __phys_to_pfn(COLUMBUS_CCI400_PHYS_BASE + COLUMBUS_CCI400_EAG_OFFSET),
+		.length		= SZ_8K,
+		.type		= MT_DEVICE,
+	},
+#endif
 #endif
 	{
 		.virtual	= COLUMBUS_MMCI_VIRT_BASE,
