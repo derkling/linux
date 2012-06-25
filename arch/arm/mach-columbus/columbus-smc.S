@@ -20,21 +20,18 @@
  * Currently a stubbed out version just executing wfi for testing purposes.
  *
  * Function C-prototype is:
- * shutdown_smc(u32 unused, u32 cstate, u32 wakeup_h, u32 wakeup_l)
- * r1: target C-state
- * r2: wake-up timestamp (63:32)
- * r3: wake-up timestamp (31:0)
+ * _smc_down(u32 unused, u32 pwr_exp, u32 resume_addr, u32 context_id)
+ * _smc_up(u32 unused, u32 pwr_exp, u32 resume_addr, u32 context_id)
+ * r1: [0:15] platform specific state ID (e.g. mpidr)
+ *     [16:17] target C-state
+ * r2: resume code/vector address where the core(s) must resume execution
+ * r3: contextID value that will be placed in R0 when resumed @r2
  *
  * Return value:
- * 	does not return on success
- * 	-1 on failure
+ * 	 0 on success (only for _smc_up)
+ *	-1 invalid parameters
+ *	-2 retry/already up
  */
-
-ENTRY(shutdown_smc)
-	ldr 	r0, =#0x80100001
-	smc #0
-	mov	pc, lr
-ENDPROC(shutdown_smc)
 
 ENTRY(_smc_down)
 	ldr 	r0, =#0x80100001
