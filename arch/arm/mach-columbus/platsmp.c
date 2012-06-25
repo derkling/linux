@@ -246,7 +246,7 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 	 */
 	udelay(100);
 
-	_smc_up(0, cpu_logical_map(cpu), 0, 0);
+	_smc_up(0, cpu_logical_map(cpu), virt_to_phys(columbus_boot_secondary), 0);
 
 	timeout = jiffies + (1 * HZ);
 	while (time_before(jiffies, timeout)) {

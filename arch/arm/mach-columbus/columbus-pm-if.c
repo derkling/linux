@@ -31,13 +31,13 @@ extern int _smc_down(unsigned int, unsigned int, unsigned int, unsigned int);
 
 static inline void smc_up(unsigned int cpu, unsigned int cluster)
 {
-	_smc_up(0, (cluster << 8) | cpu, 0, 0);
+	_smc_up(0, (cluster << 8) | cpu, virt_to_phys(bl_entry_point), 0);
 }
 
 static inline bool smc_down(unsigned int cpu, unsigned int cluster)
 {
 	unsigned int value = 0x1 << 16;
-	_smc_down(0, value, 0, 0);
+	_smc_down(0, value, virt_to_phys(bl_entry_point), 0);
 	return 1;
 }
 
