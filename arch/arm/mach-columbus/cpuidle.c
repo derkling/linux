@@ -103,7 +103,14 @@ static DEFINE_PER_CPU(s64, next_event);
 
 static cpumask_t idle_mask = { CPU_BITS_NONE };
 
-extern int shutdown_smc(u32, u32, u32, u32);
+extern int _smc_down(u32, u32, u32, u32);
+
+static inline int shutdown_smc(u32 cstate, u32 wakeup_h, u32 wakeup_l)
+{
+	unsigned int value = 0x1 << 16 | (cstate & 0xFFFF);
+	/* TODO: Add a new SMC call to setup wake-up times once defined */
+	return _smc_down(0, value, virt_to_phys(cpu_resume), 0);
+}
 
 static inline int arch_wakeup_ts(u64 *ts)
 {
