@@ -1,23 +1,68 @@
 #include <linux/linkage.h>
+	.globl vscc
 ENTRY(tc2_cpu_resume)
 	mrc	p15, 0, r0, c0, c0, 5
 	ands	r0, r0, #0xff00
 	adr	r0, value
-	addne	r0, r0, #12
-	ldmia	r0, {r1, r2, r3} 	@ CCI address, SCC snoop control & val
+	addne	r0, r0, #16
+	ldmia	r0, {r1, r2, r3, r4} 	@ CCI address, SCC snoop control & val
 	mvn	r3, r3			@ undo actions done at shutdown
 	ldr	r0, [r2]
-	and	r4, r0, r3
-	str	r4, [r2]
-	mov	r0, #1			@ enable CCI for the cluster
+	and	r5, r0, r3
+	str	r5, [r2]
+	mov	r0, #3			@ enable CCI for the cluster
 	str	r0, [r1]
+	adr	r1, cci_ctrl
+	ldr	r1, [r1]
+loop:
+	ldr	r0, [r1]
+	ands	r0, r0, #1
+	bne 	loop
+	mov	r0, #0			@ disable power down enable
+	str	r0, [r4]
 	b 	cpu_resume
 ENDPROC(tc2_cpu_resume)
 
+ENTRY(disable_snoops)
+	mrc	p15, 0, r0, c0, c0, 5
+	ands	r0, r0, #0xff00
+	adr	r0, vvalue
+	addne	r0, r0, #8
+	addeq	r0, r0, #8
+	ldmia	r0, {r2, r3} 	@ CCI address, SCC snoop control & val
+	adr	r1, vscc
+	ldr	r1, [r1]
+	ldr	r5 , =0xb68
+	ldr	r6 , =0xb68
+	mov	r7, #0
+	add	r2, r1, r2
+	ldr	r0, [r2]
+	add	r8, r1, r5
+	str	r7, [r8]
+	add	r8, r1, r6
+	str	r7, [r8]
+	orr	r4, r0, r3
+	dsb
+	isb
+	str	r4, [r2]
+	wfi
+ENDPROC(disable_snoops)
+
+cci_ctrl:
+	.long	0x2c09000c
 value:
 	.long 	0x2c094000
 	.long 	0x7fff0404
 	.long 	0x180
+	.long 	0x7fff0b30
 	.long 	0x2c095000
 	.long 	0x7fff0504
 	.long 	0x2000
+	.long 	0x7fff0b34
+vvalue:
+	.long 	0x404
+	.long 	0x180
+	.long 	0x504
+	.long 	0x2000
+vscc:
+	.long 0

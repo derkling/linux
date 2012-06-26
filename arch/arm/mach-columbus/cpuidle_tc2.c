@@ -140,6 +140,8 @@ extern void tc2_cpu_resume(void);
 /*
  * Power down SCP command passed as an argument from cpu_suspend
  */
+extern void disable_snoops(void);
+extern unsigned int vscc;
 int tc2_coupled_finisher(unsigned long arg)
 {
 	unsigned int mpidr = read_cpuid_mpidr();
@@ -151,12 +153,10 @@ int tc2_coupled_finisher(unsigned long arg)
 	if (scc_pending_wakeups() && event_shutdown())
 		abort_flag = 1;
 
-
 	cpuidle_coupled_parallel_barrier((struct cpuidle_device *)arg,
 					&abort_barrier[cluster]);
 	if (!abort_flag) {
 		if (mpidr & 0xf) {
-			//spc_wfi_cpureset(cluster, mpidr & 0xf, 1);
 			disable_clean_inv_dcache(0);
 			wfi();
 			/* not reached */
@@ -172,12 +172,12 @@ int tc2_coupled_finisher(unsigned long arg)
 			writel_relaxed(0x0, COLUMBUS_CCI400_VIRT_BASE + COLUMBUS_CCI400_KF_OFFSET);
 		else
 			writel_relaxed(0x0, COLUMBUS_CCI400_VIRT_BASE + COLUMBUS_CCI400_EAG_OFFSET);
-		dsb();
-		isb();
-		scc_ctl_snoops(cluster, 0);
-		wfi();
 
+		while (readl_relaxed(COLUMBUS_CCI400_VIRT_BASE + 0xc) & 0x1)
+				;
+		disable_snoops();
 	}
+	BUG();
 	abort_flag = 0;
 	return 1;
 }
@@ -198,13 +198,14 @@ static int tc2_enter_coupled(struct cpuidle_device *dev,
 	struct timespec ts_preidle, ts_postidle, ts_idle;
 	int ret;
 	int cluster = (read_cpuid_mpidr() >> 8) & 0xf;
-
 	/* Used to keep track of the total time in idle */
 	getnstimeofday(&ts_preidle);
-#if 1
+
 	if (!cpu_isset(cluster, cluster_mask))
 			goto shallow_out;
-#endif
+
+	BUG_ON(!irqs_disabled());
+
 	cpu_pm_enter();
 
 	per_cpu(cur_residency, dev->cpu) = drv->states[idx].target_residency;
@@ -216,14 +217,7 @@ static int tc2_enter_coupled(struct cpuidle_device *dev,
 	ret = cpu_suspend((unsigned long) dev, tc2_coupled_finisher);
 
 	if (ret)
-		goto deep_out;
-
-	spc_powerdown_enable(cluster, 0);
-	scc_ctl_snoops(cluster, 1);
-	if (cluster)
-		writel_relaxed(0x1, COLUMBUS_CCI400_VIRT_BASE + COLUMBUS_CCI400_KF_OFFSET);
-	else
-		writel_relaxed(0x1, COLUMBUS_CCI400_VIRT_BASE + COLUMBUS_CCI400_EAG_OFFSET);
+		BUG();
 
 	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &dev->cpu);
 

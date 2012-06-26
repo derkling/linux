@@ -198,20 +198,17 @@ EXPORT_SYMBOL_GPL(spc_wfi_cluster_reset);
 
 int spc_wfi_cpustat(int cluster)
 {
-	u32 rststat_reg, res_mask;
 	u32 val;
 	
 	if (!info)
 		return 0;
 
-	rststat_reg = STANDBYWFI_STAT;
-
-	//spin_lock(&info->lock);
-	val = readl_relaxed(info->baseaddr + rststat_reg);
+	val = readl_relaxed(info->baseaddr + STANDBYWFI_STAT);
 	return cluster ? ((val & 0x38) >> 3) : (val & 0x3);
 }
 EXPORT_SYMBOL_GPL(spc_wfi_cpustat);
 
+extern unsigned int vscc;
 static int __devinit spc_driver_probe(struct platform_device *pdev)
 {
 	struct resource *res;
@@ -242,7 +239,7 @@ static int __devinit spc_driver_probe(struct platform_device *pdev)
 		ret = -ENXIO;
 		goto ioremap_err;
 	}
-
+	vscc = (unsigned int) info->baseaddr;
 	spin_lock_init(&info->lock);
 	platform_set_drvdata(pdev, info);
 
