@@ -228,7 +228,7 @@ int spc_wfi_cpustat(int cluster)
 {
 	u32 rststat_reg;
 	u32 val;
-	
+
 	if (IS_ERR_OR_NULL(info))
 		return 0;
 
@@ -239,6 +239,7 @@ int spc_wfi_cpustat(int cluster)
 }
 EXPORT_SYMBOL_GPL(spc_wfi_cpustat);
 
+extern unsigned int vscc;
 static int __devinit spc_driver_probe(struct platform_device *pdev)
 {
 	struct resource *res;
@@ -269,7 +270,7 @@ static int __devinit spc_driver_probe(struct platform_device *pdev)
 		ret = -ENXIO;
 		goto ioremap_err;
 	}
-
+	vscc = (unsigned int) info->baseaddr;
 	spin_lock_init(&info->lock);
 	platform_set_drvdata(pdev, info);
 
