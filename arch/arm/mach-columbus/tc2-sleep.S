@@ -28,12 +28,11 @@ ENTRY(disable_snoops)
 	ands	r0, r0, #0xff00
 	adr	r0, vvalue
 	addne	r0, r0, #8
-	addeq	r0, r0, #8
 	ldmia	r0, {r2, r3} 	@ CCI address, SCC snoop control & val
 	adr	r1, vscc
 	ldr	r1, [r1]
 	ldr	r5 , =0xb68
-	ldr	r6 , =0xb68
+	ldr	r6 , =0xb6c
 	mov	r7, #0
 	add	r2, r1, r2
 	ldr	r0, [r2]
