@@ -143,6 +143,29 @@ int v2m_cfg_write(u32 devfn, u32 data)
 	return !!(val & SYS_CFG_ERR);
 }
 
+int v2m_cfg_read(u32 devfn, u32 *data)
+{
+	u32 val;
+
+	devfn |= SYS_CFG_START;
+
+	spin_lock(&v2m_cfg_lock);
+	writel(0, v2m_sysreg_base + V2M_SYS_CFGSTAT);
+	writel(devfn, v2m_sysreg_base + V2M_SYS_CFGCTRL);
+
+	mb();
+
+	do {
+		cpu_relax();
+		val = readl(v2m_sysreg_base + V2M_SYS_CFGSTAT);
+	} while (val == 0);
+
+	*data = readl(v2m_sysreg_base + V2M_SYS_CFGDATA);
+	spin_unlock(&v2m_cfg_lock);
+
+	return !!(val & SYS_CFG_ERR);
+}
+
 static u32 v2m_dt_hdlcd_clk_devfn;
 
 static long tc2_osc_round(struct clk *clk, unsigned long rate)
