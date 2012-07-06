@@ -1152,6 +1152,17 @@ config SENSORS_TWL4030_MADC
 	This driver can also be built as a module. If so it will be called
 	twl4030-madc-hwmon.
 
+config SENSORS_COLUMBUS_TC2
+	tristate "Columbus TC2 Energy Monitors"
+	depends on COLUMBUS_TC2
+	help
+	  This driver is based on a generic driver which provides support
+          for hardware sensors available on the ARM Ltd's Versatile Express
+          platform. The base driver can provide wide range of information:
+          voltage, current, temperature, power, energy however this
+          custom internal PDSW version only provides access to the energy
+          sensors.
+
 config SENSORS_VIA_CPUTEMP
 	tristate "VIA CPU temperature sensor"
 	depends on X86
