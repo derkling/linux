@@ -895,6 +895,17 @@ void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 
 #ifdef CONFIG_BL_SWITCHER
 /*
+ * git_get_cpu_id - get the CPU interface ID for the calling CPU
+ */
+unsigned int gic_get_cpu_id(void)
+{
+	unsigned gic_nr = 0;
+	void __iomem *dist_base = gic_data_dist_base(&gic_data[gic_nr]);
+	unsigned int mask = readl_relaxed(dist_base + GIC_DIST_TARGET + 0);
+	return __ffs(mask);
+}
+
+/*
  * gic_migrate_target - migrate IRQs to another PU interface
  *
  * @new_cpu_id: the CPU target ID to migrate IRQs to

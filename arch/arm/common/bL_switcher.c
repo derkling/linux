@@ -168,6 +168,8 @@ static int bL_switchpoint(unsigned long _unused)
  * Generic switcher interface
  */
 
+static unsigned int bL_gic_id[BL_CPUS_PER_CLUSTER][BL_NR_CLUSTERS];
+
 /*
  * bL_switch_to - Switch to a specific cluster for the current CPU
  * @new_cluster_id: the ID of the cluster to switch to.
@@ -215,7 +217,7 @@ int bL_switch_to(unsigned int new_cluster_id)
 	bL_platform_ops->power_up(cpuid, ib_cluster);
 
 	/* redirect GIC's SGIs to our counterpart */
-	gic_migrate_target(cpuid + ib_cluster*4);
+	gic_migrate_target(bL_gic_id[cpuid][ib_cluster]);
 
 	/*
 	 * Raise a SGI on the inbound CPU to make sure it doesn't stall
@@ -310,6 +312,53 @@ void bL_switch_request(unsigned int cpu, unsigned int new_cluster_id)
 
 EXPORT_SYMBOL_GPL(bL_switch_request);
 
+/*
+ * Code to enumerate GIC interface IDs for all CPUs
+ */
+
+static void __init bL_enumerate_gic_cpu_id(struct work_struct *work)
+{
+	unsigned int mpidr, cpu, cluster;
+	int ret = 0;
+
+	local_irq_disable();
+	local_fiq_disable();
+
+	mpidr = read_mpidr();
+	cpu = mpidr & 0xf;
+	cluster = (mpidr >> 8) & 0xf;
+
+	/* Get current cpu's GIC ID */
+	bL_gic_id[cpu][cluster] = gic_get_cpu_id();
+	pr_info("GIC ID for CPU %u cluster %u is %u\n", cpu, cluster, bL_gic_id[cpu][cluster]);
+
+	/* Flip to the other cluster */
+	cluster ^= 1;
+	bL_set_entry_vector(cpu, cluster, NULL);
+	bL_platform_ops->power_up(cpu, cluster);
+	ret = cpu_suspend(0, bL_switchpoint);
+	if (ret)
+		BUG();
+
+	/*
+	 * Now in the alternate cluster.
+	 * Get current cpu's GIC ID.
+	 */
+	bL_gic_id[cpu][cluster] = gic_get_cpu_id();
+	pr_info("GIC ID for CPU %u cluster %u is %u\n", cpu, cluster, bL_gic_id[cpu][cluster]);
+
+	/* Flip back to the original cluster */
+	cluster ^= 1;
+	bL_set_entry_vector(cpu, cluster, NULL);
+	bL_platform_ops->power_up(cpu, cluster);
+	ret = cpu_suspend(0, bL_switchpoint);
+	if (ret)
+		BUG();
+
+	/* Back in the original cluster */
+	local_fiq_enable();
+	local_irq_enable();
+}
 
 #ifdef CONFIG_BL_SWITCHER_DUMMY_IF
 
@@ -363,7 +412,9 @@ static struct miscdevice bL_switcher_device = {
 
 int __init bL_switcher_init(const struct bL_power_ops *ops)
 {
+	pr_info("big.LITTLE switcher initializing\n");
 	bL_platform_ops = ops;
+	schedule_on_each_cpu(bL_enumerate_gic_cpu_id);
 #ifdef CONFIG_BL_SWITCHER_DUMMY_IF
 	misc_register(&bL_switcher_device);
 #endif
