@@ -50,6 +50,8 @@
 #define KF_RESET_HOLD		0xB5c
 #define EAG_RESET_STAT		0xB60
 #define KF_RESET_STAT		0xB64
+#define EAG_CONF		0x400
+#define KF_CONF		0x500
 
 #define DRIVER_NAME	"SPC"
 #define TIME_OUT	100
@@ -72,11 +74,15 @@ static inline int read_wait_to(void __iomem *reg, int status, int timeout)
 
 int spc_get_performance(int cluster, int *perf)
 {
-	u32 perf_cfg_reg = cluster ? PERF_LVL_KF : PERF_LVL_EAG;
+	u32 perf_cfg_reg = 0;
+	u32 a15_clusid = 0;
 	int ret = 0;
 
 	if (IS_ERR_OR_NULL(info))
 		return -ENXIO;
+
+	a15_clusid = readl_relaxed(info->baseaddr + EAG_CONF) & 0xf;
+	perf_cfg_reg = cluster != a15_clusid ? PERF_LVL_KF : PERF_LVL_EAG;
 
 	spin_lock(&info->lock);
 	*perf = readl(info->baseaddr + perf_cfg_reg);
@@ -89,12 +95,17 @@ EXPORT_SYMBOL_GPL(spc_get_performance);
 
 int spc_set_performance(int cluster, int perf)
 {
-	u32 perf_cfg_reg = cluster ? PERF_LVL_KF : PERF_LVL_EAG;
-	u32 perf_stat_reg = cluster ? PERF_REQ_KF : PERF_REQ_EAG;
+	u32 perf_cfg_reg = 0;
+	u32 perf_stat_reg = 0;
+	u32 a15_clusid = 0;
 	int ret = 0;
 
 	if (IS_ERR_OR_NULL(info))
 		return -ENXIO;
+
+	a15_clusid = readl_relaxed(info->baseaddr + EAG_CONF) & 0xf;
+	perf_cfg_reg = cluster != a15_clusid ? PERF_LVL_KF : PERF_LVL_EAG;
+	perf_stat_reg = cluster != a15_clusid ? PERF_REQ_KF : PERF_REQ_EAG;
 
 	if (perf < 0 || perf > 7)
 		return -EINVAL;
@@ -130,21 +141,29 @@ EXPORT_SYMBOL_GPL(spc_get_wake_intr);
 
 void spc_powerdown_enable(int cluster, int enable)
 {
-	u32 pwdrn_reg = cluster ? KF_PWRDN_EN : EAG_PWRDN_EN;
+	u32 pwdrn_reg = 0;
+	u32 a15_clusid = 0;
 
-	if (!IS_ERR_OR_NULL(info))
+	if (!IS_ERR_OR_NULL(info)) {
+		a15_clusid = readl_relaxed(info->baseaddr + EAG_CONF) & 0xf;
+		pwdrn_reg = cluster != a15_clusid ? KF_PWRDN_EN : EAG_PWRDN_EN;
 		writel(!!enable, info->baseaddr + pwdrn_reg);
+	}
 	return;
 }
 EXPORT_SYMBOL_GPL(spc_powerdown_enable);
 
 void spc_adb400_pd_enable(int cluster, int enable)
 {
-	u32 pwdrn_reg = cluster ? KF_PWRDNREQ : EAG_PWRDNREQ;
+	u32 pwdrn_reg = 0;
+	u32 a15_clusid = 0;
 	u32 val = enable ? 0xF : 0x0;	/* all adb bridges ?? */
 
 	if (IS_ERR_OR_NULL(info))
 		return;
+
+	a15_clusid = readl_relaxed(info->baseaddr + EAG_CONF) & 0xf;
+	pwdrn_reg = cluster != a15_clusid ? KF_PWRDNREQ : EAG_PWRDNREQ;
 
 	spin_lock(&info->lock);
 	writel(val, info->baseaddr + pwdrn_reg);
@@ -156,11 +175,16 @@ EXPORT_SYMBOL_GPL(spc_adb400_pd_enable);
 void scc_ctl_snoops(int cluster, int enable)
 {
 	u32 val;
-	u32 snoop_reg = cluster ? SNOOP_CTL_KF : SNOOP_CTL_EAG;
-	u32 or = cluster ? 0x2000 : 0x180;
+	u32 snoop_reg = 0;
+	u32 a15_clusid = 0;
+	u32 or = 0;
 
 	if (IS_ERR_OR_NULL(info))
 		return;
+
+	a15_clusid = readl_relaxed(info->baseaddr + EAG_CONF) & 0xf;
+	snoop_reg = cluster != a15_clusid ? SNOOP_CTL_KF : SNOOP_CTL_EAG;
+	or = cluster != a15_clusid ? 0x2000 : 0x180;
 
 	val = readl_relaxed(info->baseaddr + snoop_reg);
 	if (enable) {
@@ -177,11 +201,14 @@ void spc_wfi_cpureset(int cluster, int cpu, int enable)
 {
 	u32 rsthold_reg, prst_shift;
 	u32 val;
-	
+	u32 a15_clusid = 0;
+
 	if (IS_ERR_OR_NULL(info))
 		return;
 
-	if (cluster) {
+	a15_clusid = readl_relaxed(info->baseaddr + EAG_CONF) & 0xf;
+
+	if (cluster != a15_clusid) {
 		rsthold_reg = KF_RESET_HOLD;
 		prst_shift = 3;
 	} else {
@@ -202,10 +229,14 @@ void spc_wfi_cluster_reset(int cluster, int enable)
 {
 	u32 rsthold_reg, shift;
 	u32 val;
+	u32 a15_clusid = 0;
+
 	if (IS_ERR_OR_NULL(info))
 		return;
 
-	if (cluster) {
+	a15_clusid = readl_relaxed(info->baseaddr + EAG_CONF) & 0xf;
+
+	if (cluster != a15_clusid) {
 		rsthold_reg = KF_RESET_HOLD;
 		shift = 6;
 	} else {
@@ -228,14 +259,16 @@ int spc_wfi_cpustat(int cluster)
 {
 	u32 rststat_reg;
 	u32 val;
+	u32 a15_clusid = 0;
 
 	if (IS_ERR_OR_NULL(info))
 		return 0;
 
+	a15_clusid = readl_relaxed(info->baseaddr + EAG_CONF) & 0xf;
 	rststat_reg = STANDBYWFI_STAT;
 
 	val = readl_relaxed(info->baseaddr + rststat_reg);
-	return cluster ? ((val & 0x38) >> 3) : (val & 0x3);
+	return cluster != a15_clusid ? ((val & 0x38) >> 3) : (val & 0x3);
 }
 EXPORT_SYMBOL_GPL(spc_wfi_cpustat);
 
