@@ -108,6 +108,11 @@ static void bL_do_switch(void *_unused)
 	 * just returned from cpu_suspend().  It is therefore important to
 	 * be very careful not to make any change the other guy is not
 	 * expecting.  This is why we need stack isolation.
+	 *
+	 * Also, because of this special stack, we cannot rely on anything
+	 * that expects a valid 'current' pointer.  For example, printk()
+	 * may give bogus "BUG: recent printk recursion!\n" messages
+	 * because of that.
 	 */
 
 	/*
