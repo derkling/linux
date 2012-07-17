@@ -28,6 +28,10 @@
 #include <linux/clockchips.h>
 #include <linux/hrtimer.h>
 #include <linux/tick.h>
+#include <linux/io.h>
+#include <linux/ioport.h>
+#include <linux/mm.h>
+#include <linux/string.h>
 
 #include <asm/suspend.h>
 #include <asm/cache.h>
@@ -35,6 +39,8 @@
 #include <asm/hardware/gic.h>
 #include <asm/bL_switcher.h>
 #include <asm/bL_entry.h>
+#include <asm/memblock.h>
+#include <asm/spinlock.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/power_cpu_migrate.h>
@@ -67,6 +73,121 @@ static s64 get_ns(void)
  * bL switcher core code.
  */
 
+unsigned long bL_sync_phys;
+struct bL_sync_struct *bL_sync;
+
+/*
+ * __bL_cpu_going_down: Indicates that the cpu is being torn down
+ *    This must be called at the point of committing to teardown of a CPU.
+ */
+static void __bL_cpu_going_down(unsigned int cpu, unsigned int cluster)
+{
+	writeb_relaxed(CPU_GOING_DOWN, &bL_sync->clusters[cluster].cpus[cpu]);
+	dsb();
+}
+
+/*
+ * __bL_cpu_down: Indicates that cpu teardown is complete and that the
+ *    cluster can be torn down without disrupting this CPU.
+ *    To avoid deadlocks, this must be called before a CPU is powered down.
+ */
+void __bL_cpu_down(unsigned int cpu, unsigned int cluster)
+{
+	dsb();
+	writeb_relaxed(CPU_DOWN, &bL_sync->clusters[cluster].cpus[cpu]);
+	dsb_sev();
+}
+
+/*
+ * __bL_outbound_leave_critical: Leave the cluster teardown critical section.
+ * @state: the final state of the cluster:
+ *     CLUSTER_UP: no destructive teardown was done and the cluster has been
+ *         restored to the previous state; or
+ *     CLUSTER_DOWN: the cluster has been torn-down, ready for power-off.
+ */
+void __bL_outbound_leave_critical(unsigned int cluster, int state)
+{
+	dsb();
+	writeb_relaxed(state, &bL_sync->clusters[cluster].cluster);
+	dsb_sev();
+}
+
+/*
+ * __bL_outbound_enter_critical: Enter the cluster teardown critical section.
+ * This function should be called by the last man, after local CPU teardown
+ * is complete.
+ *
+ * Returns:
+ *     false: the critical section was not entered because an inbound CPU was
+ *         observed, or the cluster is already being set up;
+ *     true: the critical section was entered: it is now safe to tear down the
+ *         cluster.
+ */
+bool __bL_outbound_enter_critical(unsigned int cpu, unsigned int cluster)
+{
+	unsigned int i;
+	struct bL_cluster_sync_struct *c = &bL_sync->clusters[cluster];
+
+	/* Warn inbound CPUs that the cluster is being torn down: */
+	writeb_relaxed(CLUSTER_GOING_DOWN, &c->cluster);
+
+	dsb();
+
+	/* Back out if the inbound cluster is already in the critical region: */
+	if (readb_relaxed(&c->inbound) == INBOUND_COMING_UP)
+		goto abort;
+
+	/*
+	 * Wait for all CPUs to get out of the GOING_DOWN state, so that local
+	 * teardown is complete on each CPU before tearing down the cluster.
+	 *
+	 * If any CPU has been woken up again from the DOWN state, then we
+	 * shouldn't be taking the cluster down at all: abort in that case.
+	 */
+	for (i = 0; i < BL_CPUS_PER_CLUSTER; i++) {
+		int cpustate;
+
+		if (i == cpu)
+			continue;
+
+		while (1) {
+			cpustate = readb_relaxed(&c->cpus[i]);
+			if (cpustate != CPU_GOING_DOWN)
+				break;
+
+			wfe();
+		}
+
+		switch (cpustate) {
+		case CPU_DOWN:
+			continue;
+
+		default:
+			goto abort;
+		}
+	}
+
+	dsb();
+
+	return true;
+
+abort:
+	__bL_outbound_leave_critical(cluster, CLUSTER_UP);
+	return false;
+}
+
+/*
+ * bL_set_first_man(): the platform power_up() method should call this
+ * to nominate a first man to set up the target cluster on migration.
+ *
+ * Usually, a spinlock should be held across identification of the first
+ * man and the call to this function.
+ */
+void __bL_set_first_man(int cpu, unsigned int cluster)
+{
+	bL_sync->clusters[cluster].first_man = cpu;
+}
+
 const struct bL_power_ops *bL_platform_ops;
 
 extern void setup_mm_for_reboot(void);
@@ -93,7 +214,8 @@ static void bL_do_switch(void *_unused)
 	 * decides to switch back before we actually get to shut ourself
 	 * down.
 	 */
-	last_man = bL_platform_ops->power_down(cpuid, ob_cluster);
+	__bL_cpu_going_down(cpuid, ob_cluster);
+	last_man = bL_platform_ops->power_down_prepare(cpuid, ob_cluster);
        
 	/*
 	 * Our state has been saved at this point.  Let's release our
@@ -115,26 +237,7 @@ static void bL_do_switch(void *_unused)
 	 * because of that.
 	 */
 
-	/*
-	 * Now let's take care of cleaning our cache and
-	 * shutting ourself down.  If we're the last CPU in this cluster,
-	 * clean L2 too.
-	 */
-	cpu_proc_fin();
-	if (last_man) {
-		flush_cache_all();
-		outer_flush_all();
-	} else {
-		flush_dcache_level(flush_cache_level_cpu());
-	}
-	asm volatile (
-		"mrc	p15, 0, ip, c1, c0, 1 \n\t"
-		"bic	ip, ip, #(1 << 6) @ clear SMP bit \n\t"
-		"mcr	p15, 0, ip, c1, c0, 1"
-		: : : "ip" );
-
-	/* And our own life ends right here... */
-	wfi();
+	bL_platform_ops->power_down(cpuid, ob_cluster, last_man);
 
 	/*
 	 * Hey, we're not dead!  This means a request to switch back
@@ -417,10 +520,65 @@ static struct miscdevice bL_switcher_device = {
 
 #endif
 
+extern unsigned long bL_power_up_setup_phys;
+
+int __init bL_switcher_reserve(void)
+{
+	bL_sync_phys =
+		arm_memblock_steal(BL_SYNC_MEM_RESERVE, PAGE_SIZE);
+
+	return 0;
+}
+
+static struct resource bL_iomem_resource = {
+	.name = "big.LITTLE switcher synchronisation buffer",
+	.flags = IORESOURCE_MEM|IORESOURCE_EXCLUSIVE|IORESOURCE_BUSY,
+};
+
 int __init bL_switcher_init(const struct bL_power_ops *ops)
 {
+	unsigned int i;
+
 	pr_info("big.LITTLE switcher initializing\n");
+
+	/*
+	 * It is too late to steal physical memory here.
+	 * Boards must pre-reserve synchronisation memory by calling
+	 * bL_switcher_reserve() from their machine_desc .reserve hook.
+	 */
+	BUG_ON(bL_sync_phys == 0);
+
+	bL_sync = ioremap(bL_sync_phys, BL_SYNC_MEM_RESERVE);
+	if(!bL_sync) {
+		pr_err("big.LITTLE switcher synchronisation buffer mapping failed\nm");
+		return -ENOMEM;
+	}
+
+	bL_iomem_resource.start = bL_sync_phys;
+	bL_iomem_resource.end = bL_sync_phys + BL_SYNC_MEM_RESERVE - 1;
+	insert_resource(&iomem_resource, &bL_iomem_resource);
+
+	/* set initial CPU and cluster states */
+	memset(bL_sync, 0, sizeof *bL_sync);
+	for_each_online_cpu(i)
+		bL_sync->clusters[0].cpus[i] = CPU_UP;
+	bL_sync->clusters[0].cluster = CLUSTER_UP;
+	bL_sync->clusters[0].first_man = FIRST_MAN_NONE;
+
 	bL_platform_ops = ops;
+	if (ops->power_up_setup) {
+		bL_power_up_setup_phys =
+			virt_to_phys(ops->power_up_setup);
+		__cpuc_flush_dcache_area((void *)&bL_power_up_setup_phys,
+						sizeof bL_power_up_setup_phys);
+		outer_clean_range(__pa(&bL_power_up_setup_phys),
+				  __pa(&bL_power_up_setup_phys + 1));
+	}
+
+	__cpuc_flush_dcache_area((void *)&bL_sync_phys,
+					sizeof bL_sync_phys);
+	outer_clean_range(__pa(&bL_sync_phys), __pa(&bL_sync_phys + 1));
+
 	schedule_on_each_cpu(bL_enumerate_gic_cpu_id);
 #ifdef CONFIG_BL_SWITCHER_DUMMY_IF
 	misc_register(&bL_switcher_device);

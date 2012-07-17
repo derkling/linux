@@ -52,7 +52,9 @@ ENTRY(bl_entry_point)
 	 * position independent way.
 	 */
 	adr	r5, 3f
+	ldr	r7, 4f
 	ldr	r6, [r5]
+	ldr	r7, [r5, r7]	@ bL_power_up_setup_phys
 	add	r5, r5, r6
 
 bL_entry_gated:
@@ -61,9 +63,14 @@ bL_entry_gated:
 	wfeeq
 	beq	bL_entry_gated
 	pr_dbg	r4, "released\n"
+
+	cmp	r7, #0
+	blxne	r7		@ Call power_up_setup if defined
+
 	bx	r6
 
 3:	.word	bL_entry_vectors - .
+4:	.word	bL_power_up_setup_phys - 3b
 
 ENDPROC(bl_entry_point)
 
@@ -74,3 +81,6 @@ ENDPROC(bl_entry_point)
 ENTRY(bL_entry_vectors)
 	.space	4 * BL_NR_CLUSTERS * BL_CPUS_PER_CLUSTER
 
+	.type	bL_power_up_setup_phys, #object
+ENTRY(bL_power_up_setup_phys)
+	.word	0		@ set by bL_switcher_init()
