@@ -80,7 +80,7 @@ struct bL_sync_struct *bL_sync;
  * __bL_cpu_going_down: Indicates that the cpu is being torn down
  *    This must be called at the point of committing to teardown of a CPU.
  */
-static void __bL_cpu_going_down(unsigned int cpu, unsigned int cluster)
+void __bL_cpu_going_down(unsigned int cpu, unsigned int cluster)
 {
 	writeb_relaxed(CPU_GOING_DOWN, &bL_sync->clusters[cluster].cpus[cpu]);
 	dsb();
@@ -197,7 +197,6 @@ typedef void (*phys_reset_t)(unsigned long);
 static void bL_do_switch(void *_unused)
 {
 	unsigned mpidr, cpuid, clusterid, ob_cluster, ib_cluster;
-	bool last_man;
 	phys_reset_t phys_reset;
 	
 	pr_debug("%s\n", __func__);
@@ -208,15 +207,6 @@ static void bL_do_switch(void *_unused)
 	ob_cluster = clusterid;
 	ib_cluster = clusterid ^ 1;
 
-	/*
-	 * Let's signal our intention to go down before letting the
-	 * inbound CPU run.  This must be done here in case the inbound
-	 * decides to switch back before we actually get to shut ourself
-	 * down.
-	 */
-	__bL_cpu_going_down(cpuid, ob_cluster);
-	last_man = bL_platform_ops->power_down_prepare(cpuid, ob_cluster);
-       
 	/*
 	 * Our state has been saved at this point.  Let's release our
 	 * inbound CPU.
@@ -237,7 +227,7 @@ static void bL_do_switch(void *_unused)
 	 * because of that.
 	 */
 
-	bL_platform_ops->power_down(cpuid, ob_cluster, last_man);
+	bL_platform_ops->power_down(cpuid, ob_cluster);
 
 	/*
 	 * Hey, we're not dead!  This means a request to switch back
