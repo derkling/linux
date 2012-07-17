@@ -176,8 +176,7 @@ static void bL_kfs_power_down(unsigned int cpu, unsigned int cluster,
 		"mcr	p15, 0, ip, c1, c0, 1"
 		: : : "ip" );
 
-	if (last_man) {
-		__bL_outbound_enter_critical(cpu, cluster);
+	if (last_man && __bL_outbound_enter_critical(cpu, cluster)) {
 		if (!powerdown_needed(cluster))
 			__bL_outbound_leave_critical(cluster, CLUSTER_UP);
 		else {
