@@ -527,7 +527,7 @@ static struct resource bL_iomem_resource = {
 
 int __init bL_switcher_init(const struct bL_power_ops *ops)
 {
-	unsigned int i;
+	unsigned int i, this_cluster;
 
 	pr_info("big.LITTLE switcher initializing\n");
 
@@ -548,12 +548,16 @@ int __init bL_switcher_init(const struct bL_power_ops *ops)
 	bL_iomem_resource.end = bL_sync_phys + BL_SYNC_MEM_RESERVE - 1;
 	insert_resource(&iomem_resource, &bL_iomem_resource);
 
-	/* set initial CPU and cluster states */
+	/*
+	 * Set initial CPU and cluster states.
+	 * Only one cluster is assumed to be active at this point.
+	 */
+	this_cluster = (read_mpidr() >> 8) & 0xf;
 	memset(bL_sync, 0, sizeof *bL_sync);
 	for_each_online_cpu(i)
-		bL_sync->clusters[0].cpus[i] = CPU_UP;
-	bL_sync->clusters[0].cluster = CLUSTER_UP;
-	bL_sync->clusters[0].first_man = FIRST_MAN_NONE;
+		bL_sync->clusters[this_cluster].cpus[i] = CPU_UP;
+	bL_sync->clusters[this_cluster].cluster = CLUSTER_UP;
+	bL_sync->clusters[this_cluster].first_man = FIRST_MAN_NONE;
 
 	bL_platform_ops = ops;
 	if (ops->power_up_setup) {
