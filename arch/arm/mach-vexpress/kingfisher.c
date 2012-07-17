@@ -82,37 +82,6 @@ static void bL_kfs_power_up(unsigned int cpu, unsigned int cluster)
 }
 
 /*
- * bL_kfs_power_down_prepare - nominate a CPU for power-down
- *
- * @cpu: CPU number within given cluster
- * @cluster: cluster number for the CPU
- *
- * @return: true if the CPU is elected as the last man
- *
- * The identified CPU is selected for powerdown.  If all other CPUs in
- * this cluster have already been selected for powerdown, then the
- * cluster is selected for powerdown and this CPU is elected as
- * responsible for tearing down the cluster (the "last man" role).
- *
- * The MMU is expected still to be on when this function is called, and
- * the CPU fully coherent.
- */
-static bool bL_kfs_power_down_prepare(unsigned int cpu, unsigned int cluster)
-{
-	unsigned int rst_hold, cpumask = (1 << cpu);
-
-	pr_debug("%s: cpu %u cluster %u\n", __func__, cpu, cluster);
-	raw_spin_lock(&kfscb_lock);
-	rst_hold = readl_relaxed(kfscb_base + RST_HOLD0 + cluster * 4);
-	rst_hold |= cpumask;
-	if (((rst_hold | (rst_hold >> 4)) & 0xf) == 0xf)
-		rst_hold |= (1 << 8);
-	writel(rst_hold, kfscb_base + RST_HOLD0 + cluster * 4);
-	raw_spin_unlock(&kfscb_lock);
-	return (rst_hold & (1 << 8));
-}
-
-/*
  * Helper to determine whether the specified cluster should still be
  * shut down.  By polling this before shutting a cluster down, we can
  * reduce the probability of wasted cache flushing etc.
@@ -130,13 +99,11 @@ static bool powerdown_needed(unsigned int cluster)
  *
  * @cpu: CPU number within given cluster
  * @cluster: cluster number for the CPU
- * @last_man: true if the CPU has been elected to tear down the cluster
  *
- * The identified CPU, which must previously have been nominated by
- * calling bL_kfs_power_down_prepare(), is powered down.
+ * The identified CPU is powered down.
  *
- * If this CPU was elected as the last man in the cluster (last_man is
- * true), then the cluster is prepared for power-down too, unless
+ * If this CPU is found to be the last man in the cluster
+ * then the cluster is prepared for power-down too, unless
  * another inbound CPU appeared on the cluster in the meantime.
  *
  * The critical section protects us from the late arrival of an inbound
@@ -149,9 +116,24 @@ static bool powerdown_needed(unsigned int cluster)
  * CPU will be restarted through reset at the next switch event for this
  * cpu.
  */
-static void bL_kfs_power_down(unsigned int cpu, unsigned int cluster,
-			      bool last_man)
+static void bL_kfs_power_down(unsigned int cpu, unsigned int cluster)
 {
+	unsigned int rst_hold, cpumask = (1 << cpu);
+	bool last_man;
+
+	pr_debug("%s: cpu %u cluster %u\n", __func__, cpu, cluster);
+
+	__bL_cpu_going_down(cpu, cluster);
+
+	raw_spin_lock(&kfscb_lock);
+	rst_hold = readl_relaxed(kfscb_base + RST_HOLD0 + cluster * 4);
+	rst_hold |= cpumask;
+	if (((rst_hold | (rst_hold >> 4)) & 0xf) == 0xf)
+		rst_hold |= (1 << 8);
+	writel(rst_hold, kfscb_base + RST_HOLD0 + cluster * 4);
+	raw_spin_unlock(&kfscb_lock);
+	last_man = (rst_hold & (1 << 8));
+
 	/*
 	 * flush_cache_level_cpu() is a guess which should be correct
 	 * for A15/A7.  We eventually need a defined way to find out
@@ -228,7 +210,6 @@ extern void bL_kfs_power_up_setup(void);
 
 static const struct bL_power_ops bL_kfs_power_ops = {
 	.power_up		= bL_kfs_power_up,
-	.power_down_prepare	= bL_kfs_power_down_prepare,
 	.power_down		= bL_kfs_power_down,
 	.power_up_setup		= bL_kfs_power_up_setup,
 };
