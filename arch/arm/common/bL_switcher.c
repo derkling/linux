@@ -525,7 +525,7 @@ extern unsigned long bL_power_up_setup_phys;
 int __init bL_switcher_reserve(void)
 {
 	bL_sync_phys =
-		arm_memblock_steal(BL_SYNC_MEM_RESERVE, PAGE_SIZE);
+		arm_memblock_steal(BL_SYNC_MEM_RESERVE, (1 << 21));
 
 	return 0;
 }

@@ -51,7 +51,7 @@ struct bL_sync_struct {
 };
 
 /* How much physical memory to reserve for the synchronisation structure: */
-#define BL_SYNC_MEM_RESERVE PAGE_ALIGN(sizeof(struct bL_cluster_sync_struct))
+#define BL_SYNC_MEM_RESERVE ALIGN(sizeof(struct bL_cluster_sync_struct), (1 << 21))
 
 extern unsigned long bL_sync_phys;	/* physical address of *bL_sync */
 
