@@ -38,6 +38,7 @@
 
 #include <mach/ct-ca9x4.h>
 #include <mach/motherboard.h>
+#include <mach/kingfisher.h>
 
 #include <plat/clcd.h>
 #include <plat/sched_clock.h>
@@ -829,6 +830,11 @@ static void __init v2m_dt_init(void)
 	pm_power_off = v2m_power_off;
 }
 
+static void __init v2m_reserve(void)
+{
+	kfs_reserve();
+}
+
 const static char *v2m_dt_match[] __initconst = {
 	"arm,vexpress",
 	NULL,
@@ -837,6 +843,7 @@ const static char *v2m_dt_match[] __initconst = {
 DT_MACHINE_START(VEXPRESS_DT, "ARM-Versatile Express")
 	.dt_compat	= v2m_dt_match,
 	.map_io		= v2m_dt_map_io,
+	.reserve	= v2m_reserve,
 	.init_early	= v2m_dt_init_early,
 	.init_irq	= v2m_dt_init_irq,
 	.timer		= &v2m_dt_timer,

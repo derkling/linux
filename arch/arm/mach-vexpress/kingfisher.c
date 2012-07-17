@@ -24,8 +24,12 @@
 
 #include <asm/bL_switcher.h>
 #include <asm/bL_entry.h>
+#include <asm/cacheflush.h>
+#include <asm/proc-fns.h>
+#include <asm/spinlock.h>
 
 #include <mach/motherboard.h>
+#include <mach/kingfisher.h>
 
 
 #define KFSCB_PHYS_BASE	0x60000000
@@ -43,6 +47,8 @@
 
 static void __iomem *kfscb_base;
 static DEFINE_RAW_SPINLOCK(kfscb_lock);
+
+static void __iomem *cci_base;
 
 /*
  * bL_kfs_power_up - make given CPU in given cluster runable
@@ -67,6 +73,8 @@ static void bL_kfs_power_up(unsigned int cpu, unsigned int cluster)
 		/* remove cluster reset and add individual CPU's reset */
 		rst_hold &= ~(1 << 8);
 		rst_hold |= 0xf;
+
+		__bL_set_first_man(cpu, cluster);
 	}
 	rst_hold &= ~(cpumask | (cpumask << 4));
 	writel(rst_hold, kfscb_base + RST_HOLD0 + cluster * 4);
@@ -74,20 +82,22 @@ static void bL_kfs_power_up(unsigned int cpu, unsigned int cluster)
 }
 
 /*
- * bL_kfs_power_down - power down given CPU in given cluster
+ * bL_kfs_power_down_prepare - nominate a CPU for power-down
  *
  * @cpu: CPU number within given cluster
  * @cluster: cluster number for the CPU
  *
- * The identified CPU is powered down.  If this is the last CPU still alive
- * in the cluster then the necessary steps to power down the cluster are
- * performed as well and a non zero value is returned in that case.
+ * @return: true if the CPU is elected as the last man
  *
- * Given usage of a spinlock, the calling CPU must have its MMU still active.
- * It is assumed that the reset will be effective at the next WFI instruction
- * performed by the target CPU.
+ * The identified CPU is selected for powerdown.  If all other CPUs in
+ * this cluster have already been selected for powerdown, then the
+ * cluster is selected for powerdown and this CPU is elected as
+ * responsible for tearing down the cluster (the "last man" role).
+ *
+ * The MMU is expected still to be on when this function is called, and
+ * the CPU fully coherent.
  */
-static bool bL_kfs_power_down(unsigned int cpu, unsigned int cluster)
+static bool bL_kfs_power_down_prepare(unsigned int cpu, unsigned int cluster)
 {
 	unsigned int rst_hold, cpumask = (1 << cpu);
 
@@ -102,15 +112,143 @@ static bool bL_kfs_power_down(unsigned int cpu, unsigned int cluster)
 	return (rst_hold & (1 << 8));
 }
 
+/*
+ * Helper to determine whether the specified cluster should still be
+ * shut down.  By polling this before shutting a cluster down, we can
+ * reduce the probability of wasted cache flushing etc.
+ */
+static bool powerdown_needed(unsigned int cluster)
+{
+	unsigned int rst_hold;
+
+	rst_hold = readl_relaxed(kfscb_base + RST_HOLD0 + cluster * 4);
+	return (rst_hold & (1 << 8));
+}
+
+/*
+ * bL_kfs_power_down - power a nominated CPU down
+ *
+ * @cpu: CPU number within given cluster
+ * @cluster: cluster number for the CPU
+ * @last_man: true if the CPU has been elected to tear down the cluster
+ *
+ * The identified CPU, which must previously have been nominated by
+ * calling bL_kfs_power_down_prepare(), is powered down.
+ *
+ * If this CPU was elected as the last man in the cluster (last_man is
+ * true), then the cluster is prepared for power-down too, unless
+ * another inbound CPU appeared on the cluster in the meantime.
+ *
+ * The critical section protects us from the late arrival of an inbound
+ * CPU: if an inbound CPU appears on the cluster within this region,
+ * it must wait for us to finish before attempting to enter coherency
+ * at the cluster level.
+ *
+ * This function may return, if wfi() is preempted by a hardware wake-up
+ * event before the CPU gets physically powered down.  Otherwise, the
+ * CPU will be restarted through reset at the next switch event for this
+ * cpu.
+ */
+static void bL_kfs_power_down(unsigned int cpu, unsigned int cluster,
+			      bool last_man)
+{
+	/*
+	 * flush_cache_level_cpu() is a guess which should be correct
+	 * for A15/A7.  We eventually need a defined way to find out
+	 * the correct cache level to flush for the CPU's local
+	 * coherency domain.
+	 */
+
+	/*
+	 * A15/A7 can hit in the cache with SCTLR.C=0, so we don't need
+	 * a preliminary flush here for those CPUs.  At least, that's
+	 * the theory -- without the extra flush, Linux explodes on
+	 * RTSM.
+	 */
+	flush_dcache_level(flush_cache_level_cpu());
+	cpu_proc_fin();	/* disable allocation into internal caches*/
+	flush_dcache_level(flush_cache_level_cpu());
+
+	/* Disable local coherency by clearing the ACTLR "SMP" bit: */
+	asm volatile (
+		"mrc	p15, 0, ip, c1, c0, 1 \n\t"
+		"bic	ip, ip, #(1 << 6) @ clear SMP bit \n\t"
+		"mcr	p15, 0, ip, c1, c0, 1"
+		: : : "ip" );
+
+	if (last_man) {
+		__bL_outbound_enter_critical(cpu, cluster);
+		if (!powerdown_needed(cluster))
+			__bL_outbound_leave_critical(cluster, CLUSTER_UP);
+		else {
+			unsigned int snoopctl;
+			void __iomem *snoopctl_reg =
+				cci_base + CCI_SLAVE_OFFSET(cluster ?
+						    RTSM_CCI_SLAVE_A7 :
+						    RTSM_CCI_SLAVE_A15) +
+					SLAVE_SNOOPCTL_OFFSET;
+			void __iomem *status_reg = cci_base + CCI_STATUS_OFFSET;
+			/*
+			 * flush remaining architected caches
+			 * not flushed by common code
+			 */
+			flush_cache_all();
+
+			/*
+			 * This is a harmless no-op.  On platforms with a real
+			 * outer cache this might either be needed or not,
+			 * depending on where the outer cache sits.
+			 */
+			outer_flush_all();
+
+			/*
+			 * Disable cluster-level coherency by masking
+			 * incoming snoops and DVM messages:
+			 */
+			snoopctl = readl_relaxed(snoopctl_reg);
+			snoopctl &= ~(SNOOPCTL_SNOOP_ENABLE |
+						SNOOPCTL_DVM_ENABLE);
+			writel_relaxed(snoopctl, snoopctl_reg);
+
+			/* Wait for snoop control change to complete: */
+			while (readl_relaxed(status_reg) &
+					STATUS_CHANGE_PENDING)
+				cpu_relax();
+
+			__bL_outbound_leave_critical(cluster, CLUSTER_DOWN);
+		}
+	}
+
+	__bL_cpu_down(cpu, cluster);
+
+	/* Now we are prepared for power-down, do it: */
+	wfi();
+}
+
+extern void bL_kfs_power_up_setup(void);
+
 static const struct bL_power_ops bL_kfs_power_ops = {
-	.power_up	= bL_kfs_power_up,
-	.power_down	= bL_kfs_power_down,
+	.power_up		= bL_kfs_power_up,
+	.power_down_prepare	= bL_kfs_power_down_prepare,
+	.power_down		= bL_kfs_power_down,
+	.power_up_setup		= bL_kfs_power_up_setup,
 };
+
+void __init kfs_reserve(void)
+{
+	bL_switcher_reserve();
+}
 
 static int __init kfs_init(void)
 {
 	kfscb_base = ioremap(KFSCB_PHYS_BASE, 0x1000);
 	if (!kfscb_base)
+		return -ENOMEM;
+
+	/* Map CCI registers */
+	/* The CCI support should really be factored out */
+	cci_base = ioremap(RTSM_CCI_PHYS_BASE, 0x10000);
+	if (!cci_base)
 		return -ENOMEM;
 
 	/* All future entries into the kernel goes through our entry vectors. */
