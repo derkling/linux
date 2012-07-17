@@ -47,6 +47,7 @@
 
 static void __iomem *kfscb_base;
 static DEFINE_RAW_SPINLOCK(kfscb_lock);
+static int kfs_use_count[BL_CPUS_PER_CLUSTER][BL_NR_CLUSTERS];
 
 static void __iomem *cci_base;
 
@@ -68,16 +69,29 @@ static void bL_kfs_power_up(unsigned int cpu, unsigned int cluster)
 
 	pr_debug("%s: cpu %u cluster %u\n", __func__, cpu, cluster);
 	raw_spin_lock(&kfscb_lock);
-	rst_hold = readl_relaxed(kfscb_base + RST_HOLD0 + cluster * 4);
-	if (rst_hold & (1 << 8)) {
-		/* remove cluster reset and add individual CPU's reset */
-		rst_hold &= ~(1 << 8);
-		rst_hold |= 0xf;
+	kfs_use_count[cpu][cluster]++;
+	if (kfs_use_count[cpu][cluster] == 1) {
+		rst_hold = readl_relaxed(kfscb_base + RST_HOLD0 + cluster * 4);
+		if (rst_hold & (1 << 8)) {
+			/* remove cluster reset and add individual CPU's reset */
+			rst_hold &= ~(1 << 8);
+			rst_hold |= 0xf;
 
-		__bL_set_first_man(cpu, cluster);
+			__bL_set_first_man(cpu, cluster);
+		}
+		rst_hold &= ~(cpumask | (cpumask << 4));
+		writel(rst_hold, kfscb_base + RST_HOLD0 + cluster * 4);
+	} else if (kfs_use_count[cpu][cluster] != 2) {
+		/*
+		 * The only possible values are:
+		 * 0 = CPU down
+		 * 1 = CPU (still) up
+		 * 2 = CPU requested to be up before it had a chance
+		 *     to actually make itself down.
+		 * Any other value is a bug.
+		 */
+		BUG();
 	}
-	rst_hold &= ~(cpumask | (cpumask << 4));
-	writel(rst_hold, kfscb_base + RST_HOLD0 + cluster * 4);
 	raw_spin_unlock(&kfscb_lock);
 }
 
@@ -119,20 +133,33 @@ static bool powerdown_needed(unsigned int cluster)
 static void bL_kfs_power_down(unsigned int cpu, unsigned int cluster)
 {
 	unsigned int rst_hold, cpumask = (1 << cpu);
-	bool last_man;
+	bool last_man = false, skip_wfi = false;
 
 	pr_debug("%s: cpu %u cluster %u\n", __func__, cpu, cluster);
 
 	__bL_cpu_going_down(cpu, cluster);
 
 	raw_spin_lock(&kfscb_lock);
-	rst_hold = readl_relaxed(kfscb_base + RST_HOLD0 + cluster * 4);
-	rst_hold |= cpumask;
-	if (((rst_hold | (rst_hold >> 4)) & 0xf) == 0xf)
-		rst_hold |= (1 << 8);
-	writel(rst_hold, kfscb_base + RST_HOLD0 + cluster * 4);
+	kfs_use_count[cpu][cluster]--;
+	if (kfs_use_count[cpu][cluster] == 0) {
+		rst_hold = readl_relaxed(kfscb_base + RST_HOLD0 + cluster * 4);
+		rst_hold |= cpumask;
+		if (((rst_hold | (rst_hold >> 4)) & 0xf) == 0xf) {
+			rst_hold |= (1 << 8);
+			last_man = true;
+		}
+		writel(rst_hold, kfscb_base + RST_HOLD0 + cluster * 4);
+	} else if (kfs_use_count[cpu][cluster] == 1) {
+		/*
+		 * A power_up request went ahead of us.
+		 * Even if we do not want to shut this CPU down,
+		 * the caller expects a certain state as if the WFI
+		 * was aborted.  So let's continue with cache cleaning.
+		 */
+		skip_wfi = true;
+	} else
+		BUG();
 	raw_spin_unlock(&kfscb_lock);
-	last_man = (rst_hold & (1 << 8));
 
 	/*
 	 * flush_cache_level_cpu() is a guess which should be correct
@@ -203,7 +230,8 @@ static void bL_kfs_power_down(unsigned int cpu, unsigned int cluster)
 	__bL_cpu_down(cpu, cluster);
 
 	/* Now we are prepared for power-down, do it: */
-	wfi();
+	if (!skip_wfi)
+		wfi();
 }
 
 extern void bL_kfs_power_up_setup(void);
@@ -221,6 +249,8 @@ void __init kfs_reserve(void)
 
 static int __init kfs_init(void)
 {
+	unsigned int mpidr, this_cluster, cpu;
+
 	kfscb_base = ioremap(KFSCB_PHYS_BASE, 0x1000);
 	if (!kfscb_base)
 		return -ENOMEM;
@@ -233,6 +263,15 @@ static int __init kfs_init(void)
 
 	/* All future entries into the kernel goes through our entry vectors. */
 	v2m_flags_set(virt_to_phys(bl_entry_point));
+
+	/*
+	 * Initialize CPU usage counts, assuming that only one cluster is
+	 * activated at this point.
+	 */
+	asm ("mrc\tp15, 0, %0, c0, c0, 5" : "=r" (mpidr));
+	this_cluster = (mpidr >> 8) & 0xf;
+	for_each_online_cpu(cpu)
+		kfs_use_count[cpu][this_cluster] = 1;
 
 	return bL_switcher_init(&bL_kfs_power_ops);
 }
