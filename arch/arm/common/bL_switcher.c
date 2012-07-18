@@ -356,6 +356,8 @@ static void __init bL_enumerate_gic_cpu_id(struct work_struct *work)
 	cluster ^= 1;
 	bL_set_entry_vector(cpu, cluster, NULL);
 	bL_platform_ops->power_up(cpu, cluster);
+	/* no GIC migration occurred, so this goes to the initial CPU */
+	arm_send_ping_ipi(smp_processor_id());
 	ret = cpu_suspend(0, bL_switchpoint);
 	if (ret)
 		BUG();
