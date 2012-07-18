@@ -48,6 +48,7 @@
 static void __iomem *kfscb_base;
 static DEFINE_RAW_SPINLOCK(kfscb_lock);
 static int kfs_use_count[BL_CPUS_PER_CLUSTER][BL_NR_CLUSTERS];
+static int kfs_cluster_cpu_mask[BL_NR_CLUSTERS];
 
 static void __iomem *cci_base;
 
@@ -66,6 +67,7 @@ static void __iomem *cci_base;
 static void bL_kfs_power_up(unsigned int cpu, unsigned int cluster)
 {
 	unsigned int rst_hold, cpumask = (1 << cpu);
+	unsigned int cluster_mask = kfs_cluster_cpu_mask[cluster];
 
 	pr_debug("%s: cpu %u cluster %u\n", __func__, cpu, cluster);
 	raw_spin_lock(&kfscb_lock);
@@ -75,7 +77,7 @@ static void bL_kfs_power_up(unsigned int cpu, unsigned int cluster)
 		if (rst_hold & (1 << 8)) {
 			/* remove cluster reset and add individual CPU's reset */
 			rst_hold &= ~(1 << 8);
-			rst_hold |= 0xf;
+			rst_hold |= cluster_mask;
 
 			__bL_set_first_man(cpu, cluster);
 		}
@@ -133,6 +135,7 @@ static bool powerdown_needed(unsigned int cluster)
 static void bL_kfs_power_down(unsigned int cpu, unsigned int cluster)
 {
 	unsigned int rst_hold, cpumask = (1 << cpu);
+	unsigned int cluster_mask = kfs_cluster_cpu_mask[cluster];
 	bool last_man = false, skip_wfi = false;
 
 	pr_debug("%s: cpu %u cluster %u\n", __func__, cpu, cluster);
@@ -144,7 +147,7 @@ static void bL_kfs_power_down(unsigned int cpu, unsigned int cluster)
 	if (kfs_use_count[cpu][cluster] == 0) {
 		rst_hold = readl_relaxed(kfscb_base + RST_HOLD0 + cluster * 4);
 		rst_hold |= cpumask;
-		if (((rst_hold | (rst_hold >> 4)) & 0xf) == 0xf) {
+		if (((rst_hold | (rst_hold >> 4)) & cluster_mask) == cluster_mask) {
 			rst_hold |= (1 << 8);
 			last_man = true;
 		}
@@ -249,11 +252,15 @@ void __init kfs_reserve(void)
 
 static int __init kfs_init(void)
 {
-	unsigned int mpidr, this_cluster, cpu;
+	unsigned int i, cfg, mpidr, this_cluster, cpu;
 
 	kfscb_base = ioremap(KFSCB_PHYS_BASE, 0x1000);
 	if (!kfscb_base)
 		return -ENOMEM;
+	cfg = readl_relaxed(kfscb_base + KFS_CFG_R);
+	for (i = 0; i < BL_NR_CLUSTERS; i++)
+		kfs_cluster_cpu_mask[i] =
+			(1 << (((cfg >> 16) >> (i << 2)) & 0xf)) - 1;
 
 	/* Map CCI registers */
 	/* The CCI support should really be factored out */
