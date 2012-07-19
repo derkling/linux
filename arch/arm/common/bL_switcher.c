@@ -198,7 +198,14 @@ static void bL_do_switch(void *_unused)
 {
 	unsigned mpidr, cpuid, clusterid, ob_cluster, ib_cluster;
 	phys_reset_t phys_reset;
-	
+
+	/*
+	 * We now have a piece of stack borrowed from the init task's.
+	 * Let's also switch to init_mm right away to match it and avoid
+	 * any unexpected paging of the vmalloc area.
+	 */
+	cpu_switch_mm(init_mm.pgd, &init_mm);
+
 	pr_debug("%s\n", __func__);
 
 	mpidr = read_mpidr();
@@ -220,11 +227,6 @@ static void bL_do_switch(void *_unused)
 	 * just returned from cpu_suspend().  It is therefore important to
 	 * be very careful not to make any change the other guy is not
 	 * expecting.  This is why we need stack isolation.
-	 *
-	 * Also, because of this special stack, we cannot rely on anything
-	 * that expects a valid 'current' pointer.  For example, printk()
-	 * may give bogus "BUG: recent printk recursion!\n" messages
-	 * because of that.
 	 */
 
 	bL_platform_ops->power_down(cpuid, ob_cluster);
@@ -244,20 +246,22 @@ static void bL_do_switch(void *_unused)
 }
 
 /*
- * Stack isolation (size needs to be optimized)
+ * Stack isolation.  To ensure 'current' remains valid, we just borrow
+ * a slice of the init/idle task which should be fairly lightly used.
+ * The borrowed area starts just above the thread_info structure located
+ * at the very bottom of the stack, aligned to a cache line.
  */
-
-static unsigned long __attribute__((__aligned__(L1_CACHE_BYTES)))
-	stacks[BL_CPUS_PER_CLUSTER][BL_NR_CLUSTERS][128];
-
+#define STACK_SIZE 256
 extern void call_with_stack(void (*fn)(void *), void *arg, void *sp);
-
 static int bL_switchpoint(unsigned long _unused)
 {
 	unsigned int mpidr = read_mpidr();
 	unsigned int cpuid = mpidr & 0xf;
 	unsigned int clusterid = (mpidr >> 8) & 0xf;
-	void *stack = stacks[cpuid][clusterid] + ARRAY_SIZE(stacks[0][0]);
+	unsigned int cpu_index = cpuid + clusterid * BL_CPUS_PER_CLUSTER;
+	void *stack = &init_thread_info + 1;
+	stack = PTR_ALIGN(stack, L1_CACHE_BYTES);
+	stack += cpu_index * STACK_SIZE + STACK_SIZE;
 	call_with_stack(bL_do_switch, NULL, stack);
 	BUG();
 }
