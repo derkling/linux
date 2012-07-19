@@ -164,70 +164,82 @@ static void bL_kfs_power_down(unsigned int cpu, unsigned int cluster)
 		BUG();
 	raw_spin_unlock(&kfscb_lock);
 
-	/*
-	 * flush_cache_level_cpu() is a guess which should be correct
-	 * for A15/A7.  We eventually need a defined way to find out
-	 * the correct cache level to flush for the CPU's local
-	 * coherency domain.
-	 */
-
-	/*
-	 * A15/A7 can hit in the cache with SCTLR.C=0, so we don't need
-	 * a preliminary flush here for those CPUs.  At least, that's
-	 * the theory -- without the extra flush, Linux explodes on
-	 * RTSM.
-	 */
-	flush_dcache_level(flush_cache_level_cpu());
-	cpu_proc_fin();	/* disable allocation into internal caches*/
-	flush_dcache_level(flush_cache_level_cpu());
-
-	/* Disable local coherency by clearing the ACTLR "SMP" bit: */
-	asm volatile (
-		"mrc	p15, 0, ip, c1, c0, 1 \n\t"
-		"bic	ip, ip, #(1 << 6) @ clear SMP bit \n\t"
-		"mcr	p15, 0, ip, c1, c0, 1"
-		: : : "ip" );
-
 	if (last_man && __bL_outbound_enter_critical(cpu, cluster)) {
-		if (!powerdown_needed(cluster))
+		unsigned int snoopctl;
+		void __iomem *snoopctl_reg = cci_base + SLAVE_SNOOPCTL_OFFSET +
+				CCI_SLAVE_OFFSET(cluster ?
+					RTSM_CCI_SLAVE_A7 : RTSM_CCI_SLAVE_A15);
+		void __iomem *status_reg = cci_base + CCI_STATUS_OFFSET;
+
+		if (!powerdown_needed(cluster)) {
 			__bL_outbound_leave_critical(cluster, CLUSTER_UP);
-		else {
-			unsigned int snoopctl;
-			void __iomem *snoopctl_reg =
-				cci_base + CCI_SLAVE_OFFSET(cluster ?
-						    RTSM_CCI_SLAVE_A7 :
-						    RTSM_CCI_SLAVE_A15) +
-					SLAVE_SNOOPCTL_OFFSET;
-			void __iomem *status_reg = cci_base + CCI_STATUS_OFFSET;
-			/*
-			 * flush remaining architected caches
-			 * not flushed by common code
-			 */
-			flush_cache_all();
-
-			/*
-			 * This is a harmless no-op.  On platforms with a real
-			 * outer cache this might either be needed or not,
-			 * depending on where the outer cache sits.
-			 */
-			outer_flush_all();
-
-			/*
-			 * Disable cluster-level coherency by masking
-			 * incoming snoops and DVM messages:
-			 */
-			snoopctl = readl_relaxed(snoopctl_reg);
-			snoopctl &= ~(SNOOPCTL_SNOOP_ENABLE |
-						SNOOPCTL_DVM_ENABLE);
-			writel_relaxed(snoopctl, snoopctl_reg);
-
-			/* Wait for snoop control change to complete: */
-			while (readl_relaxed(status_reg) &
-					STATUS_CHANGE_PENDING)
-				cpu_relax();
-
-			__bL_outbound_leave_critical(cluster, CLUSTER_DOWN);
+			goto non_last_man;
 		}
+
+		/*
+		 * Flush the entire cache.
+		 *
+		 * A15/A7 can hit in the cache with SCTLR.C=0, so we don't need
+		 * a preliminary flush here for those CPUs.  At least, that's
+		 * the theory -- without the extra flush, Linux explodes on
+		 * RTSM (maybe not needed anymore, to be investigated).
+		 */
+		flush_cache_all();
+		cpu_proc_fin();	/* disable allocation into internal caches*/
+		flush_cache_all();
+
+		/*
+		 * This is a harmless no-op.  On platforms with a real
+		 * outer cache this might either be needed or not,
+		 * depending on where the outer cache sits.
+		 */
+		outer_flush_all();
+
+		/* Disable local coherency by clearing the ACTLR "SMP" bit: */
+		asm volatile (
+			"mrc	p15, 0, ip, c1, c0, 1 \n\t"
+			"bic	ip, ip, #(1 << 6) @ clear SMP bit \n\t"
+			"mcr	p15, 0, ip, c1, c0, 1"
+			: : : "ip" );
+
+		/*
+		 * Disable cluster-level coherency by masking
+		 * incoming snoops and DVM messages:
+		 */
+		snoopctl = readl_relaxed(snoopctl_reg);
+		snoopctl &= ~(SNOOPCTL_SNOOP_ENABLE | SNOOPCTL_DVM_ENABLE);
+		writel_relaxed(snoopctl, snoopctl_reg);
+
+		/* Wait for snoop control change to complete: */
+		while (readl_relaxed(status_reg) & STATUS_CHANGE_PENDING)
+			cpu_relax();
+
+		__bL_outbound_leave_critical(cluster, CLUSTER_DOWN);
+	} else {
+		non_last_man:
+		/*
+		 * flush_cache_level_cpu() is a guess which should be correct
+		 * for A15/A7.  We eventually need a defined way to find out
+		 * the correct cache level to flush for the CPU's local
+		 * coherency domain.
+		 */
+
+		/*
+		 * A15/A7 can hit in the cache with SCTLR.C=0, so we don't need
+		 * a preliminary flush here for those CPUs.  At least, that's
+		 * the theory -- without the extra flush, Linux explodes on
+		 * RTSM (maybe not needed anymore, to be investigated).
+		 */
+		flush_dcache_level(flush_cache_level_cpu());
+		cpu_proc_fin();	/* disable allocation into internal caches*/
+		flush_dcache_level(flush_cache_level_cpu());
+
+		/* Disable local coherency by clearing the ACTLR "SMP" bit: */
+		asm volatile (
+			"mrc	p15, 0, ip, c1, c0, 1 \n\t"
+			"bic	ip, ip, #(1 << 6) @ clear SMP bit \n\t"
+			"mcr	p15, 0, ip, c1, c0, 1"
+			: : : "ip" );
 	}
 
 	__bL_cpu_down(cpu, cluster);
