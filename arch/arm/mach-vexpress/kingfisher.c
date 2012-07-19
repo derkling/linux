@@ -199,7 +199,9 @@ static void bL_kfs_power_down(unsigned int cpu, unsigned int cluster)
 		asm volatile (
 			"mrc	p15, 0, ip, c1, c0, 1 \n\t"
 			"bic	ip, ip, #(1 << 6) @ clear SMP bit \n\t"
-			"mcr	p15, 0, ip, c1, c0, 1"
+			"mcr	p15, 0, ip, c1, c0, 1 \n\t"
+			"isb\n\t"
+			"dsb\n\t"
 			: : : "ip" );
 
 		/*
@@ -238,7 +240,9 @@ static void bL_kfs_power_down(unsigned int cpu, unsigned int cluster)
 		asm volatile (
 			"mrc	p15, 0, ip, c1, c0, 1 \n\t"
 			"bic	ip, ip, #(1 << 6) @ clear SMP bit \n\t"
-			"mcr	p15, 0, ip, c1, c0, 1"
+			"mcr	p15, 0, ip, c1, c0, 1 \n\t"
+			"isb\n\t"
+			"dsb\n\t"
 			: : : "ip" );
 	}
 
