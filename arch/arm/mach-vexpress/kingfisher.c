@@ -202,6 +202,7 @@ static void bL_kfs_power_down(unsigned int cpu, unsigned int cluster)
 			"mcr	p15, 0, ip, c1, c0, 1 \n\t"
 			"isb\n\t"
 			"dsb\n\t"
+			"isb"
 			: : : "ip" );
 
 		/*
@@ -243,6 +244,7 @@ static void bL_kfs_power_down(unsigned int cpu, unsigned int cluster)
 			"mcr	p15, 0, ip, c1, c0, 1 \n\t"
 			"isb\n\t"
 			"dsb\n\t"
+			"isb"
 			: : : "ip" );
 	}
 
