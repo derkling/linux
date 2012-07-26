@@ -330,15 +330,21 @@ void vexpress_scc_ctl_snoops(int cluster, int enable)
 }
 EXPORT_SYMBOL_GPL(vexpress_scc_ctl_snoops);
 
-u32 vexpress_scc_read_rstctrl_reg(void)
+u32 vexpress_scc_read_rststat(int cluster)
 {
+	u32 a15_clusid = 0;
+
 	if (IS_ERR_OR_NULL(info))
 		BUG();
 
-	return readl_relaxed(info->baseaddr + SCC_CFGREG6);
-}
+	a15_clusid = readl_relaxed(info->baseaddr + A15_CONF) & 0xf;
 
-EXPORT_SYMBOL_GPL(vexpress_scc_read_rstctrl_reg);
+	if (cluster != a15_clusid)
+		return (readl_relaxed(info->baseaddr + SCC_CFGREG6) >> 16) & 0x7;
+	else
+		return (readl_relaxed(info->baseaddr + SCC_CFGREG6) >> 2) & 0x3;
+}
+EXPORT_SYMBOL_GPL(vexpress_scc_read_rststat);
 
 void vexpress_spc_wfi_cpureset(int cluster, int cpu, int enable)
 {

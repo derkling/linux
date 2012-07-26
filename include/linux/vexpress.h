@@ -47,7 +47,7 @@ extern u32 vexpress_spc_read_rsthold_reg(int cluster);
 extern u32 vexpress_spc_read_rststat_reg(int cluster);
 extern void vexpress_spc_write_bxaddr_reg(int cluster, int cpu, u32 val);
 extern void vexpress_spc_write_rsthold_reg(int cluster, u32 value);
-extern u32 vexpress_scc_read_rstctrl_reg(void);
+extern u32 vexpress_scc_read_rststat(int cluster);
 
 extern int vexpress_spc_get_performance(int cluster, int *perf);
 extern int vexpress_spc_set_performance(int cluster, int perf);
@@ -96,7 +96,7 @@ static inline void vexpress_spc_write_rsthold_reg(int cluster, u32 value)
 {
 }
 
-static inline u32 vexpress_scc_read_rstctrl_reg(void)
+static inline u32 vexpress_scc_read_rststat(int cluster)
 {
 	return 0;
 }

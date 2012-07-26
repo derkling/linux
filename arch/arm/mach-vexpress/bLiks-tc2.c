@@ -84,7 +84,8 @@ static void bLiks_power_up(unsigned int cpu, unsigned int cluster)
 
 		__bL_set_first_man(cpu, cluster);
 
-		while (!vexpress_spc_standbywfil2_status(cluster)) ;
+		while (vexpress_scc_read_rststat(cluster));
+
 		for (ctr = 0; ctr < BL_CPUS_PER_CLUSTER; ctr++) {
 			if (ctr == cpu)
 				continue;
@@ -283,19 +284,17 @@ void __init bLiks_reserve(void)
 
 static int __init bLiks_init(void)
 {
-	u32 rstctrl = 0, a15_clus_id, a7_clus_id;
+	u32 a15_clus_id, a7_clus_id;
 
 	/*
 	 * Initialize our cpu online maps assuming that A15 is 0 and A7 is 1.
 	 * These maps keep track of cpus migrating between the two clusters.
 	 */
-	rstctrl = vexpress_scc_read_rstctrl_reg();
-
 	a15_clus_id = vexpress_spc_get_clusterid(0xC0F);
 	a7_clus_id = vexpress_spc_get_clusterid(0xC07);
 
-	cpu_online_map[a7_clus_id] = (rstctrl >> 16) & 0x7;
-	cpu_online_map[a15_clus_id] = (rstctrl >> 2) & 0x3;
+	cpu_online_map[a7_clus_id] = vexpress_scc_read_rststat(a7_clus_id);
+	cpu_online_map[a15_clus_id] = vexpress_scc_read_rststat(a15_clus_id);
 
 	return bL_switcher_init(&bLiks_power_ops);
 }
