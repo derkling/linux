@@ -617,6 +617,7 @@ static void gic_cpu_save(unsigned int gic_nr)
 		writel_relaxed(ptr[i], dist_base + GIC_DIST_SGI_PENDING_CLEAR + i * 4);
 	}
 
+#if !defined(CONFIG_BL_SWITCHER)
 	/*
 	 * Disable GIC CPU IF and IRQ bybass. When a CPU is shutdown we must
 	 * insure that it does not exit wfi if an IRQ is pending on the IF.
@@ -625,6 +626,7 @@ static void gic_cpu_save(unsigned int gic_nr)
 	 * controller that use the IRQ to wake up the respective core.
 	 */
 	writel_relaxed(0x1e0, cpu_base + GIC_CPU_CTRL);
+#endif
 }
 
 static void gic_cpu_restore(unsigned int gic_nr)
