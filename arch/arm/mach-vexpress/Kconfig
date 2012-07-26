@@ -27,6 +27,16 @@ config ARCH_VEXPRESS_TC2_PM
 	  controller. Code is built on top of coupled C-state idle code
 	  since all CPUs need to be idle to enter cluster shutdown.
 
+config ARCH_VEXPRESS_TC2_IKS
+        bool "In-kernel Switcher Support for TC2 test-chip"
+        depends on BL_SWITCHER && PM && !ARCH_VEXPRESS_KINGFISHER
+        select ARM_CPU_SUSPEND
+        select ARM_SPC
+        select ARM_CCI
+        help
+          Provides code that enables per-cpu switching on the
+          TC2 testchip.
+
 config ARCH_VEXPRESS_CA9X4
 	bool "Versatile Express Cortex-A9x4 tile"
 	select ARCH_VEXPRESS_CORTEX_A5_A9_ERRATA
