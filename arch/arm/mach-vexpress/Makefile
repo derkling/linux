@@ -9,3 +9,4 @@ obj-$(CONFIG_ARCH_VEXPRESS_KINGFISHER)	+= kingfisher.o	\
 obj-$(CONFIG_SMP)			+= platsmp.o
 obj-$(CONFIG_HOTPLUG_CPU)		+= hotplug.o
 obj-$(CONFIG_ARCH_VEXPRESS_TC2_PM)	+= cpuidle-tc2.o hotplug-asm.o tc2-sleep.o
+obj-$(CONFIG_ARCH_VEXPRESS_TC2_IKS)	+= bLiks-tc2.o bLiks-tc2-asm.o hotplug-asm.o
