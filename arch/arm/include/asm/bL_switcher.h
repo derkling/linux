@@ -31,6 +31,7 @@ void __bL_outbound_leave_critical(unsigned int cluster, int state);
 bool __bL_outbound_enter_critical(unsigned int this_cpu, unsigned int cluster);
 void __bL_set_first_man(int cpu, unsigned int cluster);
 
+u32 read_mpidr(void);
 int bL_switch_to(unsigned int new_cluster_id);
 void bL_switch_request(unsigned int cpu, unsigned int new_cluster_id);
 #endif

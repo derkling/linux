@@ -31,7 +31,9 @@
 #include <linux/io.h>
 #include <linux/ioport.h>
 #include <linux/mm.h>
+#include <linux/sched.h>
 #include <linux/string.h>
+#include <linux/device.h>
 
 #include <asm/suspend.h>
 #include <asm/cache.h>
@@ -41,10 +43,41 @@
 #include <asm/bL_entry.h>
 #include <asm/memblock.h>
 #include <asm/spinlock.h>
+#include <asm/smp_plat.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/power_cpu_migrate.h>
 
+#define MAX_SWITCH_TIMES 50
+
+static unsigned int switch_count[BL_CPUS_PER_CLUSTER];
+static unsigned long long switch_time[BL_CPUS_PER_CLUSTER];
+
+unsigned long long read_cntpct(void)
+{
+	unsigned long long cnt;
+	asm volatile ("mrrc\tp15, 0, r0, r1, c14":::"r0", "r1");
+	return cnt;
+}
+
+static ssize_t show_st(struct device *dev, struct device_attribute *attr,
+		       char *buf)
+{
+	int ctr;
+	for (ctr = 0; ctr < BL_CPUS_PER_CLUSTER; ctr++)
+		printk("cpu%d: %llu : %d \n",
+		       ctr, switch_time[ctr], switch_count[ctr]);
+
+	return 0;
+}
+
+static ssize_t store_st(struct device *dev, struct device_attribute *attr,
+			const char *buf, size_t count)
+{
+	return count;
+}
+
+static DEVICE_ATTR(cpu_switch_times, 0644, show_st, store_st);
 
 /*
  * Use our own MPIDR accessors as the generic ones in asm/cputype.h have
@@ -52,7 +85,7 @@
  * constness here.
  */
 
-static int read_mpidr(void)
+u32 read_mpidr(void)
 {
 	unsigned int id;
 	asm volatile ("mrc\tp15, 0, %0, c0, c0, 5" : "=r" (id));
@@ -93,9 +126,15 @@ void __bL_cpu_going_down(unsigned int cpu, unsigned int cluster)
  */
 void __bL_cpu_down(unsigned int cpu, unsigned int cluster)
 {
+#if !defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
 	dsb();
+#endif
 	writeb_relaxed(CPU_DOWN, &bL_sync->clusters[cluster].cpus[cpu]);
+#if !defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
 	dsb_sev();
+#else
+	sev();
+#endif
 }
 
 /*
@@ -107,9 +146,15 @@ void __bL_cpu_down(unsigned int cpu, unsigned int cluster)
  */
 void __bL_outbound_leave_critical(unsigned int cluster, int state)
 {
+#if !defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
 	dsb();
+#endif
 	writeb_relaxed(state, &bL_sync->clusters[cluster].cluster);
+#if !defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
 	dsb_sev();
+#else
+	sev();
+#endif
 }
 
 /*
@@ -286,10 +331,12 @@ int bL_switch_to(unsigned int new_cluster_id)
 	enum clock_event_mode tdev_mode;
 	int ret = 0;
 	unsigned long flags;
+	unsigned long long start, end;
 
 	local_irq_save(flags);
 	local_fiq_disable();
 
+	start = read_cntpct();
 	mpidr = read_mpidr();
 	cpuid = mpidr & 0xf;
 	clusterid = (mpidr >> 8) & 0xf;
@@ -365,6 +412,11 @@ int bL_switch_to(unsigned int new_cluster_id)
 out:
 	if (ret)
 		pr_err("%s exiting with error %d\n", __func__, ret);
+
+	end = read_cntpct();
+	switch_time[cpuid] += end - start;
+	switch_count[cpuid]++;
+
 	local_fiq_enable();
 	local_irq_restore(flags);
 	return ret;
@@ -581,6 +633,11 @@ int __init bL_switcher_init(const struct bL_power_ops *ops)
 #ifdef CONFIG_BL_SWITCHER_DUMMY_IF
 	misc_register(&bL_switcher_device);
 #endif
+
+	memset(switch_count, 0, sizeof switch_count);
+	memset(switch_time, 0, sizeof switch_time);
+	device_create_file(bL_switcher_device.this_device,
+			   &dev_attr_cpu_switch_times);
 	pr_info("big.LITTLE switcher initialized\n");
 	return 0;
 }

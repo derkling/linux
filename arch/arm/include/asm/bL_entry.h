@@ -12,7 +12,11 @@
 #ifndef BL_ENTRY_H
 #define BL_ENTRY_H
 
+#if !defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
+#define BL_CPUS_PER_CLUSTER	2
+#else
 #define BL_CPUS_PER_CLUSTER	4
+#endif
 #define BL_NR_CLUSTERS		2
 
 /* Definitions for bL_cluster_sync_struct */
@@ -121,7 +125,9 @@ void bL_set_entry_vector(unsigned cpu, unsigned cluster, void *ptr);
 	mov	\temp1, #CPU_COMING_UP
 	strb	\temp1, [\cluster_base, \cpu]
 
+#if !defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
 	dsb
+#endif
 
 	@ At this point, the cluster cannot unexpectedly enter the GOING_DOWN
 	@ state, because there is at least one active CPU (this CPU).
@@ -149,7 +155,9 @@ void bL_set_entry_vector(unsigned cpu, unsigned cluster, void *ptr);
 	mov	\temp1, #FIRST_MAN_NONE
 	strb	\temp1, [\cluster_base, #BL_SYNC_CLUSTER_FIRST_MAN]
 
+#if !defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
 	dsb
+#endif
 
 	@ Any CPU trying to take the cluster into CLUSTER_GOING_DOWN from this
 	@ point onwards will observe INBOUND_COMING_UP and abort.
