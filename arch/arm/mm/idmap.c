@@ -104,7 +104,11 @@ early_initcall(init_static_idmap);
 void setup_mm_for_reboot(void)
 {
 	/* Clean and invalidate L1. */
+#if defined(CONFIG_BL_SWITCHER)
+	flush_dcache_level(flush_cache_level_cpu());
+#else
 	flush_cache_all();
+#endif
 
 	/* Switch to the identity mapping. */
 	cpu_switch_mm(idmap_pgd, &init_mm);
