@@ -360,6 +360,13 @@ int bL_switch_to(unsigned int new_cluster_id)
 	bL_set_entry_vector(cpuid, ib_cluster, NULL);
 
 	/*
+	 * Update the cpu logical map before releasing the inbound.
+	 */
+	cpu_logical_map(cpuid) = (ib_cluster << 8) | cpuid;
+	__cpuc_flush_dcache_area(&cpu_logical_map(cpuid),
+				 sizeof(cpu_logical_map(cpuid)));
+
+	/*
 	 * Let's wake up the inbound CPU now in case it requires some delay
 	 * to come online, but leave it gated in our entry vector code.
 	 */

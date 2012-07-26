@@ -35,7 +35,7 @@
 #include <mach/bLiks-tc2.h>
 
 extern void setup_mm_for_reboot(void);
-extern void disable_clean_inv_dcache(void);
+extern void disable_clean_inv_dcache(int);
 
 /*
  * Lock for electing the last and first cpus in a cluster.
@@ -81,6 +81,8 @@ static void bLiks_power_up(unsigned int cpu, unsigned int cluster)
 	 *    so that they can enter wfi in the boot firmware
 	 */
 	if (first_man) {
+
+		__bL_set_first_man(cpu, cluster);
 
 		while (!vexpress_spc_standbywfil2_status(cluster)) ;
 		for (ctr = 0; ctr < BL_CPUS_PER_CLUSTER; ctr++) {
@@ -221,7 +223,7 @@ static void bLiks_power_down(unsigned int cpu, unsigned int cluster)
 	 * coherency domain.
 	 */
 	setup_mm_for_reboot();
-	disable_clean_inv_dcache();
+	disable_clean_inv_dcache(0);
 
 	if (last_man && __bL_outbound_enter_critical(cpu, cluster)) {
 		if (powerdown_needed(cluster)) {

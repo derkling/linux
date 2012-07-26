@@ -12,7 +12,7 @@
 #ifndef BL_ENTRY_H
 #define BL_ENTRY_H
 
-#if !defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
+#if defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
 #define BL_CPUS_PER_CLUSTER	2
 #else
 #define BL_CPUS_PER_CLUSTER	4
