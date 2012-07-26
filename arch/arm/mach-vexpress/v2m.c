@@ -5,7 +5,6 @@
 #include <linux/amba/bus.h>
 #include <linux/amba/clcd.h>
 #include <linux/amba/mmci.h>
-#include <linux/amba/clcd.h>
 #include <linux/io.h>
 #include <linux/init.h>
 #include <linux/memblock.h>
@@ -39,10 +38,10 @@
 #include <mach/ct-ca9x4.h>
 #include <mach/motherboard.h>
 #include <mach/kingfisher.h>
+#include <mach/bLiks-tc2.h>
 
 #include <plat/clcd.h>
 #include <plat/sched_clock.h>
-#include <plat/clcd.h>
 
 #include "core.h"
 
@@ -832,7 +831,11 @@ static void __init v2m_dt_init(void)
 
 static void __init v2m_reserve(void)
 {
+#if defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
+	bLiks_reserve();
+#else
 	kfs_reserve();
+#endif
 }
 
 const static char *v2m_dt_match[] __initconst = {
