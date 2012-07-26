@@ -17,12 +17,19 @@
 #include <asm/smp_scu.h>
 #include <asm/hardware/gic.h>
 #include <asm/mach/map.h>
+#include <asm/bL_switcher.h>
+#include <asm/bL_entry.h>
 
 #include <mach/motherboard.h>
+#include <mach/bLiks-tc2.h>
 
 #include "core.h"
 
 extern void versatile_secondary_startup(void);
+
+#if defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
+static void __iomem *tc2_mailbox_base;
+#endif
 
 #if defined(CONFIG_OF)
 
@@ -186,6 +193,29 @@ void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 		ct_desc->smp_enable(max_cpus);
 	else
 		vexpress_dt_smp_prepare_cpus(max_cpus);
+
+#if defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
+	if (!tc2_mailbox_base) {
+		tc2_mailbox_base = ioremap(TC2_MAILBOX_BASE, SZ_4K);
+		if (!tc2_mailbox_base)
+			BUG();
+		else {
+			unsigned int rel_offset = 0;
+			int cpu = 0;
+
+			pr_info("tc2_mailbox_base = 0x%x \n", tc2_mailbox_base);
+
+			for_each_cpu(cpu, cpu_possible_mask) {
+				rel_offset += (cpu << 2) + (((read_mpidr() >> 8) & 0xff) << 4);
+				pr_info("Set mailbox 0x%x to 0x%x \n",
+					(u32) tc2_mailbox_base + TC2_MAILBOX_OFFSET + rel_offset,
+					(u32) virt_to_phys(versatile_secondary_startup));
+					writel(virt_to_phys(versatile_secondary_startup),
+					       tc2_mailbox_base + TC2_MAILBOX_OFFSET + rel_offset);
+			}
+		}
+	}
+#endif
 
 	/*
 	 * Write the address of secondary startup into the
