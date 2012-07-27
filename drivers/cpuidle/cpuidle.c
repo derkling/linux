@@ -45,7 +45,7 @@ static int __cpuidle_register_device(struct cpuidle_device *dev);
 static inline int cpuidle_enter(struct cpuidle_device *dev,
 				struct cpuidle_driver *drv, int index)
 {
-	struct cpuidle_state *target_state = &drv->states[index];
+	struct cpuidle_state *target_state = &dev->states[index];
 	return target_state->enter(dev, drv, index);
 }
 
@@ -77,7 +77,7 @@ int cpuidle_play_dead(void)
 
 	/* Find lowest-power state that supports long-term idle */
 	for (i = CPUIDLE_DRIVER_STATE_START; i < drv->state_count; i++) {
-		struct cpuidle_state *s = &drv->states[i];
+		struct cpuidle_state *s = &dev->states[i];
 
 		if (s->power_usage < power_usage && s->enter_dead) {
 			power_usage = s->power_usage;
@@ -86,7 +86,7 @@ int cpuidle_play_dead(void)
 	}
 
 	if (dead_state != -1)
-		return drv->states[dead_state].enter_dead(dev, dead_state);
+		return dev->states[dead_state].enter_dead(dev, dead_state);
 
 	return -ENODEV;
 }
