@@ -309,6 +309,7 @@ int cpuidle_enable_device(struct cpuidle_device *dev)
 		return -EIO;
 	if (!dev->state_count)
 		dev->state_count = drv->state_count;
+	dev->states = drv->states;
 
 	if (dev->registered == 0) {
 		ret = __cpuidle_register_device(dev);

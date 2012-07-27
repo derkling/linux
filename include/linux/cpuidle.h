@@ -95,6 +95,7 @@ struct cpuidle_device {
 
 	int			last_residency;
 	int			state_count;
+	struct cpuidle_state    *states;
 	struct cpuidle_state_usage	states_usage[CPUIDLE_STATE_MAX];
 	struct cpuidle_state_kobj *kobjs[CPUIDLE_STATE_MAX];
 
