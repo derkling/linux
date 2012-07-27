@@ -285,7 +285,7 @@ static void poll_idle_init(struct cpuidle_driver *drv)
 	state->power_usage = -1;
 	state->flags = 0;
 	state->enter = poll_idle;
-	state->disable = 0;
+	cpumask_clear(&state->disabled);
 }
 #else
 static void poll_idle_init(struct cpuidle_driver *drv) {}
