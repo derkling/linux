@@ -474,6 +474,23 @@ void cpuidle_unregister_device(struct cpuidle_device *dev)
 
 EXPORT_SYMBOL_GPL(cpuidle_unregister_device);
 
+int cpuidle_register_states(struct cpuidle_device *dev,
+			    struct cpuidle_state *states,
+			    int state_count)
+{
+	if (!dev || !states)
+		return -EINVAL;
+
+	if (state_count <= 0)
+		return -EINVAL;
+
+	dev->states = states;
+	dev->state_count = state_count;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(cpuidle_register_state);
+
 #ifdef CONFIG_SMP
 
 static void smp_callback(void *v)
