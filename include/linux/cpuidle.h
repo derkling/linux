@@ -83,8 +83,8 @@ cpuidle_set_statedata(struct cpuidle_state_usage *st_usage, void *data)
 }
 
 struct cpuidle_state_kobj {
-	struct cpuidle_state *state;
-	struct cpuidle_state_usage *state_usage;
+	int index;
+	struct cpuidle_device *dev;
 	struct completion kobj_unregister;
 	struct kobject kobj;
 };
