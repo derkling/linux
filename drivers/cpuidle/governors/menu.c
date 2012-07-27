@@ -286,7 +286,8 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 	 * unless the timer is happening really really soon.
 	 */
 	if (data->expected_us > 5 &&
-	    dev->states_usage[CPUIDLE_DRIVER_STATE_START].disable == 0)
+	    !cpumask_test_cpu(dev->cpu,
+			      &dev->states[CPUIDLE_DRIVER_STATE_START].disabled))
 		data->last_state_idx = CPUIDLE_DRIVER_STATE_START;
 
 	/*
@@ -295,9 +296,8 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 	 */
 	for (i = CPUIDLE_DRIVER_STATE_START; i < dev->state_count; i++) {
 		struct cpuidle_state *s = &dev->states[i];
-		struct cpuidle_state_usage *su = &dev->states_usage[i];
 
-		if (su->disable)
+		if (cpumask_test_cpu(dev->cpu, &s->disabled))
 			continue;
 		if (s->target_residency > data->predicted_us)
 			continue;

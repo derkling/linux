@@ -16,6 +16,7 @@
 #include <linux/kobject.h>
 #include <linux/completion.h>
 #include <linux/hrtimer.h>
+#include <linux/cpumask.h>
 
 #define CPUIDLE_STATE_MAX	8
 #define CPUIDLE_NAME_LEN	16
@@ -46,6 +47,7 @@ struct cpuidle_state {
 	unsigned int	exit_latency; /* in US */
 	int		power_usage; /* in mW */
 	unsigned int	target_residency; /* in US */
+	cpumask_t       disabled; /* a mask of cpu where this state is disabled */
 
 	int (*enter)	(struct cpuidle_device *dev,
 			struct cpuidle_driver *drv,
