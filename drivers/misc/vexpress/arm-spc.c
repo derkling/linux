@@ -325,7 +325,10 @@ void vexpress_scc_ctl_snoops(int cluster, int enable)
 		val &= or;
 	} else {
 		val |= or;
+		dsb();
+		isb();
 	}
+
 	writel_relaxed(val, info->baseaddr + snoop_reg);
 }
 EXPORT_SYMBOL_GPL(vexpress_scc_ctl_snoops);

@@ -259,6 +259,12 @@ static void bLiks_power_down(unsigned int cpu, unsigned int cluster)
 			outer_flush_all();
 
 			/*
+			 * Allow cluster to be powered down when all cores are
+			 * idling.
+			 */
+			vexpress_spc_powerdown_enable(cluster, 1);
+
+			/*
 			 * Disable CCI snoops. Inbound cluster cannot pick up
 			 * data from this cluster's caches once done.
 			 */
