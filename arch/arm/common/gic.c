@@ -626,6 +626,8 @@ static void gic_cpu_save(unsigned int gic_nr)
 	 * controller that use the IRQ to wake up the respective core.
 	 */
 	writel_relaxed(0x1e0, cpu_base + GIC_CPU_CTRL);
+#else
+	writel_relaxed(0x0, cpu_base + GIC_CPU_CTRL);
 #endif
 }
 

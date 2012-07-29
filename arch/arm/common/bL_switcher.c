@@ -496,6 +496,16 @@ static void __init bL_enumerate_gic_cpu_id(struct work_struct *work)
 	/* Flip to the other cluster */
 	cluster ^= 1;
 	bL_set_entry_vector(cpu, cluster, NULL);
+
+#if defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
+	/*
+	 * Update the cpu logical map before releasing the inbound.
+	 */
+	cpu_logical_map(cpu) = (cluster << 8) | cpu;
+	__cpuc_flush_dcache_area(&cpu_logical_map(cpu),
+				 sizeof(cpu_logical_map(cpu)));
+#endif
+
 	bL_platform_ops->power_up(cpu, cluster);
 	ret = cpu_suspend(0, bL_switchpoint);
 	if (ret)
@@ -508,9 +518,29 @@ static void __init bL_enumerate_gic_cpu_id(struct work_struct *work)
 	bL_gic_id[cpu][cluster] = gic_get_cpu_id();
 	pr_info("GIC ID for CPU %u cluster %u is %u\n", cpu, cluster, bL_gic_id[cpu][cluster]);
 
+#if defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
+	/* Enable interrupts to drain any spurious ones */
+	local_fiq_enable();
+	local_irq_enable();
+
+	/* Disable interrupts */
+	local_irq_disable();
+	local_fiq_disable();
+#endif
+
 	/* Flip back to the original cluster */
 	cluster ^= 1;
 	bL_set_entry_vector(cpu, cluster, NULL);
+
+#if defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
+	/*
+	 * Update the cpu logical map before releasing the inbound.
+	 */
+	cpu_logical_map(cpu) = (cluster << 8) | cpu;
+	__cpuc_flush_dcache_area(&cpu_logical_map(cpu),
+				 sizeof(cpu_logical_map(cpu)));
+#endif
+
 	bL_platform_ops->power_up(cpu, cluster);
 	/* no GIC migration occurred, so this goes to the initial CPU */
 	arm_send_ping_ipi(smp_processor_id());

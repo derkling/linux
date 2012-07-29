@@ -267,7 +267,9 @@ static void bLiks_power_down(unsigned int cpu, unsigned int cluster)
 	__bL_cpu_down(cpu, cluster);
 
 	/* Now we are prepared for power-down, do it: */
+wfi_loop:
 	wfi();
+	goto wfi_loop;
 
 }
 
