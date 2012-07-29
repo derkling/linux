@@ -241,7 +241,6 @@ static void bLiks_power_down(unsigned int cpu, unsigned int cluster)
 	 * the correct cache level to flush for the CPU's local
 	 * coherency domain.
 	 */
-	setup_mm_for_reboot();
 	disable_clean_inv_dcache(0);
 
 	if (last_man && __bL_outbound_enter_critical(cpu, cluster)) {
