@@ -70,9 +70,6 @@ static void bLiks_power_up(unsigned int cpu, unsigned int cluster)
 	if (cpu_online_map[cluster] == 0)
 		first_man = 1;
 
-	cpu_online_map[cluster] |= 1 << cpu;
-	vexpress_spc_write_bxaddr_reg(cluster,
-				      cpu, virt_to_phys(bl_entry_point));
 
 	/*
 	 * If only cpu in cluster ensure that:
@@ -86,10 +83,27 @@ static void bLiks_power_up(unsigned int cpu, unsigned int cluster)
 
 		while (vexpress_scc_read_rststat(cluster));
 
+		/*
+		 * TODO:
+		 * The map should be updated outside this 'if' condition.
+		 * It prevents the outbound from doing uneccessary last
+		 * man operations when we want to switch immediately.
+		 * However, there is no way of knowing whether the last
+		 * man aborted or completed his stuff. If he aborted then
+		 * we should treat him as a 'non' last man waiting for him
+		 * to be placed in reset (see above) would cause a deadlock.
+		 */
+		cpu_online_map[cluster] |= 1 << cpu;
+
 		for (ctr = 0; ctr < BL_CPUS_PER_CLUSTER; ctr++) {
 			if (ctr == cpu)
-				continue;
-			vexpress_spc_write_bxaddr_reg(cluster, ctr, 0x0);
+				vexpress_spc_write_bxaddr_reg(cluster,
+					        cpu,
+						virt_to_phys(bl_entry_point));
+			else
+				vexpress_spc_write_bxaddr_reg(cluster,
+							      ctr,
+							      0x0);
 		}
 
 		/*
@@ -113,9 +127,20 @@ static void bLiks_power_up(unsigned int cpu, unsigned int cluster)
 		 * so that things work on the TC2. But first set its warm reset
 		 * vector.
 		 */
-
 		while (!(vexpress_spc_standbywfi_status(cluster, cpu))) ;
 
+		/*
+		 * TODO:
+		 * Moved here due to previous todo.
+		 */
+		cpu_online_map[cluster] |= 1 << cpu;
+
+		/*
+		 * Write the entry vector only when the inbound has entered wfi.
+		 * Doing this outside the 'if' condition, can result in a race
+		 * where the inbound will escape out of the pen in boot firmware
+		 * & wfe in 'bL_entry_point' preventing it from being reset.
+		 */
 		vexpress_spc_write_bxaddr_reg(cluster,
 					      cpu,
 					      virt_to_phys(bl_entry_point));
@@ -162,15 +187,8 @@ static bool bLiks_power_down_prepare(unsigned int cpu, unsigned int cluster)
 	cpu_online_map[cluster] &= ~(1 << cpu);
 
 	/* if only cpu in cluster */
-	if (cpu_online_map[cluster] == 0) {
-		/*
-		 * Allow the cluster to power down when all cores are
-		 * idling.
-		 */
-		vexpress_spc_powerdown_enable(cluster, 1);
-
+	if (cpu_online_map[cluster] == 0)
 		ret = true;
-	}
 
 	raw_spin_unlock(&bLiks_lock);
 
