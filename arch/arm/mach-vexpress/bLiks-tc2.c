@@ -129,6 +129,14 @@ static void bLiks_power_up(unsigned int cpu, unsigned int cluster)
 		 */
 		while (!(vexpress_spc_standbywfi_status(cluster, cpu))) ;
 
+		rsthold = vexpress_spc_read_rsthold_reg(cluster);
+		rsthold |= 1 << cpu;
+		vexpress_spc_write_rsthold_reg(cluster, rsthold);
+
+		while (!
+		       ((vexpress_spc_read_rststat_reg(cluster)) &
+			(1 << cpu))) ;
+
 		/*
 		 * TODO:
 		 * Moved here due to previous todo.
@@ -145,13 +153,6 @@ static void bLiks_power_up(unsigned int cpu, unsigned int cluster)
 					      cpu,
 					      virt_to_phys(bl_entry_point));
 
-		rsthold = vexpress_spc_read_rsthold_reg(cluster);
-		rsthold |= 1 << cpu;
-		vexpress_spc_write_rsthold_reg(cluster, rsthold);
-
-		while (!
-		       ((vexpress_spc_read_rststat_reg(cluster)) &
-			(1 << cpu))) ;
 
 		rsthold = vexpress_spc_read_rsthold_reg(cluster);
 		rsthold &= ~(1 << cpu);
