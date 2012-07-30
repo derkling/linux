@@ -17,19 +17,20 @@
 #include <asm/smp_scu.h>
 #include <asm/hardware/gic.h>
 #include <asm/mach/map.h>
-#include <asm/bL_switcher.h>
-#include <asm/bL_entry.h>
 
 #include <mach/motherboard.h>
-#include <mach/bLiks-tc2.h>
 
 #include "core.h"
 
-extern void versatile_secondary_startup(void);
-
 #if defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
+#include <asm/bL_switcher.h>
+#include <asm/bL_entry.h>
+#include <mach/bLiks-tc2.h>
+
 static void __iomem *tc2_mailbox_base;
 #endif
+
+extern void versatile_secondary_startup(void);
 
 #if defined(CONFIG_OF)
 
