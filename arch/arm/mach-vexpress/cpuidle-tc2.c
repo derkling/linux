@@ -72,6 +72,7 @@ static struct cpuidle_state tc2_cpuidle_set[] __initdata = {
 							CPUIDLE_FLAG_COUPLED,
 		.name			= "C1",
 		.desc			= "ARM power down",
+		.disable		= 1,
 	},
 };
 
@@ -138,8 +139,11 @@ static int tc2_enter_coupled(struct cpuidle_device *dev,
 	/* Used to keep track of the total time in idle */
 	getnstimeofday(&ts_preidle);
 
-	if (!cpu_isset(cluster, cluster_mask))
+	if (!cpu_isset(cluster, cluster_mask)) {
+			cpuidle_coupled_parallel_barrier(dev,
+					&abort_barrier[cluster]);
 			goto shallow_out;
+	}
 
 	BUG_ON(!irqs_disabled());
 
@@ -222,6 +226,11 @@ int __init tc2_idle_init(void)
 	int i, cpu_id;
 	struct dentry *idle_debug, *file_debug;
 	struct cpuidle_driver *drv = &tc2_idle_driver;
+
+	if (!vexpress_spc_check_loaded()) {
+		pr_info("TC2 CPUidle not registered because no SPC found\n");
+		return -ENODEV;
+	}
 
 	drv->state_count = (sizeof(tc2_cpuidle_set) /
 				       sizeof(struct cpuidle_state));
