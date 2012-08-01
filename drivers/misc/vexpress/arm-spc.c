@@ -110,6 +110,7 @@ void vexpress_spc_write_bxaddr_reg(int cluster, int cpu, u32 val)
 	else
 		writel_relaxed(val, info->baseaddr + A15_BX_ADDR0 + (cpu << 2));
 
+	dsb();
 	return;
 }
 
