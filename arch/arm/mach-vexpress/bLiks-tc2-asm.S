@@ -69,6 +69,17 @@ ENTRY(bLiks_power_up_setup)
 	biceq   r0, #A15_SNOOP_MASK
 	str     r0, [r3]
 
+	@ Restore the cpuid
+
+	mrc	p15, 0, r0, c0, c0, 5	@ MPIDR
+	ubfx	r1, r0, #0, #4		@ cpu
+	__bL_inbound_leave_critical r2, r1, r0
+
+	@ Implementation-specific local CPU setup operations should go here,
+	@ if any.  In this case, there is nothing to do.
+
+2:	__bL_inbound_cpu_up r2, r1, r0
+
 	@ Clear the BX addr register
 
 	ldr	r3, =SPC_PHYS_BASE + A15_BX_ADDR0
@@ -81,15 +92,5 @@ ENTRY(bLiks_power_up_setup)
         mov     r0, #0
 	str	r0, [r3, r1]
 
-	@ Restore the cpuid
-
-	mrc	p15, 0, r0, c0, c0, 5	@ MPIDR
-	ubfx	r1, r0, #0, #4		@ cpu
-	__bL_inbound_leave_critical r2, r1, r0
-
-	@ Implementation-specific local CPU setup operations should go here,
-	@ if any.  In this case, there is nothing to do.
-
-2:	__bL_inbound_cpu_up r2, r1, r0
 	bx	lr
 ENDPROC(bLiks_power_up_setup)
