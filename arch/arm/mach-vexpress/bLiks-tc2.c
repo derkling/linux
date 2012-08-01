@@ -57,7 +57,7 @@ static u32 cpu_online_map[BL_NR_CLUSTERS];
  */
 static void bLiks_power_up(unsigned int cpu, unsigned int cluster)
 {
-	u32 ret = 0, rsthold = 0, first_man = 0, ctr;
+	u32 ret = 0, first_man = 0, ctr;
 
 	raw_spin_lock(&bLiks_lock);
 
@@ -111,216 +111,207 @@ static void bLiks_power_up(unsigned int cpu, unsigned int cluster)
 		 * idling & set the OPP for the inbound cluster.
 		 */
 		vexpress_spc_powerdown_enable(cluster, 0);
-		do {
-			ret = vexpress_spc_set_performance(cluster, 5);
-#if 1
-			ret = 0;
-#endif
-		} while (ret < 0);
+		ret = vexpress_spc_set_performance(cluster, 5);
 
-		ret = 1;
+	 } else {
+		 /*
+		  * TODO:
+		  * Moved here due to previous todo.
+		  */
+		 cpu_online_map[cluster] |= 1 << cpu;
 
-	} else {
-		/*
-		 * The inbound cpu is not the first cpu in the cluster. It was
-		 * placed in wfi(). So place it in reset and then release it
-		 * so that things work on the TC2. But first set its warm reset
-		 * vector.
-		 */
-		while (!(vexpress_spc_standbywfi_status(cluster, cpu))) ;
+		 /*
+		  * Write the entry vector only when the inbound has entered wfi.
+		  * Doing this outside the 'if' condition, can result in a race
+		  * where the inbound will escape out of the pen in boot firmware
+		  * & wfe in 'bL_entry_point' preventing it from being reset.
+		  */
+		 vexpress_spc_write_bxaddr_reg(cluster,
+					       cpu,
+					       virt_to_phys(bl_entry_point));
+	 }
 
-		rsthold = vexpress_spc_read_rsthold_reg(cluster);
-		rsthold |= 1 << cpu;
-		vexpress_spc_write_rsthold_reg(cluster, rsthold);
+	 arm_send_ping_ipi(cpu);
+	 raw_spin_unlock(&bLiks_lock);
 
-		while (!
-		       ((vexpress_spc_read_rststat_reg(cluster)) &
-			(1 << cpu))) ;
+	 return;
+ }
 
-		/*
-		 * TODO:
-		 * Moved here due to previous todo.
-		 */
-		cpu_online_map[cluster] |= 1 << cpu;
+ /*
+  * bLiks_power_down_prepare - nominate a CPU for power-down
+  *
+  * @cpu: CPU number within given cluster
+  * @cluster: cluster number for the CPU
+  *
+  * @return: true if the CPU is elected as the last man
+  *
+  * The identified CPU is selected for powerdown.  If all other CPUs in
+  * this cluster have already been selected for powerdown, then the
+  * cluster is selected for powerdown and this CPU is elected as
+  * responsible for tearing down the cluster (the "last man" role).
+  *
+  * The MMU is expected still to be on when this function is called, and
+  * the CPU fully coherent.
+  */
+ static bool bLiks_power_down_prepare(unsigned int cpu, unsigned int cluster)
+ {
+	 bool ret = false;
 
-		/*
-		 * Write the entry vector only when the inbound has entered wfi.
-		 * Doing this outside the 'if' condition, can result in a race
-		 * where the inbound will escape out of the pen in boot firmware
-		 * & wfe in 'bL_entry_point' preventing it from being reset.
-		 */
-		vexpress_spc_write_bxaddr_reg(cluster,
-					      cpu,
-					      virt_to_phys(bl_entry_point));
+	 raw_spin_lock(&bLiks_lock);
 
+	 cpu_online_map[cluster] &= ~(1 << cpu);
 
-		rsthold = vexpress_spc_read_rsthold_reg(cluster);
-		rsthold &= ~(1 << cpu);
-		vexpress_spc_write_rsthold_reg(cluster, rsthold);
-	}
+	 /* if only cpu in cluster */
+	 if (cpu_online_map[cluster] == 0) {
 
-	raw_spin_unlock(&bLiks_lock);
-	return;
-}
+		 /*
+		  * Allow cluster to be powered down when all cores are
+		  * idling. This is done here instead of 'bLiks_power_down'
+		  * so that an incoming cpu has a chance to abort the last
+		  * man operations.
+		  */
+		 vexpress_spc_powerdown_enable(cluster, 1);
+		 ret = true;
+	 }
 
-/*
- * bLiks_power_down_prepare - nominate a CPU for power-down
- *
- * @cpu: CPU number within given cluster
- * @cluster: cluster number for the CPU
- *
- * @return: true if the CPU is elected as the last man
- *
- * The identified CPU is selected for powerdown.  If all other CPUs in
- * this cluster have already been selected for powerdown, then the
- * cluster is selected for powerdown and this CPU is elected as
- * responsible for tearing down the cluster (the "last man" role).
- *
- * The MMU is expected still to be on when this function is called, and
- * the CPU fully coherent.
- */
-static bool bLiks_power_down_prepare(unsigned int cpu, unsigned int cluster)
-{
-	bool ret = false;
+	 raw_spin_unlock(&bLiks_lock);
 
-	raw_spin_lock(&bLiks_lock);
+	 return ret;
+ }
 
-	cpu_online_map[cluster] &= ~(1 << cpu);
+ /*
+  * Helper to determine whether the specified cluster should still be
+  * shut down.  By polling this before shutting a cluster down, we can
+  * reduce the probability of wasted cache flushing etc.
+  */
+ static bool powerdown_needed(unsigned int cluster)
+ {
+	 return !cpu_online_map[cluster];
+ }
 
-	/* if only cpu in cluster */
-	if (cpu_online_map[cluster] == 0)
-		ret = true;
+ /*
+  * bLiks_power_down - power a nominated CPU down
+  *
+  * @cpu: CPU number within given cluster
+  * @cluster: cluster number for the CPU
+  * @last_man: true if the CPU has been elected to tear down the cluster
+  *
+  * The identified CPU, which must previously have been nominated by
+  * calling bLiks_power_down_prepare(), is powered down.
+  *
+  * If this CPU was elected as the last man in the cluster (last_man is
+  * true), then the cluster is prepared for power-down too, unless
+  * another inbound CPU appeared on the cluster in the meantime.
+  *
+  * The critical section protects us from the late arrival of an inbound
+  * CPU: if an inbound CPU appears on the cluster within this region,
+  * it must wait for us to finish before attempting to enter coherency
+  * at the cluster level.
+  *
+  * This function may return, if wfi() is preempted by a hardware wake-up
+  * event before the CPU gets physically powered down.  Otherwise, the
+  * CPU will be restarted through reset at the next switch event for this
+  * cpu.
+  */
+ static void bLiks_power_down(unsigned int cpu, unsigned int cluster)
+ {
+	 bool last_man = bLiks_power_down_prepare(cpu, cluster);
 
-	raw_spin_unlock(&bLiks_lock);
+	 __bL_cpu_going_down(cpu, cluster);
 
-	return ret;
-}
+	 /*
+	  * flush_cache_level_cpu() is a guess which should be correct
+	  * for A15/A7.  We eventually need a defined way to find out
+	  * the correct cache level to flush for the CPU's local
+	  * coherency domain.
+	  */
+	 disable_clean_inv_dcache(0);
 
-/*
- * Helper to determine whether the specified cluster should still be
- * shut down.  By polling this before shutting a cluster down, we can
- * reduce the probability of wasted cache flushing etc.
- */
-static bool powerdown_needed(unsigned int cluster)
-{
-	return !cpu_online_map[cluster];
-}
+	 if (last_man && __bL_outbound_enter_critical(cpu, cluster)) {
+		 if (powerdown_needed(cluster)) {
+			 /*
+			  * flush remaining architected caches
+			  * not flushed by common code
+			  */
+			 flush_cache_all();
 
-/*
- * bLiks_power_down - power a nominated CPU down
- *
- * @cpu: CPU number within given cluster
- * @cluster: cluster number for the CPU
- * @last_man: true if the CPU has been elected to tear down the cluster
- *
- * The identified CPU, which must previously have been nominated by
- * calling bLiks_power_down_prepare(), is powered down.
- *
- * If this CPU was elected as the last man in the cluster (last_man is
- * true), then the cluster is prepared for power-down too, unless
- * another inbound CPU appeared on the cluster in the meantime.
- *
- * The critical section protects us from the late arrival of an inbound
- * CPU: if an inbound CPU appears on the cluster within this region,
- * it must wait for us to finish before attempting to enter coherency
- * at the cluster level.
- *
- * This function may return, if wfi() is preempted by a hardware wake-up
- * event before the CPU gets physically powered down.  Otherwise, the
- * CPU will be restarted through reset at the next switch event for this
- * cpu.
- */
-static void bLiks_power_down(unsigned int cpu, unsigned int cluster)
-{
-	bool last_man = bLiks_power_down_prepare(cpu, cluster);
+			 /*
+			  * This is a harmless no-op.  On platforms with a real
+			  * outer cache this might either be needed or not,
+			  * depending on where the outer cache sits.
+			  */
+			 outer_flush_all();
 
-	__bL_cpu_going_down(cpu, cluster);
+			 /*
+			  * Disable CCI snoops. Inbound cluster cannot pick up
+			  * data from this cluster's caches once done.
+			  */
+			 disable_cci(cluster);
 
-	/*
-	 * flush_cache_level_cpu() is a guess which should be correct
-	 * for A15/A7.  We eventually need a defined way to find out
-	 * the correct cache level to flush for the CPU's local
-	 * coherency domain.
-	 */
-	disable_clean_inv_dcache(0);
+			 /*
+			  * Ensure that both C & I bits are disabled in the SCTLR
+			  * before disabling ACE snoops. This ensures that no
+			  * coherency traffic will originate from this cpu after
+			  * ACE snoops are turned off.
+			  */
+			 cpu_proc_fin();
 
-	if (last_man && __bL_outbound_enter_critical(cpu, cluster)) {
-		if (powerdown_needed(cluster)) {
-			/*
-			 * flush remaining architected caches
-			 * not flushed by common code
-			 */
-			flush_cache_all();
+			 /* Disable ACE and ACP (A15 only) snoops */
+			 vexpress_scc_ctl_snoops(cluster, 0);
 
-			/*
-			 * This is a harmless no-op.  On platforms with a real
-			 * outer cache this might either be needed or not,
-			 * depending on where the outer cache sits.
-			 */
-			outer_flush_all();
+			 __bL_outbound_leave_critical(cluster, CLUSTER_DOWN);
+		 } else
+			 __bL_outbound_leave_critical(cluster, CLUSTER_UP);
 
-			/*
-			 * Allow cluster to be powered down when all cores are
-			 * idling.
-			 */
-			vexpress_spc_powerdown_enable(cluster, 1);
+	 }
 
-			/*
-			 * Disable CCI snoops. Inbound cluster cannot pick up
-			 * data from this cluster's caches once done.
-			 */
-			disable_cci(cluster);
+	 __bL_cpu_down(cpu, cluster);
 
-			/*
-			 * Ensure that both C & I bits are disabled in the SCTLR
-			 * before disabling ACE snoops. This ensures that no
-			 * coherency traffic will originate from this cpu after
-			 * ACE snoops are turned off.
-			 */
-			cpu_proc_fin();
+	 /* Now we are prepared for power-down, do it: */
+	 wfi();
 
-			/* Disable ACE and ACP (A15 only) snoops */
-			vexpress_scc_ctl_snoops(cluster, 0);
+	 /*
+	  * If this cpu was the last man and is here, then it needs to re-enable
+	  * the coherency channel before issuing any barriers during a fake
+	  * reset that will soon follow.
+	  */
+	 if (last_man)
+		 vexpress_scc_ctl_snoops(cluster, 1);
+ }
 
-			__bL_outbound_leave_critical(cluster, CLUSTER_DOWN);
-		} else
-			__bL_outbound_leave_critical(cluster, CLUSTER_UP);
+ static const struct bL_power_ops bLiks_power_ops = {
+	 .power_up = bLiks_power_up,
+	 .power_down = bLiks_power_down,
+	 .power_up_setup = bLiks_power_up_setup,
+ };
 
-	}
+ void __init bLiks_reserve(void)
+ {
+	 bL_switcher_reserve();
+ }
 
-	__bL_cpu_down(cpu, cluster);
+ static int __init bLiks_init(void)
+ {
+	 u32 a15_clus_id, a7_clus_id, ctr, idx;
 
-	/* Now we are prepared for power-down, do it: */
-wfi_loop:
-	wfi();
-	goto wfi_loop;
+	 /*
+	  * Initialize our cpu online maps assuming that A15 is 0 and A7 is 1.
+	  * These maps keep track of cpus migrating between the two clusters.
+	  */
+	 a15_clus_id = vexpress_spc_get_clusterid(0xC0F);
+	 a7_clus_id = vexpress_spc_get_clusterid(0xC07);
 
-}
+	 cpu_online_map[a7_clus_id] = vexpress_scc_read_rststat(a7_clus_id);
+	 cpu_online_map[a15_clus_id] = vexpress_scc_read_rststat(a15_clus_id);
 
-static const struct bL_power_ops bLiks_power_ops = {
-	.power_up = bLiks_power_up,
-	.power_down = bLiks_power_down,
-	.power_up_setup = bLiks_power_up_setup,
-};
-
-void __init bLiks_reserve(void)
-{
-	bL_switcher_reserve();
-}
-
-static int __init bLiks_init(void)
-{
-	u32 a15_clus_id, a7_clus_id;
-
-	/*
-	 * Initialize our cpu online maps assuming that A15 is 0 and A7 is 1.
-	 * These maps keep track of cpus migrating between the two clusters.
-	 */
-	a15_clus_id = vexpress_spc_get_clusterid(0xC0F);
-	a7_clus_id = vexpress_spc_get_clusterid(0xC07);
-
-	cpu_online_map[a7_clus_id] = vexpress_scc_read_rststat(a7_clus_id);
-	cpu_online_map[a15_clus_id] = vexpress_scc_read_rststat(a15_clus_id);
+	 /*
+	  * Remove secondary startup address from per-cpu mailboxes to prevent
+	  * interference with gic cpuif id enumeration & fake resets. All cpus
+	  * are guaranteed to have booted up by now.
+	  */
+	for (idx = 0; idx < BL_NR_CLUSTERS; idx++)
+		for (ctr = 0; ctr < BL_CPUS_PER_CLUSTER; ctr++)
+			vexpress_spc_write_bxaddr_reg(idx, ctr, 0x0);
 
 	return bL_switcher_init(&bLiks_power_ops);
 }

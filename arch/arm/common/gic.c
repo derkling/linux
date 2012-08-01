@@ -626,8 +626,6 @@ static void gic_cpu_save(unsigned int gic_nr)
 	 * controller that use the IRQ to wake up the respective core.
 	 */
 	writel_relaxed(0x1e0, cpu_base + GIC_CPU_CTRL);
-#else
-	writel_relaxed(0x0, cpu_base + GIC_CPU_CTRL);
 #endif
 }
 
@@ -898,6 +896,22 @@ void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 #endif
 
 #ifdef CONFIG_BL_SWITCHER
+void gic_broadcast_softirq(unsigned int irq)
+{
+	raw_spin_lock(&irq_controller_lock);
+
+	/*
+	 * Ensure that stores to Normal memory are visible to the
+	 * other CPUs before issuing the IPI.
+	 */
+	dsb();
+
+	/* this always happens on GIC0 */
+	writel_relaxed(0xff << 16 | irq, gic_data_dist_base(&gic_data[0]) + GIC_DIST_SOFTINT);
+
+	raw_spin_unlock(&irq_controller_lock);
+}
+
 /*
  * git_get_cpu_id - get the CPU interface ID for the calling CPU
  */

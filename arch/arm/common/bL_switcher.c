@@ -284,7 +284,11 @@ static void bL_do_switch(void *_unused)
 	 */
 	setup_mm_for_reboot();
 	phys_reset = (phys_reset_t)(unsigned long)virt_to_phys(cpu_reset);
+#if !defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
 	phys_reset(virt_to_phys(bl_entry_point));
+#else
+	phys_reset(0x0);
+#endif
 
 	/* should never get here */
 	BUG();
@@ -507,6 +511,10 @@ static void __init bL_enumerate_gic_cpu_id(struct work_struct *work)
 #endif
 
 	bL_platform_ops->power_up(cpu, cluster);
+#if defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
+	gic_broadcast_softirq(0x1);
+#endif
+
 	ret = cpu_suspend(0, bL_switchpoint);
 	if (ret)
 		BUG();

@@ -54,6 +54,7 @@ static inline void gic_init(unsigned int nr, int start,
 	gic_init_bases(nr, start, dist, cpu, 0, NULL);
 }
 
+void gic_broadcast_softirq(unsigned int);
 unsigned int gic_get_cpu_id(void);
 void gic_migrate_target(unsigned int new_cpu_id);
 
