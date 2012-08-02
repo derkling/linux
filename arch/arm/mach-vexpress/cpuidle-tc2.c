@@ -18,6 +18,7 @@
 #include <linux/hrtimer.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/switcher_pm.h>
 #include <linux/tick.h>
 #include <linux/vexpress.h>
 #include <asm/cpuidle.h>
@@ -89,25 +90,35 @@ static cpumask_t cluster_mask = CPU_MASK_NONE;
 
 extern void disable_clean_inv_dcache(int);
 static atomic_t abort_barrier[NR_CLUSTERS];
+int cluster_id[NR_CPUS];
 
 extern void tc2_cpu_resume(void);
 extern void disable_snoops(void);
 
 int tc2_coupled_finisher(unsigned long arg)
 {
+	struct cpuidle_device *dev = (struct cpuidle_device *) arg;
 	unsigned int mpidr = read_cpuid_mpidr();
 	unsigned int cpu = smp_processor_id();
 	unsigned int cluster = (mpidr >> 8) & 0xf;
-	unsigned int weight = cpumask_weight(topology_core_cpumask(cpu));
+	unsigned int weight = cpumask_weight(&dev->coupled_cpus);
 	u8 wfi_weight = 0;
 
-	cpuidle_coupled_parallel_barrier((struct cpuidle_device *)arg,
+	cpuidle_coupled_parallel_barrier(dev,
 					&abort_barrier[cluster]);
-	if (mpidr & 0xf) {
+
+	if (mpidr & 0xf && (weight > 1)) {
+		vexpress_spc_write_bxaddr_reg(cluster,
+					mpidr & 0xf,
+					virt_to_phys(tc2_cpu_resume));
 		disable_clean_inv_dcache(0);
 		wfi();
 		/* not reached */
 	}
+
+	vexpress_spc_write_bxaddr_reg(cluster,
+					mpidr & 0xf,
+					virt_to_phys(tc2_cpu_resume));
 
 	while (wfi_weight != (weight - 1)) {
 		wfi_weight = vexpress_spc_wfi_cpustat(cluster);
@@ -135,7 +146,8 @@ static int tc2_enter_coupled(struct cpuidle_device *dev,
 {
 	struct timespec ts_preidle, ts_postidle, ts_idle;
 	int ret;
-	int cluster = (read_cpuid_mpidr() >> 8) & 0xf;
+	u32 mpidr = read_cpuid_mpidr();
+	int cluster = (mpidr >> 8) & 0xf;
 	/* Used to keep track of the total time in idle */
 	getnstimeofday(&ts_preidle);
 
@@ -147,11 +159,15 @@ static int tc2_enter_coupled(struct cpuidle_device *dev,
 
 	BUG_ON(!irqs_disabled());
 
-	cpu_pm_enter();
+	cpu_pm_enter(0);
 
 	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &dev->cpu);
 
 	ret = cpu_suspend((unsigned long) dev, tc2_coupled_finisher);
+	
+	vexpress_spc_write_bxaddr_reg(cluster,
+					mpidr & 0xf,
+					0);
 
 	if (ret)
 		BUG();
@@ -213,6 +229,79 @@ static int idle_debug_set(void *data, u64 val)
 	return 0;
 }
 DEFINE_SIMPLE_ATTRIBUTE(idle_debug_fops, NULL, idle_debug_set, "%llu\n");
+
+static inline void update_cluster_id(void *unused)
+{
+	cluster_id[smp_processor_id()] =
+		(read_cpuid_mpidr() & 0xf00) >> 8;
+}
+
+struct cpuidle_coupled {
+	cpumask_t coupled_cpus;
+	int requested_state[NR_CPUS];
+	atomic_t ready_waiting_counts;
+	int online_count;
+	int refcnt;
+	int prevent;
+};
+
+static void update_coupled_cpus(void)
+{
+	int cpu, cpu2, cluster = (read_cpuid_mpidr() & 0xf00) >> 8;
+	struct cpuidle_device *dev;
+	update_cluster_id(NULL);
+
+	/* update core and thread sibling masks */
+	for_each_online_cpu(cpu) {
+		dev = &per_cpu(tc2_idle_dev, cpu);
+		for_each_online_cpu(cpu2) {
+			if (cluster_id[cpu2] == cluster_id[cpu])
+				cpumask_set_cpu(cpu2, &dev->coupled_cpus);
+			else
+				cpumask_clear_cpu(cpu2, &dev->coupled_cpus);
+		}
+	}
+}
+
+static int switcher_notify(struct notifier_block *self,
+		unsigned long cmd, void *v)
+{
+	int i, cpu = smp_processor_id();
+	struct cpuidle_device *dev;
+
+	switch (cmd) {
+	case SWITCHER_PM_ENTER:
+		for_each_cpu(i, cpu_online_mask) {
+			dev = &per_cpu(tc2_idle_dev, i);
+			cpuidle_unregister_device(dev);
+		}
+		break;
+	case SWITCHER_PM_ENTER_FAILED:
+	case SWITCHER_PM_EXIT:
+		update_coupled_cpus();
+		for_each_cpu(i, cpu_online_mask) {
+			dev = &per_cpu(tc2_idle_dev, i);
+			dev = &per_cpu(tc2_idle_dev, i);
+			dev->cpu = i;
+			dev->safe_state_index = 0;
+
+			dev->state_count = tc2_idle_driver.state_count;
+
+			if (cpuidle_register_device(dev)) {
+				printk(KERN_ERR "%s: Cpuidle register device failed\n",
+				       __func__);
+				return -EIO;
+			}
+		}
+		break;
+	}
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block switcher_notifier = {
+	.notifier_call = switcher_notify,
+};
 
 /*
  * tc2_idle_init
@@ -283,6 +372,8 @@ int __init tc2_idle_init(void)
 	/* enable all wake-up IRQs by default */
 	vexpress_spc_set_wake_intr(0x7ff);
 	v2m_flags_set(virt_to_phys(tc2_cpu_resume));
+	on_each_cpu(update_cluster_id, NULL, 1);
+	switcher_pm_register_notifier(&switcher_notifier);
 
 	return 0;
 }
