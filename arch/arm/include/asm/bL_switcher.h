@@ -15,7 +15,8 @@
 #include <asm/bL_entry.h>
 
 struct bL_power_ops {
-	void (*power_up)(unsigned int cpu, unsigned int cluster);
+	void (*power_up)(unsigned int cpu, unsigned int cluster,
+				phys_addr_t ptr);
 	bool (*power_up_finish)(unsigned int cpu, unsigned int cluster);
 	void (*power_down)(unsigned int cpu, unsigned int cluster);
 	void (*power_up_setup)(void);
@@ -23,6 +24,8 @@ struct bL_power_ops {
 
 struct bL_sync_flags {
 };
+
+extern const struct bL_power_ops *bL_platform_ops;
 
 int __init bL_switcher_init(const struct bL_power_ops *ops);
 int __init bL_switcher_reserve(void);
