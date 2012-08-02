@@ -40,11 +40,11 @@
 extern void bLiks_power_up_setup(void);
 extern void bLiks_reserve(void);
 #else
-extern void bLiks_power_up_setup(void)
+static inline void bLiks_power_up_setup(void)
 {
 }
 
-static void bLiks_reserve(void)
+static inline void bLiks_reserve(void)
 {
 }
 #endif
