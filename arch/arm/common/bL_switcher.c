@@ -34,6 +34,7 @@
 #include <linux/sched.h>
 #include <linux/string.h>
 #include <linux/device.h>
+#include <linux/switcher_pm.h>
 
 #include <asm/suspend.h>
 #include <asm/cache.h>
@@ -339,6 +340,8 @@ int bL_switch_to(unsigned int new_cluster_id)
 	unsigned long flags;
 	unsigned long long start, end;
 
+	switcher_pm_enter();
+
 	local_irq_save(flags);
 	local_fiq_disable();
 
@@ -376,7 +379,8 @@ int bL_switch_to(unsigned int new_cluster_id)
 	 * Let's wake up the inbound CPU now in case it requires some delay
 	 * to come online, but leave it gated in our entry vector code.
 	 */
-	bL_platform_ops->power_up(cpuid, ib_cluster);
+	bL_platform_ops->power_up(cpuid, ib_cluster,
+					virt_to_phys(bl_entry_point));
 
 	/* redirect GIC's SGIs to our counterpart */
 #if defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
@@ -400,7 +404,7 @@ int bL_switch_to(unsigned int new_cluster_id)
 		clockevents_set_mode(tdev->evtdev, CLOCK_EVT_MODE_SHUTDOWN);
 	}
 
-	ret = cpu_pm_enter();
+	ret = cpu_pm_enter(1);
 	if (ret)
 		goto out;
 
@@ -438,6 +442,8 @@ out:
 
 	local_fiq_enable();
 	local_irq_restore(flags);
+
+	switcher_pm_exit();
 	return ret;
 }
 
@@ -518,7 +524,7 @@ static void __init bL_enumerate_gic_cpu_id(struct work_struct *work)
 				 sizeof(cpu_logical_map(cpu)));
 #endif
 
-	bL_platform_ops->power_up(cpu, cluster);
+	bL_platform_ops->power_up(cpu, cluster, virt_to_phys(bl_entry_point));
 #if defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
 	gic_broadcast_softirq(0x1);
 #endif
@@ -557,7 +563,7 @@ static void __init bL_enumerate_gic_cpu_id(struct work_struct *work)
 				 sizeof(cpu_logical_map(cpu)));
 #endif
 
-	bL_platform_ops->power_up(cpu, cluster);
+	bL_platform_ops->power_up(cpu, cluster, virt_to_phys(bl_entry_point));
 	/* no GIC migration occurred, so this goes to the initial CPU */
 	arm_send_ping_ipi(smp_processor_id());
 	ret = cpu_suspend(0, bL_switchpoint);
