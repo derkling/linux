@@ -430,4 +430,5 @@ void cpuidle_remove_sysfs(struct device *cpu_dev)
 
 	dev = per_cpu(cpuidle_devices, cpu);
 	kobject_put(&dev->kobj);
+	memset(&dev->kobj, 0, sizeof(struct kobject));
 }
