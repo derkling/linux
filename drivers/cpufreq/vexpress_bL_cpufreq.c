@@ -30,10 +30,23 @@
 
 #include <linux/vexpress.h>
 
+#ifdef CONFIG_BL_SWITCHER
+#include <asm/bL_switcher.h>
+#define is_bL_switching_enabled()		true
+#else
+#define bL_switch_to(cluster)			do { (void)cluster; } while (0)
+#define is_bL_switching_enabled()		false
+#endif
+
 #define VEXPRESS_MAX_CLUSTER	2
 
-static struct cpufreq_frequency_table *freq_table[VEXPRESS_MAX_CLUSTER];
+/* One extra for the virtual OPP table for b.L switching */
+static struct cpufreq_frequency_table *freq_table[VEXPRESS_MAX_CLUSTER + 1];
 static atomic_t freq_table_users = ATOMIC_INIT(0);
+
+static unsigned int clk_big_min;	/* (Big) clock frequencies */
+static unsigned int clk_little_max;	/* Maximum clock frequency (Little) */
+static unsigned int big_cluster_id, little_cluster_id;
 
 /* Cached current cluster for each CPU to save on IPIs */
 static DEFINE_PER_CPU(unsigned int, cpu_cur_cluster);
@@ -69,32 +82,39 @@ static int get_current_cached_cluster(unsigned int cpu)
 	return per_cpu(cpu_cur_cluster, cpu);
 }
 
+static void __bL_switch_to(void *_data)
+{
+	unsigned int *_cluster = _data;
+	bL_switch_to(*_cluster);
+}
+
 /* Validate policy frequency range */
 static int vexpress_cpufreq_verify_policy(struct cpufreq_policy *policy)
 {
-	uint32_t cur_cluster = get_current_cached_cluster(policy->cpu);
+	uint32_t cluster, cur_cluster = get_current_cached_cluster(policy->cpu);
+
+	cluster = is_bL_switching_enabled() ?
+				VEXPRESS_MAX_CLUSTER : cur_cluster;
 
 	/* This call takes care of it all using freq_table */
-	return cpufreq_frequency_table_verify(policy, freq_table[cur_cluster]);
+	return cpufreq_frequency_table_verify(policy, freq_table[cluster]);
 }
 
+static unsigned int vexpress_cpufreq_get(unsigned int cpu);
 /* Set clock frequency */
 static int vexpress_cpufreq_set_target(struct cpufreq_policy *policy,
 			     unsigned int target_freq, unsigned int relation)
 {
-	uint32_t cpu = policy->cpu;
+	uint32_t cpu;
 	struct cpufreq_freqs freqs;
 	uint32_t freq_tab_idx;
-	uint32_t cur_cluster;
+	uint32_t cluster, cur_cluster, new_cluster, do_switch = 0;
 	int ret = 0;
 
 	/* Read current clock rate */
-	cur_cluster = get_current_cached_cluster(cpu);
+	cur_cluster = get_current_cached_cluster(policy->cpu);
 
-	if (vexpress_spc_get_performance(cur_cluster, &freq_tab_idx))
-		return -EIO;
-
-	freqs.old = freq_table[cur_cluster][freq_tab_idx].frequency;
+	freqs.old = vexpress_cpufreq_get(policy->cpu);
 
 	/* Make sure that target_freq is within supported range */
 	if (target_freq > policy->max)
@@ -102,31 +122,59 @@ static int vexpress_cpufreq_set_target(struct cpufreq_policy *policy,
 	if (target_freq < policy->min)
 		target_freq = policy->min;
 
+	cluster = is_bL_switching_enabled() ?
+				VEXPRESS_MAX_CLUSTER : cur_cluster;
+
 	/* Determine valid target frequency using freq_table */
-	cpufreq_frequency_table_target(policy, freq_table[cur_cluster],
+	cpufreq_frequency_table_target(policy, freq_table[cluster],
 				       target_freq, relation, &freq_tab_idx);
-	freqs.new = freq_table[cur_cluster][freq_tab_idx].frequency;
+	freqs.new = freq_table[cluster][freq_tab_idx].frequency;
 
 	freqs.cpu = policy->cpu;
 
 	if (freqs.old == freqs.new)
 		return 0;
 
-	pr_debug("Requested Freq %d cpu %d\n", freqs.new, cpu);
+	pr_debug("Requested Freq %d cpu %d\n", freqs.new, policy->cpu);
 
-	for_each_cpu(freqs.cpu, policy->cpus)
+	if (is_bL_switching_enabled()) {
+		if (freqs.new < clk_big_min &&
+			cur_cluster == big_cluster_id) {
+			do_switch = 1;	/* Switch to Little */
+		} else if (freqs.new > clk_little_max &&
+			cur_cluster == little_cluster_id) {
+			do_switch = 1;	/* Switch to Big */
+		}
+	}
+	for_each_cpu(cpu, policy->cpus) {
+		freqs.cpu = cpu;
 		cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
+	}
 
-	ret = vexpress_spc_set_performance(cur_cluster, freq_tab_idx);
+	new_cluster = do_switch ? cur_cluster ^ 1 : cur_cluster;
+
+	cpufreq_frequency_table_target(policy, freq_table[new_cluster],
+					freqs.new, relation, &freq_tab_idx);
+	ret = vexpress_spc_set_performance(new_cluster, freq_tab_idx);
 	if (ret) {
 		pr_err("Error %d while setting required OPP\n", ret);
 		return ret;
 	}
 
+	if (do_switch) {
+		for_each_cpu(cpu, policy->cpus) {
+			smp_call_function_single(cpu, __bL_switch_to,
+							&new_cluster, 0);
+			per_cpu(cpu_cur_cluster, cpu) = new_cluster;
+		}
+	}
+
 	policy->cur = freqs.new;
 
-	for_each_cpu(freqs.cpu, policy->cpus)
+	for_each_cpu(cpu, policy->cpus) {
+		freqs.cpu = cpu;
 		cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
+	}
 
 	return ret;
 }
@@ -146,6 +194,39 @@ static unsigned int vexpress_cpufreq_get(unsigned int cpu)
 	return freq_table[cur_cluster][freq_tab_idx].frequency;
 }
 
+/* get the number of entries in the cpufreq_frequency_table */
+static inline int _cpufreq_get_table_size(struct cpufreq_frequency_table *table)
+{
+	int size = 0;
+	for (; (table[size].frequency != CPUFREQ_TABLE_END); size++)
+		;
+	return size;
+}
+
+/* get the minimum frequency in the cpufreq_frequency_table */
+static inline uint32_t _cpufreq_get_table_min(
+			struct cpufreq_frequency_table *table)
+{
+	int i;
+	uint32_t min_freq = ~0;
+	for (i = 0; (table[i].frequency != CPUFREQ_TABLE_END); i++)
+		if (table[i].frequency < min_freq)
+			min_freq = table[i].frequency;
+	return min_freq;
+}
+
+/* get the maximum frequency in the cpufreq_frequency_table */
+static inline uint32_t _cpufreq_get_table_max(
+			struct cpufreq_frequency_table *table)
+{
+	int i;
+	uint32_t max_freq = 0;
+	for (i = 0; (table[i].frequency != CPUFREQ_TABLE_END); i++)
+		if (table[i].frequency > max_freq)
+			max_freq = table[i].frequency;
+	return max_freq;
+}
+
 /* translate the integer array into cpufreq_frequency_table entries */
 static inline void _cpufreq_copy_table_from_array(uint32_t *table,
 			struct cpufreq_frequency_table *freq_table, int size)
@@ -159,11 +240,50 @@ static inline void _cpufreq_copy_table_from_array(uint32_t *table,
 	freq_table[i].frequency = CPUFREQ_TABLE_END;
 }
 
+/*
+ * copy entries of all the per-cluster cpufreq_frequency_table entries into a
+ * single frequency table which is published to cpufreq core
+ */
+static int vexpress_cpufreq_merge_tables(uint32_t total_sz)
+{
+	int cluster_id, i;
+	struct cpufreq_frequency_table *freqtable;
+
+	freqtable = kzalloc(sizeof(struct cpufreq_frequency_table) *
+						(total_sz + 1), GFP_KERNEL);
+	if (!freqtable)
+		return -ENOMEM;
+
+	freq_table[VEXPRESS_MAX_CLUSTER] = freqtable;
+	for (cluster_id = 0; cluster_id < VEXPRESS_MAX_CLUSTER; cluster_id++) {
+		int size;
+		if (freq_table[cluster_id] == NULL)
+			return -ENODATA;
+		size = _cpufreq_get_table_size(freq_table[cluster_id]);
+		memcpy(freqtable, freq_table[cluster_id],
+			size * sizeof(struct cpufreq_frequency_table));
+		freqtable += size;
+	}
+
+	/* Adjust the indices for merged table */
+	for (i = 0; i <= total_sz; i++)
+		freq_table[VEXPRESS_MAX_CLUSTER][i].index = i;
+	freq_table[VEXPRESS_MAX_CLUSTER][total_sz].frequency =
+							CPUFREQ_TABLE_END;
+
+	/* Assuming 2 cluster, set clk_big_min and clk_little_max */
+	clk_big_min = _cpufreq_get_table_min(freq_table[big_cluster_id]);
+	clk_little_max =
+		_cpufreq_get_table_max(freq_table[little_cluster_id]);
+
+	return 0;
+}
+
 static int vexpress_cpufreq_of_init(void)
 {
-	uint32_t cpu_opp_num;
+	uint32_t cpu_opp_num, total_opp_num = 0;
 	struct cpufreq_frequency_table *freqtable[VEXPRESS_MAX_CLUSTER];
-	uint32_t *cpu_freqs;
+	uint32_t *cpu_freqs = NULL;
 	int ret = 0, cluster_id = 0, len;
 	struct device_node *cluster = NULL;
 	const struct property *pp;
@@ -181,6 +301,7 @@ static int vexpress_cpufreq_of_init(void)
 		if (!cpu_opp_num)
 			return -ENODATA;
 
+		total_opp_num += cpu_opp_num;
 		cpu_freqs = kzalloc(sizeof(uint32_t) * cpu_opp_num, GFP_KERNEL);
 		freqtable[cluster_id] =
 			kzalloc(sizeof(struct cpufreq_frequency_table) *
@@ -197,6 +318,9 @@ static int vexpress_cpufreq_of_init(void)
 
 		kfree(cpu_freqs);
 	}
+	ret = vexpress_cpufreq_merge_tables(total_opp_num);
+	if (ret)
+		goto free_mem;
 	return ret;
 free_mem:
 	while (cluster_id >= 0)
@@ -209,10 +333,13 @@ free_mem:
 static int vexpress_cpufreq_init(struct cpufreq_policy *policy)
 {
 	int result = 0;
-	uint32_t cur_cluster = get_current_cluster(policy->cpu);
+	uint32_t cluster, cur_cluster = get_current_cluster(policy->cpu);
 
-	if (atomic_inc_return(&freq_table_users) == 1)
+	if (atomic_inc_return(&freq_table_users) == 1) {
+		big_cluster_id = vexpress_spc_get_clusterid(A15_PART_NO);
+		little_cluster_id = vexpress_spc_get_clusterid(A7_PART_NO);
 		result = vexpress_cpufreq_of_init();
+	}
 
 	if (freq_table[cur_cluster] == NULL)
 		result = -ENODATA;
@@ -223,12 +350,15 @@ static int vexpress_cpufreq_init(struct cpufreq_policy *policy)
 		return result;
 	}
 
+	cluster = is_bL_switching_enabled() ?
+				VEXPRESS_MAX_CLUSTER : cur_cluster;
+
 	result =
-	    cpufreq_frequency_table_cpuinfo(policy, freq_table[cur_cluster]);
+	    cpufreq_frequency_table_cpuinfo(policy, freq_table[cluster]);
 	if (result)
 		return result;
 
-	cpufreq_frequency_table_get_attr(freq_table[cur_cluster], policy->cpu);
+	cpufreq_frequency_table_get_attr(freq_table[cluster], policy->cpu);
 
 	per_cpu(cpu_cur_cluster, policy->cpu) = cur_cluster;
 
@@ -239,8 +369,10 @@ static int vexpress_cpufreq_init(struct cpufreq_policy *policy)
 	policy->cpuinfo.transition_latency = 1000000;	/* 1 ms assumed */
 	policy->cur = vexpress_cpufreq_get(policy->cpu);
 
-	cpumask_copy(policy->cpus, topology_core_cpumask(policy->cpu));
-	cpumask_copy(policy->related_cpus, policy->cpus);
+	if (!is_bL_switching_enabled()) {
+		cpumask_copy(policy->cpus, topology_core_cpumask(policy->cpu));
+		cpumask_copy(policy->related_cpus, policy->cpus);
+	}
 
 	pr_info("CPUFreq for CPU %d initialized\n", policy->cpu);
 	return result;
