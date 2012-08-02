@@ -44,6 +44,11 @@ static DEFINE_RAW_SPINLOCK(bLiks_lock);
 static u32 cpu_online_map[BL_NR_CLUSTERS];
 
 /*
+ * To avoid assumptions about cluster ids.
+ */
+static u32 a15_clus_id, a7_clus_id;
+
+/*
  * bLiks_power_up - make given CPU in given cluster runable
  *
  * @cpu: CPU number within given cluster
@@ -57,9 +62,11 @@ static u32 cpu_online_map[BL_NR_CLUSTERS];
  */
 static void bLiks_power_up(unsigned int cpu, unsigned int cluster)
 {
-	u32 ret = 0, first_man = 0, ctr;
+	u32 ret = 0;
 
 	raw_spin_lock(&bLiks_lock);
+
+	vexpress_spc_powerdown_enable(cluster, 0);
 
 	/*
 	 * Find out if this cpu's counterpart will be the first
@@ -68,74 +75,59 @@ static void bLiks_power_up(unsigned int cpu, unsigned int cluster)
 	 * point to the per-cpu mailbox.
 	 */
 	if (cpu_online_map[cluster] == 0)
-		first_man = 1;
-
-
-	/*
-	 * If only cpu in cluster ensure that:
-	 * 1. cluster has powered down
-	 * 2. all inbound cpus have their warm reset vectors unset
-	 *    so that they can enter wfi in the boot firmware
-	 */
-	if (first_man) {
-
 		__bL_set_first_man(cpu, cluster);
 
-		while (vexpress_scc_read_rststat(cluster));
+	vexpress_spc_write_bxaddr_reg(cluster,
+				      cpu,
+				      virt_to_phys(bl_entry_point));
+	arm_send_ping_ipi(cpu);
+	raw_spin_unlock(&bLiks_lock);
+
+	return;
+}
+
+ /*
+  * bLiks_power_up_finish - Declare completion of a cpu power up
+  *
+  * @cpu: CPU number within given cluster
+  * @cluster: cluster number for the CPU
+  *
+  * @return: true if this cpu is the first man to reach this point
+  *
+  * Update the 'cpu_online_map', mask power controller wakeup
+  * sources & disable ability to enter cluster power down. Basically
+  * does the opposite of 'bLiks_power_down_prepare'
+  */
+static bool bLiks_power_up_finish(unsigned int cpu, unsigned int cluster)
+{
+	bool ret = false;
+
+	raw_spin_lock(&bLiks_lock);
+
+	/* Disable wakeup irq source of this cpu to the power controller */
+	vexpress_spc_set_cpu_wakeup_irq(cpu, cluster, 0);
+
+	cpu_online_map[cluster] |= 1 << cpu;
+
+	if (cpu_online_map[cluster] == 0) {
+		ret = true;
 
 		/*
-		 * TODO:
-		 * The map should be updated outside this 'if' condition.
-		 * It prevents the outbound from doing uneccessary last
-		 * man operations when we want to switch immediately.
-		 * However, there is no way of knowing whether the last
-		 * man aborted or completed his stuff. If he aborted then
-		 * we should treat him as a 'non' last man waiting for him
-		 * to be placed in reset (see above) would cause a deadlock.
-		 */
-		cpu_online_map[cluster] |= 1 << cpu;
-
-		for (ctr = 0; ctr < BL_CPUS_PER_CLUSTER; ctr++) {
-			if (ctr == cpu)
-				vexpress_spc_write_bxaddr_reg(cluster,
-					        cpu,
-						virt_to_phys(bl_entry_point));
-			else
-				vexpress_spc_write_bxaddr_reg(cluster,
-							      ctr,
-							      0x0);
-		}
-
-		/*
-		 * Dis-allow the cluster to power down when all cores are
-		 * idling & set the OPP for the inbound cluster.
+		 * Prevent cluster to be powered down when all cores are
+		 * idling.
 		 */
 		vexpress_spc_powerdown_enable(cluster, 0);
-		ret = vexpress_spc_set_performance(cluster, 5);
 
-	 } else {
-		 /*
-		  * TODO:
-		  * Moved here due to previous todo.
-		  */
-		 cpu_online_map[cluster] |= 1 << cpu;
+		/*
+		 * Disable the global wakeup sources
+		 */
+		vexpress_spc_set_global_wakeup_intr(0);
+	}
 
-		 /*
-		  * Write the entry vector only when the inbound has entered wfi.
-		  * Doing this outside the 'if' condition, can result in a race
-		  * where the inbound will escape out of the pen in boot firmware
-		  * & wfe in 'bL_entry_point' preventing it from being reset.
-		  */
-		 vexpress_spc_write_bxaddr_reg(cluster,
-					       cpu,
-					       virt_to_phys(bl_entry_point));
-	 }
+	raw_spin_unlock(&bLiks_lock);
 
-	 arm_send_ping_ipi(cpu);
-	 raw_spin_unlock(&bLiks_lock);
-
-	 return;
- }
+	return ret;
+}
 
  /*
   * bLiks_power_down_prepare - nominate a CPU for power-down
@@ -159,6 +151,9 @@ static void bLiks_power_up(unsigned int cpu, unsigned int cluster)
 
 	 raw_spin_lock(&bLiks_lock);
 
+	 /* Enable wakeup irq source of this cpu to the power controller */
+	 vexpress_spc_set_cpu_wakeup_irq(cpu, cluster, 1);
+
 	 cpu_online_map[cluster] &= ~(1 << cpu);
 
 	 /* if only cpu in cluster */
@@ -171,6 +166,12 @@ static void bLiks_power_up(unsigned int cpu, unsigned int cluster)
 		  * man operations.
 		  */
 		 vexpress_spc_powerdown_enable(cluster, 1);
+
+		 /*
+		  * Enable the global wakeup sources
+		  */
+		 vexpress_spc_set_global_wakeup_intr(1);
+
 		 ret = true;
 	 }
 
@@ -281,6 +282,7 @@ static void bLiks_power_up(unsigned int cpu, unsigned int cluster)
 
  static const struct bL_power_ops bLiks_power_ops = {
 	 .power_up = bLiks_power_up,
+	 .power_up_finish = bLiks_power_up_finish,
 	 .power_down = bLiks_power_down,
 	 .power_up_setup = bLiks_power_up_setup,
  };
@@ -292,7 +294,7 @@ static void bLiks_power_up(unsigned int cpu, unsigned int cluster)
 
  static int __init bLiks_init(void)
  {
-	 u32 a15_clus_id, a7_clus_id, ctr, idx;
+	 u32 ctr, idx;
 
 	 /*
 	  * Initialize our cpu online maps assuming that A15 is 0 and A7 is 1.

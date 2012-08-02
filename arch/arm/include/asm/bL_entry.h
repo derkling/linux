@@ -132,18 +132,22 @@ void bL_set_entry_vector(unsigned cpu, unsigned cluster, void *ptr);
 	@ At this point, the cluster cannot unexpectedly enter the GOING_DOWN
 	@ state, because there is at least one active CPU (this CPU).
 
+#if !defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
 	ldrb	\temp2, [\cluster_base, #BL_SYNC_CLUSTER_FIRST_MAN]
+#endif
 
 	@ Check if the cluster has been set up yet:
 2180:	ldrb	\temp1, [\cluster_base, #BL_SYNC_CLUSTER_CLUSTER]
 	cmp	\temp1, #CLUSTER_UP
 	beq	\not_first_label
 
+#if !defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
 	@ Otherwise, wait unless it is our job to set it up:
 	cmp	\temp2, \cpu
 	beq	2181f
 	wfe
 	b	2180b
+#endif
 
 2181:	@ This CPU is definitely the first man.
 
@@ -151,9 +155,11 @@ void bL_set_entry_vector(unsigned cpu, unsigned cluster, void *ptr);
 	mov	\temp1, #INBOUND_COMING_UP
 	strb	\temp1, [\cluster_base, #BL_SYNC_CLUSTER_INBOUND]
 
+#if !defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
 	@ Invalidate the first_man field:
 	mov	\temp1, #FIRST_MAN_NONE
 	strb	\temp1, [\cluster_base, #BL_SYNC_CLUSTER_FIRST_MAN]
+#endif
 
 #if !defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
 	dsb

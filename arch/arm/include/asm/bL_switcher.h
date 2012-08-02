@@ -16,6 +16,7 @@
 
 struct bL_power_ops {
 	void (*power_up)(unsigned int cpu, unsigned int cluster);
+	bool (*power_up_finish)(unsigned int cpu, unsigned int cluster);
 	void (*power_down)(unsigned int cpu, unsigned int cluster);
 	void (*power_up_setup)(void);
 };

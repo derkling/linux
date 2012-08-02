@@ -56,6 +56,7 @@
 
 #define A15_STANDBYWFIL2_MSK    (1 << 2)
 #define A7_STANDBYWFIL2_MSK     (1 << 6)
+#define GBL_WAKEUP_INT_MSK      (0x3 << 10)
 
 #define DRIVER_NAME	"SPC"
 #define TIME_OUT	100
@@ -252,6 +253,50 @@ int vexpress_spc_set_performance(int cluster, int perf)
 
 }
 EXPORT_SYMBOL_GPL(vexpress_spc_set_performance);
+
+int vexpress_spc_set_global_wakeup_intr(u32 set)
+{
+	u32 wake_int_mask_reg = 0;
+
+	if (IS_ERR_OR_NULL(info))
+		return -ENXIO;
+
+	wake_int_mask_reg = readl(info->baseaddr + WAKE_INT_MASK);
+	if (set)
+		wake_int_mask_reg |= GBL_WAKEUP_INT_MSK;
+	else
+		wake_int_mask_reg &= ~GBL_WAKEUP_INT_MSK;
+
+	vexpress_spc_set_wake_intr(wake_int_mask_reg);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(vexpress_spc_set_global_wakeup_intr);
+
+int vexpress_spc_set_cpu_wakeup_irq(u32 cpu, u32 cluster, u32 set)
+{
+	u32 a15_clusid = 0, mask = 0;
+	u32 wake_int_mask_reg = 0;
+
+	if (IS_ERR_OR_NULL(info))
+		return -ENXIO;
+
+	a15_clusid = readl_relaxed(info->baseaddr + A15_CONF) & 0xf;
+	mask = 1 << cpu;
+	if (a15_clusid != cluster)
+		mask <<= 4;
+
+	wake_int_mask_reg = readl(info->baseaddr + WAKE_INT_MASK);
+	if (set)
+		wake_int_mask_reg |= mask;
+	else
+		wake_int_mask_reg &= ~mask;
+
+	vexpress_spc_set_wake_intr(wake_int_mask_reg);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(vexpress_spc_set_cpu_wakeup_irq);
 
 void vexpress_spc_set_wake_intr(u32 mask)
 {

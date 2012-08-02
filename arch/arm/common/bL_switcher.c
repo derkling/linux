@@ -377,7 +377,11 @@ int bL_switch_to(unsigned int new_cluster_id)
 	bL_platform_ops->power_up(cpuid, ib_cluster);
 
 	/* redirect GIC's SGIs to our counterpart */
+#if defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
+	gic_migrate_target(cpuid + ib_cluster * BL_CPUS_PER_CLUSTER);
+#else
 	gic_migrate_target(bL_gic_id[cpuid][ib_cluster]);
+#endif
 
 	/*
 	 * Raise a SGI on the inbound CPU to make sure it doesn't stall
@@ -417,6 +421,8 @@ int bL_switch_to(unsigned int new_cluster_id)
 		clockevents_program_event(tdev->evtdev,
 					  tdev->evtdev->next_event, 1);
 	}
+
+	bL_platform_ops->power_up_finish(cpuid, ib_cluster);
 
 	trace_cpu_migrate_finish(get_ns(), cpuid, ob_cluster, cpuid, ib_cluster);
 
@@ -674,7 +680,11 @@ int __init bL_switcher_init(const struct bL_power_ops *ops)
 					sizeof bL_sync_phys);
 	outer_clean_range(__pa(&bL_sync_phys), __pa(&bL_sync_phys + 1));
 
+#if !defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
 	schedule_on_each_cpu(bL_enumerate_gic_cpu_id);
+#endif
+
+#endif
 #ifdef CONFIG_BL_SWITCHER_DUMMY_IF
 	misc_register(&bL_switcher_device);
 #endif
