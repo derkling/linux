@@ -25,6 +25,15 @@
 static DEFINE_RWLOCK(cpu_pm_notifier_lock);
 static RAW_NOTIFIER_HEAD(cpu_pm_notifier_chain);
 
+static int cpu_pm_notify_sw(enum cpu_pm_event event, int nr_to_call, int *nr_calls, void *arg)
+{
+	int ret;
+
+	ret = __raw_notifier_call_chain(&cpu_pm_notifier_chain, event, arg,
+		nr_to_call, nr_calls);
+
+	return notifier_to_errno(ret);
+}
 static int cpu_pm_notify(enum cpu_pm_event event, int nr_to_call, int *nr_calls)
 {
 	int ret;
@@ -95,13 +104,16 @@ EXPORT_SYMBOL_GPL(cpu_pm_unregister_notifier);
  *
  * Return conditions are same as __raw_notifier_call_chain.
  */
-int cpu_pm_enter(void)
+int cpu_pm_enter(int arg)
 {
 	int nr_calls;
 	int ret = 0;
 
 	read_lock(&cpu_pm_notifier_lock);
-	ret = cpu_pm_notify(CPU_PM_ENTER, -1, &nr_calls);
+	if (arg)
+		ret = cpu_pm_notify_sw(CPU_PM_ENTER, -1, &nr_calls, (void *)0xdead);
+	else
+		ret = cpu_pm_notify(CPU_PM_ENTER, -1, &nr_calls);
 	if (ret)
 		/*
 		 * Inform listeners (nr_calls - 1) about failure of CPU PM
@@ -205,7 +217,7 @@ static int cpu_pm_suspend(void)
 {
 	int ret;
 
-	ret = cpu_pm_enter();
+	ret = cpu_pm_enter(0);
 	if (ret)
 		return ret;
 

@@ -69,7 +69,7 @@ enum cpu_pm_event {
 #ifdef CONFIG_CPU_PM
 int cpu_pm_register_notifier(struct notifier_block *nb);
 int cpu_pm_unregister_notifier(struct notifier_block *nb);
-int cpu_pm_enter(void);
+int cpu_pm_enter(int arg);
 int cpu_pm_exit(void);
 int cpu_cluster_pm_enter(void);
 int cpu_cluster_pm_exit(void);
@@ -86,7 +86,7 @@ static inline int cpu_pm_unregister_notifier(struct notifier_block *nb)
 	return 0;
 }
 
-static inline int cpu_pm_enter(void)
+static inline int cpu_pm_enter(int arg)
 {
 	return 0;
 }
