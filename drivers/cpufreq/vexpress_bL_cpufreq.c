@@ -16,6 +16,8 @@
  */
 #include <linux/cpufreq.h>
 #include <linux/cpumask.h>
+#include <linux/debugfs.h>
+#include <linux/fs.h>
 #include <linux/init.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
@@ -47,6 +49,7 @@ static atomic_t freq_table_users = ATOMIC_INIT(0);
 static unsigned int clk_big_min;	/* (Big) clock frequencies */
 static unsigned int clk_little_max;	/* Maximum clock frequency (Little) */
 static unsigned int big_cluster_id, little_cluster_id;
+static unsigned int cluster_switch;
 
 /* Cached current cluster for each CPU to save on IPIs */
 static DEFINE_PER_CPU(unsigned int, cpu_cur_cluster);
@@ -369,7 +372,7 @@ static int vexpress_cpufreq_init(struct cpufreq_policy *policy)
 	policy->cpuinfo.transition_latency = 1000000;	/* 1 ms assumed */
 	policy->cur = vexpress_cpufreq_get(policy->cpu);
 
-	if (!is_bL_switching_enabled()) {
+	if (!(is_bL_switching_enabled() ^ cluster_switch)) {
 		cpumask_copy(policy->cpus, topology_core_cpumask(policy->cpu));
 		cpumask_copy(policy->related_cpus, policy->cpus);
 	}
@@ -401,11 +404,47 @@ static struct cpufreq_driver vexpress_cpufreq_driver = {
 	.attr	= vexpress_cpufreq_attr,
 };
 
+static int cluster_switch_set(void *data, u64 val)
+{
+	if (val > 1 || val < 0) {
+		pr_warn("Wrong parameter: 0 - disable 1 - enable\n");
+		return -EINVAL;
+	}
+	if (cluster_switch == val)
+		return 0;
+
+	cpufreq_unregister_driver(&vexpress_cpufreq_driver);
+	if (is_bL_switching_enabled())
+		cluster_switch = val;
+	cpufreq_register_driver(&vexpress_cpufreq_driver);
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(cluster_switch_fops, NULL,
+					cluster_switch_set, "%llu\n");
+
 static int __init vexpress_cpufreq_modinit(void)
 {
+	struct dentry *cluster_switch, *file_debug;
+
 	if (!vexpress_spc_check_loaded()) {
 		pr_info("vexpress cpufreq not initialised because no SPC found\n");
 		return -ENODEV;
+	}
+
+	cluster_switch = debugfs_create_dir("cluster_switch", NULL);
+
+	if (IS_ERR_OR_NULL(cluster_switch)) {
+		pr_info("Error in creating cluster_switch debugfs directory\n");
+		return 0;
+	}
+
+	file_debug = debugfs_create_file("enable", S_IRUGO | S_IWGRP,
+				   cluster_switch, NULL, &cluster_switch_fops);
+
+	if (IS_ERR_OR_NULL(file_debug)) {
+		pr_info("Error in creating enable_cluster_switch file\n");
+		return 0;
 	}
 
 	return cpufreq_register_driver(&vexpress_cpufreq_driver);
