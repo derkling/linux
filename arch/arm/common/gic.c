@@ -585,7 +585,7 @@ static void gic_dist_restore(unsigned int gic_nr)
 	writel_relaxed(1, dist_base + GIC_DIST_CTRL);
 }
 
-static void gic_cpu_save(unsigned int gic_nr)
+static void gic_cpu_save(unsigned int gic_nr, void *arg)
 {
 	int i;
 	u32 *ptr;
@@ -613,8 +613,10 @@ static void gic_cpu_save(unsigned int gic_nr)
 
 	ptr = __this_cpu_ptr(gic_data[gic_nr].saved_sgi_pending);
 	for (i = 0; i < DIV_ROUND_UP(16, 4); i++) {
-		ptr[i] = readl_relaxed(dist_base + GIC_DIST_SGI_PENDING_SET + i * 4);
-		writel_relaxed(ptr[i], dist_base + GIC_DIST_SGI_PENDING_CLEAR + i * 4);
+			ptr[i] = readl_relaxed(dist_base + GIC_DIST_SGI_PENDING_SET + i * 4);
+			if (arg)
+				writel_relaxed(ptr[i], dist_base + GIC_DIST_SGI_PENDING_CLEAR + i * 4);
+			
 	}
 
 	/*
@@ -674,7 +676,7 @@ static int gic_notifier(struct notifier_block *self, unsigned long cmd,	void *v)
 #endif
 		switch (cmd) {
 		case CPU_PM_ENTER:
-			gic_cpu_save(i);
+			gic_cpu_save(i, v);
 			break;
 		case CPU_PM_ENTER_FAILED:
 		case CPU_PM_EXIT:
