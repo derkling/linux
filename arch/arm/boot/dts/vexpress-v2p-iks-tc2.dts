@@ -26,7 +26,7 @@
 	#size-cells = <1>;
 
 	chosen {
-	       bootargs = "console=ttyAMA0,38400 debug earlyprintk root=/dev/sda1 lpj=1478400 rootwait verbose rw mem=128M";
+		bootargs = "console=ttyAMA0,38400 debug earlyprintk root=/dev/sda1 rw rootwait --verbose --no-log";
 	};
 
 	aliases {
@@ -57,6 +57,27 @@
 					reg = <1>;
 				};
 
+			};
+		};
+
+		cluster1: cluster@1 {
+			reg = <1>;
+			freqs = <350000000 400000000 500000000 600000000 700000000 800000000 900000000 1000000000>;
+			cores {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				core2: core@0 {
+					reg = <0>;
+				};
+
+				core3: core@1 {
+					reg = <1>;
+				};
+
+				core4: core@2 {
+					reg = <2>;
+				};
 			};
 		};
 	};
