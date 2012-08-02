@@ -102,7 +102,7 @@ void vexpress_spc_write_bxaddr_reg(int cluster, int cpu, u32 val)
 	u32 a15_clusid;
 
 	if (IS_ERR_OR_NULL(info))
-		BUG();
+		return;
 
 	a15_clusid = readl_relaxed(info->baseaddr + A15_CONF) & 0xf;
 
