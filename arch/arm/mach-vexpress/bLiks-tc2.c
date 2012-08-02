@@ -60,7 +60,8 @@ static u32 a15_clus_id, a7_clus_id;
  * Caller must ensure the appropriate entry vector is initialized prior to
  * calling this.
  */
-static void bLiks_power_up(unsigned int cpu, unsigned int cluster)
+static void bLiks_power_up(unsigned int cpu, unsigned int cluster,
+						phys_addr_t entry_point)
 {
 	u32 ret = 0;
 
@@ -79,7 +80,7 @@ static void bLiks_power_up(unsigned int cpu, unsigned int cluster)
 
 	vexpress_spc_write_bxaddr_reg(cluster,
 				      cpu,
-				      virt_to_phys(bl_entry_point));
+				      entry_point);
 
 	/*
 	 * Enable wakeup irq source of this cpu to the power controller
