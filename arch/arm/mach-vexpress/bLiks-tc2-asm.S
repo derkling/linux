@@ -37,7 +37,23 @@ ENTRY(bLiks_power_up_setup)
 	@ For now, this code assumes that L2 is either already invalidated, or
 	@ invalidation is not required.
 
+	@ Enable ACE and ACP snoops as applicable
+
+	ldr	r3, =SPC_PHYS_BASE + SNOOP_CTL_A15
+	mrc	p15, 0, r0, c0, c0, 0	@ MIDR
+	ubfx    r0, r0, #4, #4		@ Primary part number
+	cmp     r0, #A15_PART_NO
+	addne   r3, r3, #SNOOP_CTL_A7 - SNOOP_CTL_A15
+	ldr     r0, [r3]
+	bicne   r0, #A7_SNOOP_MASK
+	biceq   r0, #A15_SNOOP_MASK
+	str     r0, [r3]
+
+	@ Enable CCI snoops
+
 	ldr	r3, =CCI_PHYS_BASE + CCI_A15_OFFSET
+	mrc	p15, 0, r0, c0, c0, 5	@ MPIDR
+	ubfx	r0, r0, #8, #4		@ cluster
 	cmp	r0, #0		@ A15 cluster?
 	addne	r3, r3, #CCI_A7_OFFSET - CCI_A15_OFFSET
 
@@ -56,18 +72,6 @@ ENTRY(bLiks_power_up_setup)
 	ldr	r0, [r3, #PENDING_STATUS_OFFSET]
 	tst	r0, #STATUS_CHANGE_PENDING
 	bne	1b
-
-	@ Enable ACE and ACP snoops as applicable
-
-	ldr	r3, =SPC_PHYS_BASE + SNOOP_CTL_A15
-	mrc	p15, 0, r0, c0, c0, 0	@ MIDR
-	ubfx    r0, r0, #4, #4		@ Primary part number
-	cmp     r0, #A15_PART_NO
-	addne   r3, r3, #SNOOP_CTL_A7 - SNOOP_CTL_A15
-	ldr     r0, [r3]
-	bicne   r0, #A7_SNOOP_MASK
-	biceq   r0, #A15_SNOOP_MASK
-	str     r0, [r3]
 
 	@ Restore the cpuid
 
