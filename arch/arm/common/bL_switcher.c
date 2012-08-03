@@ -55,9 +55,11 @@ static unsigned long long switch_time[BL_CPUS_PER_CLUSTER];
 
 unsigned long long read_cntpct(void)
 {
-	unsigned long long cnt;
-	asm volatile ("mrrc\tp15, 0, r0, r1, c14":::"r0", "r1");
-	return cnt;
+        u32 cvall, cvalh;
+
+        asm volatile("mrrc p15, 0, %0, %1, c14" : "=r" (cvall), "=r" (cvalh));
+
+        return ((unsigned long long) cvalh << 32) | cvall;
 }
 
 static ssize_t show_st(struct device *dev, struct device_attribute *attr,
