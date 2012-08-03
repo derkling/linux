@@ -246,6 +246,12 @@ static int vexpress_cpufreq_init(struct cpufreq_policy *policy)
 	return result;
 }
 
+static int vexpress_cpufreq_exit(struct cpufreq_policy *policy)
+{
+	atomic_dec_return(&freq_table_users);
+	return 0;
+}
+
 /* Export freq_table to sysfs */
 static struct freq_attr *vexpress_cpufreq_attr[] = {
 	&cpufreq_freq_attr_scaling_available_freqs,
@@ -258,6 +264,7 @@ static struct cpufreq_driver vexpress_cpufreq_driver = {
 	.target	= vexpress_cpufreq_set_target,
 	.get	= vexpress_cpufreq_get,
 	.init	= vexpress_cpufreq_init,
+	.exit	= vexpress_cpufreq_exit,
 	.name	= "cpufreq_vexpress",
 	.attr	= vexpress_cpufreq_attr,
 };
