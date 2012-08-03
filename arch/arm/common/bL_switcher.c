@@ -340,8 +340,6 @@ int bL_switch_to(unsigned int new_cluster_id)
 	unsigned long flags;
 	unsigned long long start, end;
 
-	switcher_pm_enter();
-
 	local_irq_save(flags);
 	local_fiq_disable();
 
@@ -443,7 +441,6 @@ out:
 	local_fiq_enable();
 	local_irq_restore(flags);
 
-	switcher_pm_exit();
 	return ret;
 }
 
@@ -692,7 +689,6 @@ int __init bL_switcher_init(const struct bL_power_ops *ops)
 	schedule_on_each_cpu(bL_enumerate_gic_cpu_id);
 #endif
 
-#endif
 #ifdef CONFIG_BL_SWITCHER_DUMMY_IF
 	misc_register(&bL_switcher_device);
 #endif
