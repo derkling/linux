@@ -40,6 +40,10 @@
 #define is_bL_switching_enabled()		false
 #endif
 
+#define ACTUAL_FREQ(x)	\
+	((is_bL_switching_enabled() && (x) > clk_little_max) ? (x) >> 1 : (x))
+#define VIRT_FREQ(x)	\
+	((is_bL_switching_enabled() && (x) > clk_little_max) ? (x) << 1 : (x))
 #define VEXPRESS_MAX_CLUSTER	2
 
 /* One extra for the virtual OPP table for b.L switching */
@@ -155,9 +159,11 @@ static int vexpress_cpufreq_set_target(struct cpufreq_policy *policy,
 	}
 
 	new_cluster = do_switch ? cur_cluster ^ 1 : cur_cluster;
+	pr_debug("ReqF %d cpu%d clu%d ImpF %d nclus %d\n\n",
+		target_freq, policy->cpu, cur_cluster, freqs.new, new_cluster);
 
 	cpufreq_frequency_table_target(policy, freq_table[new_cluster],
-					freqs.new, relation, &freq_tab_idx);
+			ACTUAL_FREQ(freqs.new), relation, &freq_tab_idx);
 	ret = vexpress_spc_set_performance(new_cluster, freq_tab_idx);
 	if (ret) {
 		pr_err("Error %d while setting required OPP\n", ret);
@@ -194,7 +200,7 @@ static unsigned int vexpress_cpufreq_get(unsigned int cpu)
 	if (vexpress_spc_get_performance(cur_cluster, &freq_tab_idx))
 		return -EIO;
 
-	return freq_table[cur_cluster][freq_tab_idx].frequency;
+	return VIRT_FREQ(freq_table[cur_cluster][freq_tab_idx].frequency);
 }
 
 /* get the number of entries in the cpufreq_frequency_table */
@@ -269,13 +275,18 @@ static int vexpress_cpufreq_merge_tables(uint32_t total_sz)
 	}
 
 	/* Adjust the indices for merged table */
-	for (i = 0; i <= total_sz; i++)
+	for (i = 0; i <= total_sz; i++) {
 		freq_table[VEXPRESS_MAX_CLUSTER][i].index = i;
+		if (i < 8)
+			freq_table[VEXPRESS_MAX_CLUSTER][i].frequency <<= 1;
+	}
 	freq_table[VEXPRESS_MAX_CLUSTER][total_sz].frequency =
 							CPUFREQ_TABLE_END;
 
 	/* Assuming 2 cluster, set clk_big_min and clk_little_max */
-	clk_big_min = _cpufreq_get_table_min(freq_table[big_cluster_id]);
+	clk_little_max = 0;
+	clk_big_min =
+		VIRT_FREQ(_cpufreq_get_table_min(freq_table[big_cluster_id]));
 	clk_little_max =
 		_cpufreq_get_table_max(freq_table[little_cluster_id]);
 
