@@ -80,6 +80,13 @@ static void bLiks_power_up(unsigned int cpu, unsigned int cluster)
 	vexpress_spc_write_bxaddr_reg(cluster,
 				      cpu,
 				      virt_to_phys(bl_entry_point));
+
+	/*
+	 * Enable wakeup irq source of this cpu to the power controller
+	 * This is really required only for the first power up.
+	 */
+	vexpress_spc_set_cpu_wakeup_irq(cpu, cluster, 1);
+
 	arm_send_ping_ipi(cpu);
 	raw_spin_unlock(&bLiks_lock);
 
