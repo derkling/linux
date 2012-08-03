@@ -21,6 +21,7 @@
 #include <linux/switcher_pm.h>
 #include <linux/tick.h>
 #include <linux/vexpress.h>
+#include <asm/bL_switcher.h>
 #include <asm/cpuidle.h>
 #include <asm/cputype.h>
 #include <asm/idmap.h>
@@ -69,8 +70,7 @@ static struct cpuidle_state tc2_cpuidle_set[] __initdata = {
 		.enter			= tc2_enter_coupled,
 		.exit_latency		= 300,
 		.target_residency	= 1000,
-		.flags			= CPUIDLE_FLAG_TIME_VALID |
-							CPUIDLE_FLAG_COUPLED,
+		.flags			= CPUIDLE_FLAG_TIME_VALID, 
 		.name			= "C1",
 		.desc			= "ARM power down",
 		.disable		= 1,
@@ -89,7 +89,6 @@ static DEFINE_PER_CPU(struct cpuidle_device, tc2_idle_dev);
 static cpumask_t cluster_mask = CPU_MASK_NONE;
 
 extern void disable_clean_inv_dcache(int);
-static atomic_t abort_barrier[NR_CLUSTERS];
 int cluster_id[NR_CPUS];
 
 extern void tc2_cpu_resume(void);
@@ -97,38 +96,14 @@ extern void disable_snoops(void);
 
 int tc2_coupled_finisher(unsigned long arg)
 {
-	struct cpuidle_device *dev = (struct cpuidle_device *) arg;
 	unsigned int mpidr = read_cpuid_mpidr();
-	unsigned int cpu = smp_processor_id();
 	unsigned int cluster = (mpidr >> 8) & 0xf;
-	unsigned int weight = cpumask_weight(&dev->coupled_cpus);
-	u8 wfi_weight = 0;
 
-	cpuidle_coupled_parallel_barrier(dev,
-					&abort_barrier[cluster]);
-
-	if (mpidr & 0xf && (weight > 1)) {
-		vexpress_spc_write_bxaddr_reg(cluster,
-					mpidr & 0xf,
-					virt_to_phys(tc2_cpu_resume));
-		disable_clean_inv_dcache(0);
-		wfi();
-		/* not reached */
-	}
-
+	bL_set_entry_vector(mpidr & 0xf, cluster, cpu_resume);
 	vexpress_spc_write_bxaddr_reg(cluster,
-					mpidr & 0xf,
-					virt_to_phys(tc2_cpu_resume));
-
-	while (wfi_weight != (weight - 1)) {
-		wfi_weight = vexpress_spc_wfi_cpustat(cluster);
-		wfi_weight = hweight8(wfi_weight);
-	}
-
-	vexpress_spc_powerdown_enable(cluster, 1);
-	disable_clean_inv_dcache(1);
-	disable_cci(cluster);
-	disable_snoops();
+				mpidr & 0xf,
+				virt_to_phys(bl_entry_point));
+	bL_platform_ops->power_down(mpidr & 0xf, cluster);
 	return 1;
 }
 
@@ -152,8 +127,7 @@ static int tc2_enter_coupled(struct cpuidle_device *dev,
 	getnstimeofday(&ts_preidle);
 
 	if (!cpu_isset(cluster, cluster_mask)) {
-			cpuidle_coupled_parallel_barrier(dev,
-					&abort_barrier[cluster]);
+			wfi();
 			goto shallow_out;
 	}
 
@@ -165,9 +139,12 @@ static int tc2_enter_coupled(struct cpuidle_device *dev,
 
 	ret = cpu_suspend((unsigned long) dev, tc2_coupled_finisher);
 	
+	bL_set_entry_vector(mpidr & 0xf, cluster, NULL);
 	vexpress_spc_write_bxaddr_reg(cluster,
 					mpidr & 0xf,
 					0);
+
+	bL_platform_ops->power_up_finish(mpidr & 0xf, cluster);
 
 	if (ret)
 		BUG();
@@ -182,6 +159,7 @@ shallow_out:
 
 	dev->last_residency = ts_idle.tv_nsec / NSEC_PER_USEC +
 					ts_idle.tv_sec * USEC_PER_SEC;
+	local_irq_enable();
 	return idx;
 }
 
@@ -247,7 +225,7 @@ struct cpuidle_coupled {
 
 static void update_coupled_cpus(void)
 {
-	int cpu, cpu2, cluster = (read_cpuid_mpidr() & 0xf00) >> 8;
+	int cpu, cpu2;
 	struct cpuidle_device *dev;
 	update_cluster_id(NULL);
 
@@ -266,7 +244,7 @@ static void update_coupled_cpus(void)
 static int switcher_notify(struct notifier_block *self,
 		unsigned long cmd, void *v)
 {
-	int i, cpu = smp_processor_id();
+	int i;
 	struct cpuidle_device *dev;
 
 	switch (cmd) {
@@ -337,8 +315,6 @@ int __init tc2_idle_init(void)
 		dev->cpu = cpu_id;
 		dev->safe_state_index = 0;
 
-		cpumask_copy(&dev->coupled_cpus,
-				topology_core_cpumask(cpu_id));
 		dev->state_count = drv->state_count;
 
 		if (cpuidle_register_device(dev)) {
@@ -370,8 +346,6 @@ int __init tc2_idle_init(void)
 		printk(KERN_INFO "Error in creating enable_mask file\n");
 
 	/* enable all wake-up IRQs by default */
-	vexpress_spc_set_wake_intr(0x7ff);
-	v2m_flags_set(virt_to_phys(tc2_cpu_resume));
 	on_each_cpu(update_cluster_id, NULL, 1);
 	switcher_pm_register_notifier(&switcher_notifier);
 
