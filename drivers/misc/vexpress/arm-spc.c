@@ -59,7 +59,7 @@
 #define GBL_WAKEUP_INT_MSK      (0x3 << 10)
 
 #define DRIVER_NAME	"SPC"
-#define TIME_OUT	100
+#define TIME_OUT	50
 
 struct vexpress_spc_drvdata {
 	void __iomem *baseaddr;
@@ -75,7 +75,12 @@ static inline int read_wait_to(void __iomem *reg, int status, int timeout)
 {
 	while (timeout-- && readl(reg) == status) {
 		cpu_relax();
-		udelay(2);
+		/*
+		 * As per timing specifications for DVFS, OSCCLK and Voltage
+		 * change can take minimum 854 uS on A15 and 846 uS on A7
+		 * So increasing loop relax timings
+		 */
+		udelay(100);
 	}
 	if (!timeout)
 		return -EAGAIN;
