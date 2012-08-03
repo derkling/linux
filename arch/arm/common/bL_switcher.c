@@ -686,7 +686,6 @@ int __init bL_switcher_init(const struct bL_power_ops *ops)
 	schedule_on_each_cpu(bL_enumerate_gic_cpu_id);
 #endif
 
-#endif
 #ifdef CONFIG_BL_SWITCHER_DUMMY_IF
 	misc_register(&bL_switcher_device);
 #endif
