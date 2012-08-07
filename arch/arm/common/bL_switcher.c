@@ -160,6 +160,17 @@ void __bL_outbound_leave_critical(unsigned int cluster, int state)
 #endif
 }
 
+int cpus_per_cluster[BL_NR_CLUSTERS];
+#define cpus_per_cluster(cluster) (cpus_per_cluster[cluster])
+
+void __init __bL_set_cpus_per_cluster(int cluster, int num)
+{
+	BUG_ON(cluster >= BL_NR_CLUSTERS);
+	if (num > num_online_cpus())
+		num = num_online_cpus();
+	cpus_per_cluster[cluster] = num;
+}
+
 /*
  * __bL_outbound_enter_critical: Enter the cluster teardown critical section.
  * This function should be called by the last man, after local CPU teardown
@@ -192,7 +203,7 @@ bool __bL_outbound_enter_critical(unsigned int cpu, unsigned int cluster)
 	 * If any CPU has been woken up again from the DOWN state, then we
 	 * shouldn't be taking the cluster down at all: abort in that case.
 	 */
-	for (i = 0; i < BL_CPUS_PER_CLUSTER; i++) {
+	for (i = 0; i < cpus_per_cluster(cluster); i++) {
 		int cpustate;
 
 		if (i == cpu)
@@ -382,7 +393,7 @@ int bL_switch_to(unsigned int new_cluster_id)
 
 	/* redirect GIC's SGIs to our counterpart */
 #if defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
-	gic_migrate_target(cpuid + ib_cluster * BL_CPUS_PER_CLUSTER);
+	gic_migrate_target(cpuid + ib_cluster * cpus_per_cluster(ib_cluster));
 #else
 	gic_migrate_target(bL_gic_id[cpuid][ib_cluster]);
 #endif

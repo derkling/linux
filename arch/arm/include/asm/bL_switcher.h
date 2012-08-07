@@ -29,6 +29,7 @@ extern const struct bL_power_ops *bL_platform_ops;
 
 int __init bL_switcher_init(const struct bL_power_ops *ops);
 int __init bL_switcher_reserve(void);
+void __init __bL_set_cpus_per_cluster(int cluster, int num);
 void __bL_cpu_going_down(unsigned int cpu, unsigned int cluster);
 void __bL_cpu_down(unsigned int cpu, unsigned int cluster);
 void __bL_outbound_leave_critical(unsigned int cluster, int state);
