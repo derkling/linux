@@ -50,16 +50,19 @@
 static struct cpufreq_frequency_table *freq_table[VEXPRESS_MAX_CLUSTER + 1];
 static atomic_t freq_table_users = ATOMIC_INIT(0);
 
-static unsigned int clk_big_min;	/* (Big) clock frequencies */
+static unsigned int clk_big_min;	/* Minimum (Big) clock frequency */
+static unsigned int clk_big_max;	/* Maximum (Big) clock frequency */
 static unsigned int clk_little_max;	/* Maximum clock frequency (Little) */
 static unsigned int big_cluster_id, little_cluster_id;
 static unsigned int cluster_switch;
+static unsigned int switch_2maxfreq = 1;
 
 #define BL_HYST_DEFAULT_COUNT	1
 static unsigned int bl_up_hyst_cfg_cnt = BL_HYST_DEFAULT_COUNT;
 static unsigned int bl_down_hyst_cfg_cnt = BL_HYST_DEFAULT_COUNT;
 static unsigned int bl_up_hyst_current_cnt = BL_HYST_DEFAULT_COUNT;
 static unsigned int bl_down_hyst_current_cnt = BL_HYST_DEFAULT_COUNT;
+static unsigned int switch_2maxfreq_cfg = 1;
 static DEFINE_PER_CPU(unsigned int, bl_up_hyst);
 static DEFINE_PER_CPU(unsigned int, bl_down_hyst);
 
@@ -83,9 +86,12 @@ show_one(bl_up_hyst_config, bl_up_hyst_cfg_cnt);
 store_one(bl_up_hyst_config, bl_up_hyst_cfg_cnt);
 show_one(bl_down_hyst_config, bl_down_hyst_cfg_cnt);
 store_one(bl_down_hyst_config, bl_down_hyst_cfg_cnt);
+show_one(switch_to_maxfreq_on_big, switch_2maxfreq_cfg);
+store_one(switch_to_maxfreq_on_big, switch_2maxfreq_cfg);
 
 cpufreq_freq_attr_rw(bl_up_hyst_config);
 cpufreq_freq_attr_rw(bl_down_hyst_config);
+cpufreq_freq_attr_rw(switch_to_maxfreq_on_big);
 
 /*
  * Functions to get the current status.
@@ -197,6 +203,8 @@ static int vexpress_cpufreq_set_target(struct cpufreq_policy *policy,
 			if (!cluster_switch &&
 					other_cpu_cluster == big_cluster_id)
 				freqs.new = max(freqs.new, other_cpu_freq);
+			if (!cluster_switch && switch_2maxfreq)
+				freqs.new = clk_big_max;
 			per_cpu(bl_up_hyst, policy->cpu) = 0;
 		} else {
 			if (!cluster_switch && other_cpu_cluster == cur_cluster)
@@ -342,6 +350,8 @@ static int vexpress_cpufreq_merge_tables(uint32_t total_sz)
 	clk_little_max = 0;
 	clk_big_min =
 		VIRT_FREQ(_cpufreq_get_table_min(freq_table[big_cluster_id]));
+	clk_big_max =
+		VIRT_FREQ(_cpufreq_get_table_max(freq_table[big_cluster_id]));
 	clk_little_max =
 		_cpufreq_get_table_max(freq_table[little_cluster_id]);
 
@@ -409,9 +419,11 @@ static int vexpress_cpufreq_notifier_policy(struct notifier_block *nb,
 		strcmp(policy->governor->name, "performance") == 0 ||
 		strcmp(policy->governor->name, "userspace") == 0) {
 		bl_up_hyst_current_cnt = bl_down_hyst_current_cnt = 1;
+		switch_2maxfreq = 0;
 	} else {
 		bl_up_hyst_current_cnt = bl_up_hyst_cfg_cnt;
 		bl_down_hyst_current_cnt = bl_down_hyst_cfg_cnt;
+		switch_2maxfreq = switch_2maxfreq_cfg;
 	}
 	per_cpu(bl_down_hyst, cpu) = per_cpu(bl_up_hyst, cpu) = 0;
 	return 0;
@@ -488,6 +500,7 @@ static struct freq_attr *vexpress_cpufreq_attr[] = {
 	&cpufreq_freq_attr_scaling_available_freqs,
 	&bl_up_hyst_config,
 	&bl_down_hyst_config,
+	&switch_to_maxfreq_on_big,
 	NULL,
 };
 
