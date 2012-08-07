@@ -145,14 +145,32 @@ static int vexpress_cpufreq_set_target(struct cpufreq_policy *policy,
 	pr_debug("Requested Freq %d cpu %d\n", freqs.new, policy->cpu);
 
 	if (is_bL_switching_enabled()) {
-		if (freqs.new < clk_big_min &&
+		/* Assume only 2 CPUs, using cpu^1 to refer other */
+		uint32_t other_cpu_cluster =
+				get_current_cached_cluster(policy->cpu ^ 1);
+		uint32_t other_cpu_freq = vexpress_cpufreq_get(policy->cpu ^ 1);
+		if (freqs.new <= clk_big_min &&
 			cur_cluster == big_cluster_id) {
 			do_switch = 1;	/* Switch to Little */
+			if (!cluster_switch &&
+					other_cpu_cluster == little_cluster_id)
+				freqs.new = max(freqs.new, other_cpu_freq);
 		} else if (freqs.new > clk_little_max &&
 			cur_cluster == little_cluster_id) {
-			do_switch = 1;	/* Switch to Big */
+			/*
+			 * Switch from LITTLE to big
+			 * Lets set new freq = max big freq
+			 */
+			do_switch = 1;
+			if (!cluster_switch &&
+					other_cpu_cluster == big_cluster_id)
+				freqs.new = max(freqs.new, other_cpu_freq);
+		} else {
+			if (!cluster_switch && other_cpu_cluster == cur_cluster)
+				freqs.new = max(freqs.new, other_cpu_freq);
 		}
 	}
+
 	for_each_cpu(cpu, policy->cpus) {
 		freqs.cpu = cpu;
 		cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
