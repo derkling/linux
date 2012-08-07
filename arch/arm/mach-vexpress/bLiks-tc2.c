@@ -313,14 +313,17 @@ static bool bLiks_power_up_finish(unsigned int cpu, unsigned int cluster)
 
 	 cpu_online_map[a7_clus_id] = vexpress_scc_read_rststat(a7_clus_id);
 	 cpu_online_map[a15_clus_id] = vexpress_scc_read_rststat(a15_clus_id);
-
+	__bL_set_cpus_per_cluster(a15_clus_id,
+			vexpress_spc_get_nb_cpus(a15_clus_id));
+	__bL_set_cpus_per_cluster(a7_clus_id,
+			vexpress_spc_get_nb_cpus(a7_clus_id));
 	 /*
 	  * Remove secondary startup address from per-cpu mailboxes to prevent
 	  * interference with gic cpuif id enumeration & fake resets. All cpus
 	  * are guaranteed to have booted up by now.
 	  */
 	for (idx = 0; idx < BL_NR_CLUSTERS; idx++)
-		for (ctr = 0; ctr < BL_CPUS_PER_CLUSTER; ctr++)
+		for (ctr = 0; ctr < vexpress_spc_get_nb_cpus(idx); ctr++)
 			vexpress_spc_write_bxaddr_reg(idx, ctr, 0x0);
 
 	return bL_switcher_init(&bLiks_power_ops);
