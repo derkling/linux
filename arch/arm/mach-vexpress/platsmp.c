@@ -15,6 +15,7 @@
 #include <linux/of_fdt.h>
 
 #include <asm/smp_scu.h>
+#include <asm/smp_plat.h>
 #include <asm/hardware/gic.h>
 #include <asm/mach/map.h>
 
@@ -201,13 +202,16 @@ void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 		if (!tc2_mailbox_base)
 			BUG();
 		else {
-			unsigned int rel_offset = 0;
+			unsigned int mpidr, rel_offset = 0;
 			int cpu = 0;
-
 			pr_info("tc2_mailbox_base = 0x%x \n", tc2_mailbox_base);
-
 			for_each_cpu(cpu, cpu_possible_mask) {
-				rel_offset += (cpu << 2) + (((read_mpidr() >> 8) & 0xff) << 4);
+				unsigned int hcluster, hcpu;
+
+				mpidr = cpu_logical_map(cpu);
+				hcpu = mpidr & 0xf;
+				hcluster = (mpidr >> 8) & 0xf;
+				rel_offset = (0x10 * hcluster) + (hcpu << 2);
 				pr_info("Set mailbox 0x%x to 0x%x \n",
 					(u32) tc2_mailbox_base + TC2_MAILBOX_OFFSET + rel_offset,
 					(u32) virt_to_phys(versatile_secondary_startup));
