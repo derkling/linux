@@ -52,6 +52,7 @@
 #define A7_RESET_STAT		0xB64
 #define A15_CONF		0x400
 #define A7_CONF			0x500
+#define SYS_INFO		0x700
 #define SCC_CFGREG6             0x018
 
 #define A15_STANDBYWFIL2_MSK    (1 << 2)
@@ -116,6 +117,23 @@ void vexpress_spc_write_bxaddr_reg(int cluster, int cpu, u32 val)
 }
 
 EXPORT_SYMBOL_GPL(vexpress_spc_write_bxaddr_reg);
+
+int vexpress_spc_get_nb_cpus(int cluster)
+{
+	u32 a15_clusid;
+	u32 val;
+
+	if (IS_ERR_OR_NULL(info))
+		return;
+
+	a15_clusid = readl_relaxed(info->baseaddr + A15_CONF) & 0xf;
+	val = readl_relaxed(info->baseaddr + SYS_INFO);
+	val = (cluster != a15_clusid) ? (val >> 20) : (val >> 16);
+
+	return (val & 0xf);
+}
+
+EXPORT_SYMBOL_GPL(vexpress_spc_get_nb_cpus);
 
 int vexpress_spc_standbywfil2_status(int cluster)
 {
