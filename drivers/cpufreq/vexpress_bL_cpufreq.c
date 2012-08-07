@@ -55,8 +55,37 @@ static unsigned int clk_little_max;	/* Maximum clock frequency (Little) */
 static unsigned int big_cluster_id, little_cluster_id;
 static unsigned int cluster_switch;
 
+#define BL_HYST_DEFAULT_COUNT	1
+static unsigned int bl_up_hyst_cfg_cnt = BL_HYST_DEFAULT_COUNT;
+static unsigned int bl_down_hyst_cfg_cnt = BL_HYST_DEFAULT_COUNT;
+static unsigned int bl_up_hyst_current_cnt = BL_HYST_DEFAULT_COUNT;
+static unsigned int bl_down_hyst_current_cnt = BL_HYST_DEFAULT_COUNT;
+static DEFINE_PER_CPU(unsigned int, bl_up_hyst);
+static DEFINE_PER_CPU(unsigned int, bl_down_hyst);
+
 /* Cached current cluster for each CPU to save on IPIs */
 static DEFINE_PER_CPU(unsigned int, cpu_cur_cluster);
+
+#define show_one(file_name, object)					\
+static ssize_t show_##file_name(struct cpufreq_policy *p, char *buf)	\
+{									\
+	return sprintf(buf, "%d\n", object);				\
+}
+#define store_one(file_name, object)					\
+static ssize_t store_##file_name(struct cpufreq_policy *p,		\
+					const char *buf, size_t n)	\
+{									\
+	if (sscanf(buf, "%u", &object) != 1)				\
+		return -EINVAL;						\
+	return n;							\
+}
+show_one(bl_up_hyst_config, bl_up_hyst_cfg_cnt);
+store_one(bl_up_hyst_config, bl_up_hyst_cfg_cnt);
+show_one(bl_down_hyst_config, bl_down_hyst_cfg_cnt);
+store_one(bl_down_hyst_config, bl_down_hyst_cfg_cnt);
+
+cpufreq_freq_attr_rw(bl_up_hyst_config);
+cpufreq_freq_attr_rw(bl_down_hyst_config);
 
 /*
  * Functions to get the current status.
@@ -150,13 +179,16 @@ static int vexpress_cpufreq_set_target(struct cpufreq_policy *policy,
 				get_current_cached_cluster(policy->cpu ^ 1);
 		uint32_t other_cpu_freq = vexpress_cpufreq_get(policy->cpu ^ 1);
 		if (freqs.new <= clk_big_min &&
-			cur_cluster == big_cluster_id) {
+			cur_cluster == big_cluster_id &&
+			++per_cpu(bl_down_hyst, policy->cpu) >= bl_down_hyst_current_cnt) {
 			do_switch = 1;	/* Switch to Little */
 			if (!cluster_switch &&
 					other_cpu_cluster == little_cluster_id)
 				freqs.new = max(freqs.new, other_cpu_freq);
+			per_cpu(bl_down_hyst, policy->cpu) = 0;
 		} else if (freqs.new > clk_little_max &&
-			cur_cluster == little_cluster_id) {
+			cur_cluster == little_cluster_id &&
+			++per_cpu(bl_up_hyst, policy->cpu) >= bl_up_hyst_current_cnt) {
 			/*
 			 * Switch from LITTLE to big
 			 * Lets set new freq = max big freq
@@ -165,11 +197,16 @@ static int vexpress_cpufreq_set_target(struct cpufreq_policy *policy,
 			if (!cluster_switch &&
 					other_cpu_cluster == big_cluster_id)
 				freqs.new = max(freqs.new, other_cpu_freq);
+			per_cpu(bl_up_hyst, policy->cpu) = 0;
 		} else {
 			if (!cluster_switch && other_cpu_cluster == cur_cluster)
 				freqs.new = max(freqs.new, other_cpu_freq);
 		}
 	}
+
+	/* Skipping for hysteresis management */
+	if (per_cpu(bl_down_hyst, policy->cpu) || per_cpu(bl_up_hyst, policy->cpu))
+		return ret;
 
 	for_each_cpu(cpu, policy->cpus) {
 		freqs.cpu = cpu;
@@ -361,6 +398,29 @@ free_mem:
 	return ret;
 }
 
+static int vexpress_cpufreq_notifier_policy(struct notifier_block *nb,
+		unsigned long val, void *data)
+{
+	struct cpufreq_policy *policy = data;
+	uint32_t cpu = policy->cpu;
+	if (val != CPUFREQ_NOTIFY)
+		return 0;
+	if (strcmp(policy->governor->name, "powersave") == 0 ||
+		strcmp(policy->governor->name, "performance") == 0 ||
+		strcmp(policy->governor->name, "userspace") == 0) {
+		bl_up_hyst_current_cnt = bl_down_hyst_current_cnt = 1;
+	} else {
+		bl_up_hyst_current_cnt = bl_up_hyst_cfg_cnt;
+		bl_down_hyst_current_cnt = bl_down_hyst_cfg_cnt;
+	}
+	per_cpu(bl_down_hyst, cpu) = per_cpu(bl_up_hyst, cpu) = 0;
+	return 0;
+}
+
+static struct notifier_block notifier_policy_block = {
+	.notifier_call = vexpress_cpufreq_notifier_policy
+};
+
 /* Per-CPU initialization */
 static int vexpress_cpufreq_init(struct cpufreq_policy *policy)
 {
@@ -406,12 +466,19 @@ static int vexpress_cpufreq_init(struct cpufreq_policy *policy)
 		cpumask_copy(policy->related_cpus, policy->cpus);
 	}
 
+	if (atomic_read(&freq_table_users) == 1)
+		result = cpufreq_register_notifier(&notifier_policy_block,
+				CPUFREQ_POLICY_NOTIFIER);
+
 	pr_info("CPUFreq for CPU %d initialized\n", policy->cpu);
 	return result;
 }
 
 static int vexpress_cpufreq_exit(struct cpufreq_policy *policy)
 {
+	if (atomic_read(&freq_table_users) == 1)
+		cpufreq_unregister_notifier(&notifier_policy_block,
+						CPUFREQ_POLICY_NOTIFIER);
 	atomic_dec_return(&freq_table_users);
 	return 0;
 }
@@ -419,6 +486,8 @@ static int vexpress_cpufreq_exit(struct cpufreq_policy *policy)
 /* Export freq_table to sysfs */
 static struct freq_attr *vexpress_cpufreq_attr[] = {
 	&cpufreq_freq_attr_scaling_available_freqs,
+	&bl_up_hyst_config,
+	&bl_down_hyst_config,
 	NULL,
 };
 
