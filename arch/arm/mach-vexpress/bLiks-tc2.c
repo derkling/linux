@@ -115,8 +115,6 @@ static bool bLiks_power_up_finish(unsigned int cpu, unsigned int cluster)
 	/* Disable wakeup irq source of this cpu to the power controller */
 	vexpress_spc_set_cpu_wakeup_irq(cpu, cluster, 0);
 
-	cpu_online_map[cluster] |= 1 << cpu;
-
 	if (cpu_online_map[cluster] == 0) {
 		ret = true;
 
@@ -131,6 +129,8 @@ static bool bLiks_power_up_finish(unsigned int cpu, unsigned int cluster)
 		 */
 		vexpress_spc_set_global_wakeup_intr(0);
 	}
+	
+	cpu_online_map[cluster] |= 1 << cpu;
 
 	raw_spin_unlock(&bLiks_lock);
 
