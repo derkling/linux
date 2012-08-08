@@ -589,6 +589,7 @@ static void gic_cpu_save(unsigned int gic_nr, void *arg)
 {
 	int i;
 	u32 *ptr;
+	int *param = arg;
 	void __iomem *dist_base;
 	void __iomem *cpu_base;
 
@@ -614,7 +615,7 @@ static void gic_cpu_save(unsigned int gic_nr, void *arg)
 	ptr = __this_cpu_ptr(gic_data[gic_nr].saved_sgi_pending);
 	for (i = 0; i < DIV_ROUND_UP(16, 4); i++) {
 			ptr[i] = readl_relaxed(dist_base + GIC_DIST_SGI_PENDING_SET + i * 4);
-			if (arg)
+			if (*param)
 				writel_relaxed(ptr[i], dist_base + GIC_DIST_SGI_PENDING_CLEAR + i * 4);
 			
 	}
