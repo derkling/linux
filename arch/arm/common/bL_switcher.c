@@ -675,12 +675,21 @@ int __init bL_switcher_init(const struct bL_power_ops *ops)
 	 * Set initial CPU and cluster states.
 	 * Only one cluster is assumed to be active at this point.
 	 */
-	this_cluster = (read_mpidr() >> 8) & 0xf;
 	memset(bL_sync, 0, sizeof *bL_sync);
+#if 1
+	this_cluster = (read_mpidr() >> 8)  & 0xf;
 	for_each_online_cpu(i)
 		bL_sync->clusters[this_cluster].cpus[i] = CPU_UP;
 	bL_sync->clusters[this_cluster].cluster = CLUSTER_UP;
 	bL_sync->clusters[this_cluster].first_man = FIRST_MAN_NONE;
+#else
+	for (this_cluster = 0; this_cluster < BL_NR_CLUSTERS; this_cluster++) {
+		for(i = 0; i < BL_CPUS_PER_CLUSTER; i++)
+			bL_sync->clusters[this_cluster].cpus[i] = CPU_UP;
+		bL_sync->clusters[this_cluster].cluster = CLUSTER_UP;
+		bL_sync->clusters[this_cluster].first_man = FIRST_MAN_NONE;
+	}
+#endif
 
 	bL_platform_ops = ops;
 	if (ops->power_up_setup) {
