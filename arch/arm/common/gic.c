@@ -605,7 +605,8 @@ static void gic_cpu_save(unsigned int gic_nr, void *arg)
 	ptr = __this_cpu_ptr(gic_data[gic_nr].saved_ppi_enable);
 	for (i = 0; i < DIV_ROUND_UP(32, 32); i++) {
 		ptr[i] = readl_relaxed(dist_base + GIC_DIST_ENABLE_SET + i * 4);
-		writel_relaxed(ptr[i], dist_base + GIC_DIST_ENABLE_CLEAR + i * 4);
+		if (param && *param)
+			writel_relaxed(ptr[i], dist_base + GIC_DIST_ENABLE_CLEAR + i * 4);
 	}
 
 	ptr = __this_cpu_ptr(gic_data[gic_nr].saved_ppi_conf);
@@ -615,7 +616,7 @@ static void gic_cpu_save(unsigned int gic_nr, void *arg)
 	ptr = __this_cpu_ptr(gic_data[gic_nr].saved_sgi_pending);
 	for (i = 0; i < DIV_ROUND_UP(16, 4); i++) {
 			ptr[i] = readl_relaxed(dist_base + GIC_DIST_SGI_PENDING_SET + i * 4);
-			if (*param)
+			if (param && *param)
 				writel_relaxed(ptr[i], dist_base + GIC_DIST_SGI_PENDING_CLEAR + i * 4);
 			
 	}
