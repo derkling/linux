@@ -133,7 +133,10 @@ static int tc2_enter_coupled(struct cpuidle_device *dev,
 
 	BUG_ON(!irqs_disabled());
 
-	cpu_pm_enter(0);
+	ret = cpu_pm_enter(0);
+
+	if (ret)
+		BUG();
 
 	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &dev->cpu);
 
