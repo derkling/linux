@@ -151,6 +151,7 @@ static int vexpress_cpufreq_set_target(struct cpufreq_policy *policy,
 	struct cpufreq_freqs freqs;
 	uint32_t freq_tab_idx;
 	uint32_t cluster, cur_cluster, new_cluster, do_switch = 0;
+	uint32_t policy_min, policy_max;
 	int ret = 0;
 
 	/* Read current clock rate */
@@ -184,6 +185,10 @@ static int vexpress_cpufreq_set_target(struct cpufreq_policy *policy,
 		uint32_t other_cpu_cluster =
 				get_current_cached_cluster(policy->cpu ^ 1);
 		uint32_t other_cpu_freq = vexpress_cpufreq_get(policy->cpu ^ 1);
+		policy_min = policy->min;
+		policy_max = policy->max;
+		policy->min = ACTUAL_FREQ(policy->min);
+		policy->max = ACTUAL_FREQ(policy->max);
 		if (freqs.new <= clk_big_min &&
 			cur_cluster == big_cluster_id &&
 			++per_cpu(bl_down_hyst, policy->cpu) >= bl_down_hyst_current_cnt) {
@@ -239,6 +244,11 @@ static int vexpress_cpufreq_set_target(struct cpufreq_policy *policy,
 							&new_cluster, 0);
 			per_cpu(cpu_cur_cluster, cpu) = new_cluster;
 		}
+	}
+
+	if (is_bL_switching_enabled()) {
+		policy->min = policy_min;
+		policy->max = policy_max;
 	}
 
 	policy->cur = freqs.new;
