@@ -234,7 +234,6 @@ static bool bLiks_power_up_finish(unsigned int cpu, unsigned int cluster)
 	  * the correct cache level to flush for the CPU's local
 	  * coherency domain.
 	  */
-	 disable_clean_inv_dcache(0);
 
 	 if (last_man && __bL_outbound_enter_critical(cpu, cluster)) {
 		 if (powerdown_needed(cluster)) {
@@ -242,7 +241,8 @@ static bool bLiks_power_up_finish(unsigned int cpu, unsigned int cluster)
 			  * flush remaining architected caches
 			  * not flushed by common code
 			  */
-			 flush_cache_all();
+	 		 disable_clean_inv_dcache(1);
+			 //flush_cache_all();
 
 			 /*
 			  * This is a harmless no-op.  On platforms with a real
@@ -269,10 +269,12 @@ static bool bLiks_power_up_finish(unsigned int cpu, unsigned int cluster)
 			 vexpress_scc_ctl_snoops(cluster, 0);
 
 			 __bL_outbound_leave_critical(cluster, CLUSTER_DOWN);
-		 } else
+		 } else {
+	 		disable_clean_inv_dcache(0);
 			 __bL_outbound_leave_critical(cluster, CLUSTER_UP);
-
-	 }
+		 }
+	 } else
+	 	disable_clean_inv_dcache(0);
 
 	 __bL_cpu_down(cpu, cluster);
 
