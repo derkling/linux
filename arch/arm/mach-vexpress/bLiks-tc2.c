@@ -40,7 +40,7 @@ extern void disable_clean_inv_dcache(int);
 /*
  * Lock for electing the last and first cpus in a cluster.
  */
-static DEFINE_RAW_SPINLOCK(bLiks_lock);
+static arch_spinlock_t bLiks_lock = __ARCH_SPIN_LOCK_UNLOCKED;
 static u32 cpu_online_map[BL_NR_CLUSTERS];
 
 /*
@@ -65,7 +65,7 @@ static void bLiks_power_up(unsigned int cpu, unsigned int cluster,
 {
 	u32 ret = 0;
 
-	raw_spin_lock(&bLiks_lock);
+	arch_spin_lock(&bLiks_lock);
 
 	vexpress_spc_powerdown_enable(cluster, 0);
 
@@ -89,7 +89,7 @@ static void bLiks_power_up(unsigned int cpu, unsigned int cluster,
 	vexpress_spc_set_cpu_wakeup_irq(cpu, cluster, 1);
 
 	arm_send_ping_ipi(cpu);
-	raw_spin_unlock(&bLiks_lock);
+	arch_spin_unlock(&bLiks_lock);
 
 	return;
 }
@@ -110,7 +110,7 @@ static bool bLiks_power_up_finish(unsigned int cpu, unsigned int cluster)
 {
 	bool ret = false;
 
-	raw_spin_lock(&bLiks_lock);
+	arch_spin_lock(&bLiks_lock);
 
 	/* Disable wakeup irq source of this cpu to the power controller */
 	vexpress_spc_set_cpu_wakeup_irq(cpu, cluster, 0);
@@ -132,7 +132,7 @@ static bool bLiks_power_up_finish(unsigned int cpu, unsigned int cluster)
 		vexpress_spc_set_global_wakeup_intr(0);
 	}
 
-	raw_spin_unlock(&bLiks_lock);
+	arch_spin_unlock(&bLiks_lock);
 
 	return ret;
 }
@@ -157,7 +157,7 @@ static bool bLiks_power_up_finish(unsigned int cpu, unsigned int cluster)
  {
 	 bool ret = false;
 
-	 raw_spin_lock(&bLiks_lock);
+	 arch_spin_lock(&bLiks_lock);
 
 	 /* Enable wakeup irq source of this cpu to the power controller */
 	 vexpress_spc_set_cpu_wakeup_irq(cpu, cluster, 1);
@@ -183,7 +183,7 @@ static bool bLiks_power_up_finish(unsigned int cpu, unsigned int cluster)
 		 ret = true;
 	 }
 
-	 raw_spin_unlock(&bLiks_lock);
+	 arch_spin_unlock(&bLiks_lock);
 
 	 return ret;
  }
