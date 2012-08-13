@@ -18,6 +18,10 @@
 #define	VEXPRESS_SPC_WAKE_INTR_GTIMER		(1 << 11)
 #define	VEXPRESS_SPC_WAKE_INTR_MASK			0xFFF
 
+#ifndef __ASSEMBLY__
+extern void plat_safe_barrier(unsigned int *);
+#endif
+
 #ifdef CONFIG_ARM_SPC
 
 /*
