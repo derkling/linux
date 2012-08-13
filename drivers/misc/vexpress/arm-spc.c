@@ -19,6 +19,7 @@
 #include <linux/delay.h>
 #include <linux/err.h>
 #include <linux/io.h>
+#include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
@@ -59,34 +60,19 @@
 #define GBL_WAKEUP_INT_MSK      (0x3 << 10)
 
 #define DRIVER_NAME	"SPC"
-#define TIME_OUT	50
+#define TIME_OUT_US	2000
 
 struct vexpress_spc_drvdata {
 	void __iomem *baseaddr;
 	spinlock_t lock;
+	int irq;
+	struct completion done;
 };
 
 static struct vexpress_spc_drvdata *info;
 
 /* SCC virtual address */
 u32 vscc;
-
-static inline int read_wait_to(void __iomem *reg, int status, int timeout)
-{
-	while (timeout-- && readl(reg) == status) {
-		cpu_relax();
-		/*
-		 * As per timing specifications for DVFS, OSCCLK and Voltage
-		 * change can take minimum 854 uS on A15 and 846 uS on A7
-		 * So increasing loop relax timings
-		 */
-		udelay(100);
-	}
-	if (!timeout)
-		return -EAGAIN;
-	else
-		return 0;
-}
 
 u32 vexpress_spc_get_clusterid(int cpu_part_no)
 {
@@ -242,6 +228,8 @@ int vexpress_spc_set_performance(int cluster, int perf)
 	if (IS_ERR_OR_NULL(info))
 		return -ENXIO;
 
+	init_completion(&info->done);
+
 	a15_clusid = readl_relaxed(info->baseaddr + A15_CONF) & 0xf;
 	perf_cfg_reg = cluster != a15_clusid ? PERF_LVL_A7 : PERF_LVL_A15;
 	perf_stat_reg = cluster != a15_clusid ? PERF_REQ_A7 : PERF_REQ_A15;
@@ -251,8 +239,12 @@ int vexpress_spc_set_performance(int cluster, int perf)
 
 	spin_lock(&info->lock);
 	writel(perf, info->baseaddr + perf_cfg_reg);
-	if (read_wait_to(info->baseaddr + perf_stat_reg, 1, TIME_OUT))
-		ret = -EAGAIN;
+
+	if (!wait_for_completion_timeout(&info->done,
+				usecs_to_jiffies(TIME_OUT_US))) {
+		ret = -ETIMEDOUT;
+	}
+
 	spin_unlock(&info->lock);
 	return ret;
 
@@ -483,9 +475,20 @@ bool vexpress_spc_check_loaded(void)
 }
 EXPORT_SYMBOL_GPL(vexpress_spc_check_loaded);
 
+irqreturn_t vexpress_spc_irq_handler(int irq, void *data)
+{
+	struct vexpress_spc_drvdata *drv_data = data;
+
+	readl_relaxed(drv_data->baseaddr + PWC_STATUS);
+
+	complete(&drv_data->done);
+
+	return IRQ_HANDLED;
+}
+
 static int __devinit vexpress_spc_driver_probe(struct platform_device *pdev)
 {
-	struct resource *res;
+	struct resource *res, *irq_res;
 	int ret = 0;
 
 	info = kzalloc(sizeof(*info), GFP_KERNEL);
@@ -515,12 +518,35 @@ static int __devinit vexpress_spc_driver_probe(struct platform_device *pdev)
 	}
 	vscc = (u32) info->baseaddr;
 	spin_lock_init(&info->lock);
+
+	irq_res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+	if (!irq_res) {
+		dev_err(&pdev->dev, "No interrupt resource\n");
+		ret = -EINVAL;
+		goto irq_err;
+	}
+	info->irq = irq_res->start;
+
+	init_completion(&info->done);
+
+	readl_relaxed(info->baseaddr + PWC_STATUS);
+
+	ret = request_irq(info->irq, vexpress_spc_irq_handler,
+			IRQF_DISABLED | IRQF_TRIGGER_HIGH | IRQF_ONESHOT, "arm-spc", info);
+	if (ret) {
+		dev_err(&pdev->dev, "IRQ %d request failed \n", info->irq);
+		ret = -ENODEV;
+		goto irq_err;
+	}
+
 	platform_set_drvdata(pdev, info);
 
 	pr_info("vexpress_spc loaded at %p\n", info->baseaddr);
 	vexpress_spc_loaded = true;
 	return ret;
 
+irq_err:
+	iounmap(info->baseaddr);
 ioremap_err:
 	release_region(res->start, resource_size(res));
 mem_free:
@@ -535,6 +561,7 @@ static int __devexit vexpress_spc_driver_remove(struct platform_device *pdev)
 	struct resource *res = pdev->resource;
 
 	info = platform_get_drvdata(pdev);
+	free_irq(info->irq, info);
 	iounmap(info->baseaddr);
 	release_region(res->start, resource_size(res));
 	kfree(info);
