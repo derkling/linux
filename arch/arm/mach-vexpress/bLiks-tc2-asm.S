@@ -1,5 +1,5 @@
 /*
- * arch/arm/include/asm/bL_iks_tc2-asm.S
+ * arch/arm/mach-vexpress/bL_iks_tc2-asm.S
  *
  * Created by:  Achin Gupta, 2012-07-25
  * Copyright:   (C) 2012  ARM Limited
