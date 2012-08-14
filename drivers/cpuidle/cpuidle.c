@@ -45,7 +45,7 @@ static int __cpuidle_register_device(struct cpuidle_device *dev);
 static inline int cpuidle_enter(struct cpuidle_device *dev,
 				struct cpuidle_driver *drv, int index)
 {
-	struct cpuidle_state *target_state = &drv->states[index];
+	struct cpuidle_state *target_state = &dev->states[index];
 	return target_state->enter(dev, drv, index);
 }
 
@@ -77,7 +77,7 @@ int cpuidle_play_dead(void)
 
 	/* Find lowest-power state that supports long-term idle */
 	for (i = CPUIDLE_DRIVER_STATE_START; i < drv->state_count; i++) {
-		struct cpuidle_state *s = &drv->states[i];
+		struct cpuidle_state *s = &dev->states[i];
 
 		if (s->power_usage < power_usage && s->enter_dead) {
 			power_usage = s->power_usage;
@@ -86,7 +86,7 @@ int cpuidle_play_dead(void)
 	}
 
 	if (dead_state != -1)
-		return drv->states[dead_state].enter_dead(dev, dead_state);
+		return dev->states[dead_state].enter_dead(dev, dead_state);
 
 	return -ENODEV;
 }
@@ -285,7 +285,7 @@ static void poll_idle_init(struct cpuidle_driver *drv)
 	state->power_usage = -1;
 	state->flags = 0;
 	state->enter = poll_idle;
-	state->disable = 0;
+	cpumask_clear(&state->disabled);
 }
 #else
 static void poll_idle_init(struct cpuidle_driver *drv) {}
@@ -309,6 +309,7 @@ int cpuidle_enable_device(struct cpuidle_device *dev)
 		return -EIO;
 	if (!dev->state_count)
 		dev->state_count = drv->state_count;
+	dev->states = drv->states;
 
 	if (dev->registered == 0) {
 		ret = __cpuidle_register_device(dev);
@@ -472,6 +473,23 @@ void cpuidle_unregister_device(struct cpuidle_device *dev)
 }
 
 EXPORT_SYMBOL_GPL(cpuidle_unregister_device);
+
+int cpuidle_register_states(struct cpuidle_device *dev,
+			    struct cpuidle_state *states,
+			    int state_count)
+{
+	if (!dev || !states)
+		return -EINVAL;
+
+	if (state_count <= 0)
+		return -EINVAL;
+
+	dev->states = states;
+	dev->state_count = state_count;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(cpuidle_register_states);
 
 #ifdef CONFIG_SMP
 

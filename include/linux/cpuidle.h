@@ -16,6 +16,7 @@
 #include <linux/kobject.h>
 #include <linux/completion.h>
 #include <linux/hrtimer.h>
+#include <linux/cpumask.h>
 
 #define CPUIDLE_STATE_MAX	8
 #define CPUIDLE_NAME_LEN	16
@@ -46,7 +47,7 @@ struct cpuidle_state {
 	unsigned int	exit_latency; /* in US */
 	int		power_usage; /* in mW */
 	unsigned int	target_residency; /* in US */
-	unsigned int    disable;
+	cpumask_t       disabled; /* a mask of cpu where this state is disabled */
 
 	int (*enter)	(struct cpuidle_device *dev,
 			struct cpuidle_driver *drv,
@@ -82,8 +83,8 @@ cpuidle_set_statedata(struct cpuidle_state_usage *st_usage, void *data)
 }
 
 struct cpuidle_state_kobj {
-	struct cpuidle_state *state;
-	struct cpuidle_state_usage *state_usage;
+	int index;
+	struct cpuidle_device *dev;
 	struct completion kobj_unregister;
 	struct kobject kobj;
 };
@@ -95,6 +96,7 @@ struct cpuidle_device {
 
 	int			last_residency;
 	int			state_count;
+	struct cpuidle_state    *states;
 	struct cpuidle_state_usage	states_usage[CPUIDLE_STATE_MAX];
 	struct cpuidle_state_kobj *kobjs[CPUIDLE_STATE_MAX];
 
@@ -147,7 +149,9 @@ struct cpuidle_driver *cpuidle_get_driver(void);
 extern void cpuidle_unregister_driver(struct cpuidle_driver *drv);
 extern int cpuidle_register_device(struct cpuidle_device *dev);
 extern void cpuidle_unregister_device(struct cpuidle_device *dev);
-
+extern int cpuidle_register_states(struct cpuidle_device *dev,
+				   struct cpuidle_state *states,
+				   int state_count);
 extern void cpuidle_pause_and_lock(void);
 extern void cpuidle_resume_and_unlock(void);
 extern int cpuidle_enable_device(struct cpuidle_device *dev);
@@ -157,7 +161,6 @@ extern int cpuidle_wrap_enter(struct cpuidle_device *dev,
 				int (*enter)(struct cpuidle_device *dev,
 					struct cpuidle_driver *drv, int index));
 extern int cpuidle_play_dead(void);
-
 #else
 static inline void disable_cpuidle(void) { }
 static inline int cpuidle_idle_call(void) { return -ENODEV; }
@@ -168,7 +171,10 @@ static inline void cpuidle_unregister_driver(struct cpuidle_driver *drv) { }
 static inline int cpuidle_register_device(struct cpuidle_device *dev)
 {return -ENODEV; }
 static inline void cpuidle_unregister_device(struct cpuidle_device *dev) { }
-
+static inline  int cpuidle_register_states(struct cpuidle_device *dev,
+					   struct cpuidle_state *states,
+					   int state_count)
+{ return -ENODEV; }
 static inline void cpuidle_pause_and_lock(void) { }
 static inline void cpuidle_resume_and_unlock(void) { }
 static inline int cpuidle_enable_device(struct cpuidle_device *dev)

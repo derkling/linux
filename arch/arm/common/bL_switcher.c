@@ -151,6 +151,17 @@ void __bL_outbound_leave_critical(unsigned int cluster, int state)
 	sev();
 }
 
+int cpus_per_cluster[BL_NR_CLUSTERS];
+#define cpus_per_cluster(cluster) (cpus_per_cluster[cluster])
+
+void __init __bL_set_cpus_per_cluster(int cluster, int num)
+{
+	BUG_ON(cluster >= BL_NR_CLUSTERS);
+	if (num > num_online_cpus())
+		num = num_online_cpus();
+	cpus_per_cluster[cluster] = num;
+}
+
 /*
  * __bL_outbound_enter_critical: Enter the cluster teardown critical section.
  * This function should be called by the last man, after local CPU teardown
@@ -183,7 +194,7 @@ bool __bL_outbound_enter_critical(unsigned int cpu, unsigned int cluster)
 	 * If any CPU has been woken up again from the DOWN state, then we
 	 * shouldn't be taking the cluster down at all: abort in that case.
 	 */
-	for (i = 0; i < BL_CPUS_PER_CLUSTER; i++) {
+	for (i = 0; i < cpus_per_cluster(cluster); i++) {
 		int cpustate;
 
 		if (i == cpu)
@@ -373,7 +384,7 @@ int bL_switch_to(unsigned int new_cluster_id)
 
 	/* redirect GIC's SGIs to our counterpart */
 #if defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
-	gic_migrate_target(cpuid + ib_cluster * BL_CPUS_PER_CLUSTER);
+	gic_migrate_target(cpuid + ib_cluster * cpus_per_cluster(ib_cluster));
 #else
 	gic_migrate_target(bL_gic_id[cpuid][ib_cluster]);
 #endif
@@ -655,12 +666,21 @@ int __init bL_switcher_init(const struct bL_power_ops *ops)
 	 * Set initial CPU and cluster states.
 	 * Only one cluster is assumed to be active at this point.
 	 */
-	this_cluster = (read_mpidr() >> 8) & 0xf;
 	memset(bL_sync, 0, sizeof *bL_sync);
+#if 1
+	this_cluster = (read_mpidr() >> 8)  & 0xf;
 	for_each_online_cpu(i)
 		bL_sync->clusters[this_cluster].cpus[i] = CPU_UP;
 	bL_sync->clusters[this_cluster].cluster = CLUSTER_UP;
 	bL_sync->clusters[this_cluster].first_man = FIRST_MAN_NONE;
+#else
+	for (this_cluster = 0; this_cluster < BL_NR_CLUSTERS; this_cluster++) {
+		for(i = 0; i < BL_CPUS_PER_CLUSTER; i++)
+			bL_sync->clusters[this_cluster].cpus[i] = CPU_UP;
+		bL_sync->clusters[this_cluster].cluster = CLUSTER_UP;
+		bL_sync->clusters[this_cluster].first_man = FIRST_MAN_NONE;
+	}
+#endif
 
 	bL_platform_ops = ops;
 	if (ops->power_up_setup) {

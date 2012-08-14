@@ -115,8 +115,6 @@ static bool bLiks_power_up_finish(unsigned int cpu, unsigned int cluster)
 	/* Disable wakeup irq source of this cpu to the power controller */
 	vexpress_spc_set_cpu_wakeup_irq(cpu, cluster, 0);
 
-	cpu_online_map[cluster] |= 1 << cpu;
-
 	if (cpu_online_map[cluster] == 0) {
 		ret = true;
 
@@ -131,6 +129,8 @@ static bool bLiks_power_up_finish(unsigned int cpu, unsigned int cluster)
 		 */
 		vexpress_spc_set_global_wakeup_intr(0);
 	}
+	
+	cpu_online_map[cluster] |= 1 << cpu;
 
 	arch_spin_unlock(&bLiks_lock);
 
@@ -234,7 +234,6 @@ static bool bLiks_power_up_finish(unsigned int cpu, unsigned int cluster)
 	  * the correct cache level to flush for the CPU's local
 	  * coherency domain.
 	  */
-	 disable_clean_inv_dcache(0);
 
 	 if (last_man && __bL_outbound_enter_critical(cpu, cluster)) {
 		 if (powerdown_needed(cluster)) {
@@ -242,7 +241,8 @@ static bool bLiks_power_up_finish(unsigned int cpu, unsigned int cluster)
 			  * flush remaining architected caches
 			  * not flushed by common code
 			  */
-			 flush_cache_all();
+	 		 disable_clean_inv_dcache(1);
+			 //flush_cache_all();
 
 			 /*
 			  * This is a harmless no-op.  On platforms with a real
@@ -269,10 +269,12 @@ static bool bLiks_power_up_finish(unsigned int cpu, unsigned int cluster)
 			 vexpress_scc_ctl_snoops(cluster, 0);
 
 			 __bL_outbound_leave_critical(cluster, CLUSTER_DOWN);
-		 } else
+		 } else {
+	 		disable_clean_inv_dcache(0);
 			 __bL_outbound_leave_critical(cluster, CLUSTER_UP);
-
-	 }
+		 }
+	 } else
+	 	disable_clean_inv_dcache(0);
 
 	 __bL_cpu_down(cpu, cluster);
 
@@ -313,14 +315,17 @@ static bool bLiks_power_up_finish(unsigned int cpu, unsigned int cluster)
 
 	 cpu_online_map[a7_clus_id] = vexpress_scc_read_rststat(a7_clus_id);
 	 cpu_online_map[a15_clus_id] = vexpress_scc_read_rststat(a15_clus_id);
-
+	__bL_set_cpus_per_cluster(a15_clus_id,
+			vexpress_spc_get_nb_cpus(a15_clus_id));
+	__bL_set_cpus_per_cluster(a7_clus_id,
+			vexpress_spc_get_nb_cpus(a7_clus_id));
 	 /*
 	  * Remove secondary startup address from per-cpu mailboxes to prevent
 	  * interference with gic cpuif id enumeration & fake resets. All cpus
 	  * are guaranteed to have booted up by now.
 	  */
 	for (idx = 0; idx < BL_NR_CLUSTERS; idx++)
-		for (ctr = 0; ctr < BL_CPUS_PER_CLUSTER; ctr++)
+		for (ctr = 0; ctr < vexpress_spc_get_nb_cpus(idx); ctr++)
 			vexpress_spc_write_bxaddr_reg(idx, ctr, 0x0);
 
 	return bL_switcher_init(&bLiks_power_ops);

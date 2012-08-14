@@ -286,17 +286,18 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 	 * unless the timer is happening really really soon.
 	 */
 	if (data->expected_us > 5 &&
-		drv->states[CPUIDLE_DRIVER_STATE_START].disable == 0)
+	    !cpumask_test_cpu(dev->cpu,
+			      &dev->states[CPUIDLE_DRIVER_STATE_START].disabled))
 		data->last_state_idx = CPUIDLE_DRIVER_STATE_START;
 
 	/*
 	 * Find the idle state with the lowest power while satisfying
 	 * our constraints.
 	 */
-	for (i = CPUIDLE_DRIVER_STATE_START; i < drv->state_count; i++) {
-		struct cpuidle_state *s = &drv->states[i];
+	for (i = CPUIDLE_DRIVER_STATE_START; i < dev->state_count; i++) {
+		struct cpuidle_state *s = &dev->states[i];
 
-		if (s->disable)
+		if (cpumask_test_cpu(dev->cpu, &s->disabled))
 			continue;
 		if (s->target_residency > data->predicted_us)
 			continue;
@@ -341,7 +342,7 @@ static void menu_update(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 	struct menu_device *data = &__get_cpu_var(menu_devices);
 	int last_idx = data->last_state_idx;
 	unsigned int last_idle_us = cpuidle_get_last_residency(dev);
-	struct cpuidle_state *target = &drv->states[last_idx];
+	struct cpuidle_state *target = &dev->states[last_idx];
 	unsigned int measured_us;
 	u64 new_factor;
 

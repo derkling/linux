@@ -58,6 +58,7 @@ extern int vexpress_spc_set_performance(int cluster, int perf);
 extern int vexpress_spc_wfi_cpustat(int cluster);
 extern void vexpress_spc_set_wake_intr(u32 mask);
 extern void vexpress_spc_write_bxaddr_reg(int cluster, int cpu, u32 val);
+extern int vexpress_spc_get_nb_cpus(int cluster);
 extern void vexpress_spc_write_rsthold_reg(int cluster, u32 value);
 extern void vexpress_spc_powerdown_enable(int cluster, int enable);
 extern void vexpress_spc_adb400_pd_enable(int cluster, int enable);
