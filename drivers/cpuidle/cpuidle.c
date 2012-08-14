@@ -489,7 +489,7 @@ int cpuidle_register_states(struct cpuidle_device *dev,
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(cpuidle_register_state);
+EXPORT_SYMBOL_GPL(cpuidle_register_states);
 
 #ifdef CONFIG_SMP
 
