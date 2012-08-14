@@ -64,3 +64,8 @@ ENTRY(bL_kfs_power_up_setup)
 2:	__bL_inbound_cpu_up r2, r1, r0
 	bx	lr
 ENDPROC(bL_kfs_power_up_setup)
+
+ENTRY(plat_safe_barrier)
+	dsb
+	bx	lr
+ENDPROC(plat_safe_barrier)

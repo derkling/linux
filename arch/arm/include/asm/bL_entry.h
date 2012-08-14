@@ -125,7 +125,11 @@ void bL_set_entry_vector(unsigned cpu, unsigned cluster, void *ptr);
 	mov	\temp1, #CPU_COMING_UP
 	strb	\temp1, [\cluster_base, \cpu]
 
-#if !defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
+#if defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
+	dmb
+	ldrb	\temp1, [\cluster_base, \cpu]
+	isb
+#else
 	dsb
 #endif
 
@@ -161,7 +165,11 @@ void bL_set_entry_vector(unsigned cpu, unsigned cluster, void *ptr);
 	strb	\temp1, [\cluster_base, #BL_SYNC_CLUSTER_FIRST_MAN]
 #endif
 
-#if !defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
+#if defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
+	dmb
+	ldrb	\temp1, [\cluster_base, #BL_SYNC_CLUSTER_INBOUND]
+	isb
+#else
 	dsb
 #endif
 

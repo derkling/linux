@@ -1,5 +1,5 @@
 /*
- * arch/arm/include/asm/bL_iks_tc2-asm.S
+ * arch/arm/mach-vexpress/bL_iks_tc2-asm.S
  *
  * Created by:  Achin Gupta, 2012-07-25
  * Copyright:   (C) 2012  ARM Limited
@@ -98,3 +98,20 @@ ENTRY(bLiks_power_up_setup)
 
 	bx	lr
 ENDPROC(bLiks_power_up_setup)
+
+/*
+ * TC2 specific barrier to ensure updates to variables in:
+ * a. Normal memory with SCTLR.C & I bits turned off
+ * b. Device and SO memory
+ * is globally observed without issuing a sync barrier. This
+ * is required before ACE/ACP snoops are enabled and after
+ * they are disabled.
+ *
+ * 'r0'	contains the address of the variable in question.
+ */
+ENTRY(plat_safe_barrier)
+	dmb
+	ldrb	r0, [r0]
+	isb
+	bx	lr
+ENDPROC(plat_safe_barrier)

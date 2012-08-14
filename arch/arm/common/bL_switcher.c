@@ -35,6 +35,7 @@
 #include <linux/string.h>
 #include <linux/device.h>
 #include <linux/switcher_pm.h>
+#include <linux/vexpress.h>
 
 #include <asm/suspend.h>
 #include <asm/cache.h>
@@ -129,15 +130,10 @@ void __bL_cpu_going_down(unsigned int cpu, unsigned int cluster)
  */
 void __bL_cpu_down(unsigned int cpu, unsigned int cluster)
 {
-#if !defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
-	dsb();
-#endif
+	dmb();
 	writeb_relaxed(CPU_DOWN, &bL_sync->clusters[cluster].cpus[cpu]);
-#if !defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
-	dsb_sev();
-#else
+	plat_safe_barrier((u32 *) &bL_sync->clusters[cluster].cpus[cpu]);
 	sev();
-#endif
 }
 
 /*
@@ -149,15 +145,10 @@ void __bL_cpu_down(unsigned int cpu, unsigned int cluster)
  */
 void __bL_outbound_leave_critical(unsigned int cluster, int state)
 {
-#if !defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
-	dsb();
-#endif
+	dmb();
 	writeb_relaxed(state, &bL_sync->clusters[cluster].cluster);
-#if !defined(CONFIG_ARCH_VEXPRESS_TC2_IKS)
-	dsb_sev();
-#else
+	plat_safe_barrier((u32 *) &bL_sync->clusters[cluster].cluster);
 	sev();
-#endif
 }
 
 /*
