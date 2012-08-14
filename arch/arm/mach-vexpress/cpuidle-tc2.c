@@ -26,6 +26,7 @@
 #include <asm/cputype.h>
 #include <asm/idmap.h>
 #include <asm/proc-fns.h>
+#include <asm/smp_plat.h>
 #include <asm/suspend.h>
 
 #include <mach/motherboard.h>
@@ -69,11 +70,31 @@ static struct cpuidle_state tc2_cpuidle_set[] __initdata = {
 	[1] = {
 		.enter			= tc2_enter_coupled,
 		.exit_latency		= 300,
-		.target_residency	= 1000,
-		.flags			= CPUIDLE_FLAG_TIME_VALID, 
+		.target_residency	= 2000,
+		.flags			= CPUIDLE_FLAG_TIME_VALID,
 		.name			= "C1",
 		.desc			= "ARM power down",
-		.disable		= 1,
+	},
+};
+
+static struct cpuidle_state tc2_cpuidle_a7_set[] = {
+	[0] = {
+		.enter                  = tc2_cpuidle_simple_enter,
+		.exit_latency           = 1,
+		.target_residency       = 1,
+		.power_usage		= UINT_MAX,
+		.flags                  = CPUIDLE_FLAG_TIME_VALID,
+		.name                   = "WFI",
+		.desc                   = "ARM WFI",
+	},
+	[1] = {
+		.enter			= tc2_enter_coupled,
+		.exit_latency		= 300,
+		.target_residency	= 1000,
+		.flags			= CPUIDLE_FLAG_TIME_VALID,
+		.name			= "C1",
+		.desc			= "ARM power down",
+		.power_usage		= -2,
 	},
 };
 
@@ -93,6 +114,18 @@ int cluster_id[NR_CPUS];
 
 extern void tc2_cpu_resume(void);
 extern void disable_snoops(void);
+
+void tc2_register_states(void *arg)
+{
+	int cpu = smp_processor_id();
+	int ret;
+	struct cpuidle_device* dev;
+	dev = &per_cpu(tc2_idle_dev, cpu);
+	ret = cpuidle_register_states(dev,
+		tc2_cpuidle_a7_set,
+		sizeof(tc2_cpuidle_a7_set)/sizeof(tc2_cpuidle_a7_set[0]));
+	WARN_ON(ret);
+}
 
 int tc2_coupled_finisher(unsigned long arg)
 {
@@ -296,6 +329,7 @@ int __init tc2_idle_init(void)
 	int i, cpu_id;
 	struct dentry *idle_debug, *file_debug;
 	struct cpuidle_driver *drv = &tc2_idle_driver;
+	cpumask_t tmp;
 
 	if (!vexpress_spc_check_loaded()) {
 		pr_info("TC2 CPUidle not registered because no SPC found\n");
@@ -348,8 +382,13 @@ int __init tc2_idle_init(void)
 	if (IS_ERR_OR_NULL(file_debug))
 		printk(KERN_INFO "Error in creating enable_mask file\n");
 
+	for_each_online_cpu(cpu_id) {
+		if ((cpu_logical_map(cpu_id) >> 8) & 0xf)
+			cpumask_set_cpu(cpu_id, &tmp);
+	}
 	/* enable all wake-up IRQs by default */
 	on_each_cpu(update_cluster_id, NULL, 1);
+	on_each_cpu_mask(&tmp, tc2_register_states, NULL, 0);
 	switcher_pm_register_notifier(&switcher_notifier);
 
 	return 0;
