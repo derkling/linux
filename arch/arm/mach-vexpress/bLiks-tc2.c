@@ -306,6 +306,11 @@ static bool bLiks_power_up_finish(unsigned int cpu, unsigned int cluster)
  {
 	 u32 ctr, idx;
 
+	if (!vexpress_spc_check_loaded()) {
+		pr_info("bLiks not initialised because no SPC found\n");
+		return -ENODEV;
+	}
+
 	 /*
 	  * Initialize our cpu online maps assuming that A15 is 0 and A7 is 1.
 	  * These maps keep track of cpus migrating between the two clusters.
