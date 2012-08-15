@@ -23,7 +23,7 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
-#include <linux/spinlock.h>
+#include <linux/semaphore.h>
 #include <linux/vexpress.h>
 
 #define PERF_LVL_A15		0xB00
@@ -61,11 +61,11 @@
 #define GBL_WAKEUP_INT_MSK      (0x3 << 10)
 
 #define DRIVER_NAME	"SPC"
-#define TIME_OUT_US	2000
+#define TIME_OUT_US	3000
 
 struct vexpress_spc_drvdata {
 	void __iomem *baseaddr;
-	spinlock_t lock;
+	struct semaphore lock;
 	int irq;
 	struct completion done;
 };
@@ -115,7 +115,7 @@ int vexpress_spc_get_nb_cpus(int cluster)
 	u32 val;
 
 	if (IS_ERR_OR_NULL(info))
-		return;
+		return -ENXIO;
 
 	a15_clusid = readl_relaxed(info->baseaddr + A15_CONF) & 0xf;
 	val = readl_relaxed(info->baseaddr + SYS_INFO);
@@ -219,7 +219,6 @@ int vexpress_spc_get_performance(int cluster, int *perf)
 {
 	u32 perf_cfg_reg = 0;
 	u32 a15_clusid = 0;
-	int ret = 0;
 
 	if (IS_ERR_OR_NULL(info))
 		return -ENXIO;
@@ -227,11 +226,12 @@ int vexpress_spc_get_performance(int cluster, int *perf)
 	a15_clusid = readl_relaxed(info->baseaddr + A15_CONF) & 0xf;
 	perf_cfg_reg = cluster != a15_clusid ? PERF_LVL_A7 : PERF_LVL_A15;
 
-	spin_lock(&info->lock);
+	if (down_timeout(&info->lock, usecs_to_jiffies(TIME_OUT_US)))
+		return -ETIME;
 	*perf = readl(info->baseaddr + perf_cfg_reg);
-	spin_unlock(&info->lock);
+	up(&info->lock);
 
-	return ret;
+	return 0;
 
 }
 EXPORT_SYMBOL_GPL(vexpress_spc_get_performance);
@@ -255,15 +255,16 @@ int vexpress_spc_set_performance(int cluster, int perf)
 	if (perf < 0 || perf > 7)
 		return -EINVAL;
 
-	spin_lock(&info->lock);
+	if (down_timeout(&info->lock, usecs_to_jiffies(TIME_OUT_US)))
+		return -ETIME;
 	writel(perf, info->baseaddr + perf_cfg_reg);
 
-	if (!wait_for_completion_timeout(&info->done,
+	if (!wait_for_completion_interruptible_timeout(&info->done,
 				usecs_to_jiffies(TIME_OUT_US))) {
 		ret = -ETIMEDOUT;
 	}
 
-	spin_unlock(&info->lock);
+	up(&info->lock);
 	return ret;
 
 }
@@ -359,9 +360,7 @@ void vexpress_spc_adb400_pd_enable(int cluster, int enable)
 	a15_clusid = readl_relaxed(info->baseaddr + A15_CONF) & 0xf;
 	pwdrn_reg = cluster != a15_clusid ? A7_PWRDNREQ : A15_PWRDNREQ;
 
-	spin_lock(&info->lock);
 	writel(val, info->baseaddr + pwdrn_reg);
-	spin_unlock(&info->lock);
 	return;
 }
 EXPORT_SYMBOL_GPL(vexpress_spc_adb400_pd_enable);
@@ -456,14 +455,12 @@ void vexpress_spc_wfi_cluster_reset(int cluster, int enable)
 		rsthold_reg = A15_RESET_HOLD;
 		shift = 4;
 	}
-	spin_lock(&info->lock);
 	val = readl(info->baseaddr + rsthold_reg);
 	if (enable)
 		val |= 1 << shift;
 	else
 		val &= ~(1 << shift);
 	writel(val, info->baseaddr + rsthold_reg);
-	spin_unlock(&info->lock);
 	return;
 }
 EXPORT_SYMBOL_GPL(vexpress_spc_wfi_cluster_reset);
@@ -535,7 +532,7 @@ static int __devinit vexpress_spc_driver_probe(struct platform_device *pdev)
 		goto ioremap_err;
 	}
 	vscc = (u32) info->baseaddr;
-	spin_lock_init(&info->lock);
+	sema_init(&info->lock, 1);
 
 	irq_res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
 	if (!irq_res) {
