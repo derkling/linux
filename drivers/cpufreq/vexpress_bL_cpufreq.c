@@ -240,7 +240,7 @@ static int vexpress_cpufreq_set_target(struct cpufreq_policy *policy,
 	}
 	ret = vexpress_spc_set_performance(new_cluster, freq_tab_idx);
 	if (ret) {
-		pr_err("Error %d while setting required OPP\n", ret);
+		pr_debug("Error %d while setting required OPP\n", ret);
 		return ret;
 	}
 
