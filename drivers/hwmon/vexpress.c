@@ -28,9 +28,15 @@ struct vexpress_config_device {
 int vexpress_config_read(struct vexpress_config_device *vecdev,
 		int offset, u32 *data)
 {
-	u32 devfn = (vecdev->func << 20) | (vecdev->site << 16) |
+	int ret;
+	unsigned long flags;
+	u32 devfn;
+	local_irq_save(flags);
+	devfn = (vecdev->func << 20) | (vecdev->site << 16) |
 			((vecdev->device + offset) << 0);
-	return v2m_cfg_read(devfn, data);
+	ret = v2m_cfg_read(devfn, data);
+	local_irq_restore(flags);
+	return ret;
 }
 #endif	/* HACK end */
 
