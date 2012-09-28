@@ -75,6 +75,7 @@ static void __init v2m_sysctl_init(void __iomem *base)
 
 static void __init v2m_sp804_init(void __iomem *base, unsigned int irq)
 {
+#ifndef CONFIG_ARCH_COLUMBUS
 	if (WARN_ON(!base || irq == NO_IRQ))
 		return;
 
@@ -83,6 +84,7 @@ static void __init v2m_sp804_init(void __iomem *base, unsigned int irq)
 
 	sp804_clocksource_init(base + TIMER_2_BASE, "v2m-timer1");
 	sp804_clockevents_init(base + TIMER_1_BASE, irq, "v2m-timer0");
+#endif
 }
 
 
@@ -90,6 +92,7 @@ static DEFINE_SPINLOCK(v2m_cfg_lock);
 
 int v2m_cfg_write(u32 devfn, u32 data)
 {
+#ifndef CONFIG_ARCH_COLUMBUS
 	/* Configuration interface broken? */
 	u32 val;
 
@@ -110,10 +113,14 @@ int v2m_cfg_write(u32 devfn, u32 data)
 	spin_unlock(&v2m_cfg_lock);
 
 	return !!(val & SYS_CFG_ERR);
+#else
+	return 0;
+#endif
 }
 
 int v2m_cfg_read(u32 devfn, u32 *data)
 {
+#ifndef CONFIG_ARCH_COLUMBUS
 	u32 val;
 
 	devfn |= SYS_CFG_START;
@@ -133,19 +140,29 @@ int v2m_cfg_read(u32 devfn, u32 *data)
 	spin_unlock(&v2m_cfg_lock);
 
 	return !!(val & SYS_CFG_ERR);
+#else
+	return 0;
+#endif
 }
 
 void __init v2m_flags_set(u32 data)
 {
+#ifndef CONFIG_ARCH_COLUMBUS
 	writel(~0, v2m_sysreg_base + V2M_SYS_FLAGSCLR);
 	writel(data, v2m_sysreg_base + V2M_SYS_FLAGSSET);
+#endif
 }
 
 int v2m_get_master_site(void)
 {
+#ifndef CONFIG_ARCH_COLUMBUS
 	u32 misc = readl(v2m_sysreg_base + V2M_SYS_MISC);
 
 	return misc & SYS_MISC_MASTERSITE ? SYS_CFG_SITE_DB2 : SYS_CFG_SITE_DB1;
+#else
+	/* Columbus only has 1 "CoreTile" */
+	return 1;
+#endif
 }
 
 
@@ -287,12 +304,19 @@ static struct platform_device v2m_cf_device = {
 
 static unsigned int v2m_mmci_status(struct device *dev)
 {
+#ifndef CONFIG_ARCH_COLUMBUS
 	return readl(v2m_sysreg_base + V2M_SYS_MCI) & (1 << 0);
+#else
+	return 1;
+#endif
 }
 
 static struct mmci_platform_data v2m_mmci_data = {
 	.ocr_mask	= MMC_VDD_32_33|MMC_VDD_33_34,
 	.status		= v2m_mmci_status,
+#ifdef CONFIG_ARCH_COLUMBUS
+	.capabilities	= MMC_CAP_NONREMOVABLE,
+#endif
 };
 
 static AMBA_APB_DEVICE(aaci,  "mb:aaci",  0, V2M_AACI, IRQ_V2M_AACI, NULL);
@@ -408,6 +432,7 @@ static void __init v2m_clk_init(void)
 	struct clk *clk;
 	int i;
 
+	pr_info("vexpress: v2m_clk_init\n");
 	clk = clk_register_fixed_rate(NULL, "dummy_apb_pclk", NULL,
 			CLK_IS_ROOT, 0);
 	WARN_ON(clk_register_clkdev(clk, "apb_pclk", NULL));
@@ -454,14 +479,18 @@ static void __init v2m_init_early(void)
 
 static void v2m_power_off(void)
 {
+#ifndef CONFIG_ARCH_COLUMBUS
 	if (v2m_cfg_write(SYS_CFG_SHUTDOWN | SYS_CFG_SITE_MB, 0))
 		printk(KERN_EMERG "Unable to shutdown\n");
+#endif
 }
 
 static void v2m_restart(char str, const char *cmd)
 {
+#ifndef CONFIG_ARCH_COLUMBUS
 	if (v2m_cfg_write(SYS_CFG_REBOOT | SYS_CFG_SITE_MB, 0))
 		printk(KERN_EMERG "Unable to reboot\n");
+#endif
 }
 struct ct_desc *ct_desc;
 
@@ -650,8 +679,10 @@ void __init v2m_dt_map_io(void)
 
 	of_scan_flat_dt(v2m_dt_scan_memory_map, &map);
 
-	if (map && strcmp(map, "rs1") == 0)
+	if (map && strcmp(map, "rs1") == 0) {
+		pr_info("Using RS1 memory map\n");
 		iotable_init(&v2m_rs1_io_desc, 1);
+	}
 	else
 		iotable_init(v2m_io_desc, ARRAY_SIZE(v2m_io_desc));
 
@@ -662,6 +693,7 @@ void __init v2m_dt_map_io(void)
 
 void __init v2m_dt_init_early(void)
 {
+#ifndef CONFIG_ARCH_COLUMBUS
 	struct device_node *node;
 	u32 dt_hbi;
 
@@ -681,9 +713,12 @@ void __init v2m_dt_init_early(void)
 			pr_warning("vexpress: DT HBI (%x) is not matching "
 					"hardware (%x)!\n", dt_hbi, hbi);
 	}
+#else
+	v2m_sysreg_base = NULL;
+#endif
 
 	v2m_dt_hdlcd_init();
-	v2m_dt_clcd_init();
+	/* v2m_dt_clcd_init(); */
 }
 
 static  struct of_device_id vexpress_irq_match[] __initdata = {
@@ -703,8 +738,10 @@ static void __init v2m_dt_timer_init(void)
 	int err;
 	struct clk *clk;
 
+#ifndef CONFIG_ARCH_COLUMBUS
 	node = of_find_compatible_node(NULL, NULL, "arm,sp810");
 	v2m_sysctl_init(of_iomap(node, 0));
+#endif
 
 	v2m_clk_init();
 
@@ -716,18 +753,22 @@ static void __init v2m_dt_timer_init(void)
 	if (arch_timer_of_register() != 0)
 		twd_local_timer_of_register();
 
-	if (arch_timer_sched_clock_init() != 0)
+	if (arch_timer_sched_clock_init() != 0) {
+		// pr_info("vexpress: failed to register architected timers as sched_clock\n");
 		versatile_sched_clock_init(v2m_sysreg_base + V2M_SYS_24MHZ, 24000000);
+	}
 
 	if (v2m_dt_hdlcd_osc.site) {
 		clk = v2m_osc_register("hdlcd", &v2m_dt_hdlcd_osc);
 		clk_register_clkdev(clk, NULL, "hdlcd");
 	}
+#ifndef CONFIG_ARCH_COLUMBUS
 	if (v2m_dt_clcd_osc.site) {
 		/* core tile clcd controller for A9 */
 		clk = v2m_osc_register("10020000.clcd", &v2m_dt_clcd_osc);
 		clk_register_clkdev(clk, NULL, "10020000.clcd");
 	}
+#endif
 }
 
 static struct sys_timer v2m_dt_timer = {
@@ -735,13 +776,15 @@ static struct sys_timer v2m_dt_timer = {
 };
 
 static struct of_dev_auxdata v2m_dt_auxdata_lookup[] __initdata = {
+#ifndef CONFIG_ARCH_COLUMBUS
 	OF_DEV_AUXDATA("arm,vexpress-flash", V2M_NOR0, "physmap-flash",
 			&v2m_flash_data),
 	OF_DEV_AUXDATA("arm,primecell", V2M_MMCI, "mb:mmci", &v2m_mmci_data),
 	/* RS1 memory map */
 	OF_DEV_AUXDATA("arm,vexpress-flash", 0x08000000, "physmap-flash",
 			&v2m_flash_data),
-	OF_DEV_AUXDATA("arm,primecell", 0x1c050000, "mb:mmci", &v2m_mmci_data),
+#endif
+	OF_DEV_AUXDATA("arm,primecell", 0x1c050000, "1c050000.mmci", &v2m_mmci_data),
 	{}
 };
 
@@ -755,6 +798,9 @@ static void __init v2m_dt_init(void)
 
 const static char *v2m_dt_match[] __initconst = {
 	"arm,vexpress",
+#ifdef CONFIG_ARCH_COLUMBUS
+	"arm,columbus",
+#endif
 	NULL,
 };
 

@@ -35,6 +35,18 @@ config ARCH_VEXPRESS_CA9X4
 	select HAVE_SMP
 	select MIGHT_HAVE_CACHE_L2X0
 
+config ARCH_COLUMBUS
+	bool "Columbus RTSM4 support"
+	select ARM_GIC
+	select ARM_PATCH_PHYS_VIRT
+	select AUTO_ZRELADDR
+	select CPU_V7
+	select HAVE_SMP
+	select MIGHT_HAVE_CACHE_L2X0
+	select USE_OF
+	help
+	  Provides support for Columbus RTSM4 platform (big.LITTLE)
+
 config ARCH_VEXPRESS_DT
 	bool "Device Tree support for Versatile Express platforms"
 	select ARCH_VEXPRESS_CORTEX_A5_A9_ERRATA
