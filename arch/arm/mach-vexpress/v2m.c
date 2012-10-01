@@ -369,10 +369,12 @@ static long v2m_osc_round_rate(struct clk_hw *hw, unsigned long rate,
 static int v2m_osc_set_rate(struct clk_hw *hw, unsigned long rate,
 		unsigned long parent_rate)
 {
+#ifndef CONFIG_ARCH_COLUMBUS
 	struct v2m_osc *osc = to_v2m_osc(hw);
 
 	v2m_cfg_write(SYS_CFG_OSC | SYS_CFG_SITE(osc->site) |
 		SYS_CFG_STACK(osc->stack) | osc->osc, rate);
+#endif
 
 	return 0;
 }
@@ -432,7 +434,6 @@ static void __init v2m_clk_init(void)
 	struct clk *clk;
 	int i;
 
-	pr_info("vexpress: v2m_clk_init\n");
 	clk = clk_register_fixed_rate(NULL, "dummy_apb_pclk", NULL,
 			CLK_IS_ROOT, 0);
 	WARN_ON(clk_register_clkdev(clk, "apb_pclk", NULL));
@@ -443,9 +444,14 @@ static void __init v2m_clk_init(void)
 		WARN_ON(clk_register_clkdev(clk, NULL, v2m_ref_clk_periphs[i]));
 
 	clk = clk_register_fixed_rate(NULL, "mb:sp804_clk", NULL,
+#ifndef CONFIG_ARCH_COLUMBUS
 			CLK_IS_ROOT, 1000000);
 	WARN_ON(clk_register_clkdev(clk, "v2m-timer0", "sp804"));
 	WARN_ON(clk_register_clkdev(clk, "v2m-timer1", "sp804"));
+#else
+			CLK_IS_ROOT, 100000000);
+	WARN_ON(clk_register_clkdev(clk, "globaltimer", "sp804"));
+#endif
 
 	clk = v2m_osc_register("mb:osc1", &v2m_mb_osc1);
 	for (i = 0; i < ARRAY_SIZE(v2m_osc1_periphs); i++)
@@ -754,15 +760,14 @@ static void __init v2m_dt_timer_init(void)
 		twd_local_timer_of_register();
 
 	if (arch_timer_sched_clock_init() != 0) {
-		// pr_info("vexpress: failed to register architected timers as sched_clock\n");
 		versatile_sched_clock_init(v2m_sysreg_base + V2M_SYS_24MHZ, 24000000);
 	}
 
+#ifndef CONFIG_ARCH_COLUMBUS
 	if (v2m_dt_hdlcd_osc.site) {
 		clk = v2m_osc_register("hdlcd", &v2m_dt_hdlcd_osc);
 		clk_register_clkdev(clk, NULL, "hdlcd");
 	}
-#ifndef CONFIG_ARCH_COLUMBUS
 	if (v2m_dt_clcd_osc.site) {
 		/* core tile clcd controller for A9 */
 		clk = v2m_osc_register("10020000.clcd", &v2m_dt_clcd_osc);

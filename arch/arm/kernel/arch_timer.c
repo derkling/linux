@@ -397,7 +397,7 @@ static int __init arch_timer_register(void)
 		goto out_free;
 	}
 
-	err = local_timer_register(&arch_timer_ops);
+	err = 1; /*local_timer_register(&arch_timer_ops);*/
 	if (err) {
 		/*
 		 * We couldn't register as a local timer (could be

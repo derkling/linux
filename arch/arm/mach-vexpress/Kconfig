@@ -42,7 +42,6 @@ config ARCH_COLUMBUS
 	select AUTO_ZRELADDR
 	select CPU_V7
 	select HAVE_SMP
-	select MIGHT_HAVE_CACHE_L2X0
 	select USE_OF
 	help
 	  Provides support for Columbus RTSM4 platform (big.LITTLE)

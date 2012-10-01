@@ -215,13 +215,20 @@
 			     <0 91 4>;
 	};*/
 
-	arch_timer: timer {
+	arch_timer: arch_timer {
 		compatible = "arm,armv7-timer";
-		interrupts = <1 13 0xff08>,
-			     <1 14 0xff08>,
-			     <1 11 0xff08>,
-			     <1 10 0xff08>;
+		interrupts = <1 13 0xf08>,
+			     <1 14 0xf08>,
+			     <1 11 0xf08>,
+			     <1 10 0xf08>;
+		clock-frequency = <3000000>;
 	};
+
+	/*globaltimer: timer@1c110000 {
+		compatible = "arm,sp804", "arm,primecell";
+		reg = <0x1c110000 0x10000>;
+		interrupts = <0 2 4>;
+	};*/
 
 	/*pmu {
 		compatible = "arm,cortex-a15-pmu", "arm,cortex-a9-pmu";
