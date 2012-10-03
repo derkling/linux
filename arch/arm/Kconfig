@@ -1065,6 +1065,8 @@ config ARCH_VEXPRESS
 	select PLAT_VERSATILE_CLCD
 	select REGULATOR_FIXED_VOLTAGE if REGULATOR
 	select MAY_HAVE_SPARSE_IRQ
+	select MIGHT_HAVE_PCI
+	select ARCH_SUPPORTS_MSI
 
 #
 # This is sorted alphabetically by mach-* pathname.  However, plat-*
