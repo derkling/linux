@@ -156,4 +156,6 @@ source "drivers/pwm/Kconfig"
 
 source "drivers/gator/Kconfig"
 
+source "drivers/pci/host/Kconfig"
+
 endmenu
