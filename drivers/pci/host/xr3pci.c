@@ -45,6 +45,7 @@ struct pcie_port {
 	struct resource resource[5];
 	int numresources;
 	int irq;
+	int irqINTA, irqINTB, irqINTC, irqINTD;
 	spinlock_t conf_lock;
 };
 
@@ -198,10 +199,18 @@ static struct pci_ops xr3pci_ops = {
 
 static int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 {
-	//TODO: Old style PCI interrupts
-
 	pr_debug("%s:%d xr3pci_map_irq:", __func__, __LINE__);
-	return 0;
+	struct pci_sys_data *sys = dev->sysdata;
+	struct pcie_port *pp = sys->private_data;
+
+	switch (pin) {
+	case 1: return pp->irqINTA;
+	case 2: return pp->irqINTB;
+	case 3: return pp->irqINTC;
+	case 4: return pp->irqINTD;
+	}
+
+	return -1;
 }
 
 //TODO: This is really just for development
@@ -352,6 +361,32 @@ static int __init xr3pci_get_resources(struct pcie_port *pp, struct device_node 
 	pp->irq = irq_of_parse_and_map(np, 0);
 	if (!pp->irq) {
 		pr_err(DEVICE_NAME ": Failed to map MSI IRQ\n");
+		err = -EINVAL;
+		goto err_irq;
+	}
+
+	/* INTx IRQs */
+	pp->irqINTA = irq_of_parse_and_map(np, 1);
+	if (!pp->irqINTA) {
+		pr_err(DEVICE_NAME ": Failed to map INTA IRQ\n");
+		err = -EINVAL;
+		goto err_irq;
+	}
+	pp->irqINTB = irq_of_parse_and_map(np, 2);
+	if (!pp->irqINTB) {
+		pr_err(DEVICE_NAME ": Failed to map INTB IRQ\n");
+		err = -EINVAL;
+		goto err_irq;
+	}
+	pp->irqINTC = irq_of_parse_and_map(np, 3);
+	if (!pp->irqINTC) {
+		pr_err(DEVICE_NAME ": Failed to map INTC IRQ\n");
+		err = -EINVAL;
+		goto err_irq;
+	}
+	pp->irqINTD = irq_of_parse_and_map(np, 4);
+	if (!pp->irqINTD) {
+		pr_err(DEVICE_NAME ": Failed to map INTD IRQ\n");
 		err = -EINVAL;
 		goto err_irq;
 	}
