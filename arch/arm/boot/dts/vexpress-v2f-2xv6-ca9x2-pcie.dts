@@ -55,7 +55,11 @@
 		compatible = "arm,xr3pci";
 		device_type = "pci";
 		reg = <0x30000000 0x1000>;
-		interrupts = <0 121 4>; /* MSI */
+		interrupts = <0 121 4  /* MSI */
+			      0 117 4  /* INTA */
+			      0 118 4  /* INTB */
+			      0 119 4  /* INTC */
+			      0 120 4>;/* INTD */
 		bus-ranges = <0 255>;
 
 		#address-cells = <3>;
