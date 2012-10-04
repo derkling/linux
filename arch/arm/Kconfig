@@ -1521,7 +1521,11 @@ config PCI_HOST_ITE8152
 	default y
 	select DMABOUNCE
 
+source "drivers/pci/pcie/Kconfig"
+
 source "drivers/pci/Kconfig"
+
+source "drivers/pci/hotplug/Kconfig"
 
 source "drivers/pcmcia/Kconfig"
 
