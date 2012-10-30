@@ -28,10 +28,6 @@
 #define DEVICE_VENDOR_ID  0x1556
 #define DEVICE_DEVICE_ID  0x1100
 
-//TODO: remove in production
-//	whilst waiting for hardware use simulation to permit initial testing
-#define USE_SIMULATION
-
 //TODO: remove or use properly
 #define pr_debug printk
 
@@ -55,35 +51,24 @@ static u32 xr3pci_read(void __iomem * addr)
 {
 	u32 val = 0;
 
-#ifdef USE_SIMULATION
-	val = 0;
+	pr_debug("%s:%d xr3pci_read: read from 0x%x\n",
+		__func__, __LINE__, addr);
 
-	pr_debug("%s:%d xr3pci_read (sim): read 0x%x from 0x%x\n",
-		__func__, __LINE__,
-		val, addr);
-#else
 	val = readl(addr);
 
-	pr_debug("%s:%d xr3pci_read: read 0x%x from 0x%x\n",
-		__func__, __LINE__,
-		val, addr);
-#endif
+	pr_debug("%s:%d xr3pci_read: read value 0x%x\n",
+		__func__, __LINE__, val);
+
 	return val;
 }
 
 static void xr3pci_write(u32 val, void __iomem *addr)
 {
-#ifdef USE_SIMULATION
-	pr_debug("%s:%d xr3pci_write (sim): wrote 0x%x to 0x%x\n",
-		__func__, __LINE__,
-		val, addr);
-#else
-	writel(val, addr);
-
 	pr_debug("%s:%d xr3pci_write: wrote 0x%x to 0x%x\n",
 		__func__, __LINE__,
 		val, addr);
-#endif
+
+	writel(val, addr);
 }
 
 /**
