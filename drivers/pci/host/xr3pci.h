@@ -2,8 +2,13 @@
 #ifndef __XPRESS_RICH3_H__
 #define __XPRESS_RICH3_H__
 
+/* Host Bridge Identification */
+#define DEVICE_NAME "XpressRICH3-AXI PCIe Host Bridge"
+#define DEVICE_VENDOR_ID  0x1556
+#define DEVICE_DEVICE_ID  0x1100
+
 //TODO
-#define IRQ_MSI_BASE 0
+#define IRQ_MSI_BASE 260
 #define MAX_SUPPORTED_NO_MSI 32
 //TODO: use lists instead
 #define MAX_SUPPORTED_DEVICES 2

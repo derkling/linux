@@ -39,11 +39,11 @@
 			compatible = "arm,cortex-a9";
 			reg = <0>;
 		};
-		cpu@1 {
+/*		cpu@1 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a9";
 			reg = <1>;
-		};
+		};*/
 	};
 
 	memory@80000000 {
@@ -54,12 +54,8 @@
 	pci0: pci@30000000 {
 		compatible = "arm,xr3pci";
 		device_type = "pci";
-		reg = <0x30000000 0x1000>;
-		interrupts = <0 121 4  /* MSI */
-			      0 117 4  /* INTA */
-			      0 118 4  /* INTB */
-			      0 119 4  /* INTC */
-			      0 120 4>;/* INTD */
+		reg = <0x30000000 0x2000>; //TODO 1000->2000 was a hack to make sure config space is mapped in
+		interrupts = <0 90 4>;  /* MSI */
 		bus-ranges = <0 255>;
 
 		#address-cells = <3>;
@@ -68,6 +64,21 @@
 			/* divided memory into prefetchable / non-prefetchable */
 		ranges = <0x42000000 0 0x50000000 0x50000000 0 0x10000000 /* 32bit 256MB Prefetchable 1:1 */
 		   	  0x02000000 0 0x40000000 0x40000000 0 0x10000000>; /* 32bit 256MB Non prefetchable 1:1 */
+
+		#interrupt-cells = <1>;
+		interrupt-map-mask = <0 0 0 0 7>;
+		interrupt-map = <0 0 0 1 &gic 117 4
+				 0 0 0 2 &gic 118 4
+				 0 0 0 3 &gic 119 4
+				 0 0 0 4 &gic 120 4>;
+	};
+
+	msi@030000000 {
+		compatible = "arm,gic-msi";
+		reg = <0x30000180 0x7f>,
+		      <0x40000180 0x04>;  /* Interrupt and Event Registers of pci0 */
+		msi-max-vectors = <0x20>;
+                interrupts = <0 121 4>;
 	};
 
 	gic: interrupt-controller@2c0c1000 {

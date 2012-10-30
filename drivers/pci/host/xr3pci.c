@@ -12,21 +12,20 @@
 #include <linux/pci.h>
 #include <linux/module.h>
 #include <linux/spinlock.h>
+#include <linux/interrupt.h>
+#include <asm/signal.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
+#include <linux/of_pci.h>
 #include <linux/of_platform.h>
+#include <linux/delay.h>
 
 #include <asm/io.h>
 #include <asm/mach/pci.h>
 #include <asm/mach/irq.h>
 
 #include "xr3pci.h"
-
-/* Host Bridge Identification */
-#define DEVICE_NAME "XpressRICH3-AXI PCIe Host Bridge"
-#define DEVICE_VENDOR_ID  0x1556
-#define DEVICE_DEVICE_ID  0x1100
 
 //TODO: remove or use properly
 #define pr_debug printk
@@ -40,7 +39,6 @@ struct pcie_port {
 	void __iomem	*base;
 	struct resource resource[5];
 	int numresources;
-	int irq;
 	int irqINTA, irqINTB, irqINTC, irqINTD;
 	spinlock_t conf_lock;
 };
@@ -82,9 +80,21 @@ static int xr3pci_read_config(struct pci_bus *bus, unsigned int devfn, int where
 	struct pci_sys_data *sys = bus->sysdata;
 	struct pcie_port *pp = sys->private_data;
 
-	pr_debug("%s:%d xr3pci_read_config size: %d, where: %d, ID: %d:%d:%d\n",
-		 __func__, __LINE__,
-		 size, where, bus->number, PCI_SLOT(devfn), PCI_FUNC(devfn));
+	if (bus->number != 0 || PCI_SLOT(devfn) != 0 || PCI_FUNC(devfn) != 0) {
+//		printk("Skipping...\n");
+		*val = 0xffffffff;
+		return PCIBIOS_SUCCESSFUL;
+	}
+
+	if (bus->number == 0 && where == PCI_CLASS_REVISION && size == 4) {
+//		printk(" - fake\n");
+                 *val = 0x06040001;    /* Bridge/PCI-PCI/rev 1 */
+                return PCIBIOS_SUCCESSFUL;
+        }
+
+//	pr_debug("%s:%d xr3pci_read_config size: %d, where: %d, ID: %d:%d:%d\n",
+//		 __func__, __LINE__,
+//		 size, where, bus->number, PCI_SLOT(devfn), PCI_FUNC(devfn));
 
 	/* We expect requests which are aligned to the request size which is
 	   either 1, 2 or 4 bytes. We also expect this function to be called
@@ -112,7 +122,9 @@ static int xr3pci_read_config(struct pci_bus *bus, unsigned int devfn, int where
 	//TODO: locking may not be required due to pci_lock in
 	//	drivers/pci/access.c, but left in during development
 	spin_lock_irqsave(&pp->conf_lock, flags);
-	xr3pci_write(cfgnum, pp->base + PCIE_CFGNUM);
+	//xr3pci_write(cfgnum, pp->base + PCIE_CFGNUM);
+	writew(cfgnum, pp->base + PCIE_CFGNUM);
+	writeb((cfgnum >> 16), pp->base + PCIE_CFGNUM + 2);
 	*val = xr3pci_read(pp->base + BRIDGE_PCIE_CONFIG + (where & ~0x3));
 	spin_unlock_irqrestore(&pp->conf_lock, flags);
 
@@ -125,6 +137,7 @@ static int xr3pci_read_config(struct pci_bus *bus, unsigned int devfn, int where
 		*val = (*val >> (8 * (where & 3))) & 0xffff;
 		break;
 	}
+//	printk("Returning value read ali as 0x%x\n", *val);
 
 	return PCIBIOS_SUCCESSFUL;
 }
@@ -140,9 +153,9 @@ static int xr3pci_write_config(struct pci_bus *bus, unsigned int devfn, int wher
 	struct pci_sys_data *sys = bus->sysdata;
 	struct pcie_port *pp = sys->private_data;
 
-	pr_debug("%s:%d xr3pci_write_config size: %d, where: %d, ID: %d:%d:%d\n",
-		 __func__, __LINE__,
-		 size, where, bus->number, PCI_SLOT(devfn), PCI_FUNC(devfn));
+//	pr_debug("%s:%d xr3pci_write_config size: %d, where: %d, ID: %d:%d:%d value = 0x%x\n",
+//		 __func__, __LINE__,
+//		 size, where, bus->number, PCI_SLOT(devfn), PCI_FUNC(devfn), val);
 	
 	/* We expect requests which are aligned to the request size which is
 	   either 1, 2 or 4 bytes. We also expect this function to be called
@@ -152,8 +165,8 @@ static int xr3pci_write_config(struct pci_bus *bus, unsigned int devfn, int wher
 	   need for locking here */
 
  	//TODO: extra guards during development
-	WARN(size + (where & 3) > 4, "CfgWd spans DWORD boundary\n");
-	WARN(size == 3, "CfgWd size is unexpected (3)\n");
+	WARN(size + (where & 3) > 4, "CfgWr spans DWORD boundary\n");
+	WARN(size == 3, "CfgWr size is unexpected (3)\n");
 
 	/* Specify target of configuration write */
 	cfgnum = PCIE_CFGNUM_R(bus->number,     /* bus */
@@ -170,7 +183,10 @@ static int xr3pci_write_config(struct pci_bus *bus, unsigned int devfn, int wher
 	//TODO: locking may not be required due to pci_lock in
 	//	drivers/pci/access.c, but left in during development
 	spin_lock_irqsave(&pp->conf_lock, flags);
-	xr3pci_write(cfgnum, pp->base + PCIE_CFGNUM);
+	//r3pci_write(cfgnum, pp->base + PCIE_CFGNUM);
+	writew(cfgnum, pp->base + PCIE_CFGNUM);
+	writeb((cfgnum >> 16), pp->base + PCIE_CFGNUM + 2);
+	udelay(1000);
 	xr3pci_write(val << ((where & 3) * 8), pp->base + BRIDGE_PCIE_CONFIG + (where & ~0x3));
 	spin_unlock_irqrestore(&pp->conf_lock, flags);
 
@@ -185,8 +201,15 @@ static struct pci_ops xr3pci_ops = {
 static int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 {
 	pr_debug("%s:%d xr3pci_map_irq:", __func__, __LINE__);
+
+#if 1
+
 	struct pci_sys_data *sys = dev->sysdata;
 	struct pcie_port *pp = sys->private_data;
+
+	struct of_irq out;
+	if (of_irq_map_pci(dev, &out))
+		printk("Error mapping...\n");
 
 	switch (pin) {
 	case 1: return pp->irqINTA;
@@ -196,6 +219,7 @@ static int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 	}
 
 	return -1;
+#endif
 }
 
 //TODO: This is really just for development
@@ -217,6 +241,7 @@ static int __init xr3pci_probe(struct pcie_port *pp)
 	/* top nibble describes if core is configured as native endpoint or root port */
 	if ((xr3pci_read(pp->base + PCIE_BASIC_CONF) & 0xf0000000) != 0x10000000) {
 		printk(DEVICE_NAME " is not hardwired as a root port\n");
+		printk(DEVICE_NAME " is 0x%x\n", xr3pci_read(pp->base + PCIE_BASIC_CONF));
 		return -1;
 	}
 
@@ -242,38 +267,6 @@ static int __init xr3pci_probe(struct pcie_port *pp)
 	return 0;
 }
 
-static void xr3pci_msi_handler(unsigned int irq, struct irq_desc *desc)
-{
-	int j;
-	unsigned long status;
-	struct pcie_port *pp;
-	struct irq_chip *chip = irq_get_chip(irq);
-	
-	chained_irq_enter(chip, desc);
-	pp = irq_desc_get_handler_data(desc);
-	pr_debug("%s:%d xr3pci_msi_handler\n", __func__, __LINE__);
-
-	/* check an MSI really occured */	
-	if (!(xr3pci_read(pp->base + ISTATUS_LOCAL) & INT_MSI))
-		goto out;
-
-	/* clear MSI interrupt */
-	xr3pci_write(INT_MSI, pp->base + ISTATUS_LOCAL);
-
-	/* call handlers for pending MSIs */
-	status = xr3pci_read(pp->base + ISTATUS_MSI);
-	do {
-		//TODO: locking
-		j = find_first_bit(&status, MAX_SUPPORTED_NO_MSI);
-		xr3pci_write((1 << j), pp->base + ISTATUS_MSI);
-		generic_handle_irq(IRQ_MSI_BASE + j);
-		status = xr3pci_read(pp->base + ISTATUS_MSI);
-	} while (status);
-
-out:
-	chained_irq_exit(chip, desc);
-}
-
 static int __init xr3pci_setup(int nr, struct pci_sys_data *sys)
 {
 	int x=0;
@@ -286,6 +279,8 @@ static int __init xr3pci_setup(int nr, struct pci_sys_data *sys)
 	sys->private_data = pp;
 
 	xr3pci_probe(pp);
+
+	xr3pci_write(0x10000000, pp->base + IMASK_LOCAL);	
 
 	for (x=0;x<pp->numresources;x++) {
 		if (pp->resource[x].flags & IORESOURCE_MEM) {
@@ -303,13 +298,6 @@ static int __init xr3pci_setup(int nr, struct pci_sys_data *sys)
 			pci_add_resource_offset(&sys->resources, &(pp->resource[x]), sys->io_offset);
 		}
 	}
-
-#ifdef CONFIG_PCI_MSI
-	/* set up MSI handler and unmask MSI interrupt generation */
-	irq_set_handler_data(pp->irq, pp); 
-	irq_set_chained_handler(pp->irq, xr3pci_msi_handler);
-	xr3pci_write(INT_MSI, pp->base + IMASK_LOCAL);	
-#endif
 
 	return 1;
 }
@@ -335,6 +323,7 @@ static int __init xr3pci_get_resources(struct pcie_port *pp, struct device_node 
 		return -EBUSY;
 	}
 
+
 	pp->base = ioremap_nocache(res.start, resource_size(&res));
 	if (!pp->base) {
 		pr_err(DEVICE_NAME ": Failed to map configuration registers resource\n");
@@ -342,15 +331,8 @@ static int __init xr3pci_get_resources(struct pcie_port *pp, struct device_node 
 		goto err_map_io;
 	}
 
-	/* MSI IRQ */
-	pp->irq = irq_of_parse_and_map(np, 0);
-	if (!pp->irq) {
-		pr_err(DEVICE_NAME ": Failed to map MSI IRQ\n");
-		err = -EINVAL;
-		goto err_irq;
-	}
-
 	/* INTx IRQs */
+/*
 	pp->irqINTA = irq_of_parse_and_map(np, 1);
 	if (!pp->irqINTA) {
 		pr_err(DEVICE_NAME ": Failed to map INTA IRQ\n");
@@ -375,7 +357,7 @@ static int __init xr3pci_get_resources(struct pcie_port *pp, struct device_node 
 		err = -EINVAL;
 		goto err_irq;
 	}
-
+*/
 	/* PCIe addres spaces */
 
 	/* determine parent's address size and size of PCIe resource (in cells) */
@@ -444,6 +426,7 @@ err_map_io:
 	return err;
 }
 
+//TODO does ILOCAL also need to be cleared after INTx interrpt?
 static struct hw_pci xr3pci_hw_pci __initdata = {
 	.nr_controllers = 0,
 	.setup		= xr3pci_setup,
@@ -492,7 +475,7 @@ static int __init xr3pci_init(void)
 	*/	
 	for_each_matching_node(np, xr3pci_device_id) {
 		struct pcie_port *pp;
-
+	
 		/* is there enough room for another controller? */
 		//TODO: use a list
 		if (xr3pci_hw_pci.nr_controllers >= MAX_SUPPORTED_DEVICES) {
