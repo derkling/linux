@@ -456,9 +456,19 @@ static const struct __initconst of_device_id xr3pci_device_id[] = {
 	{},
 };
 
+static int xr3pci_abort(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
+{
+	if (fsr & (1 << 10))
+		regs->ARM_pc += 4;
+	return 0;
+}
+
 static int __init xr3pci_init(void)
 {
 	struct device_node *np;
+
+	/* Temporary abort handler until hardware behaves itself */	
+	hook_fault_code(16 + 6, xr3pci_abort, SIGBUS, 0, "imprecise external abort");
 	
 	/* The arch/arm/kernel/bios32.c pci_common_init helper is not DT
 	   friendly which prevents the use of platform_driver with a
