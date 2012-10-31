@@ -41,6 +41,7 @@ struct pcie_port {
 	int numresources;
 	int irqINTA, irqINTB, irqINTC, irqINTD;
 	spinlock_t conf_lock;
+	struct device_node *dn;
 };
 
 static struct pcie_port pcie_port[MAX_SUPPORTED_DEVICES];
@@ -49,22 +50,22 @@ static u32 xr3pci_read(void __iomem * addr)
 {
 	u32 val = 0;
 
-	pr_debug("%s:%d xr3pci_read: read from 0x%x\n",
-		__func__, __LINE__, addr);
+//	pr_debug("%s:%d xr3pci_read: read from 0x%x\n",
+//		__func__, __LINE__, addr);
 
 	val = readl(addr);
 
-	pr_debug("%s:%d xr3pci_read: read value 0x%x\n",
-		__func__, __LINE__, val);
+//	pr_debug("%s:%d xr3pci_read: read value 0x%x\n",
+//		__func__, __LINE__, val);
 
 	return val;
 }
 
 static void xr3pci_write(u32 val, void __iomem *addr)
 {
-	pr_debug("%s:%d xr3pci_write: wrote 0x%x to 0x%x\n",
-		__func__, __LINE__,
-		val, addr);
+//	pr_debug("%s:%d xr3pci_write: wrote 0x%x to 0x%x\n",
+//		__func__, __LINE__,
+//		val, addr);
 
 	writel(val, addr);
 }
@@ -80,20 +81,20 @@ static int xr3pci_read_config(struct pci_bus *bus, unsigned int devfn, int where
 	struct pci_sys_data *sys = bus->sysdata;
 	struct pcie_port *pp = sys->private_data;
 
-	if (bus->number != 0 || PCI_SLOT(devfn) != 0 || PCI_FUNC(devfn) != 0) {
+//	if (bus->number != 0 || PCI_SLOT(devfn) != 0 || PCI_FUNC(devfn) != 0) {
 //		printk("Skipping...\n");
-		*val = 0xffffffff;
-		return PCIBIOS_SUCCESSFUL;
-	}
+//		*val = 0xffffffff;
+//		return PCIBIOS_SUCCESSFUL;
+//	}
 
-	if (bus->number == 0 && where == PCI_CLASS_REVISION && size == 4) {
+	if (bus->number == 0 && where == PCI_CLASS_REVISION && size == 4 && PCI_SLOT(devfn) == 0 && PCI_FUNC(devfn) == 0) {
 //		printk(" - fake\n");
                  *val = 0x06040001;    /* Bridge/PCI-PCI/rev 1 */
                 return PCIBIOS_SUCCESSFUL;
         }
 
 //	pr_debug("%s:%d xr3pci_read_config size: %d, where: %d, ID: %d:%d:%d\n",
-//		 __func__, __LINE__,
+//	 __func__, __LINE__,
 //		 size, where, bus->number, PCI_SLOT(devfn), PCI_FUNC(devfn));
 
 	/* We expect requests which are aligned to the request size which is
@@ -200,8 +201,9 @@ static struct pci_ops xr3pci_ops = {
 
 static int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 {
-	pr_debug("%s:%d xr3pci_map_irq:", __func__, __LINE__);
-
+	pr_debug("%s:%d xr3pci_map_irq %d:%d:%d for slot %d pin %d\n", __func__, __LINE__,
+						dev->bus->number, PCI_SLOT(dev->devfn), PCI_FUNC(dev->devfn), slot, pin);
+	
 #if 1
 
 	struct pci_sys_data *sys = dev->sysdata;
@@ -211,14 +213,10 @@ static int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 	if (of_irq_map_pci(dev, &out))
 		printk("Error mapping...\n");
 
-	switch (pin) {
-	case 1: return pp->irqINTA;
-	case 2: return pp->irqINTB;
-	case 3: return pp->irqINTC;
-	case 4: return pp->irqINTD;
-	}
-
-	return -1;
+		int virq = irq_create_of_mapping(out.controller, out.specifier,
+					     out.size);
+	printk("Given IRQ %d (pin %d)\n", virq, pin);
+	return virq;
 #endif
 }
 
@@ -267,6 +265,16 @@ static int __init xr3pci_probe(struct pcie_port *pp)
 	return 0;
 }
 
+static irqreturn_t handler(int irq, void *dev_id)
+{
+	struct pcie_port *pp = (struct pcie_port *)dev_id;
+
+	printk("Habndler for irq %d\n", irq);
+	xr3pci_write(1 << (irq-125), pp->base + ISTATUS_LOCAL);
+	
+	return 0;
+}
+
 static int __init xr3pci_setup(int nr, struct pci_sys_data *sys)
 {
 	int x=0;
@@ -280,7 +288,12 @@ static int __init xr3pci_setup(int nr, struct pci_sys_data *sys)
 
 	xr3pci_probe(pp);
 
-	xr3pci_write(0x10000000, pp->base + IMASK_LOCAL);	
+	xr3pci_write(0xffffffff, pp->base + IMASK_LOCAL);
+	for (x=0;x<32;x++) {
+		if (request_irq(125+x, handler, 0, "xr3", pp)) {
+			printk("unable to request irq %d\n", 125+x);
+		}
+	}
 
 	for (x=0;x<pp->numresources;x++) {
 		if (pp->resource[x].flags & IORESOURCE_MEM) {
@@ -439,6 +452,16 @@ static const struct __initconst of_device_id xr3pci_device_id[] = {
 	{},
 };
 
+struct device_node *pcibios_get_phb_of_node(struct pci_bus *bus)
+{
+	struct pci_sys_data *sys = bus->sysdata;
+	struct pcie_port *pp = sys->private_data;
+
+	printk("NEW %p\n", pp->dn);
+	return of_node_get(pp->dn);
+	//TODO: not of_node_get reference counting
+}
+
 static int xr3pci_abort(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 {
 	if (fsr & (1 << 10))
@@ -487,6 +510,8 @@ static int __init xr3pci_init(void)
 		pp = &pcie_port[xr3pci_hw_pci.nr_controllers];
 		pp->numresources = 0;
 		spin_lock_init(&pp->conf_lock);
+
+		pp->dn = np;
 
 		/* add DT resources to the controller */
 		if (xr3pci_get_resources(pp, np)) {

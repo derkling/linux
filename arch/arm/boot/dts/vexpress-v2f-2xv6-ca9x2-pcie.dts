@@ -55,7 +55,6 @@
 		compatible = "arm,xr3pci";
 		device_type = "pci";
 		reg = <0x30000000 0x2000>; //TODO 1000->2000 was a hack to make sure config space is mapped in
-		interrupts = <0 90 4>;  /* MSI */
 		bus-ranges = <0 255>;
 
 		#address-cells = <3>;
@@ -67,10 +66,10 @@
 
 		#interrupt-cells = <1>;
 		interrupt-map-mask = <0 0 0 0 7>;
-		interrupt-map = <0 0 0 1 &gic 117 4
-				 0 0 0 2 &gic 118 4
-				 0 0 0 3 &gic 119 4
-				 0 0 0 4 &gic 120 4>;
+		interrupt-map = <0 0 0 1 &gic 0 117 4
+				 0 0 0 2 &gic 0 118 4
+				 0 0 0 3 &gic 0 119 4
+				 0 0 0 4 &gic 0 120 4>;
 	};
 
 	msi@030000000 {
