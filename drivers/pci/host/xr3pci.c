@@ -10,6 +10,7 @@
  */
 #include <linux/kernel.h>
 #include <linux/pci.h>
+#include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/spinlock.h>
 #include <linux/interrupt.h>
@@ -30,8 +31,6 @@
 //TODO: remove or use properly
 #define pr_debug printk
 
-static struct hw_pci xr3pci_hw_pci;
-
 /* per controller structure */
 struct pcie_port {
 	//TODO: rather than store lots of fields used once - pass the device tree
@@ -39,12 +38,12 @@ struct pcie_port {
 	void __iomem	*base;
 	struct resource resource[5];
 	int numresources;
-	int irqINTA, irqINTB, irqINTC, irqINTD;
-	spinlock_t conf_lock;
-	struct device_node *dn;
-};
+       spinlock_t conf_lock;
 
-static struct pcie_port pcie_port[MAX_SUPPORTED_DEVICES];
+};
+static int __init xr3pci_get_resources(struct pcie_port *pp, struct device_node *np);
+
+static struct pcie_port pcie_port[10];
 
 static u32 xr3pci_read(void __iomem * addr)
 {
@@ -81,12 +80,6 @@ static int xr3pci_read_config(struct pci_bus *bus, unsigned int devfn, int where
 	struct pci_sys_data *sys = bus->sysdata;
 	struct pcie_port *pp = sys->private_data;
 
-//	if (bus->number != 0 || PCI_SLOT(devfn) != 0 || PCI_FUNC(devfn) != 0) {
-//		printk("Skipping...\n");
-//		*val = 0xffffffff;
-//		return PCIBIOS_SUCCESSFUL;
-//	}
-
 	if (bus->number == 0 && where == PCI_CLASS_REVISION && size == 4 && PCI_SLOT(devfn) == 0 && PCI_FUNC(devfn) == 0) {
 //		printk(" - fake\n");
                  *val = 0x06040001;    /* Bridge/PCI-PCI/rev 1 */
@@ -122,12 +115,12 @@ static int xr3pci_read_config(struct pci_bus *bus, unsigned int devfn, int where
 	/* read from PCIe configuration space */
 	//TODO: locking may not be required due to pci_lock in
 	//	drivers/pci/access.c, but left in during development
-	spin_lock_irqsave(&pp->conf_lock, flags);
 	//xr3pci_write(cfgnum, pp->base + PCIE_CFGNUM);
+spin_lock_irqsave(&pp->conf_lock, flags);
 	writew(cfgnum, pp->base + PCIE_CFGNUM);
 	writeb((cfgnum >> 16), pp->base + PCIE_CFGNUM + 2);
 	*val = xr3pci_read(pp->base + BRIDGE_PCIE_CONFIG + (where & ~0x3));
-	spin_unlock_irqrestore(&pp->conf_lock, flags);
+spin_unlock_irqrestore(&pp->conf_lock, flags);
 
 	switch (size) {
 	case 1:
@@ -183,23 +176,24 @@ static int xr3pci_write_config(struct pci_bus *bus, unsigned int devfn, int wher
 	/* write to the configuration space */
 	//TODO: locking may not be required due to pci_lock in
 	//	drivers/pci/access.c, but left in during development
-	spin_lock_irqsave(&pp->conf_lock, flags);
 	//r3pci_write(cfgnum, pp->base + PCIE_CFGNUM);
+spin_lock_irqsave(&pp->conf_lock, flags);
 	writew(cfgnum, pp->base + PCIE_CFGNUM);
 	writeb((cfgnum >> 16), pp->base + PCIE_CFGNUM + 2);
 	udelay(1000);
 	xr3pci_write(val << ((where & 3) * 8), pp->base + BRIDGE_PCIE_CONFIG + (where & ~0x3));
-	spin_unlock_irqrestore(&pp->conf_lock, flags);
+spin_unlock_irqrestore(&pp->conf_lock, flags);
 
 	return PCIBIOS_SUCCESSFUL;
 }
 
-static struct pci_ops xr3pci_ops = {
+struct pci_ops xr3pci_ops = {
 	.read 	= xr3pci_read_config,
 	.write 	= xr3pci_write_config, 
 };
 
-static int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
+//static
+int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 {
 	pr_debug("%s:%d xr3pci_map_irq %d:%d:%d for slot %d pin %d\n", __func__, __LINE__,
 						dev->bus->number, PCI_SLOT(dev->devfn), PCI_FUNC(dev->devfn), slot, pin);
@@ -275,16 +269,29 @@ static irqreturn_t handler(int irq, void *dev_id)
 	return 0;
 }
 
-static int __init xr3pci_setup(int nr, struct pci_sys_data *sys)
+int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np)
 {
 	int x=0;
 	struct pcie_port *pp;
 
-	if (nr >= xr3pci_hw_pci.nr_controllers)
-		return 0;
+//	WARN_ON(nr);
+//	if (nr >= xr3pci_hw_pci.nr_controllers)
+//		return 0;
 
-	pp = &pcie_port[nr];
+//	pp = &pcie_port[nr];
+	pp = kzalloc(sizeof(struct pcie_port), GFP_KERNEL);
+	printk("size of pcie_port %d bytes\n", sizeof(struct pcie_port));
+	printk("size of ptrs %d %d bytes\n", sizeof(void *), sizeof(struct device_node*));
+	WARN_ON(!pp);
+
 	sys->private_data = pp;
+		spin_lock_init(&pp->conf_lock);
+		
+
+	/* add DT resources to the controller */
+	if (xr3pci_get_resources(pp, np)) {
+		printk("oopp\n");
+	}
 
 	xr3pci_probe(pp);
 
@@ -344,33 +351,6 @@ static int __init xr3pci_get_resources(struct pcie_port *pp, struct device_node 
 		goto err_map_io;
 	}
 
-	/* INTx IRQs */
-/*
-	pp->irqINTA = irq_of_parse_and_map(np, 1);
-	if (!pp->irqINTA) {
-		pr_err(DEVICE_NAME ": Failed to map INTA IRQ\n");
-		err = -EINVAL;
-		goto err_irq;
-	}
-	pp->irqINTB = irq_of_parse_and_map(np, 2);
-	if (!pp->irqINTB) {
-		pr_err(DEVICE_NAME ": Failed to map INTB IRQ\n");
-		err = -EINVAL;
-		goto err_irq;
-	}
-	pp->irqINTC = irq_of_parse_and_map(np, 3);
-	if (!pp->irqINTC) {
-		pr_err(DEVICE_NAME ": Failed to map INTC IRQ\n");
-		err = -EINVAL;
-		goto err_irq;
-	}
-	pp->irqINTD = irq_of_parse_and_map(np, 4);
-	if (!pp->irqINTD) {
-		pr_err(DEVICE_NAME ": Failed to map INTD IRQ\n");
-		err = -EINVAL;
-		goto err_irq;
-	}
-*/
 	/* PCIe addres spaces */
 
 	/* determine parent's address size and size of PCIe resource (in cells) */
@@ -440,92 +420,12 @@ err_map_io:
 }
 
 //TODO does ILOCAL also need to be cleared after INTx interrpt?
-static struct hw_pci xr3pci_hw_pci __initdata = {
-	.nr_controllers = 0,
-	.setup		= xr3pci_setup,
-	.map_irq	= xr3pci_map_irq,
-	.ops		= &xr3pci_ops,
-};
-
-static const struct __initconst of_device_id xr3pci_device_id[] = {
-	{ .compatible = "arm,xr3pci", },
-	{},
-};
-
-struct device_node *pcibios_get_phb_of_node(struct pci_bus *bus)
+void __init xr3pci_setup_arch(
+	int (**map_irq)(const struct pci_dev *, u8, u8),
+	struct pci_ops **ops,
+	int (**setup)(struct pci_sys_data *, struct device_node *))
 {
-	struct pci_sys_data *sys = bus->sysdata;
-	struct pcie_port *pp = sys->private_data;
-
-	printk("NEW %p\n", pp->dn);
-	return of_node_get(pp->dn);
-	//TODO: not of_node_get reference counting
+	*map_irq = xr3pci_map_irq;
+	*ops = &xr3pci_ops;
+	*setup = xr3pci_setup;
 }
-
-static int xr3pci_abort(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
-{
-	if (fsr & (1 << 10))
-		regs->ARM_pc += 4;
-	return 0;
-}
-
-static int __init xr3pci_init(void)
-{
-	struct device_node *np;
-
-	/* Temporary abort handler until hardware behaves itself */	
-	hook_fault_code(16 + 6, xr3pci_abort, SIGBUS, 0, "imprecise external abort");
-	
-	/* The arch/arm/kernel/bios32.c pci_common_init helper is not DT
-	   friendly which prevents the use of platform_driver with a
-	   of_match_table. This is due to:
-	     - pci_common_init is designed to be called once when all
-	       controllers are known about - platform_driver probe would
-	       occur for each controller and we wouldn't know when to
-	       the last controller was found
-	     - private data used in the callbacks in hw_pci is not accessiable
-	       until the setup call - therefore there is no way to tie a
-	       platform device/DT data at this point. I.e. we have no way of
-	       accessing the host bridges base address which we know now with
-               the later call backs from hw_pci. The pci_common_init function
-	       offers no way of providing private data
-	   Therefore we look for all compatible devices now and register them
-	   in one go with bios32. We later uniquelly identify them through
-	   their controller id.
-
-	   TODO: tie in with bios32 may need to be changed for AARCH64
-	   TODO: move some of this general PCI-DT code to pci-common bios32, etc
-	*/	
-	for_each_matching_node(np, xr3pci_device_id) {
-		struct pcie_port *pp;
-	
-		/* is there enough room for another controller? */
-		//TODO: use a list
-		if (xr3pci_hw_pci.nr_controllers >= MAX_SUPPORTED_DEVICES) {
-			pr_err(DEVICE_NAME ": Maximum supported controllers reached\n");
-			break;
-		}
-
-		/* add the new controller */
-		pp = &pcie_port[xr3pci_hw_pci.nr_controllers];
-		pp->numresources = 0;
-		spin_lock_init(&pp->conf_lock);
-
-		pp->dn = np;
-
-		/* add DT resources to the controller */
-		if (xr3pci_get_resources(pp, np)) {
-			continue;
-		}
-
-		/* we succeeded so increase the controller count */
-		xr3pci_hw_pci.nr_controllers++;
-	}
-
-	/* we've found all our controllers so tell the OS to enumerate/add them */
-	if (xr3pci_hw_pci.nr_controllers)
-		pci_common_init(&xr3pci_hw_pci);
-
-	return 0;
-}
-subsys_initcall(xr3pci_init);

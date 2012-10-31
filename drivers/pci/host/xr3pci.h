@@ -11,7 +11,6 @@
 #define IRQ_MSI_BASE 260
 #define MAX_SUPPORTED_NO_MSI 32
 //TODO: use lists instead
-#define MAX_SUPPORTED_DEVICES 2
 #define MAX_RESOURCES 5
 
 /* Bridge Configuration Space Registers */
