@@ -43,8 +43,6 @@ struct pcie_port {
 };
 static int __init xr3pci_get_resources(struct pcie_port *pp, struct device_node *np);
 
-static struct pcie_port pcie_port[10];
-
 /**
  * Stimulate a configuration read request
  */
@@ -156,7 +154,6 @@ static int xr3pci_write_config(struct pci_bus *bus, unsigned int devfn, int wher
 spin_lock_irqsave(&pp->conf_lock, flags);
 	writew(cfgnum, pp->base + PCIE_CFGNUM);
 	writeb((cfgnum >> 16), pp->base + PCIE_CFGNUM + 2);
-	udelay(1000);
 	writel(val << ((where & 3) * 8), pp->base + BRIDGE_PCIE_CONFIG + (where & ~0x3));
 spin_unlock_irqrestore(&pp->conf_lock, flags);
 
@@ -174,8 +171,6 @@ int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 	pr_debug("%s:%d xr3pci_map_irq %d:%d:%d for slot %d pin %d\n", __func__, __LINE__,
 						dev->bus->number, PCI_SLOT(dev->devfn), PCI_FUNC(dev->devfn), slot, pin);
 	
-#if 1
-
 	struct pci_sys_data *sys = dev->sysdata;
 	struct pcie_port *pp = sys->private_data;
 
@@ -187,7 +182,6 @@ int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 					     out.size);
 	printk("Given IRQ %d (pin %d)\n", virq, pin);
 	return virq;
-#endif
 }
 
 //TODO: This is really just for development
@@ -256,8 +250,6 @@ int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np)
 
 //	pp = &pcie_port[nr];
 	pp = kzalloc(sizeof(struct pcie_port), GFP_KERNEL);
-	printk("size of pcie_port %d bytes\n", sizeof(struct pcie_port));
-	printk("size of ptrs %d %d bytes\n", sizeof(void *), sizeof(struct device_node*));
 	WARN_ON(!pp);
 
 	sys->private_data = pp;
