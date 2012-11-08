@@ -33,7 +33,6 @@ struct device_node *pcibios_get_phb_of_node(struct pci_bus *bus)
 	struct pcie_port *pp = sys->private_data;
 
 	return of_node_get(npnr[sys->busnr]);
-	//TODO: not of_node_get reference counting
 }
 
 static int xr3pci_abort(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
@@ -81,7 +80,7 @@ static int __init xr3pci_init(void)
 		}
 
 		/* add the new controller */
-		npnr[xr3pci_hw_pci.nr_controllers++] = np; //ref
+		npnr[xr3pci_hw_pci.nr_controllers++] = of_node_get(np);
 	}
 
 	/* we've found all our controllers so tell the OS to enumerate/add them */
