@@ -14,7 +14,6 @@
 #include <linux/module.h>
 #include <linux/spinlock.h>
 #include <linux/interrupt.h>
-#include <asm/signal.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
@@ -23,6 +22,7 @@
 #include <linux/delay.h>
 
 #include <asm/io.h>
+#include <asm/signal.h>
 #include <asm/mach/pci.h>
 #include <asm/mach/irq.h>
 
@@ -45,30 +45,6 @@ static int __init xr3pci_get_resources(struct pcie_port *pp, struct device_node 
 
 static struct pcie_port pcie_port[10];
 
-static u32 xr3pci_read(void __iomem * addr)
-{
-	u32 val = 0;
-
-//	pr_debug("%s:%d xr3pci_read: read from 0x%x\n",
-//		__func__, __LINE__, addr);
-
-	val = readl(addr);
-
-//	pr_debug("%s:%d xr3pci_read: read value 0x%x\n",
-//		__func__, __LINE__, val);
-
-	return val;
-}
-
-static void xr3pci_write(u32 val, void __iomem *addr)
-{
-//	pr_debug("%s:%d xr3pci_write: wrote 0x%x to 0x%x\n",
-//		__func__, __LINE__,
-//		val, addr);
-
-	writel(val, addr);
-}
-
 /**
  * Stimulate a configuration read request
  */
@@ -86,7 +62,7 @@ static int xr3pci_read_config(struct pci_bus *bus, unsigned int devfn, int where
                 return PCIBIOS_SUCCESSFUL;
         }
 
-//	pr_debug("%s:%d xr3pci_read_config size: %d, where: %d, ID: %d:%d:%d\n",
+//	pr_debug("%s:%d readl_config size: %d, where: %d, ID: %d:%d:%d\n",
 //	 __func__, __LINE__,
 //		 size, where, bus->number, PCI_SLOT(devfn), PCI_FUNC(devfn));
 
@@ -115,11 +91,11 @@ static int xr3pci_read_config(struct pci_bus *bus, unsigned int devfn, int where
 	/* read from PCIe configuration space */
 	//TODO: locking may not be required due to pci_lock in
 	//	drivers/pci/access.c, but left in during development
-	//xr3pci_write(cfgnum, pp->base + PCIE_CFGNUM);
+	//writel(cfgnum, pp->base + PCIE_CFGNUM);
 spin_lock_irqsave(&pp->conf_lock, flags);
 	writew(cfgnum, pp->base + PCIE_CFGNUM);
 	writeb((cfgnum >> 16), pp->base + PCIE_CFGNUM + 2);
-	*val = xr3pci_read(pp->base + BRIDGE_PCIE_CONFIG + (where & ~0x3));
+	*val = readl(pp->base + BRIDGE_PCIE_CONFIG + (where & ~0x3));
 spin_unlock_irqrestore(&pp->conf_lock, flags);
 
 	switch (size) {
@@ -147,7 +123,7 @@ static int xr3pci_write_config(struct pci_bus *bus, unsigned int devfn, int wher
 	struct pci_sys_data *sys = bus->sysdata;
 	struct pcie_port *pp = sys->private_data;
 
-//	pr_debug("%s:%d xr3pci_write_config size: %d, where: %d, ID: %d:%d:%d value = 0x%x\n",
+//	pr_debug("%s:%d writel_config size: %d, where: %d, ID: %d:%d:%d value = 0x%x\n",
 //		 __func__, __LINE__,
 //		 size, where, bus->number, PCI_SLOT(devfn), PCI_FUNC(devfn), val);
 	
@@ -181,7 +157,7 @@ spin_lock_irqsave(&pp->conf_lock, flags);
 	writew(cfgnum, pp->base + PCIE_CFGNUM);
 	writeb((cfgnum >> 16), pp->base + PCIE_CFGNUM + 2);
 	udelay(1000);
-	xr3pci_write(val << ((where & 3) * 8), pp->base + BRIDGE_PCIE_CONFIG + (where & ~0x3));
+	writel(val << ((where & 3) * 8), pp->base + BRIDGE_PCIE_CONFIG + (where & ~0x3));
 spin_unlock_irqrestore(&pp->conf_lock, flags);
 
 	return PCIBIOS_SUCCESSFUL;
@@ -223,7 +199,7 @@ static int __init xr3pci_probe(struct pcie_port *pp)
 
 	/* verify hardwired vendor, device, revision IDs */
 	//TODO: PLDA document doesn't make clear how this applies to root ports
-	ver = xr3pci_read(pp->base + PCIE_PCI_IDS_1);
+	ver = readl(pp->base + PCIE_PCI_IDS_1);
 	if (!((ver  & 0xffff) == DEVICE_VENDOR_ID &&
 	      (ver  & 0xffff0000) >> 16 == DEVICE_DEVICE_ID)) {
 		printk("Unable to detect " DEVICE_NAME);
@@ -231,16 +207,16 @@ static int __init xr3pci_probe(struct pcie_port *pp)
 	}
 
 	/* top nibble describes if core is configured as native endpoint or root port */
-	if ((xr3pci_read(pp->base + PCIE_BASIC_CONF) & 0xf0000000) != 0x10000000) {
+	if ((readl(pp->base + PCIE_BASIC_CONF) & 0xf0000000) != 0x10000000) {
 		printk(DEVICE_NAME " is not hardwired as a root port\n");
-		printk(DEVICE_NAME " is 0x%x\n", xr3pci_read(pp->base + PCIE_BASIC_CONF));
+		printk(DEVICE_NAME " is 0x%x\n", readl(pp->base + PCIE_BASIC_CONF));
 		return -1;
 	}
 
 	/* display core version/revision information */
 	//TODO: tie driver implementation to specific known working versions
-	ver = xr3pci_read(pp->base + BRIDGE_VER);
-	ver2 = xr3pci_read(pp->base + PCIE_PCI_IDS_2);
+	ver = readl(pp->base + BRIDGE_VER);
+	ver2 = readl(pp->base + PCIE_PCI_IDS_2);
 	printk(DEVICE_NAME ", revision: %d\n", (ver2 & 0xff));
 	printk(" - Bridge Version: 	0x%x\n", ver & 0xfff);
 	printk(" - Bridge Product ID:	0x%x\n", (ver & 0xfff000) >> 12);
@@ -250,11 +226,11 @@ static int __init xr3pci_probe(struct pcie_port *pp)
 
 	//if not hardwired this should be written while the core is in reset
 	//unsure about bits 14, 15. Expect rootport[0], x2, x4, x8 widths [8,9,10], 5 and 8GBps [12, 13] to be set
-	printk("GEN_SETTINGS is 0x%x, expected 0x%x\n", xr3pci_read(pp->base + GEN_SETTINGS), 0xf701);
+	printk("GEN_SETTINGS is 0x%x, expected 0x%x\n", readl(pp->base + GEN_SETTINGS), 0xf701);
 
 	//pipe line settings recommended values provided in documentation for high-frequency(endpoint) or low-latency
-	printk("PCIE_PIPE is 0x%x, expected 0x%x or 0x%x\n", xr3pci_read(pp->base + PCIE_PIPE), 0x131c0000, 0x10000000);
-	printk("PCIE_PIPE_1 is 0x%x, expected 0x%x or 0x%x\n", xr3pci_read(pp->base + PCIE_PIPE_1), 0x3f000701, 0x08000001);
+	printk("PCIE_PIPE is 0x%x, expected 0x%x or 0x%x\n", readl(pp->base + PCIE_PIPE), 0x131c0000, 0x10000000);
+	printk("PCIE_PIPE_1 is 0x%x, expected 0x%x or 0x%x\n", readl(pp->base + PCIE_PIPE_1), 0x3f000701, 0x08000001);
 
 	return 0;
 }
@@ -264,7 +240,7 @@ static irqreturn_t handler(int irq, void *dev_id)
 	struct pcie_port *pp = (struct pcie_port *)dev_id;
 
 	printk("Habndler for irq %d\n", irq);
-	xr3pci_write(1 << (irq-125), pp->base + ISTATUS_LOCAL);
+	writel(1 << (irq-125), pp->base + ISTATUS_LOCAL);
 	
 	return 0;
 }
@@ -295,7 +271,7 @@ int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np)
 
 	xr3pci_probe(pp);
 
-	xr3pci_write(0xffffffff, pp->base + IMASK_LOCAL);
+	writel(0xffffffff, pp->base + IMASK_LOCAL);
 	for (x=0;x<32;x++) {
 		if (request_irq(125+x, handler, 0, "xr3", pp)) {
 			printk("unable to request irq %d\n", 125+x);
