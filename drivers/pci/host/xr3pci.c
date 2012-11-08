@@ -57,6 +57,7 @@ static int xr3pci_read_config(struct pci_bus *bus, unsigned int devfn, int where
 	if (bus->number == 0 && where == PCI_CLASS_REVISION && size == 4 && PCI_SLOT(devfn) == 0 && PCI_FUNC(devfn) == 0) {
 //		printk(" - fake\n");
                  *val = 0x06040001;    /* Bridge/PCI-PCI/rev 1 */
+		//TODO use DECLARE_PCI_FIXUP_HEADER
                 return PCIBIOS_SUCCESSFUL;
         }
 
@@ -189,7 +190,7 @@ static int __init xr3pci_probe(struct pcie_port *pp)
 {
 	/* gain some confidence that we are talking to the correct device by
 	   reading registers with known values */
-	u32 ver, ver2;
+	u32 ver;
 
 	/* verify hardwired vendor, device, revision IDs */
 	//TODO: PLDA document doesn't make clear how this applies to root ports
@@ -200,31 +201,18 @@ static int __init xr3pci_probe(struct pcie_port *pp)
 		return -1;
 	}
 
-	/* top nibble describes if core is configured as native endpoint or root port */
-	if ((readl(pp->base + PCIE_BASIC_CONF) & 0xf0000000) != 0x10000000) {
-		printk(DEVICE_NAME " is not hardwired as a root port\n");
-		printk(DEVICE_NAME " is 0x%x\n", readl(pp->base + PCIE_BASIC_CONF));
+	ver = readl(pp->base + PCIE_BASIC_STATU);
+	printk(DEVICE_NAME " %dx gen %d link negotiated\n", ver & 0xff, (ver & 0xf00) >> 8);
+	if (!(ver & 0xff)) {
+		printk(DEVICE_NAME ": No link detected\n");
 		return -1;
 	}
-
-	/* display core version/revision information */
-	//TODO: tie driver implementation to specific known working versions
-	ver = readl(pp->base + BRIDGE_VER);
-	ver2 = readl(pp->base + PCIE_PCI_IDS_2);
-	printk(DEVICE_NAME ", revision: %d\n", (ver2 & 0xff));
-	printk(" - Bridge Version: 	0x%x\n", ver & 0xfff);
-	printk(" - Bridge Product ID:	0x%x\n", (ver & 0xfff000) >> 12);
-	printk(" - Bridge DMA Engines:	%d\n", 	 (ver & 0xf000000) >> 24);
-
-	printk("\n\n");
-
-	//if not hardwired this should be written while the core is in reset
-	//unsure about bits 14, 15. Expect rootport[0], x2, x4, x8 widths [8,9,10], 5 and 8GBps [12, 13] to be set
-	printk("GEN_SETTINGS is 0x%x, expected 0x%x\n", readl(pp->base + GEN_SETTINGS), 0xf701);
-
-	//pipe line settings recommended values provided in documentation for high-frequency(endpoint) or low-latency
-	printk("PCIE_PIPE is 0x%x, expected 0x%x or 0x%x\n", readl(pp->base + PCIE_PIPE), 0x131c0000, 0x10000000);
-	printk("PCIE_PIPE_1 is 0x%x, expected 0x%x or 0x%x\n", readl(pp->base + PCIE_PIPE_1), 0x3f000701, 0x08000001);
+	
+	/* top nibble describes if core is configured as native endpoint or root port */
+	if ((readl(pp->base + PCIE_BASIC_CONF) & 0xf0000000) != 0x10000000) {
+		printk(DEVICE_NAME ": Core is not a RC\n");
+		return -1;
+	}
 
 	return 0;
 }
@@ -261,7 +249,9 @@ int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np)
 		printk("oopp\n");
 	}
 
-	xr3pci_probe(pp);
+	if (xr3pci_probe(pp)) {
+		return -1;
+	}
 
 	writel(0xffffffff, pp->base + IMASK_LOCAL);
 	for (x=0;x<32;x++) {
