@@ -137,37 +137,32 @@ static void gic_msi_handler(unsigned int irq, struct irq_desc *desc)
 out:
 	chained_irq_exit(chip, desc);
 }
+#endif
 
 int obtain_vector_irq(struct gic_msi_data *data, int vector, int *irq)
 {
+#ifdef FPGA_TRANSITIONAL_DRIVER
 	*irq = irq_create_mapping(data->transitional_domain, vector);
 	if (!(*irq)) {
 		pr_err("Unable to allocate virtual IRQ\n");
 		return -ENOSPC;
 	}
-
+	
 	return 0;
-}
-
-void release_vector_irq(int irq)
-{
-	irq_dispose_mapping(irq);
-}
 #else
-int obtain_vector_irq(struct gic_msi_data *data, int vector, int *irq)
-{
 	/* TODO: Use DF to provide simple mapping between MSI vectors and 
                  SPIs */
 	//*irq = SPI;
-
 	return -ENOSPC;
+#endif
 }
 
 void release_vector_irq(int irq)
 {
-	/* nothing */
-}
+#ifdef FPGA_TRANSITIONAL_DRIVER
+	irq_dispose_mapping(irq);
 #endif
+}
 
 /**
  * Satisfy an MSI request
