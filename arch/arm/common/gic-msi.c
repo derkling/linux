@@ -325,7 +325,7 @@ static struct platform_driver gic_msi_driver = {
 	},
 };
 
-static __init int gic_msi_init(void)
+static int __init gic_msi_init(void)
 {
 	return platform_driver_register(&gic_msi_driver);
 }
