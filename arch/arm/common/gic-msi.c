@@ -170,8 +170,7 @@ void release_vector_irq(int irq)
  * This implementation is weak as to provide a default GIC-MSI implementation
  * without breaking ARM platforms with existing implementations.
  */
-int __attribute__((weak)) 
-	arch_setup_msi_irq(struct pci_dev *pdev, struct msi_desc *desc)
+int gic_msi_setup_irq(struct pci_dev *pdev, struct msi_desc *desc)
 {
 	int irq, vector;
 	struct msi_msg msg;
@@ -203,11 +202,16 @@ again:
 	return 0;
 }
 
-void __attribute__((weak)) arch_teardown_msi_irq(unsigned irq)
+void gic_msi_teardown_irq(unsigned irq)
 {
 	pr_debug("%s:%d arch_teardown_msi_irq\n", __func__, __LINE__);
 	release_vector_irq(irq);
 }
+
+struct msi_controller msi_controller_ops = {
+	.setup_msi_irq = gic_msi_setup_irq,
+	.teardown_msi_irq = gic_msi_teardown_irq,
+};
 
 int __devinit gic_msi_probe(struct platform_device *pdev)
 {
@@ -257,6 +261,8 @@ int __devinit gic_msi_probe(struct platform_device *pdev)
 		goto err_irq;
 
 	gd = data;
+	if (WARN(pci_register_msi_controller(&msi_controller_ops), "Unable to register MSI controller"))
+		goto err_irq;
 
 	return 0;
 
