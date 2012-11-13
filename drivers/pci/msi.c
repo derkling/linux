@@ -25,8 +25,20 @@
 #include "msi.h"
 
 static int pci_msi_enable = 1;
+static struct msi_controller *ops = NULL;
 
 /* Arch hooks */
+
+static int __arch_msi_check_device(struct pci_dev *dev, int nvec, int type)
+{
+	if (!ops)
+		return arch_msi_check_device(dev, nvec, type);
+
+	if (ops->msi_check_device)
+		return ops->msi_check_device(dev, nvec, type);
+
+	return 0;
+}
 
 #ifndef arch_msi_check_device
 int arch_msi_check_device(struct pci_dev *dev, int nvec, int type)
@@ -35,12 +47,57 @@ int arch_msi_check_device(struct pci_dev *dev, int nvec, int type)
 }
 #endif
 
-#ifndef arch_setup_msi_irqs
-# define arch_setup_msi_irqs default_setup_msi_irqs
-# define HAVE_DEFAULT_MSI_SETUP_IRQS
+#ifndef arch_setup_msi_irq
+# define arch_setup_msi_irq default_setup_msi_irq
+# define HAVE_DEFAULT_MSI_SETUP_IRQ
 #endif
 
-#ifdef HAVE_DEFAULT_MSI_SETUP_IRQS
+#ifdef HAVE_DEFAULT_MSI_SETUP_IRQ
+int default_setup_msi_irq(struct pci_dev *dev, struct msi_desc *desc)
+{
+	WARN_ON(1);
+	return 1;
+}
+#endif
+
+static int __arch_setup_msi_irq(struct pci_dev *dev, struct msi_desc *desc)
+{
+	if (!ops)
+		return arch_setup_msi_irq(dev, desc);
+
+	if (ops->setup_msi_irq)
+		return ops->setup_msi_irq(dev, desc);
+		
+	return default_setup_msi_irq(dev, desc);
+}
+
+#ifndef arch_teardown_msi_irq
+# define arch_teardown_msi_irq default_teardown_msi_irq
+# define HAVE_DEFAULT_MSI_TEARDOWN_IRQ
+#endif
+
+#ifdef HAVE_DEFAULT_MSI_TEARDOWN_IRQ
+void default_teardown_msi_irq(unsigned int irq)
+{
+	WARN_ON(1);
+}
+#endif
+
+static void __arch_teardown_msi_irq(unsigned int irq)
+{
+	if (!ops)
+		return arch_teardown_msi_irq(irq);
+
+	if (ops->teardown_msi_irq)
+		return ops->teardown_msi_irq(irq);
+
+	return default_teardown_msi_irq(irq);
+}
+
+#ifndef arch_setup_msi_irqs
+# define arch_setup_msi_irqs default_setup_msi_irqs
+#endif
+
 int default_setup_msi_irqs(struct pci_dev *dev, int nvec, int type)
 {
 	struct msi_desc *entry;
@@ -54,7 +111,7 @@ int default_setup_msi_irqs(struct pci_dev *dev, int nvec, int type)
 		return 1;
 
 	list_for_each_entry(entry, &dev->msi_list, list) {
-		ret = arch_setup_msi_irq(dev, entry);
+		ret = __arch_setup_msi_irq(dev, entry);
 		if (ret < 0)
 			return ret;
 		if (ret > 0)
@@ -63,14 +120,22 @@ int default_setup_msi_irqs(struct pci_dev *dev, int nvec, int type)
 
 	return 0;
 }
-#endif
+
+static int __arch_setup_msi_irqs(struct pci_dev *dev, int nvec, int type)
+{
+	if (!ops)
+		return arch_setup_msi_irqs(dev, nvec, type);
+
+	if (ops->setup_msi_irqs)
+		return ops->setup_msi_irqs(dev, nvec, type);
+		
+	return default_setup_msi_irqs(dev, nvec, type);	
+}
 
 #ifndef arch_teardown_msi_irqs
 # define arch_teardown_msi_irqs default_teardown_msi_irqs
-# define HAVE_DEFAULT_MSI_TEARDOWN_IRQS
 #endif
 
-#ifdef HAVE_DEFAULT_MSI_TEARDOWN_IRQS
 void default_teardown_msi_irqs(struct pci_dev *dev)
 {
 	struct msi_desc *entry;
@@ -81,17 +146,25 @@ void default_teardown_msi_irqs(struct pci_dev *dev)
 			continue;
 		nvec = 1 << entry->msi_attrib.multiple;
 		for (i = 0; i < nvec; i++)
-			arch_teardown_msi_irq(entry->irq + i);
+			__arch_teardown_msi_irq(entry->irq + i);
 	}
 }
-#endif
+
+static void __arch_teardown_msi_irqs(struct pci_dev *dev)
+{
+	if (!ops)
+		return arch_teardown_msi_irqs(dev);
+		
+	if (ops->teardown_msi_irqs)
+		return ops->teardown_msi_irqs(dev);
+		
+	default_teardown_msi_irqs(dev);	
+}
 
 #ifndef arch_restore_msi_irqs
 # define arch_restore_msi_irqs default_restore_msi_irqs
-# define HAVE_DEFAULT_MSI_RESTORE_IRQS
 #endif
 
-#ifdef HAVE_DEFAULT_MSI_RESTORE_IRQS
 void default_restore_msi_irqs(struct pci_dev *dev, int irq)
 {
 	struct msi_desc *entry;
@@ -109,7 +182,26 @@ void default_restore_msi_irqs(struct pci_dev *dev, int irq)
 	if (entry)
 		write_msi_msg(irq, &entry->msg);
 }
-#endif
+
+static void __arch_restore_msi_irqs(struct pci_dev *dev, int irq)
+{
+	if (!ops)
+		return arch_restore_msi_irqs(dev, irq);
+	
+	if (ops->restore_msi_irqs)
+		return ops->restore_msi_irqs(dev, irq);
+	
+	default_restore_msi_irqs(dev, irq);
+}
+
+int pci_register_msi_controller(struct msi_controller *controller)
+{
+	WARN_ON(ops);
+	ops = controller;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(pci_register_msi_controller);
 
 static void msi_set_enable(struct pci_dev *dev, int pos, int enable)
 {
@@ -341,7 +433,7 @@ static void free_msi_irqs(struct pci_dev *dev)
 			BUG_ON(irq_has_action(entry->irq + i));
 	}
 
-	arch_teardown_msi_irqs(dev);
+	__arch_teardown_msi_irqs(dev);
 
 	list_for_each_entry_safe(entry, tmp, &dev->msi_list, list) {
 		if (entry->msi_attrib.is_msix) {
@@ -397,7 +489,7 @@ static void __pci_restore_msi_state(struct pci_dev *dev)
 
 	pci_intx_for_msi(dev, 0);
 	msi_set_enable(dev, pos, 0);
-	arch_restore_msi_irqs(dev, dev->irq);
+	__arch_restore_msi_irqs(dev, dev->irq);
 
 	pci_read_config_word(dev, pos + PCI_MSI_FLAGS, &control);
 	msi_mask_irq(entry, msi_capable_mask(control), entry->masked);
@@ -425,7 +517,7 @@ static void __pci_restore_msix_state(struct pci_dev *dev)
 	pci_write_config_word(dev, pos + PCI_MSIX_FLAGS, control);
 
 	list_for_each_entry(entry, &dev->msi_list, list) {
-		arch_restore_msi_irqs(dev, entry->irq);
+		__arch_restore_msi_irqs(dev, entry->irq);
 		msix_mask_irq(entry, entry->masked);
 	}
 
@@ -576,7 +668,7 @@ static int msi_capability_init(struct pci_dev *dev, int nvec)
 	list_add_tail(&entry->list, &dev->msi_list);
 
 	/* Configure MSI capability structure */
-	ret = arch_setup_msi_irqs(dev, nvec, PCI_CAP_ID_MSI);
+	ret = __arch_setup_msi_irqs(dev, nvec, PCI_CAP_ID_MSI);
 	if (ret) {
 		msi_mask_irq(entry, mask, ~mask);
 		free_msi_irqs(dev);
@@ -696,7 +788,7 @@ static int msix_capability_init(struct pci_dev *dev,
 	if (ret)
 		return ret;
 
-	ret = arch_setup_msi_irqs(dev, nvec, PCI_CAP_ID_MSIX);
+	ret = __arch_setup_msi_irqs(dev, nvec, PCI_CAP_ID_MSIX);
 	if (ret)
 		goto error;
 
@@ -785,7 +877,7 @@ static int pci_msi_check_device(struct pci_dev *dev, int nvec, int type)
 		if (bus->bus_flags & PCI_BUS_FLAGS_NO_MSI)
 			return -EINVAL;
 
-	ret = arch_msi_check_device(dev, nvec, type);
+	ret = __arch_msi_check_device(dev, nvec, type);
 	if (ret)
 		return ret;
 
