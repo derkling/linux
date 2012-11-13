@@ -16,6 +16,7 @@
 #include <asm/mach/pci.h>
 
 static int debug_pci;
+static int busnr = 0;
 
 /*
  * We can't use pci_find_device() here since we are
@@ -427,9 +428,9 @@ static void __init pcibios_init_hw(struct hw_pci *hw, struct list_head *head)
 {
 	struct pci_sys_data *sys = NULL;
 	int ret;
-	int nr, busnr;
+	int nr;
 
-	for (nr = busnr = 0; nr < hw->nr_controllers; nr++) {
+	for (nr = 0; nr < hw->nr_controllers; nr++) {
 		sys = kzalloc(sizeof(struct pci_sys_data), GFP_KERNEL);
 		if (!sys)
 			panic("PCI: unable to allocate sys data!");
@@ -442,7 +443,7 @@ static void __init pcibios_init_hw(struct hw_pci *hw, struct list_head *head)
 		sys->map_irq = hw->map_irq;
 		INIT_LIST_HEAD(&sys->resources);
 
-		ret = hw->setup(nr, sys);
+		ret = hw->setup(sys->busnr, sys);
 
 		if (ret > 0) {
 			if (list_empty(&sys->resources)) {
@@ -453,7 +454,7 @@ static void __init pcibios_init_hw(struct hw_pci *hw, struct list_head *head)
 			}
 
 			if (hw->scan)
-				sys->bus = hw->scan(nr, sys);
+				sys->bus = hw->scan(sys->busnr, sys);
 			else
 				sys->bus = pci_scan_root_bus(NULL, sys->busnr,
 						hw->ops, sys, &sys->resources);
