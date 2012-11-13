@@ -4,6 +4,7 @@
  *
  * Copyright (C) 2003-2004 Intel
  * Copyright (C) Tom Long Nguyen (tom.l.nguyen@intel.com)
+ * Copyright (C) 2012 ARM Limited (amurray@embedded-bits.co.uk)
  */
 
 #include <linux/err.h>
@@ -49,16 +50,13 @@ int arch_msi_check_device(struct pci_dev *dev, int nvec, int type)
 
 #ifndef arch_setup_msi_irq
 # define arch_setup_msi_irq default_setup_msi_irq
-# define HAVE_DEFAULT_MSI_SETUP_IRQ
 #endif
 
-#ifdef HAVE_DEFAULT_MSI_SETUP_IRQ
 int default_setup_msi_irq(struct pci_dev *dev, struct msi_desc *desc)
 {
 	WARN_ON(1);
 	return 1;
 }
-#endif
 
 static int __arch_setup_msi_irq(struct pci_dev *dev, struct msi_desc *desc)
 {
@@ -73,15 +71,12 @@ static int __arch_setup_msi_irq(struct pci_dev *dev, struct msi_desc *desc)
 
 #ifndef arch_teardown_msi_irq
 # define arch_teardown_msi_irq default_teardown_msi_irq
-# define HAVE_DEFAULT_MSI_TEARDOWN_IRQ
 #endif
 
-#ifdef HAVE_DEFAULT_MSI_TEARDOWN_IRQ
 void default_teardown_msi_irq(unsigned int irq)
 {
 	WARN_ON(1);
 }
-#endif
 
 static void __arch_teardown_msi_irq(unsigned int irq)
 {
