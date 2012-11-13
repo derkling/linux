@@ -54,7 +54,7 @@ int arch_msi_check_device(struct pci_dev *dev, int nvec, int type)
 
 int default_setup_msi_irq(struct pci_dev *dev, struct msi_desc *desc)
 {
-	WARN_ON(1);
+	WARN_ON_ONCE(1);
 	return 1;
 }
 
@@ -75,7 +75,7 @@ static int __arch_setup_msi_irq(struct pci_dev *dev, struct msi_desc *desc)
 
 void default_teardown_msi_irq(unsigned int irq)
 {
-	WARN_ON(1);
+	WARN_ON_ONCE(1);
 }
 
 static void __arch_teardown_msi_irq(unsigned int irq)
