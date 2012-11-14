@@ -54,13 +54,6 @@ static int xr3pci_read_config(struct pci_bus *bus, unsigned int devfn, int where
 	struct pci_sys_data *sys = bus->sysdata;
 	struct pcie_port *pp = sys->private_data;
 
-	if (bus->number == 0 && where == PCI_CLASS_REVISION && size == 4 && PCI_SLOT(devfn) == 0 && PCI_FUNC(devfn) == 0) {
-//		printk(" - fake\n");
-                 *val = 0x06040001;    /* Bridge/PCI-PCI/rev 1 */
-		//TODO use DECLARE_PCI_FIXUP_HEADER
-                return PCIBIOS_SUCCESSFUL;
-        }
-
 //	pr_debug("%s:%d readl_config size: %d, where: %d, ID: %d:%d:%d\n",
 //	 __func__, __LINE__,
 //		 size, where, bus->number, PCI_SLOT(devfn), PCI_FUNC(devfn));
@@ -376,6 +369,12 @@ err_map_io:
 
 	return err;
 }
+
+static void __devinit xr3pci_quirk_class(struct pci_dev *pdev)
+{
+	pdev->class = PCI_CLASS_BRIDGE_PCI << 8;
+}
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_PLDA, PCI_DEVICE_ID_XR3PCI, xr3pci_quirk_class);
 
 //TODO does ILOCAL also need to be cleared after INTx interrpt?
 void __init xr3pci_setup_arch(
