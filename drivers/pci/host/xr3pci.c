@@ -235,6 +235,7 @@ int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np)
 
 	sys->private_data = pp;
 		spin_lock_init(&pp->conf_lock);
+	
 		
 
 	/* add DT resources to the controller */
@@ -275,11 +276,9 @@ int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np)
 
 static int __init xr3pci_get_resources(struct pcie_port *pp, struct device_node *np)
 {
-	struct resource res, *resp;
+	struct resource res;
 	const u32 *ranges;
-	int err, len, pna, n;
-	unsigned long long pci_addr, cpu_addr, size;
-	u32 pci_space;
+	int err, len;
 
 	/* Host bridge configuration registers */
 
@@ -303,60 +302,12 @@ static int __init xr3pci_get_resources(struct pcie_port *pp, struct device_node 
 	}
 
 	/* PCIe addres spaces */
-
-	/* determine parent's address size and size of PCIe resource (in cells) */
-	pna = of_n_addr_cells(np);
-	n = pna + 5;
-
-	ranges = of_get_property(np, "ranges", &len);
-	if (!ranges) {
-		pr_err(DEVICE_NAME ": Failed to find PCIe ranges int DT\n");
-		err = -EINVAL;
-		goto err_get_ranges;
-	}
-
-	/* iterate through each PCIe resource entry, each entry consists of:
-	    1 cell describing the pci address space (type of memory, etc)
-	    2 cells describing the pci start address for the range
-	    pna cells describing the cpu start address for the range
-	    2 cells describing the size of the range */
-	while ((len -= n * 4) >= 0) {
-		pci_space = of_read_number(ranges, 1);
-		pci_addr = of_read_number(ranges + 1, 2);
-		cpu_addr = of_translate_address(np, ranges + 3);
-		size = of_read_number(ranges + pna + 3, 2);
-		ranges += n;
-
-		if (cpu_addr == OF_BAD_ADDR || size == 0)
-			continue;
-
-		if (pp->numresources >= MAX_RESOURCES) {
-			pr_err(DEVICE_NAME ": Maximum supported controller resources reached\n");
-			break;
-		}
-
-		resp = &(pp->resource[pp->numresources]);
-		switch((pci_space >> 24) & 0x3) {
-		case 1:
-			resp->flags = IORESOURCE_IO;
-			resp->start = pci_addr;
-			break;
-		case 2:
-		case 3:
-			resp->flags = IORESOURCE_MEM;
-			resp->start = cpu_addr;
-
-			if (pci_space & 0x40000000)
-				resp->flags |= IORESOURCE_PREFETCH;
-
-			break;
-		default:
-			continue;
-		}
-		resp->name = DEVICE_NAME;
-		resp->end = resp->start + size - 1;
-		resp->parent = resp->child = resp->sibling = NULL;
+	struct resource *r = &(pp->resource[pp->numresources]);
+	
+	u32 *last = NULL;
+	while (!of_pci_process_ranges(np, r, &last)) {
 		pp->numresources++;
+		r = &(pp->resource[pp->numresources]);
 	}
 
 	return 0;
