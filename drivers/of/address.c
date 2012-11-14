@@ -421,7 +421,7 @@ u64 __of_translate_address(struct device_node *dev, const __be32 *in_addr,
 		goto bail;
 	bus = of_match_bus(parent);
 
-	/* Cound address cells & copy address locally */
+	/* Count address cells & copy address locally */
 	bus->count_cells(dev, &na, &ns);
 	if (!OF_CHECK_COUNTS(na, ns)) {
 		printk(KERN_ERR "prom_parse: Bad cell count for %s\n",
@@ -620,3 +620,19 @@ void __iomem *of_iomap(struct device_node *np, int index)
 	return ioremap(res.start, resource_size(&res));
 }
 EXPORT_SYMBOL(of_iomap);
+
+int of_count_cells(struct device_node *node, int *na, int *ns)
+{
+        struct of_bus *bus = of_match_bus(node);
+
+        /* Count address cells */
+        bus->count_cells(node, na, ns);
+        if (!OF_CHECK_COUNTS(*na, *ns)) {
+                printk(KERN_ERR "prom_parse: Bad cell count for %s\n",
+                       node->full_name);
+		return 1;
+        }
+	return 0;
+}
+EXPORT_SYMBOL(of_count_cells);
+
