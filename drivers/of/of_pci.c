@@ -44,7 +44,7 @@ EXPORT_SYMBOL_GPL(of_pci_find_child_device);
 
 int of_pci_process_ranges(struct device_node *node, struct resource *res, u32 **last)
 {
-	u32 *start, u32 *end;
+	u32 *start, *end;
 	int na, ns, np, pna;
 	int rlen;
 

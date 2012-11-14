@@ -277,8 +277,7 @@ int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np)
 static int __init xr3pci_get_resources(struct pcie_port *pp, struct device_node *np)
 {
 	struct resource res;
-	const u32 *ranges;
-	int err, len;
+	int err;
 
 	/* Host bridge configuration registers */
 
