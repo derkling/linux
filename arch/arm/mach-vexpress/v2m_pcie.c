@@ -86,8 +86,6 @@ static int __init xr3pci_init(void)
 	/* we've found all our controllers so tell the OS to enumerate/add them */
 	if (xr3pci_hw_pci.nr_controllers)
 		pci_common_init(&xr3pci_hw_pci);
-		pci_common_init(&xr3pci_hw_pci);
-	pci_common_init_late();
 
 	return 0;
 }

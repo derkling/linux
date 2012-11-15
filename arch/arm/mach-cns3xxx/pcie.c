@@ -376,7 +376,6 @@ static int __init cns3xxx_pcie_init(void)
 		cns3xxx_pcie_hw_init(&cns3xxx_pcie[i]);
 		pci_common_init(&cns3xxx_pcie[i].hw_pci);
 	}
-	pci_common_init_late();
 
 	pci_assign_unassigned_resources();
 

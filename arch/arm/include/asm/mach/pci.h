@@ -29,11 +29,6 @@ struct hw_pci {
 	int		(*map_irq)(const struct pci_dev *dev, u8 slot, u8 pin);
 };
 
-struct hw_pci_list_item {
-	struct hw_pci	 *hw_pci; //TODO: check callers don't allocate on stack for this and ops
-	struct list_head list;
-};
-
 /*
  * Per-controller structure
  */
@@ -58,11 +53,6 @@ struct pci_sys_data {
  * Call this with your hw_pci struct to initialise the PCI system.
  */
 void pci_common_init(struct hw_pci *);
-
-/*
- * Call this if you called pci_common_init after subsys_initcall level
- */
-void pci_common_init_late(void);
 
 /*
  * PCI controllers

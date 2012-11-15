@@ -473,40 +473,17 @@ static void __init pcibios_init_hw(struct hw_pci *hw, struct list_head *head)
 	}
 }
 
-static LIST_HEAD(hw_pci_list);
-
 void __init pci_common_init(struct hw_pci *hw)
 {
-	struct hw_pci_list_item *item;
-
-	item = (struct hw_pci_list_item*)
-		kzalloc(sizeof(struct hw_pci_list_item), GFP_KERNEL);
-	item->hw_pci = hw;
-
-	list_add(&item->list, &hw_pci_list);
-}
-
-static void __init pci_common_register(void)
-{
-	LIST_HEAD(head);
-	struct list_head *p;
 	struct pci_sys_data *sys;
-	struct hw_pci_list_item *next, *tmp;
+	LIST_HEAD(head);
 
 	pci_add_flags(PCI_REASSIGN_ALL_RSRC);
-
-	list_for_each_entry_safe(next, tmp, &hw_pci_list, list) {
-		struct hw_pci *hw = next->hw_pci;
-
-		if (hw->preinit)
-			hw->preinit();
-		pcibios_init_hw(hw, &head);
-		if (hw->postinit)
-			hw->postinit();
-
-		kfree(next);
-		//TODO: calling this function again will make it go boom
-	}
+	if (hw->preinit)
+		hw->preinit();
+	pcibios_init_hw(hw, &head);
+	if (hw->postinit)
+		hw->postinit();
 
 	pci_fixup_irqs(pcibios_swizzle, pcibios_map_irq);
 
@@ -535,12 +512,6 @@ static void __init pci_common_register(void)
 		 */
 		pci_bus_add_devices(bus);
 	}
-}
-subsys_initcall_sync(pci_common_register);
-
-void __init pci_common_init_late(void)
-{
-	pci_common_register();
 }
 
 #ifndef CONFIG_PCI_HOST_ITE8152
