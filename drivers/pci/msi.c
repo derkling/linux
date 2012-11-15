@@ -54,12 +54,6 @@ int __weak arch_setup_msi_irq(struct pci_dev *dev, struct msi_desc *desc)
 	return 1;
 }
 
-int default_setup_msi_irq(struct pci_dev *dev, struct msi_desc *desc)
-{
-	WARN_ON_ONCE(1);
-	return 1;
-}
-
 static int __arch_setup_msi_irq(struct pci_dev *dev, struct msi_desc *desc)
 {
 	if (!ops)
@@ -68,15 +62,11 @@ static int __arch_setup_msi_irq(struct pci_dev *dev, struct msi_desc *desc)
 	if (ops->setup_msi_irq)
 		return ops->setup_msi_irq(dev, desc);
 		
-	return default_setup_msi_irq(dev, desc);
+	WARN_ON_ONCE(1);
+	return 1;
 }
 
 void __weak arch_teardown_msi_irq(unsigned int irq)
-{
-	WARN_ON_ONCE(1);
-}
-
-void default_teardown_msi_irq(unsigned int irq)
 {
 	WARN_ON_ONCE(1);
 }
@@ -89,7 +79,7 @@ static void __arch_teardown_msi_irq(unsigned int irq)
 	if (ops->teardown_msi_irq)
 		return ops->teardown_msi_irq(irq);
 
-	return default_teardown_msi_irq(irq);
+	WARN_ON_ONCE(1);
 }
 
 #ifndef arch_setup_msi_irqs
