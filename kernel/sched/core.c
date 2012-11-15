@@ -2447,8 +2447,8 @@ static const unsigned char
  * would be when CPU is idle and so we just decay the old load without
  * adding any new load.
  */
-static unsigned long
-decay_load_missed(unsigned long load, unsigned long missed_updates, int idx)
+static u64
+decay_load_missed(u64 load, unsigned long missed_updates, int idx)
 {
 	int j = 0;
 
@@ -2476,7 +2476,7 @@ decay_load_missed(unsigned long load, unsigned long missed_updates, int idx)
  * scheduler tick (TICK_NSEC). With tickless idle this will not be called
  * every tick. We fix it up based on jiffies.
  */
-static void __update_cpu_load(struct rq *this_rq, unsigned long this_load,
+static void __update_cpu_load(struct rq *this_rq, u64 this_load,
 			      unsigned long pending_updates)
 {
 	int i, scale;
@@ -2486,7 +2486,7 @@ static void __update_cpu_load(struct rq *this_rq, unsigned long this_load,
 	/* Update our load: */
 	this_rq->cpu_load[0] = this_load; /* Fasttrack for idx 0 */
 	for (i = 1, scale = 2; i < CPU_LOAD_IDX_MAX; i++, scale += scale) {
-		unsigned long old_load, new_load;
+		u64 old_load, new_load;
 
 		/* scale is effectively 1 << i now, and >> i divides by scale */
 
@@ -2528,7 +2528,7 @@ static void __update_cpu_load(struct rq *this_rq, unsigned long this_load,
 void update_idle_cpu_load(struct rq *this_rq)
 {
 	unsigned long curr_jiffies = ACCESS_ONCE(jiffies);
-	unsigned long load = this_rq->load.weight;
+	u64 load = this_rq->cfs.runnable_load_avg;
 	unsigned long pending_updates;
 
 	/*
@@ -2578,7 +2578,7 @@ static void update_cpu_load_active(struct rq *this_rq)
 	 * See the mess around update_idle_cpu_load() / update_cpu_load_nohz().
 	 */
 	this_rq->last_load_update_tick = jiffies;
-	__update_cpu_load(this_rq, this_rq->load.weight, 1);
+	__update_cpu_load(this_rq, this_rq->cfs.runnable_load_avg, 1);
 
 	calc_load_account_active(this_rq);
 }
