@@ -940,6 +940,7 @@ int __init tegra_pcie_init(bool init_port0, bool init_port1)
 		tegra_pcie_add_port(1, RP1_OFFSET, AFI_PEX1_CTRL);
 
 	pci_common_init(&tegra_pcie_hw);
+	pci_common_init_late();
 
 	return 0;
 }
