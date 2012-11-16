@@ -485,10 +485,10 @@ void __init pci_common_init(struct hw_pci *hw)
 	if (hw->postinit)
 		hw->postinit();
 
-	pci_fixup_irqs(pcibios_swizzle, pcibios_map_irq);
-
 	list_for_each_entry(sys, &head, node) {
 		struct pci_bus *bus = sys->bus;
+
+		pci_bus_fixup_irqs(bus, pcibios_swizzle, pcibios_map_irq);
 
 		if (!pci_has_flag(PCI_PROBE_ONLY)) {
 			/*
