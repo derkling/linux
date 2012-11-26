@@ -174,6 +174,8 @@ int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 
 		int virq = irq_create_of_mapping(out.controller, out.specifier,
 					     out.size);
+
+
 	printk("Given IRQ %d (pin %d)\n", virq, pin);
 	return virq;
 }
@@ -207,6 +209,10 @@ static int __init xr3pci_probe(struct pcie_port *pp)
 		return -1;
 	}
 
+	writel(0x7f, pp->base + 0x800);
+	writel(0x7f, pp->base + 0x600);
+	writeb(0x4, pp->base + 0x610);
+	
 	return 0;
 }
 
@@ -215,6 +221,7 @@ static irqreturn_t handler(int irq, void *dev_id)
 	struct pcie_port *pp = (struct pcie_port *)dev_id;
 
 	printk("Habndler for irq %d\n", irq);
+	printk("status 0x%x\n", readl(pp->base + ISTATUS_LOCAL));
 	writel(1 << (irq-125), pp->base + ISTATUS_LOCAL);
 	
 	return 0;
@@ -249,6 +256,7 @@ int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np)
 
 	writel(0xffffffff, pp->base + IMASK_LOCAL);
 	for (x=0;x<32;x++) {
+		if (125+x != 149)
 		if (request_irq(125+x, handler, 0, "xr3", pp)) {
 			printk("unable to request irq %d\n", 125+x);
 		}
@@ -263,10 +271,10 @@ int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np)
 			pci_add_resource_offset(&sys->resources, &(pp->resource[x]), sys->mem_offset);
 		}
 		else if (pp->resource[x].flags & IORESOURCE_IO) {
-			if (request_resource(&ioport_resource, &(pp->resource[x]))) {
-				pr_err(DEVICE_NAME ": Failed to request PCIe IO\n");
-				continue;
-			}
+//			if (request_resource(&ioport_resource, &(pp->resource[x]))) {
+//				pr_err(DEVICE_NAME ": Failed to request PCIe IO\n");
+//				continue;
+//			}
 			pci_add_resource_offset(&sys->resources, &(pp->resource[x]), sys->io_offset);
 		}
 	}

@@ -256,7 +256,7 @@ int __devinit gic_msi_probe(struct platform_device *pdev)
 	irq_set_chained_handler(data->transitional_irq, gic_msi_handler);	
 #endif
 
-	data->msi_capture_reg = of_iomap(node, 1);
+	data->msi_capture_reg = 0x50100190;//of_iomap(node, 1);
 	if (WARN(!data->msi_capture_reg, "Unable to map MSI capture register"))
 		goto err_irq;
 

@@ -71,6 +71,15 @@
 #include "libata.h"
 #include "libata-transport.h"
 
+u32 readlr(void *addr)
+{
+	printk(".\n");
+	u32 val = ioread32(addr);
+	printk(" - Read 0x%x from 0x%x\n", val, addr);
+	return val;
+}
+
+#define ioread32 readlr
 /* debounce timing parameters in msecs { interval, duration, timeout } */
 const unsigned long sata_deb_timing_normal[]		= {   5,  100, 2000 };
 const unsigned long sata_deb_timing_hotplug[]		= {  25,  500, 2000 };
@@ -2409,9 +2418,11 @@ int ata_dev_configure(struct ata_device *dev)
 		dev->horkage |= ATA_HORKAGE_STUCK_ERR;
 	}
 
-	if (dev->horkage & ATA_HORKAGE_MAX_SEC_128)
+	if (dev->horkage & ATA_HORKAGE_MAX_SEC_128) {
+		printk("---------------------------------> ***** <---------------------\n");
 		dev->max_sectors = min_t(unsigned int, ATA_MAX_SECTORS_128,
 					 dev->max_sectors);
+	}
 
 	if (ap->ops->dev_config)
 		ap->ops->dev_config(dev);
