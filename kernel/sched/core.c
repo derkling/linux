@@ -1129,6 +1129,10 @@ EXPORT_SYMBOL_GPL(kick_process);
 #ifdef CONFIG_SMP
 /*
  * ->cpus_allowed is protected by both rq->lock and p->pi_lock
+ *
+ *  Must be called under get/put_online_cpus_stable_atomic() or
+ *  equivalent, to avoid CPUs from going offline from underneath
+ *  us.
  */
 static int select_fallback_rq(int cpu, struct task_struct *p)
 {
@@ -1138,7 +1142,7 @@ static int select_fallback_rq(int cpu, struct task_struct *p)
 
 	/* Look for allowed, online CPU in same node. */
 	for_each_cpu(dest_cpu, nodemask) {
-		if (!cpu_online(dest_cpu))
+		if (!cpu_online_stable(dest_cpu))
 			continue;
 		if (!cpu_active(dest_cpu))
 			continue;
@@ -1149,7 +1153,7 @@ static int select_fallback_rq(int cpu, struct task_struct *p)
 	for (;;) {
 		/* Any allowed, online CPU? */
 		for_each_cpu(dest_cpu, tsk_cpus_allowed(p)) {
-			if (!cpu_online(dest_cpu))
+			if (!cpu_online_stable(dest_cpu))
 				continue;
 			if (!cpu_active(dest_cpu))
 				continue;
@@ -1192,6 +1196,9 @@ out:
 
 /*
  * The caller (fork, wakeup) owns p->pi_lock, ->cpus_allowed is stable.
+ *
+ * Must be called under get/put_online_cpus_stable_atomic(), to prevent
+ * CPUs from going offline from underneath us.
  */
 static inline
 int select_task_rq(struct task_struct *p, int sd_flags, int wake_flags)
@@ -1209,7 +1216,7 @@ int select_task_rq(struct task_struct *p, int sd_flags, int wake_flags)
 	 *   not worry about this generic constraint ]
 	 */
 	if (unlikely(!cpumask_test_cpu(cpu, tsk_cpus_allowed(p)) ||
-		     !cpu_online(cpu)))
+		     !cpu_online_stable(cpu)))
 		cpu = select_fallback_rq(task_cpu(p), p);
 
 	return cpu;
@@ -1432,6 +1439,7 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 	int cpu, success = 0;
 
 	smp_wmb();
+	get_online_cpus_stable_atomic();
 	raw_spin_lock_irqsave(&p->pi_lock, flags);
 	if (!(p->state & state))
 		goto out;
@@ -1472,6 +1480,7 @@ stat:
 	ttwu_stat(p, cpu, wake_flags);
 out:
 	raw_spin_unlock_irqrestore(&p->pi_lock, flags);
+	put_online_cpus_stable_atomic();
 
 	return success;
 }
@@ -1693,6 +1702,7 @@ void wake_up_new_task(struct task_struct *p)
 	unsigned long flags;
 	struct rq *rq;
 
+	get_online_cpus_stable_atomic();
 	raw_spin_lock_irqsave(&p->pi_lock, flags);
 #ifdef CONFIG_SMP
 	/*
@@ -1713,6 +1723,7 @@ void wake_up_new_task(struct task_struct *p)
 		p->sched_class->task_woken(rq, p);
 #endif
 	task_rq_unlock(rq, p, &flags);
+	put_online_cpus_stable_atomic();
 }
 
 #ifdef CONFIG_PREEMPT_NOTIFIERS
@@ -2610,6 +2621,7 @@ void sched_exec(void)
 	unsigned long flags;
 	int dest_cpu;
 
+	get_online_cpus_stable_atomic();
 	raw_spin_lock_irqsave(&p->pi_lock, flags);
 	dest_cpu = p->sched_class->select_task_rq(p, SD_BALANCE_EXEC, 0);
 	if (dest_cpu == smp_processor_id())
@@ -2619,11 +2631,13 @@ void sched_exec(void)
 		struct migration_arg arg = { p, dest_cpu };
 
 		raw_spin_unlock_irqrestore(&p->pi_lock, flags);
+		put_online_cpus_stable_atomic();
 		stop_one_cpu(task_cpu(p), migration_cpu_stop, &arg);
 		return;
 	}
 unlock:
 	raw_spin_unlock_irqrestore(&p->pi_lock, flags);
+	put_online_cpus_stable_atomic();
 }
 
 #endif
