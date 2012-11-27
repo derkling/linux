@@ -49,6 +49,73 @@ static int cpu_hotplug_disabled;
 
 #ifdef CONFIG_HOTPLUG_CPU
 
+/*
+ * Per-cpu counter to mark the presence of active atomic hotplug readers
+ * (those that run in atomic context and want to prevent CPUs from going
+ * offline).
+ */
+static DEFINE_PER_CPU(int, hotplug_reader_refcount);
+
+/*
+ * Hotplug readers (those that want to prevent CPUs from going offline)
+ * sometimes run from atomic contexts, and hence can't use
+ * get/put_online_cpus() because they can sleep. And often-times, all
+ * they really want is a stable (unchanging) online mask to work with, which
+ * could be a subset of the actual cpu_online_mask, but with a guarantee
+ * that all the CPUs in that stable mask stay online throughout the
+ * hotplug-read-side critical section.
+ *
+ * In such cases, these atomic hotplug readers can use the pair
+ * get/put_online_cpus_stable_atomic() around their critical section to
+ * ensure that the stable mask 'cpu_online_stable_mask' remains unaltered
+ * throughout that critical section. And of course, they should only use
+ * the stable mask in their critical section, and not the actual
+ * cpu_online_mask!
+ *
+ * Eg:
+ *
+ * Atomic hotplug read-side critical section:
+ * -----------------------------------------
+ *
+ * get_online_cpus_stable_atomic();
+ *
+ * for_each_online_cpu_stable(cpu) {
+ * 	... Do something...
+ * }
+ *    ...
+ *
+ * if (cpu_online_stable(other_cpu))
+ * 	do_something();
+ *
+ * put_online_cpus_stable_atomic();
+ *
+ * You can call this function recursively.
+ */
+void get_online_cpus_stable_atomic(void)
+{
+	preempt_disable();
+	this_cpu_inc(hotplug_reader_refcount);
+
+	/*
+	 * Prevent reordering of writes to hotplug_reader_refcount and
+	 * reads from cpu_online_stable_mask.
+	 */
+	smp_mb();
+}
+EXPORT_SYMBOL_GPL(get_online_cpus_stable_atomic);
+
+void put_online_cpus_stable_atomic(void)
+{
+	/*
+	 * Prevent reordering of reads from cpu_online_stable_mask and
+	 * writes to hotplug_reader_refcount.
+	 */
+	smp_mb();
+	this_cpu_dec(hotplug_reader_refcount);
+	preempt_enable();
+}
+EXPORT_SYMBOL_GPL(put_online_cpus_stable_atomic);
+
 static struct {
 	struct task_struct *active_writer;
 	struct mutex lock; /* Synchronizes accesses to refcount, */
@@ -237,6 +304,44 @@ static inline void check_for_tasks(int cpu)
 	write_unlock_irq(&tasklist_lock);
 }
 
+/*
+ * We want all atomic hotplug readers to refer to the new value of
+ * cpu_online_stable_mask. So wait for the existing atomic hotplug readers
+ * to complete. Any new atomic hotplug readers will see the updated mask
+ * and hence pose no problems.
+ */
+static void sync_hotplug_readers(void)
+{
+	unsigned int cpu;
+
+	for_each_online_cpu(cpu) {
+		while (per_cpu(hotplug_reader_refcount, cpu))
+			cpu_relax();
+	}
+}
+
+/*
+ * We are serious about taking this CPU down. So clear the CPU from the
+ * stable online mask.
+ */
+static void prepare_cpu_take_down(unsigned int cpu)
+{
+	set_cpu_online_stable(cpu, false);
+
+	/*
+	 * Prevent reordering of writes to cpu_online_stable_mask and reads
+	 * from hotplug_reader_refcount.
+	 */
+	smp_mb();
+
+	/*
+	 * Wait for all active hotplug readers to complete, to ensure that
+	 * there are no critical sections still referring to the old stable
+	 * online mask.
+	 */
+	sync_hotplug_readers();
+}
+
 struct take_cpu_down_param {
 	unsigned long mod;
 	void *hcpu;
@@ -246,7 +351,9 @@ struct take_cpu_down_param {
 static int __ref take_cpu_down(void *_param)
 {
 	struct take_cpu_down_param *param = _param;
-	int err;
+	int err, cpu = (long)(param->hcpu);
+
+	prepare_cpu_take_down(cpu);
 
 	/* Ensure this CPU doesn't handle any more interrupts. */
 	err = __cpu_disable();
@@ -677,6 +784,11 @@ static DECLARE_BITMAP(cpu_online_bits, CONFIG_NR_CPUS) __read_mostly;
 const struct cpumask *const cpu_online_mask = to_cpumask(cpu_online_bits);
 EXPORT_SYMBOL(cpu_online_mask);
 
+static DECLARE_BITMAP(cpu_online_stable_bits, CONFIG_NR_CPUS) __read_mostly;
+const struct cpumask *const cpu_online_stable_mask =
+					to_cpumask(cpu_online_stable_bits);
+EXPORT_SYMBOL(cpu_online_stable_mask);
+
 static DECLARE_BITMAP(cpu_present_bits, CONFIG_NR_CPUS) __read_mostly;
 const struct cpumask *const cpu_present_mask = to_cpumask(cpu_present_bits);
 EXPORT_SYMBOL(cpu_present_mask);
@@ -701,12 +813,26 @@ void set_cpu_present(unsigned int cpu, bool present)
 		cpumask_clear_cpu(cpu, to_cpumask(cpu_present_bits));
 }
 
+void set_cpu_online_stable(unsigned int cpu, bool online)
+{
+	if (online)
+		cpumask_set_cpu(cpu, to_cpumask(cpu_online_stable_bits));
+	else
+		cpumask_clear_cpu(cpu, to_cpumask(cpu_online_stable_bits));
+}
+
 void set_cpu_online(unsigned int cpu, bool online)
 {
 	if (online)
 		cpumask_set_cpu(cpu, to_cpumask(cpu_online_bits));
 	else
 		cpumask_clear_cpu(cpu, to_cpumask(cpu_online_bits));
+
+	/*
+	 * Any changes to the online mask must also be propagated to the
+	 * stable online mask.
+	 */
+	set_cpu_online_stable(cpu, online);
 }
 
 void set_cpu_active(unsigned int cpu, bool active)
@@ -730,4 +856,5 @@ void init_cpu_possible(const struct cpumask *src)
 void init_cpu_online(const struct cpumask *src)
 {
 	cpumask_copy(to_cpumask(cpu_online_bits), src);
+	cpumask_copy(to_cpumask(cpu_online_stable_bits), src);
 }
