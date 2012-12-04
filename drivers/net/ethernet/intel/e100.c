@@ -2867,10 +2867,10 @@ static int __devinit e100_probe(struct pci_dev *pdev,
 		goto err_out_disable_pdev;
 	}
 
-	if ((err = pci_request_regions(pdev, DRV_NAME))) {
-		netif_err(nic, probe, nic->netdev, "Cannot obtain PCI resources, aborting\n");
-		goto err_out_disable_pdev;
-	}
+//	if ((err = pci_request_regions(pdev, DRV_NAME))) {
+//		netif_err(nic, probe, nic->netdev, "Cannot obtain PCI resources, aborting\n");
+//		goto err_out_disable_pdev;
+//	}
 
 	if ((err = pci_set_dma_mask(pdev, DMA_BIT_MASK(32)))) {
 		netif_err(nic, probe, nic->netdev, "No usable DMA configuration, aborting\n");

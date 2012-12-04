@@ -41,9 +41,9 @@ void writelp(u32 val, void *addr)
 
 u32 readlp(void *addr)
 {
-	printk(".\n");
+	printk(" - Read from 0x%x...\n", addr);
 	u32 val = readl(addr);
-	printk(" - Read 0x%x from 0x%x\n", val, addr);
+	printk("     got 0x%x\n", val);
 	return val;
 }
 
@@ -608,9 +608,9 @@ static int sil24_init_port(struct ata_port *ap)
 
 	writel(PORT_CS_INIT, port + PORT_CTRL_STAT);
 	ata_wait_register(ap, port + PORT_CTRL_STAT,
-			  PORT_CS_INIT, PORT_CS_INIT, 10, 100);
+			  PORT_CS_INIT, PORT_CS_INIT, 10, 1000);
 	tmp = ata_wait_register(ap, port + PORT_CTRL_STAT,
-				PORT_CS_RDY, 0, 10, 100);
+				PORT_CS_RDY, 0, 10, 1000);
 
 	if ((tmp & (PORT_CS_INIT | PORT_CS_RDY)) != PORT_CS_RDY) {
 		pp->do_port_rst = 1;
@@ -669,7 +669,7 @@ static int sil24_exec_polled_cmd(struct ata_port *ap, int pmp,
 	}
 
 	/* restore IRQ enabled */
-//	writel(irq_enabled, port + PORT_IRQ_ENABLE_SET);
+	writel(irq_enabled, port + PORT_IRQ_ENABLE_SET);
 
 	return rc;
 }
@@ -754,7 +754,7 @@ static int sil24_hardreset(struct ata_link *link, unsigned int *class,
 	/* sil24 does the right thing(tm) without any protection */
 	sata_set_spd(link);
 
-	tout_msec = 100;
+	tout_msec = 1000;
 	if (ata_link_online(link))
 		tout_msec = 5000;
 
@@ -802,20 +802,26 @@ static struct scatterlist *ggsg;
 static int ggne;
 static struct ata_queued_cmd *ggqc;
 
-void dump()
+void dump(int cl)
 {
+	mdelay(1000);
+#if 0
+	if (!in_interrupt()){
 	unsigned int* a = andy;
 	int c=0;
 
-	mdelay(2000);
-
 	dma_sync_sg_for_cpu(ggqc->ap->dev, ggsg, ggne, 0);
+
+	if (cl)
+	memset(a, 0xff, 0x200);	
 
 	for (c=0;c<0x200/4/8;c++) {
 	printk("0x%08x: 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0%08x\n", 
 		a, *a++, *a++, *a++, *a++,
 		*a++, *a++, *a++, *a++);
 	}
+	}
+#endif
 }
 
 static inline void sil24_fill_sg(struct ata_queued_cmd *qc,
@@ -830,7 +836,7 @@ static inline void sil24_fill_sg(struct ata_queued_cmd *qc,
 
 		andy = ioremap_nocache(sg_dma_address(sg), 0x200);
 		sge->addr = cpu_to_le64(sg_dma_address(sg));
-		sge->cnt = cpu_to_le32(sg_dma_len(sg));
+		sge->cnt = cpu_to_le32(sg_dma_len(sg)); //packet size
 		sge->flags = 0;
 
 		last_sge = sge;
@@ -840,7 +846,7 @@ static inline void sil24_fill_sg(struct ata_queued_cmd *qc,
 		ggne = qc->n_elem;
 		printk("ggne is %d\n", ggne);
 		printk("SG address 0x%x count 0x%x\n", sg_dma_address(sg), sg_dma_len(sg));
-		dump();
+		dump(1);
 	}
 
 	last_sge->flags = cpu_to_le32(SGE_TRM);
@@ -1013,15 +1019,19 @@ static void sil24_freeze(struct ata_port *ap)
 	printk("DELAY\n");
 	if (andy) {
 		printk("SG 0x%x\n", *(unsigned int *)andy);
-		dump();
+		dump(0);
 	}
-	mdelay(200);
 	printk("HANG...\n");
+	if (!in_interrupt()){
 	void *a = ioremap_nocache(0x30000000, 0x2000);
-	printk("REGS ARE 0x%x, 0x%x, 0x%x, 0%x, 0x%x\n", readl(a+0x4), readl(a+0x14), readl(a+0x30), readl(a+0x90), readl(a+0x184));
+	printk("REGS ARE 0x%x, 0x%x, 0x%x, 0%x, 0x%x, 0x%x\n", readl(a+0x4), readl(a+0x14), readl(a+0x30), readl(a+0x90), readl(a+0x184), readl(a+0x18));
 	printk("DELAY\n");
-	mdelay(1000);
 	printk("STILL HANG...\n");
+	}
+	
+	readl(port + PORT_IRQ_ENABLE_CLR);
+//	readl(port + PORT_IRQ_ENABLE_CLR);
+//	readl(port + PORT_IRQ_ENABLE_CLR);
 	writel(0xffff, port + PORT_IRQ_ENABLE_CLR);
 	printk("NOT\n");
 }
@@ -1036,7 +1046,7 @@ static void sil24_thaw(struct ata_port *ap)
 	writel(tmp, port + PORT_IRQ_STAT);
 
 	/* turn IRQ back on */
-//	writel(DEF_PORT_IRQ, port + PORT_IRQ_ENABLE_SET);
+	writel(DEF_PORT_IRQ, port + PORT_IRQ_ENABLE_SET);
 }
 
 static void sil24_error_intr(struct ata_port *ap)
@@ -1319,7 +1329,7 @@ static void sil24_init_controller(struct ata_host *host)
 			writel(PORT_CS_PORT_RST, port + PORT_CTRL_CLR);
 			tmp = ata_wait_register(NULL, port + PORT_CTRL_STAT,
 						PORT_CS_PORT_RST,
-						PORT_CS_PORT_RST, 10, 100);
+						PORT_CS_PORT_RST, 10, 1000);
 			if (tmp & PORT_CS_PORT_RST)
 				dev_err(host->dev,
 					"failed to clear port RST\n");

@@ -31,6 +31,9 @@
 //TODO: remove or use properly
 #define pr_debug printk
 
+static struct irq_domain *irq_domain;
+void *regs;
+
 /* per controller structure */
 struct pcie_port {
 	//TODO: rather than store lots of fields used once - pass the device tree
@@ -159,6 +162,57 @@ struct pci_ops xr3pci_ops = {
 	.write 	= xr3pci_write_config, 
 };
 
+	static void irq_ack(struct irq_data *data) {}
+	static void irq_enable(struct irq_data *data) {}
+	static void irq_disable(struct irq_data *data) {}
+	static void irq_mask(struct irq_data *data) {} 
+	static void irq_unmask(struct irq_data *data) {}
+static struct irq_chip irq_chip = {
+	.name	= "IRQ CHIP",
+	.irq_ack = irq_ack,
+	.irq_enable = irq_enable,
+	.irq_disable = irq_disable,
+	.irq_mask =  irq_mask,
+	.irq_unmask = irq_unmask,
+};
+
+static int irq_map(struct irq_domain *h, unsigned int virq, irq_hw_number_t hw)
+{
+	printk("IRQ CASCADE MAP virq %d, hw %d\n", virq, hw);
+	irq_set_chip_and_handler(virq, &irq_chip, handle_simple_irq); //???
+	return 0;
+}
+
+static struct irq_domain_ops irq_ops = {
+	.map = irq_map,
+};
+
+static void xr3pci_irq_handler(unsigned int irq, struct irq_desc *desc)
+{
+	int j;
+	unsigned long status;
+	struct irq_chip *chip = irq_get_chip(irq);
+
+	chained_irq_enter(chip, desc);
+	u8 pin = (u8)irq_desc_get_handler_data(desc);
+	pr_debug("%s:%d xr3pci_irq_handler for IRQ %d WAS PIN %d\n", __func__, __LINE__, irq, pin);
+
+#if 1
+		int virq = irq_linear_revmap(irq_domain, pin-1);
+		pr_debug("%s:%d  occured - hwirq %d, virt irq %d?\n", 
+			__func__, __LINE__, pin, virq);
+
+		if (virq != 0)
+			generic_handle_irq(virq);
+
+	printk("STATUS 0x%x\n", readl(regs + ISTATUS_LOCAL));
+	writel((1 << pin - 1 + 24), regs + ISTATUS_LOCAL);
+	printk("STATUS AFTER 0x%x\n", readl(regs + ISTATUS_LOCAL));
+#endif
+out:
+	chained_irq_exit(chip, desc);
+}
+
 //static
 int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 {
@@ -172,13 +226,100 @@ int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 	if (of_irq_map_pci(dev, &out))
 		printk("Error mapping...\n");
 
-		int virq = irq_create_of_mapping(out.controller, out.specifier,
+	int virq = irq_create_of_mapping(out.controller, out.specifier,
 					     out.size);
 
 
+	struct irq_chip *c = irq_get_chip(virq);
+	printk("CHIP IS CURRENTLY %p %s\n", c, c->name);
+
+	printk(" - cascading virq irq %d of pin %d...\n", virq, pin);
+	irq_set_chained_handler(virq, xr3pci_irq_handler);
+	irq_set_handler_data(virq, pin);
+
+	//this assumes that there is no swizzling of pins
+	virq = irq_create_mapping(irq_domain, pin-1);
+
 	printk("Given IRQ %d (pin %d)\n", virq, pin);
+
+
+#if 0
+	printk("BEGIN TEST\n");
+//	void volatile *mem = kmalloc(0x400, GFP_KERNEL | GFP_DMA);
+
+while (1) {
+
+	dma_addr_t dma;
+	void *mem = dma_zalloc_coherent(&dev->dev, 0x400, &dma, GFP_KERNEL | GFP_DMA);
+
+	printk("MEM is 0x%08x\n", mem);
+
+
+		printk("Mapping\n");
+//		dma_addr_t dma = dma_map_single(&dev->dev, mem, 0x400, DMA_FROM_DEVICE);
+//		if (dma_mapping_error(&dev->dev, dma)) {
+//			printk("BAD :(\n");
+//		}
+		u32 *a = mem;
+		*a = 0x0;
+
+		u32 pphy = dma - 0x60000000;
+
+		u32 *pci = ioremap_nocache(pphy, 0x400);
+
+		printk("DMA PHY 0x%x, VIRT 0x%x\n", dma, mem);
+		printk("PCI PHY 0x%x, VIRT 0x%x\n", pphy, pci);
+		printk("Assuming 0x40000000->0xb0000000 size 0x20000000\n");
+	
+		printk("VALUE AT 0x%x BEFORE is 0x%x\n", a, *a);
+	
+	u32 *d = mem;
+	int c=0;
+	for (c=0;c<0x400/4/8;c++) {
+	printk("0x%08x: 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0%08x\n", 
+		d, *d++, *d++, *d++, *d++,
+		*d++, *d++, *d++, *d++);
+	}
+
+		printk("WRITING 0xDEADBEEF to 0x%x\n", pci);
+
+		for (c=0;c<0x400;c+=4)
+			*pci++ = c + 0xe3de11ff;
+
+		printk("delay\n");
+		mdelay(5000);
+
+		printk("UNAMMP\n");
+//		dma_unmap_single(&dev->dev, dma, 100, DMA_FROM_DEVICE);
+	
+		printk("READING BACK\n");
+		d = mem;
+		int bad =0;
+		for (c=0;c<0x400;c+=4)
+			if (*d++ != c+0xe3de11ff)  bad++;//printk("number %d doesnt match\n", c);
+
+		printk("COMPLETE with %d failures\n", bad);
+		if (bad) while(1);
+		
+
+	d = mem;
+	for (c=0;c<0x400/4/8;c++) {
+	printk("0x%08x: 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0%08x\n", 
+		d, *d++, *d++, *d++, *d++,
+		*d++, *d++, *d++, *d++);
+	}
+	d = mem;
+		for (c=0;c<0x400;c+=4)
+			*pci++ = 0;
+	printk("ALL DONE\n");
+
+}
+
+	while(1);	
+#endif
 	return virq;
 }
+
 
 //TODO: This is really just for development
 static int __init xr3pci_probe(struct pcie_port *pp)
@@ -190,6 +331,7 @@ static int __init xr3pci_probe(struct pcie_port *pp)
 	/* verify hardwired vendor, device, revision IDs */
 	//TODO: PLDA document doesn't make clear how this applies to root ports
 	ver = readl(pp->base + PCIE_PCI_IDS_1);
+	//TODO: this doesn't work IDS_1 is 0xa! 
 	if (!((ver  & 0xffff) == DEVICE_VENDOR_ID &&
 	      (ver  & 0xffff0000) >> 16 == DEVICE_DEVICE_ID)) {
 		printk("Unable to detect " DEVICE_NAME);
@@ -209,10 +351,17 @@ static int __init xr3pci_probe(struct pcie_port *pp)
 		return -1;
 	}
 
-	writel(0x7f, pp->base + 0x800);
-	writel(0x7f, pp->base + 0x600);
-	writeb(0x4, pp->base + 0x610);
+//	writel(0x7f, pp->base + 0x800);
+///	writel(0x7f, pp->base + 0x600);
+///	writeb(0x4, pp->base + 0x610);
 	
+	//colin test
+	printk("LOOP BACK COLIN TEST ENABLED\n");
+//	writeb(0x4, pp->base + 0x810);
+//	writel(0x4000000b, pp->base + 0x800);
+//	writel(0xc0000000, pp->base + 0x808);
+	printk("DONE\n");
+
 	return 0;
 }
 
@@ -254,6 +403,8 @@ int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np)
 		return -1;
 	}
 
+	regs = pp->base;
+
 	writel(0xffffffff, pp->base + IMASK_LOCAL);
 	for (x=0;x<32;x++) {
 		if (125+x != 149)
@@ -261,6 +412,9 @@ int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np)
 			printk("unable to request irq %d\n", 125+x);
 		}
 	}
+
+	irq_domain = irq_domain_add_linear(NULL, 4, &irq_ops, NULL);
+	if (!irq_domain) printk("WWWWWWWWWWWWWWWWWWWWWWWWWWw\n");
 
 	for (x=0;x<pp->numresources;x++) {
 		if (pp->resource[x].flags & IORESOURCE_MEM) {

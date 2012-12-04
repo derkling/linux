@@ -3677,6 +3677,7 @@ int pcie_set_mps(struct pci_dev *dev, int mps)
 	int cap, err = -EINVAL;
 	u16 ctl, v;
 
+	printk("ATTEMPT TO WRITE PAYLOAD OF %d bytes\n", mps);
 	if (mps < 128 || mps > 4096 || !is_power_of_2(mps))
 		goto out;
 
