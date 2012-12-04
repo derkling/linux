@@ -92,11 +92,12 @@
 #define ISTATUS_LOCAL		0x184
 #define ISTATUS_MSI		0x194
 
-#define INT_MSI			(1 << 28)
-#define INT_D			(1 << 27)
-#define INT_C			(1 << 26)
-#define INT_B			(1 << 25)
 #define INT_A			(1 << 24)
+#define INT_B			(1 << 25)
+#define INT_C			(1 << 26)
+#define INT_D			(1 << 27)
+#define INT_MSI			(1 << 28)
+#define INT_INTX		(INT_A | INT_B | INT_C | INT_D)
 
 /* Macros for populating PCIE_CFGNUM register of the Bridge Configuration Space.
    This register is used to specify the target of configuration read/writes and

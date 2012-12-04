@@ -22,6 +22,7 @@
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/spinlock.h>
+#include <linux/spinlock_types.h>
 #include <linux/interrupt.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
@@ -40,8 +41,12 @@
 //TODO: remove or use properly
 #define pr_debug printk
 
-static struct irq_domain *irq_domain;
-void *regs;
+/* The XpressRICH3 requires that once the source of an INTx has been cleared,
+ * it must also be cleared via the XpressRICH3's register set. This quirk
+ * cascades each of the interrupts and provides the additional required
+ * handling.
+ */
+#define FPGA_QUIRK_INTX_CLEAR
 
 /* per controller structure */
 struct pcie_port {
@@ -50,8 +55,10 @@ struct pcie_port {
 	void __iomem	*base;
 	struct resource resource[5];
 	int numresources;
-       spinlock_t conf_lock;
-
+	spinlock_t conf_lock;
+#ifdef FPGA_QUIRK_INTX_CLEAR
+	struct irq_domain *intx_irq_domain;
+#endif
 };
 static int __init xr3pci_get_resources(struct pcie_port *pp, struct device_node *np);
 
@@ -65,10 +72,6 @@ static int xr3pci_read_config(struct pci_bus *bus, unsigned int devfn, int where
 	unsigned long flags;
 	struct pci_sys_data *sys = bus->sysdata;
 	struct pcie_port *pp = sys->private_data;
-
-//	pr_debug("%s:%d readl_config size: %d, where: %d, ID: %d:%d:%d\n",
-//	 __func__, __LINE__,
-//		 size, where, bus->number, PCI_SLOT(devfn), PCI_FUNC(devfn));
 
 	/* We expect requests which are aligned to the request size which is
 	   either 1, 2 or 4 bytes. We also expect this function to be called
@@ -111,7 +114,6 @@ spin_unlock_irqrestore(&pp->conf_lock, flags);
 		*val = (*val >> (8 * (where & 3))) & 0xffff;
 		break;
 	}
-//	printk("Returning value read ali as 0x%x\n", *val);
 
 	return PCIBIOS_SUCCESSFUL;
 }
@@ -127,10 +129,6 @@ static int xr3pci_write_config(struct pci_bus *bus, unsigned int devfn, int wher
 	struct pci_sys_data *sys = bus->sysdata;
 	struct pcie_port *pp = sys->private_data;
 
-//	pr_debug("%s:%d writel_config size: %d, where: %d, ID: %d:%d:%d value = 0x%x\n",
-//		 __func__, __LINE__,
-//		 size, where, bus->number, PCI_SLOT(devfn), PCI_FUNC(devfn), val);
-	
 	/* We expect requests which are aligned to the request size which is
 	   either 1, 2 or 4 bytes. We also expect this function to be called
 	   exclusively through the pci_write_config_(byte|word|dword) accessors
@@ -171,166 +169,84 @@ struct pci_ops xr3pci_ops = {
 	.write 	= xr3pci_write_config, 
 };
 
-	static void irq_ack(struct irq_data *data) {}
-	static void irq_enable(struct irq_data *data) {}
-	static void irq_disable(struct irq_data *data) {}
-	static void irq_mask(struct irq_data *data) {} 
-	static void irq_unmask(struct irq_data *data) {}
+#ifdef FPGA_QUIRK_INTX_CLEAR
+static struct irq_domain_ops irq_ops = { };
+static void irq_nop(struct irq_data *data) { }
+
 static struct irq_chip irq_chip = {
-	.name	= "IRQ CHIP",
-	.irq_ack = irq_ack,
-	.irq_enable = irq_enable,
-	.irq_disable = irq_disable,
-	.irq_mask =  irq_mask,
-	.irq_unmask = irq_unmask,
+	.name	= "Xpress-RICH3 INTx",
+	.irq_ack = irq_nop,
+	.irq_enable = irq_nop,
+	.irq_disable = irq_nop,
+	.irq_mask =  irq_nop,
+	.irq_unmask = irq_nop,
 };
 
-static int irq_map(struct irq_domain *h, unsigned int virq, irq_hw_number_t hw)
+static void xr3pci_msix_irq_handler(unsigned int irq, struct irq_desc *desc)
 {
-	printk("IRQ CASCADE MAP virq %d, hw %d\n", virq, hw);
-	irq_set_chip_and_handler(virq, &irq_chip, handle_simple_irq); //???
-	return 0;
-}
-
-static struct irq_domain_ops irq_ops = {
-	.map = irq_map,
-};
-
-static void xr3pci_irq_handler(unsigned int irq, struct irq_desc *desc)
-{
-	int j;
-	unsigned long status;
+	unsigned long status, flags;
 	struct irq_chip *chip = irq_get_chip(irq);
-
+	struct pcie_port *pp = irq_desc_get_handler_data(desc);
+	
+	/* this handler is used for each INTx interrupt source, prevent
+	 * duplicate calls to generic_handle_irq with spin lock
+	 */
+	static DEFINE_SPINLOCK(irq_lock);
+	
 	chained_irq_enter(chip, desc);
-	u8 pin = (u8)irq_desc_get_handler_data(desc);
-	pr_debug("%s:%d xr3pci_irq_handler for IRQ %d WAS PIN %d\n", __func__, __LINE__, irq, pin);
+	spin_lock_irqsave(&irq_lock, flags);
+	status = (readl(pp->base + ISTATUS_LOCAL) & INT_INTX) >> 24;
 
-#if 1
-		int virq = irq_linear_revmap(irq_domain, pin-1);
-		pr_debug("%s:%d  occured - hwirq %d, virt irq %d?\n", 
-			__func__, __LINE__, pin, virq);
-
+	/* handle all pending MSIx interrupts */
+	while (status) {
+		u8 pin = find_first_bit(&status, 4);
+		int virq = irq_linear_revmap(pp->intx_irq_domain, pin);
 		if (virq != 0)
 			generic_handle_irq(virq);
 
-	printk("STATUS 0x%x\n", readl(regs + ISTATUS_LOCAL));
-	writel((1 << pin - 1 + 24), regs + ISTATUS_LOCAL);
-	printk("STATUS AFTER 0x%x\n", readl(regs + ISTATUS_LOCAL));
-#endif
-out:
+		writel((1 << (pin + 24)), pp->base + ISTATUS_LOCAL);
+		status = (readl(pp->base + ISTATUS_LOCAL) & INT_INTX) >> 24;
+	}
+
+	spin_unlock_irqrestore(&irq_lock, flags);
 	chained_irq_exit(chip, desc);
 }
+#endif
 
-//static
-int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
+static int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 {
-	pr_debug("%s:%d xr3pci_map_irq %d:%d:%d for slot %d pin %d\n", __func__, __LINE__,
-						dev->bus->number, PCI_SLOT(dev->devfn), PCI_FUNC(dev->devfn), slot, pin);
-	
+	int virq;
+	struct of_irq out;
 	struct pci_sys_data *sys = dev->sysdata;
 	struct pcie_port *pp = sys->private_data;
 
-	struct of_irq out;
-	if (of_irq_map_pci(dev, &out))
-		printk("Error mapping...\n");
+	if (of_irq_map_pci(dev, &out)) {
+		pr_err(DEVICE_NAME ": Unable to map PCI IRQ\n");
+		return -1;
+	}
 
-	int virq = irq_create_of_mapping(out.controller, out.specifier,
+	virq = irq_create_of_mapping(out.controller, out.specifier,
 					     out.size);
-
-
-	struct irq_chip *c = irq_get_chip(virq);
-	printk("CHIP IS CURRENTLY %p %s\n", c, c->name);
-
-	printk(" - cascading virq irq %d of pin %d...\n", virq, pin);
-	irq_set_chained_handler(virq, xr3pci_irq_handler);
-	irq_set_handler_data(virq, pin);
-
-	//this assumes that there is no swizzling of pins
-	virq = irq_create_mapping(irq_domain, pin-1);
-
-	printk("Given IRQ %d (pin %d)\n", virq, pin);
-
-
-#if 0
-	printk("BEGIN TEST\n");
-//	void volatile *mem = kmalloc(0x400, GFP_KERNEL | GFP_DMA);
-
-while (1) {
-
-	dma_addr_t dma;
-	void *mem = dma_zalloc_coherent(&dev->dev, 0x400, &dma, GFP_KERNEL | GFP_DMA);
-
-	printk("MEM is 0x%08x\n", mem);
-
-
-		printk("Mapping\n");
-//		dma_addr_t dma = dma_map_single(&dev->dev, mem, 0x400, DMA_FROM_DEVICE);
-//		if (dma_mapping_error(&dev->dev, dma)) {
-//			printk("BAD :(\n");
-//		}
-		u32 *a = mem;
-		*a = 0x0;
-
-		u32 pphy = dma - 0x60000000;
-
-		u32 *pci = ioremap_nocache(pphy, 0x400);
-
-		printk("DMA PHY 0x%x, VIRT 0x%x\n", dma, mem);
-		printk("PCI PHY 0x%x, VIRT 0x%x\n", pphy, pci);
-		printk("Assuming 0x40000000->0xb0000000 size 0x20000000\n");
-	
-		printk("VALUE AT 0x%x BEFORE is 0x%x\n", a, *a);
-	
-	u32 *d = mem;
-	int c=0;
-	for (c=0;c<0x400/4/8;c++) {
-	printk("0x%08x: 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0%08x\n", 
-		d, *d++, *d++, *d++, *d++,
-		*d++, *d++, *d++, *d++);
+	if (!virq) {
+		pr_err(DEVICE_NAME ": Unable to create IRQ mapping\n");
+		return -1;
 	}
 
-		printk("WRITING 0xDEADBEEF to 0x%x\n", pci);
+#ifdef FPGA_QUIRK_INTX_CLEAR
+	/* set up common chained handler for MSIx interrutps */
+	irq_set_chained_handler(virq, xr3pci_msix_irq_handler);
+	irq_set_handler_data(virq, pp);
 
-		for (c=0;c<0x400;c+=4)
-			*pci++ = c + 0xe3de11ff;
-
-		printk("delay\n");
-		mdelay(5000);
-
-		printk("UNAMMP\n");
-//		dma_unmap_single(&dev->dev, dma, 100, DMA_FROM_DEVICE);
-	
-		printk("READING BACK\n");
-		d = mem;
-		int bad =0;
-		for (c=0;c<0x400;c+=4)
-			if (*d++ != c+0xe3de11ff)  bad++;//printk("number %d doesnt match\n", c);
-
-		printk("COMPLETE with %d failures\n", bad);
-		if (bad) while(1);
-		
-
-	d = mem;
-	for (c=0;c<0x400/4/8;c++) {
-	printk("0x%08x: 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0%08x\n", 
-		d, *d++, *d++, *d++, *d++,
-		*d++, *d++, *d++, *d++);
-	}
-	d = mem;
-		for (c=0;c<0x400;c+=4)
-			*pci++ = 0;
-	printk("ALL DONE\n");
-
-}
-
-	while(1);	
+	/* create interrupt for INTx users to request which though its cascade
+	 * will correctly clear interrupt registers in XpressRICH3
+	 */
+	virq = irq_create_mapping(pp->intx_irq_domain, pin-1);
+	irq_set_chip_and_handler(virq, &irq_chip, handle_simple_irq);
 #endif
+
 	return virq;
 }
 
-
-//TODO: This is really just for development
 static int __init xr3pci_probe(struct pcie_port *pp)
 {
 	/* gain some confidence that we are talking to the correct device by
@@ -374,17 +290,6 @@ static int __init xr3pci_probe(struct pcie_port *pp)
 	return 0;
 }
 
-static irqreturn_t handler(int irq, void *dev_id)
-{
-	struct pcie_port *pp = (struct pcie_port *)dev_id;
-
-	printk("Habndler for irq %d\n", irq);
-	printk("status 0x%x\n", readl(pp->base + ISTATUS_LOCAL));
-	writel(1 << (irq-125), pp->base + ISTATUS_LOCAL);
-	
-	return 0;
-}
-
 int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np)
 {
 	int x=0;
@@ -412,18 +317,16 @@ int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np)
 		return -1;
 	}
 
-	regs = pp->base;
+	/* Enable IRQs for MSIs and legacy interrupts */
+	writel(INT_MSI | INT_INTX, pp->base + IMASK_LOCAL);
 
-	writel(0xffffffff, pp->base + IMASK_LOCAL);
-	for (x=0;x<32;x++) {
-		if (125+x != 149)
-		if (request_irq(125+x, handler, 0, "xr3", pp)) {
-			printk("unable to request irq %d\n", 125+x);
-		}
+#ifdef FPGA_QUIRK_INTX_CLEAR
+	pp->intx_irq_domain = irq_domain_add_linear(NULL, 4, &irq_ops, NULL);
+	if (!pp->intx_irq_domain) {
+		pr_err(DEVICE_NAME ": Failed to create IRQ domain\n");
+		return -1;
 	}
-
-	irq_domain = irq_domain_add_linear(NULL, 4, &irq_ops, NULL);
-	if (!irq_domain) printk("WWWWWWWWWWWWWWWWWWWWWWWWWWw\n");
+#endif
 
 	for (x=0;x<pp->numresources;x++) {
 		if (pp->resource[x].flags & IORESOURCE_MEM) {
@@ -447,7 +350,7 @@ int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np)
 
 static int __init xr3pci_get_resources(struct pcie_port *pp, struct device_node *np)
 {
-	struct resource res;
+	struct resource res, *r;
 	int err;
 
 	/* Host bridge configuration registers */
@@ -463,7 +366,6 @@ static int __init xr3pci_get_resources(struct pcie_port *pp, struct device_node 
 		return -EBUSY;
 	}
 
-
 	pp->base = ioremap_nocache(res.start, resource_size(&res));
 	if (!pp->base) {
 		pr_err(DEVICE_NAME ": Failed to map configuration registers resource\n");
@@ -472,7 +374,7 @@ static int __init xr3pci_get_resources(struct pcie_port *pp, struct device_node 
 	}
 
 	/* PCIe addres spaces */
-	struct resource *r = &(pp->resource[pp->numresources]);
+	r = &(pp->resource[pp->numresources]);
 	
 	u32 *last = NULL;
 	while (!of_pci_process_ranges(np, r, &last)) {
@@ -482,8 +384,6 @@ static int __init xr3pci_get_resources(struct pcie_port *pp, struct device_node 
 
 	return 0;
 
-err_irq:
-err_get_ranges:
 	iounmap(pp->base);
 err_map_io:
 	release_mem_region(res.start, resource_size(&res));

@@ -1330,10 +1330,10 @@ void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
 	up_write(&pci_bus_sem);
 
 	//////
-//////	pcie_write_mps(dev, 128);// 128 << 3);
-	pcie_write_mps(dev, 512);// 128 << 3);
-	pcie_write_mps(dev, 1024);// 128 << 3);
-	pcie_write_mps(dev, 2048);// 128 << 3);
+	pcie_write_mps(dev, 128);// 128 << 3);
+//	pcie_write_mps(dev, 256);// 128 << 3);
+//	pcie_write_mps(dev, 1024);// 128 << 3);
+//	pcie_write_mps(dev, 2048);// 128 << 3);
 }
 
 struct pci_dev *__ref pci_scan_single_device(struct pci_bus *bus, int devfn)

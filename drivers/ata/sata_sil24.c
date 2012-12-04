@@ -433,7 +433,7 @@ static struct ata_port_operations sil24_ops = {
 #endif
 };
 
-static bool sata_sil24_msi = true;    /* Disable MSI */
+static bool sata_sil24_msi = false;    /* Disable MSI */
 module_param_named(msi, sata_sil24_msi, bool, S_IRUGO);
 MODULE_PARM_DESC(msi, "Enable MSI (Default: false)");
 
