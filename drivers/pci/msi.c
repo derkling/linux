@@ -4,7 +4,7 @@
  *
  * Copyright (C) 2003-2004 Intel
  * Copyright (C) Tom Long Nguyen (tom.l.nguyen@intel.com)
- * Copyright (C) 2012 ARM Limited (amurray@embedded-bits.co.uk)
+ * Copyright (C) 2012 ARM Limited (andrew.murray@arm.com)
  */
 
 #include <linux/err.h>
