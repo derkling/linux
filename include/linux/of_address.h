@@ -28,7 +28,7 @@ static inline unsigned long pci_address_to_pio(phys_addr_t addr) { return -1; }
 
 int of_count_cells(struct device_node *node, int *na, int *ns);
 
-int of_pci_process_ranges(struct device_node *node, struct resource *res, u32 **last);
+u32* of_pci_process_ranges(struct device_node *node, struct resource *res, u32 *from);
 #else /* CONFIG_OF_ADDRESS */
 static inline int of_address_to_resource(struct device_node *dev, int index,
 					 struct resource *r)

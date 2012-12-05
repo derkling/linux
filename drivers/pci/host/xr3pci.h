@@ -20,6 +20,20 @@
 #ifndef __XPRESS_RICH3_H__
 #define __XPRESS_RICH3_H__
 
+/* The XpressRICH3 requires that once the source of an INTx has been cleared,
+ * it must also be cleared via the XpressRICH3's register set. This quirk
+ * cascades each of the interrupts and provides the additional required
+ * handling.
+ */
+#define FPGA_QUIRK_INTX_CLEAR
+
+/* The XpressRICH3 generates aborts when accessing registers which include
+ * reserved bits. An abort handler is already in place, however the abort
+ * still results in strange effects for writes. This quirk changes accesses
+ * to limit aborts.
+ */
+#define FPGA_QUIRK_ABORTS
+
 /* Host Bridge Identification */
 #define DEVICE_NAME "XpressRICH3-AXI PCIe Host Bridge"
 #define DEVICE_VENDOR_ID  0x1556
@@ -28,8 +42,6 @@
 //TODO
 #define IRQ_MSI_BASE 260
 #define MAX_SUPPORTED_NO_MSI 32
-//TODO: use lists instead
-#define MAX_RESOURCES 5
 
 /* Bridge Configuration Space Registers */
 #define BRIDGE_INT_REGS		0x0
@@ -122,5 +134,20 @@
 					 PCIE_CFGNUM_FUN(f) | \
 					 PCIE_CFGNUM_BYTE_EN(be) | PCIE_CFGNUM_FORCE_BE(fo))
 
+
+
+#ifdef FPGA_QUIRK_INTX_CLEAR
+static struct irq_domain_ops xr3pci_irq_nop_ops = { };
+static void xr3pci_irq_nop(struct irq_data *data) { }
+
+static struct irq_chip xr3pci_irq_nop_chip = {
+	.name	= "Xpress-RICH3 INTx",
+	.irq_ack = xr3pci_irq_nop,
+	.irq_enable = xr3pci_irq_nop,
+	.irq_disable = xr3pci_irq_nop,
+	.irq_mask =  xr3pci_irq_nop,
+	.irq_unmask = xr3pci_irq_nop,
+};
+#endif
 
 #endif

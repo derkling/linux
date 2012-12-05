@@ -38,50 +38,16 @@
 
 #include "xr3pci.h"
 
-//TODO: remove or use properly
-#define pr_debug printk
-
-/* The XpressRICH3 requires that once the source of an INTx has been cleared,
- * it must also be cleared via the XpressRICH3's register set. This quirk
- * cascades each of the interrupts and provides the additional required
- * handling.
- */
-#define FPGA_QUIRK_INTX_CLEAR
-
-/* The XpressRICH3 generates aborts when accessing registers which include
- * reserved bits. An abort handler is already in place, however the abort
- * still results in strange effects for writes. This quirk changes accesses
- * to limit aborts.
- */
-#define FPGA_QUIRK_ABORTS
-
-#ifdef FPGA_QUIRK_INTX_CLEAR
-static struct irq_domain_ops xr3pci_irq_nop_ops = { };
-static void xr3pci_irq_nop(struct irq_data *data) { }
-
-static struct irq_chip xr3pci_irq_nop_chip = {
-	.name	= "Xpress-RICH3 INTx",
-	.irq_ack = xr3pci_irq_nop,
-	.irq_enable = xr3pci_irq_nop,
-	.irq_disable = xr3pci_irq_nop,
-	.irq_mask =  xr3pci_irq_nop,
-	.irq_unmask = xr3pci_irq_nop,
-};
-#endif
-
-/* per controller structure */
-struct pcie_port {
+struct xr3pci_port {
 	//TODO: rather than store lots of fields used once - pass the device tree
 	//node to the hw_pci.setup function
 	void __iomem	*base;
-	struct resource resource[5];
-	int numresources;
 	spinlock_t conf_lock;
 #ifdef FPGA_QUIRK_INTX_CLEAR
 	struct irq_domain *intx_irq_domain;
 #endif
 };
-static int __init xr3pci_get_resources(struct pcie_port *pp, struct device_node *np);
+static int __init xr3pci_get_resources(struct xr3pci_port *pp, struct device_node *np);
 
 /**
  * Stimulate a configuration read request
@@ -92,7 +58,7 @@ static int xr3pci_read_config(struct pci_bus *bus, unsigned int devfn, int where
 	u32 cfgnum;
 	unsigned long flags;
 	struct pci_sys_data *sys = bus->sysdata;
-	struct pcie_port *pp = sys->private_data;
+	struct xr3pci_port *pp = sys->private_data;
 
 	/* We expect requests which are aligned to the request size which is
 	   either 1, 2 or 4 bytes. We also expect this function to be called
@@ -151,7 +117,7 @@ static int xr3pci_write_config(struct pci_bus *bus, unsigned int devfn, int wher
 	u32 cfgnum;
 	unsigned long flags;
 	struct pci_sys_data *sys = bus->sysdata;
-	struct pcie_port *pp = sys->private_data;
+	struct xr3pci_port *pp = sys->private_data;
 
 	/* We expect requests which are aligned to the request size which is
 	   either 1, 2 or 4 bytes. We also expect this function to be called
@@ -201,7 +167,7 @@ static void xr3pci_msix_irq_handler(unsigned int irq, struct irq_desc *desc)
 {
 	unsigned long status, flags;
 	struct irq_chip *chip = irq_get_chip(irq);
-	struct pcie_port *pp = irq_desc_get_handler_data(desc);
+	struct xr3pci_port *pp = irq_desc_get_handler_data(desc);
 	
 	/* this handler is used for each INTx interrupt source, prevent
 	 * duplicate calls to generic_handle_irq with spin lock
@@ -233,7 +199,7 @@ static int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 	int virq;
 	struct of_irq out;
 	struct pci_sys_data *sys = dev->sysdata;
-	struct pcie_port *pp = sys->private_data;
+	struct xr3pci_port *pp = sys->private_data;
 
 	if (of_irq_map_pci(dev, &out)) {
 		pr_err(DEVICE_NAME ": Unable to map PCI IRQ\n");
@@ -262,7 +228,7 @@ static int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 	return virq;
 }
 
-static int __init xr3pci_probe(struct pcie_port *pp)
+static int __init xr3pci_probe(struct xr3pci_port *pp)
 {
 	/* gain some confidence that we are talking to the correct device by
 	   reading registers with known values */
@@ -297,11 +263,11 @@ static int __init xr3pci_probe(struct pcie_port *pp)
 int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np)
 {
 	int x;
-	struct pcie_port *pp;
+	struct xr3pci_port *pp;
 
 	printk("SETUP\n");
 
-	pp = kzalloc(sizeof(struct pcie_port), GFP_KERNEL);
+	pp = kzalloc(sizeof(struct xr3pci_port), GFP_KERNEL);
 	WARN_ON(!pp);
 
 	sys->private_data = pp;
@@ -352,30 +318,36 @@ int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np)
 	}
 #endif
 
-	for (x=0;x<pp->numresources;x++) {
-		if (pp->resource[x].flags & IORESOURCE_MEM) {
-			if (request_resource(&iomem_resource, &(pp->resource[x]))) {
+	u32 *last = NULL;
+	struct resource *res = kzalloc(sizeof(struct resource), GFP_KERNEL);
+
+	while (last = of_pci_process_ranges(np, res, last)) {
+		if (res->flags & IORESOURCE_MEM) {
+			if (request_resource(&iomem_resource, res)) {
 				pr_err(DEVICE_NAME ": Failed to request PCIe memory\n");
 				continue;
 			}
-			pci_add_resource_offset(&sys->resources, &(pp->resource[x]), sys->mem_offset);
+			pci_add_resource_offset(&sys->resources, res, sys->mem_offset);
 		}
-		else if (pp->resource[x].flags & IORESOURCE_IO) {
-//			if (request_resource(&ioport_resource, &(pp->resource[x]))) {
-//				pr_err(DEVICE_NAME ": Failed to request PCIe IO\n");
-//				continue;
-//			}
-			pci_add_resource_offset(&sys->resources, &(pp->resource[x]), sys->io_offset);
+		else if (res->flags & IORESOURCE_IO) {
+			if (request_resource(&ioport_resource, &(pp->resource[x]))) {
+				pr_err(DEVICE_NAME ": Failed to request PCIe IO\n");
+				continue;
+			}
+			pci_add_resource_offset(&sys->resources, res, sys->io_offset);
 		}
+
+		res = kzalloc(sizeof(struct resource), GFP_KERNEL);
 	}
+	kfree(res);
 
 	return 1;
 }
 
-static int __init xr3pci_get_resources(struct pcie_port *pp, struct device_node *np)
+static int __init xr3pci_get_resources(struct xr3pci_port *pp, struct device_node *np)
 {
-	struct resource res, *r;
 	int err;
+	struct resource res;
 
 	/* Host bridge configuration registers */
 
@@ -395,15 +367,6 @@ static int __init xr3pci_get_resources(struct pcie_port *pp, struct device_node 
 		pr_err(DEVICE_NAME ": Failed to map configuration registers resource\n");
 		err = -ENOMEM;
 		goto err_map_io;
-	}
-
-	/* PCIe addres spaces */
-	r = &(pp->resource[pp->numresources]);
-	
-	u32 *last = NULL;
-	while (!of_pci_process_ranges(np, r, &last)) {
-		pp->numresources++;
-		r = &(pp->resource[pp->numresources]);
 	}
 
 	return 0;
