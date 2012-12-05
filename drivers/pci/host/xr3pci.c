@@ -39,14 +39,12 @@
 #include "xr3pci.h"
 
 struct xr3pci_port {
-	//TODO: rather than store lots of fields used once - pass the device tree
-	//node to the hw_pci.setup function
 	void __iomem	*base;
-	spinlock_t conf_lock;
 #ifdef FPGA_QUIRK_INTX_CLEAR
 	struct irq_domain *intx_irq_domain;
 #endif
 };
+
 static int __init xr3pci_get_resources(struct xr3pci_port *pp, struct device_node *np);
 
 /**
@@ -60,17 +58,6 @@ static int xr3pci_read_config(struct pci_bus *bus, unsigned int devfn, int where
 	struct pci_sys_data *sys = bus->sysdata;
 	struct xr3pci_port *pp = sys->private_data;
 
-	/* We expect requests which are aligned to the request size which is
-	   either 1, 2 or 4 bytes. We also expect this function to be called
-	   exclusively through the pci_read_config_(byte|word|dword) accessors
-           - these wrapper functions check alignment for us. They also provide
-           serialisation of PCI configuration space accesses which prevent the
-	   need for locking here */
-
- 	//TODO: extra guards during development
-	WARN(size + (where & 3) > 4, "CfgRd spans DWORD boundary\n");
-	WARN(size == 3, "CfgRd size is unexpected (3)\n");
-
 	/* Specify target of configuration read */
 	cfgnum = PCIE_CFGNUM_R(bus->number,     /* bus */
 			       PCI_SLOT(devfn), /* device */
@@ -83,9 +70,6 @@ static int xr3pci_read_config(struct pci_bus *bus, unsigned int devfn, int where
 			     0x1); /* force PCIe BE */
 
 	/* read from PCIe configuration space */
-	//TODO: locking may not be required due to pci_lock in
-	//	drivers/pci/access.c, but left in during development
-spin_lock_irqsave(&pp->conf_lock, flags);
 #ifdef FPGA_QUIRK_ABORTS
 	writew(cfgnum, pp->base + PCIE_CFGNUM);
 	writeb((cfgnum >> 16), pp->base + PCIE_CFGNUM + 2);
@@ -93,7 +77,9 @@ spin_lock_irqsave(&pp->conf_lock, flags);
 	writel(cfgnum, pp->base + PCIE_CFGNUM);
 #endif
 	*val = readl(pp->base + BRIDGE_PCIE_CONFIG + (where & ~0x3));
-spin_unlock_irqrestore(&pp->conf_lock, flags);
+
+	if (*val == ~0)
+		return PCIBIOS_DEVICE_NOT_FOUND;
 
 	switch (size) {
 	case 1:
@@ -119,17 +105,6 @@ static int xr3pci_write_config(struct pci_bus *bus, unsigned int devfn, int wher
 	struct pci_sys_data *sys = bus->sysdata;
 	struct xr3pci_port *pp = sys->private_data;
 
-	/* We expect requests which are aligned to the request size which is
-	   either 1, 2 or 4 bytes. We also expect this function to be called
-	   exclusively through the pci_write_config_(byte|word|dword) accessors
-           - these wrapper functions check alignment for us. They also provide
-           serialisation of PCI configuration space accesses which prevent the
-	   need for locking here */
-
- 	//TODO: extra guards during development
-	WARN(size + (where & 3) > 4, "CfgWr spans DWORD boundary\n");
-	WARN(size == 3, "CfgWr size is unexpected (3)\n");
-
 	/* Specify target of configuration write */
 	cfgnum = PCIE_CFGNUM_R(bus->number,     /* bus */
 			       PCI_SLOT(devfn), /* device */
@@ -137,14 +112,10 @@ static int xr3pci_write_config(struct pci_bus *bus, unsigned int devfn, int wher
 
 			     /* Utilise and force the BE to be consistent with
 				configuration read behaviour */
-			     //TODO: use unaligned accesses?
 			     (~(0xf << size) << (where & 3)), /* BE */
 			     0x1); /* force PCIe BE */
 
 	/* write to the configuration space */
-	//TODO: locking may not be required due to pci_lock in
-	//	drivers/pci/access.c, but left in during development
-spin_lock_irqsave(&pp->conf_lock, flags);
 #ifdef FPGA_QUIRK_ABORTS
 	writew(cfgnum, pp->base + PCIE_CFGNUM);
 	writeb((cfgnum >> 16), pp->base + PCIE_CFGNUM + 2);
@@ -152,7 +123,6 @@ spin_lock_irqsave(&pp->conf_lock, flags);
 	writel(cfgnum, pp->base + PCIE_CFGNUM);
 #endif
 	writel(val << ((where & 3) * 8), pp->base + BRIDGE_PCIE_CONFIG + (where & ~0x3));
-spin_unlock_irqrestore(&pp->conf_lock, flags);
 
 	return PCIBIOS_SUCCESSFUL;
 }
@@ -271,7 +241,6 @@ int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np)
 	WARN_ON(!pp);
 
 	sys->private_data = pp;
-	spin_lock_init(&pp->conf_lock);
 
 	/* add DT resources to the controller */
 	if (xr3pci_get_resources(pp, np)) {
@@ -330,7 +299,7 @@ int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np)
 			pci_add_resource_offset(&sys->resources, res, sys->mem_offset);
 		}
 		else if (res->flags & IORESOURCE_IO) {
-			if (request_resource(&ioport_resource, &(pp->resource[x]))) {
+			if (request_resource(&ioport_resource, res)) {
 				pr_err(DEVICE_NAME ": Failed to request PCIe IO\n");
 				continue;
 			}

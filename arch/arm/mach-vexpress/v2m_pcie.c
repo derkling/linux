@@ -52,8 +52,17 @@ struct device_node *pcibios_get_phb_of_node(struct pci_bus *bus)
 
 static int xr3pci_abort(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 {
+	unsigned long pc = instruction_pointer(regs);
+	unsigned long instr = *(unsigned long *)pc;
+
 	if (fsr & (1 << 10))
 		regs->ARM_pc += 4;
+
+	if (instr == 0xa00000e) {
+		regs->uregs[1] = 0xffffffff;
+		return 0;
+	}
+
 	return 0;
 }
 
