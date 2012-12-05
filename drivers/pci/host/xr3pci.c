@@ -48,6 +48,27 @@
  */
 #define FPGA_QUIRK_INTX_CLEAR
 
+/* The XpressRICH3 generates aborts when accessing registers which include
+ * reserved bits. An abort handler is already in place, however the abort
+ * still results in strange effects for writes. This quirk changes accesses
+ * to limit aborts.
+ */
+#define FPGA_QUIRK_ABORTS
+
+#ifdef FPGA_QUIRK_INTX_CLEAR
+static struct irq_domain_ops xr3pci_irq_nop_ops = { };
+static void xr3pci_irq_nop(struct irq_data *data) { }
+
+static struct irq_chip xr3pci_irq_nop_chip = {
+	.name	= "Xpress-RICH3 INTx",
+	.irq_ack = xr3pci_irq_nop,
+	.irq_enable = xr3pci_irq_nop,
+	.irq_disable = xr3pci_irq_nop,
+	.irq_mask =  xr3pci_irq_nop,
+	.irq_unmask = xr3pci_irq_nop,
+};
+#endif
+
 /* per controller structure */
 struct pcie_port {
 	//TODO: rather than store lots of fields used once - pass the device tree
@@ -98,10 +119,13 @@ static int xr3pci_read_config(struct pci_bus *bus, unsigned int devfn, int where
 	/* read from PCIe configuration space */
 	//TODO: locking may not be required due to pci_lock in
 	//	drivers/pci/access.c, but left in during development
-	//writel(cfgnum, pp->base + PCIE_CFGNUM);
 spin_lock_irqsave(&pp->conf_lock, flags);
+#ifdef FPGA_QUIRK_ABORTS
 	writew(cfgnum, pp->base + PCIE_CFGNUM);
 	writeb((cfgnum >> 16), pp->base + PCIE_CFGNUM + 2);
+#else
+	writel(cfgnum, pp->base + PCIE_CFGNUM);
+#endif
 	*val = readl(pp->base + BRIDGE_PCIE_CONFIG + (where & ~0x3));
 spin_unlock_irqrestore(&pp->conf_lock, flags);
 
@@ -154,10 +178,13 @@ static int xr3pci_write_config(struct pci_bus *bus, unsigned int devfn, int wher
 	/* write to the configuration space */
 	//TODO: locking may not be required due to pci_lock in
 	//	drivers/pci/access.c, but left in during development
-	//r3pci_write(cfgnum, pp->base + PCIE_CFGNUM);
 spin_lock_irqsave(&pp->conf_lock, flags);
+#ifdef FPGA_QUIRK_ABORTS
 	writew(cfgnum, pp->base + PCIE_CFGNUM);
 	writeb((cfgnum >> 16), pp->base + PCIE_CFGNUM + 2);
+#else
+	writel(cfgnum, pp->base + PCIE_CFGNUM);
+#endif
 	writel(val << ((where & 3) * 8), pp->base + BRIDGE_PCIE_CONFIG + (where & ~0x3));
 spin_unlock_irqrestore(&pp->conf_lock, flags);
 
@@ -170,18 +197,6 @@ struct pci_ops xr3pci_ops = {
 };
 
 #ifdef FPGA_QUIRK_INTX_CLEAR
-static struct irq_domain_ops irq_ops = { };
-static void irq_nop(struct irq_data *data) { }
-
-static struct irq_chip irq_chip = {
-	.name	= "Xpress-RICH3 INTx",
-	.irq_ack = irq_nop,
-	.irq_enable = irq_nop,
-	.irq_disable = irq_nop,
-	.irq_mask =  irq_nop,
-	.irq_unmask = irq_nop,
-};
-
 static void xr3pci_msix_irq_handler(unsigned int irq, struct irq_desc *desc)
 {
 	unsigned long status, flags;
@@ -241,7 +256,7 @@ static int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 	 * will correctly clear interrupt registers in XpressRICH3
 	 */
 	virq = irq_create_mapping(pp->intx_irq_domain, pin-1);
-	irq_set_chip_and_handler(virq, &irq_chip, handle_simple_irq);
+	irq_set_chip_and_handler(virq, &xr3pci_irq_nop_chip, handle_simple_irq);
 #endif
 
 	return virq;
@@ -276,37 +291,21 @@ static int __init xr3pci_probe(struct pcie_port *pp)
 		return -1;
 	}
 
-//	writel(0x7f, pp->base + 0x800);
-///	writel(0x7f, pp->base + 0x600);
-///	writeb(0x4, pp->base + 0x610);
-	
-	//colin test
-	printk("LOOP BACK COLIN TEST ENABLED\n");
-//	writeb(0x4, pp->base + 0x810);
-//	writel(0x4000000b, pp->base + 0x800);
-//	writel(0xc0000000, pp->base + 0x808);
-	printk("DONE\n");
-
 	return 0;
 }
 
 int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np)
 {
-	int x=0;
+	int x;
 	struct pcie_port *pp;
 
-//	WARN_ON(nr);
-//	if (nr >= xr3pci_hw_pci.nr_controllers)
-//		return 0;
+	printk("SETUP\n");
 
-//	pp = &pcie_port[nr];
 	pp = kzalloc(sizeof(struct pcie_port), GFP_KERNEL);
 	WARN_ON(!pp);
 
 	sys->private_data = pp;
-		spin_lock_init(&pp->conf_lock);
-	
-		
+	spin_lock_init(&pp->conf_lock);
 
 	/* add DT resources to the controller */
 	if (xr3pci_get_resources(pp, np)) {
@@ -317,11 +316,36 @@ int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np)
 		return -1;
 	}
 
+	/* set up RC address translation (assuming that all tables default to
+	   disabled/un-implemented) */
+
+	/* 1:1 mapping for inbound PCIe transactions to AXI slave 0 */
+	writel(0x7f, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_SRC_ADDR_LWR);
+	writel(0x0, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_SRC_ADDR_UPR);
+	writel(0x0, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_TRSL_ADDR_UPR);
+#ifdef FPGA_QUIRK_ABORTS
+	writeb(0x4, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_TRSL_PARAM);
+#else
+	writel(0x4, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_TRSL_PARAM);
+	writel(0x0, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_TRSL_ADDR_LWR);
+#endif
+
+	/* 1:1 mapping for outbound AXI slave 0 transcations to PCIe */
+	writel(0x7f, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_SRC_ADDR_LWR);
+	writel(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_SRC_ADDR_UPR);
+	writel(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_TRSL_ADDR_UPR);
+#ifdef FPGA_QUIRK_ABORTS
+	writeb(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_TRSL_PARAM);
+#else
+	writel(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_TRSL_PARAM);
+	writel(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_TRSL_ADDR_LWR);
+#endif
+
 	/* Enable IRQs for MSIs and legacy interrupts */
 	writel(INT_MSI | INT_INTX, pp->base + IMASK_LOCAL);
 
 #ifdef FPGA_QUIRK_INTX_CLEAR
-	pp->intx_irq_domain = irq_domain_add_linear(NULL, 4, &irq_ops, NULL);
+	pp->intx_irq_domain = irq_domain_add_linear(NULL, 4, &xr3pci_irq_nop_ops, NULL);
 	if (!pp->intx_irq_domain) {
 		pr_err(DEVICE_NAME ": Failed to create IRQ domain\n");
 		return -1;
@@ -384,6 +408,7 @@ static int __init xr3pci_get_resources(struct pcie_port *pp, struct device_node 
 
 	return 0;
 
+	
 	iounmap(pp->base);
 err_map_io:
 	release_mem_region(res.start, resource_size(&res));

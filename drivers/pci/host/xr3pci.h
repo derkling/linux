@@ -99,6 +99,15 @@
 #define INT_MSI			(1 << 28)
 #define INT_INTX		(INT_A | INT_B | INT_C | INT_D)
 
+#define ATR_PCIE_WIN0		0x600
+#define ATR_AXI4_SLV0		0x800
+#define ATR_TBL_1		0x0
+#define ATR_SRC_ADDR_LWR	0x0
+#define ATR_SRC_ADDR_UPR	0x4
+#define ATR_TRSL_ADDR_LWR	0x8
+#define ATR_TRSL_ADDR_UPR	0xc
+#define ATR_TRSL_PARAM		0x10
+
 /* Macros for populating PCIE_CFGNUM register of the Bridge Configuration Space.
    This register is used to specify the target of configuration read/writes and
    byte enables when targetting configuration space through the Bridge
@@ -112,5 +121,6 @@
 #define PCIE_CFGNUM_R(b, d, f, be, fo)	(PCIE_CFGNUM_BUS(b) | PCIE_CFGNUM_DEV(d) | \
 					 PCIE_CFGNUM_FUN(f) | \
 					 PCIE_CFGNUM_BYTE_EN(be) | PCIE_CFGNUM_FORCE_BE(fo))
+
 
 #endif
