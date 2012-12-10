@@ -31,16 +31,13 @@
 #define MAX_SUPPORTED_DEVICES 2
 
 static struct device_node* npnr[5];
-static int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np);
 extern struct pci_ops xr3pci_ops;
 int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin);
 
 extern void __init xr3pci_setup_arch(
 	int (**map_irq)(const struct pci_dev *, u8, u8),
 	struct pci_ops **ops,
-	int (**setup)(struct pci_sys_data *, struct device_node *));
-
-static int (*setup)(struct pci_sys_data *, struct device_node *);
+	int (**setup)(int nr, struct pci_sys_data *));
 
 struct device_node *pcibios_get_phb_of_node(struct pci_bus *bus)
 {
@@ -66,16 +63,6 @@ static int xr3pci_abort(unsigned long addr, unsigned int fsr, struct pt_regs *re
 	return 0;
 }
 
-static int __init v2m_dt_xr3pci_setup(int nr, struct pci_sys_data *sys)
-{
-	if (nr >= MAX_SUPPORTED_DEVICES)
-		return 0;
-
-	/* This is the only callback to the driver which still uses
-	   arch specific data (pci_sys_data) */
-	return setup(sys, npnr[nr]);
-}
-
 static const struct __initconst of_device_id xr3pci_device_id[] = {
 	{ .compatible = "arm,xr3pci", },
 	{},
@@ -91,25 +78,13 @@ static int __init xr3pci_init(void)
 
 	xr3pci_setup_arch(&xr3pci_hw_pci.map_irq,
 			  &xr3pci_hw_pci.ops,
-			  &setup);
-
-	xr3pci_hw_pci.setup = v2m_dt_xr3pci_setup;
+			  &xr3pci_hw_pci.setup);
 
 	for_each_matching_node(np, xr3pci_device_id) {
-		/* is there enough room for another controller? */
-		//TODO: use a list
-		if (xr3pci_hw_pci.nr_controllers >= MAX_SUPPORTED_DEVICES) {
-			pr_err("Maximum supported controllers reached\n");
-			break;
-		}
-
-		/* add the new controller */
-		npnr[xr3pci_hw_pci.nr_controllers++] = of_node_get(np);
-	}
-
-	/* we've found all our controllers so tell the OS to enumerate/add them */
-	if (xr3pci_hw_pci.nr_controllers)
+		xr3pci_hw_pci.nr_controllers = 1;
+		xr3pci_hw_pci.of_node = of_node_get(np);
 		pci_common_init(&xr3pci_hw_pci);
+	}
 
 	return 0;
 }

@@ -219,6 +219,57 @@ int of_pci_address_to_resource(struct device_node *dev, int bar,
 	return __of_address_to_resource(dev, addrp, size, flags, NULL, r);
 }
 EXPORT_SYMBOL_GPL(of_pci_address_to_resource);
+
+const __be32 *of_pci_process_ranges(struct device_node *node,
+				    struct resource *res, const __be32 *from)
+{
+	const __be32 *start, *end;
+	int na, ns, np, pna;
+	int rlen;
+	struct of_bus *bus;
+	WARN_ON(!res);
+
+	bus = of_match_bus(node);
+	bus->count_cells(node, &na, &ns);
+	if (!OF_CHECK_COUNTS(na, ns)) {
+		pr_err("Bad cell count for %s\n", node->full_name);
+		return NULL;
+	}
+
+	pna = of_n_addr_cells(node);
+	np = pna + na + ns;
+
+	start = of_get_property(node, "ranges", &rlen);
+	if (start == NULL)
+		return NULL;
+
+	end = start + rlen;
+
+	if (!from)
+		from = start;
+
+	while (from + np <= end) {
+		u64 cpu_addr, size;
+
+		cpu_addr = of_translate_address(node, from + na);
+		size = of_read_number(from + na + pna, ns);
+		res->flags = bus->get_flags(from);
+		from += np;
+
+		if (cpu_addr == OF_BAD_ADDR || size == 0)
+			continue;
+
+		res->name = node->full_name;
+		res->start = cpu_addr;
+		res->end = res->start + size - 1;
+		res->parent = res->child = res->sibling = NULL;
+		return from;
+	}
+
+	return NULL;
+}
+EXPORT_SYMBOL_GPL(of_pci_process_ranges);
+
 #endif /* CONFIG_PCI */
 
 /*
@@ -620,19 +671,3 @@ void __iomem *of_iomap(struct device_node *np, int index)
 	return ioremap(res.start, resource_size(&res));
 }
 EXPORT_SYMBOL(of_iomap);
-
-int of_count_cells(struct device_node *node, int *na, int *ns)
-{
-        struct of_bus *bus = of_match_bus(node);
-
-        /* Count address cells */
-        bus->count_cells(node, na, ns);
-        if (!OF_CHECK_COUNTS(*na, *ns)) {
-                printk(KERN_ERR "prom_parse: Bad cell count for %s\n",
-                       node->full_name);
-		return 1;
-        }
-	return 0;
-}
-EXPORT_SYMBOL(of_count_cells);
-

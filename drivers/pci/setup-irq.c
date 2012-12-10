@@ -64,17 +64,16 @@ pci_fixup_irqs(u8 (*swizzle)(struct pci_dev *, u8 *),
 }
 
 void __init
-pci_bus_fixup_irqs(struct pci_bus *bus, 
+pci_bus_fixup_irqs(struct pci_bus *bus,
 		u8 (*swizzle)(struct pci_dev *, u8 *),
-	        int (*map_irq)(const struct pci_dev *, u8, u8))
+		int (*map_irq)(const struct pci_dev *, u8, u8))
 {
 	struct pci_dev *dev;
 
 	list_for_each_entry(dev, &bus->devices, bus_list) {
 		pdev_fixup_irq(dev, swizzle, map_irq);
-		
-		if (dev->subordinate) {
+
+		if (dev->subordinate)
 			pci_bus_fixup_irqs(dev->subordinate, swizzle, map_irq);
-		}
 	}
 }

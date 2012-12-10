@@ -16,7 +16,6 @@
 #include <asm/mach/pci.h>
 
 static int debug_pci;
-static int busnr = 0;
 
 /*
  * We can't use pci_find_device() here since we are
@@ -427,9 +426,9 @@ static int pcibios_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 static void __init pcibios_init_hw(struct hw_pci *hw, struct list_head *head)
 {
 	struct pci_sys_data *sys = NULL;
+	static int busnr;
 	int ret;
 	int nr;
-
 	for (nr = 0; nr < hw->nr_controllers; nr++) {
 		sys = kzalloc(sizeof(struct pci_sys_data), GFP_KERNEL);
 		if (!sys)
@@ -441,9 +440,10 @@ static void __init pcibios_init_hw(struct hw_pci *hw, struct list_head *head)
 		sys->busnr   = busnr;
 		sys->swizzle = hw->swizzle;
 		sys->map_irq = hw->map_irq;
+		sys->of_node = hw->of_node;
 		INIT_LIST_HEAD(&sys->resources);
 
-		ret = hw->setup(sys->busnr, sys);
+		ret = hw->setup(nr, sys);
 
 		if (ret > 0) {
 			if (list_empty(&sys->resources)) {
@@ -454,7 +454,7 @@ static void __init pcibios_init_hw(struct hw_pci *hw, struct list_head *head)
 			}
 
 			if (hw->scan)
-				sys->bus = hw->scan(sys->busnr, sys);
+				sys->bus = hw->scan(nr, sys);
 			else
 				sys->bus = pci_scan_root_bus(NULL, sys->busnr,
 						hw->ops, sys, &sys->resources);

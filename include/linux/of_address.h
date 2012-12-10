@@ -26,9 +26,8 @@ static inline unsigned long pci_address_to_pio(phys_addr_t addr) { return -1; }
 #define pci_address_to_pio pci_address_to_pio
 #endif
 
-int of_count_cells(struct device_node *node, int *na, int *ns);
-
-u32* of_pci_process_ranges(struct device_node *node, struct resource *res, u32 *from);
+const __be32 *of_pci_process_ranges(struct device_node *node,
+				    struct resource *res, const __be32 *from);
 #else /* CONFIG_OF_ADDRESS */
 static inline int of_address_to_resource(struct device_node *dev, int index,
 					 struct resource *r)
@@ -51,13 +50,10 @@ static inline const u32 *of_get_address(struct device_node *dev, int index,
 {
 	return NULL;
 }
-int of_count_cells(struct device_node *node, int *na, int *ns)
+const __be32 *of_pci_process_ranges(struct device_node *node,
+				    struct resource *res, const __be32 *from)
 {
-	return 1;
-}
-int of_pci_process_ranges(struct device_node *node, struct resource *res, u32 **last)
-{
-	return 1;
+	return NULL;
 }
 #endif /* CONFIG_OF_ADDRESS */
 

@@ -230,11 +230,16 @@ static int __init xr3pci_probe(struct xr3pci_port *pp)
 	return 0;
 }
 
-int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np)
+int __init xr3pci_setup(int nr, struct pci_sys_data *sys)
 {
 	int x;
 	struct xr3pci_port *pp;
 
+	struct device_node *np = sys->of_node;
+
+//	WARN_ON(nr);
+//	if (nr >= xr3pci_hw_pci.nr_controllers)
+//		return 0;
 	printk("SETUP\n");
 
 	pp = kzalloc(sizeof(struct xr3pci_port), GFP_KERNEL);
@@ -287,10 +292,10 @@ int __init xr3pci_setup(struct pci_sys_data *sys, struct device_node *np)
 	}
 #endif
 
-	u32 *last = NULL;
+	const __be32 *last = NULL;
 	struct resource *res = kzalloc(sizeof(struct resource), GFP_KERNEL);
 
-	while (last = of_pci_process_ranges(np, res, last)) {
+	while ((last = of_pci_process_ranges(np, res, last))) {
 		if (res->flags & IORESOURCE_MEM) {
 			if (request_resource(&iomem_resource, res)) {
 				pr_err(DEVICE_NAME ": Failed to request PCIe memory\n");

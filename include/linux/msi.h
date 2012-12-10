@@ -54,8 +54,8 @@ struct msi_controller {
 	void (*teardown_msi_irq)(unsigned int irq);
 	int (*setup_msi_irqs)(struct pci_dev *dev, int nvec, int type);
 	void (*teardown_msi_irqs)(struct pci_dev *dev);
-	int (*msi_check_device)(struct pci_dev* dev, int nvec, int type);
-	void (*restore_msi_irqs)(struct pci_dev* dev, int irq);
+	int (*msi_check_device)(struct pci_dev *dev, int nvec, int type);
+	void (*restore_msi_irqs)(struct pci_dev *dev, int irq);
 };
 
 /* Registration of MSI controller operations */
@@ -71,6 +71,6 @@ void arch_teardown_msi_irq(unsigned int irq);
 extern int arch_setup_msi_irqs(struct pci_dev *dev, int nvec, int type);
 extern void arch_teardown_msi_irqs(struct pci_dev *dev);
 extern int arch_msi_check_device(struct pci_dev* dev, int nvec, int type);
-void arch_restore_msi_irqs(struct pci_dev* dev, int irq);
+void arch_restore_msi_irqs(struct pci_dev *dev, int irq);
 
 #endif /* LINUX_MSI_H */

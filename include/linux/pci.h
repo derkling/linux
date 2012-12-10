@@ -955,7 +955,7 @@ void pci_fixup_irqs(u8 (*)(struct pci_dev *, u8 *),
 		    int (*)(const struct pci_dev *, u8, u8));
 void pci_bus_fixup_irqs(struct pci_bus *bus,
 		u8 (*swizzle)(struct pci_dev *, u8 *),
-	        int (*map_irq)(const struct pci_dev *, u8, u8));
+		int (*map_irq)(const struct pci_dev *, u8, u8));
 #define HAVE_PCI_REQ_REGIONS	2
 int __must_check pci_request_regions(struct pci_dev *, const char *);
 int __must_check pci_request_regions_exclusive(struct pci_dev *, const char *);

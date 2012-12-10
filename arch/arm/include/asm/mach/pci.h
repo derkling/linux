@@ -27,6 +27,7 @@ struct hw_pci {
 	void		(*postinit)(void);
 	u8		(*swizzle)(struct pci_dev *dev, u8 *pin);
 	int		(*map_irq)(const struct pci_dev *dev, u8 slot, u8 pin);
+	struct device_node *of_node;
 };
 
 /*
@@ -47,6 +48,7 @@ struct pci_sys_data {
 					/* IRQ mapping				*/
 	int		(*map_irq)(const struct pci_dev *, u8, u8);
 	void		*private_data;	/* platform controller private data	*/
+	struct device_node *of_node;	/* device tree node			*/
 };
 
 /*

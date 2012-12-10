@@ -26,7 +26,7 @@
 #include "msi.h"
 
 static int pci_msi_enable = 1;
-static struct msi_controller *ops = NULL;
+static struct msi_controller *ops;
 
 /* Arch hooks */
 
@@ -61,7 +61,7 @@ static int __arch_setup_msi_irq(struct pci_dev *dev, struct msi_desc *desc)
 
 	if (ops->setup_msi_irq)
 		return ops->setup_msi_irq(dev, desc);
-		
+
 	WARN_ON_ONCE(1);
 	return 1;
 }
@@ -116,8 +116,8 @@ static int __arch_setup_msi_irqs(struct pci_dev *dev, int nvec, int type)
 
 	if (ops->setup_msi_irqs)
 		return ops->setup_msi_irqs(dev, nvec, type);
-		
-	return default_setup_msi_irqs(dev, nvec, type);	
+
+	return default_setup_msi_irqs(dev, nvec, type);
 }
 
 #ifndef arch_teardown_msi_irqs
@@ -142,11 +142,11 @@ static void __arch_teardown_msi_irqs(struct pci_dev *dev)
 {
 	if (!ops)
 		return arch_teardown_msi_irqs(dev);
-		
+
 	if (ops->teardown_msi_irqs)
 		return ops->teardown_msi_irqs(dev);
-		
-	default_teardown_msi_irqs(dev);	
+
+	default_teardown_msi_irqs(dev);
 }
 
 #ifndef arch_restore_msi_irqs
@@ -175,10 +175,10 @@ static void __arch_restore_msi_irqs(struct pci_dev *dev, int irq)
 {
 	if (!ops)
 		return arch_restore_msi_irqs(dev, irq);
-	
+
 	if (ops->restore_msi_irqs)
 		return ops->restore_msi_irqs(dev, irq);
-	
+
 	default_restore_msi_irqs(dev, irq);
 }
 
