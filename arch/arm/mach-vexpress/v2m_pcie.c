@@ -28,16 +28,11 @@
 #include <asm/signal.h>
 #include <asm/mach/pci.h>
 
-#define MAX_SUPPORTED_DEVICES 2
-
-static struct device_node* npnr[5];
-extern struct pci_ops xr3pci_ops;
-int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin);
+static struct device_node* npnr[5]; //TODO:this is broken
 
 struct device_node *pcibios_get_phb_of_node(struct pci_bus *bus)
 {
 	struct pci_sys_data *sys = bus->sysdata;
-	struct pcie_port *pp = sys->private_data;
 
 	return of_node_get(npnr[sys->busnr]);
 }
@@ -58,13 +53,12 @@ static int xr3pci_abort(unsigned long addr, unsigned int fsr, struct pt_regs *re
 	return 0;
 }
 
-void __init xr3pci_setup_arch(
+int __init xr3pci_setup_arch(
 	struct platform_device *dev,
-	int (**map_irq)(const struct pci_dev *, u8, u8),
-	struct pci_ops **ops,
-	int (**setup)(struct pci_sys_data *, struct device_node *))
+	int (*map_irq)(const struct pci_dev *, u8, u8),
+	struct pci_ops *ops,
+	int (*setup)(int nr, struct pci_sys_data *))
 {
-	struct device_node *np;
 	static struct hw_pci xr3pci_hw_pci = { 0 };
 
 	/* Temporary abort handler until hardware behaves itself */	

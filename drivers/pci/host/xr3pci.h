@@ -34,6 +34,18 @@
  */
 #define FPGA_QUIRK_ABORTS
 
+/* The XpressRICH3 doesn't generate its own URs but instead passes
+ * configuration requests that it doesn't understand downstream. This means
+ * that where there is no link configuration requests do not get responses
+ * and this results in deadlock - thus where there is no link, don't enumerate.
+ */
+#define FPGA_QUIRK_NO_LINK
+
+/* The XpressRIC3 doesn't describe itself as a bridge. This is required for
+ * correct/normal enumeration. This quirk changes that.
+ */
+#define FPGA_QUIRK_FPGA_CLASS
+
 /* Host Bridge Identification */
 #define DEVICE_NAME "XpressRICH3-AXI PCIe Host Bridge"
 #define DEVICE_VENDOR_ID  0x1556
@@ -82,8 +94,8 @@
 #define PCIE_PIPE		0x8c
 #define PCIE_PIPE_1		0x88
 #define PCIE_VC_CRED		0x90
-#define PCIE_PCI_IDS_1		0xA0
-#define PCIE_PCI_IDS_2		0x98
+#define PCIE_PCI_IDS_1		0x98
+#define PCIE_PCI_IDS_2		0xa0
 #define PCIE_PCI_LPM		0xa4
 #define PCIE_PCI_IRQ		0xa8
 #define PCIE_PEX_DEV		0xc0
@@ -149,5 +161,11 @@ static struct irq_chip xr3pci_irq_nop_chip = {
 	.irq_unmask = xr3pci_irq_nop,
 };
 #endif
+
+int __init xr3pci_setup_arch(
+	struct platform_device *dev,
+	int (*map_irq)(const struct pci_dev *, u8, u8),
+	struct pci_ops *ops,
+	int (*setup)(int nr, struct pci_sys_data *));
 
 #endif

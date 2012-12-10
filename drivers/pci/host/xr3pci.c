@@ -17,33 +17,18 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
-#include <linux/kernel.h>
-#include <linux/pci.h>
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/spinlock.h>
-#include <linux/spinlock_types.h>
 #include <linux/interrupt.h>
-#include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 #include <linux/of_pci.h>
 #include <linux/of_platform.h>
-#include <linux/delay.h>
 
-#include <asm/io.h>
-#include <asm/signal.h>
-#include <asm/mach/pci.h>
 #include <asm/mach/irq.h>
 
 #include "xr3pci.h"
-
-extern void __init xr3pci_setup_arch(
-	struct platform_device *dev,
-	int (*map_irq)(const struct pci_dev *, u8, u8),
-	struct pci_ops *ops,
-	int (*setup)(int nr, struct pci_sys_data *));
-
 
 struct xr3pci_port {
 	void __iomem	*base;
@@ -52,23 +37,17 @@ struct xr3pci_port {
 #endif
 };
 
-static int __init xr3pci_get_resources(struct xr3pci_port *pp, struct device_node *np);
-
-/**
- * Stimulate a configuration read request
- */
 static int xr3pci_read_config(struct pci_bus *bus, unsigned int devfn, int where,
 			int size, u32 *val)
 {
 	u32 cfgnum;
-	unsigned long flags;
 	struct pci_sys_data *sys = bus->sysdata;
 	struct xr3pci_port *pp = sys->private_data;
 
 	/* Specify target of configuration read */
-	cfgnum = PCIE_CFGNUM_R(bus->number,     /* bus */
-			       PCI_SLOT(devfn), /* device */
-			       PCI_FUNC(devfn), /* function */
+	cfgnum = PCIE_CFGNUM_R(bus->number,
+			       PCI_SLOT(devfn),
+			       PCI_FUNC(devfn),
 
 			     /* AXI doesn't offer a read strobe, to prevent
 				side effects from un-targetted reads we always
@@ -76,7 +55,6 @@ static int xr3pci_read_config(struct pci_bus *bus, unsigned int devfn, int where
 			     (~(0xf << size) << (where & 3)), /* BE */
 			     0x1); /* force PCIe BE */
 
-	/* read from PCIe configuration space */
 #ifdef FPGA_QUIRK_ABORTS
 	writew(cfgnum, pp->base + PCIE_CFGNUM);
 	writeb((cfgnum >> 16), pp->base + PCIE_CFGNUM + 2);
@@ -108,21 +86,18 @@ static int xr3pci_write_config(struct pci_bus *bus, unsigned int devfn, int wher
 			     int size, u32 val)
 {
 	u32 cfgnum;
-	unsigned long flags;
 	struct pci_sys_data *sys = bus->sysdata;
 	struct xr3pci_port *pp = sys->private_data;
 
-	/* Specify target of configuration write */
-	cfgnum = PCIE_CFGNUM_R(bus->number,     /* bus */
-			       PCI_SLOT(devfn), /* device */
-			       PCI_FUNC(devfn), /* function */
+	cfgnum = PCIE_CFGNUM_R(bus->number,
+			       PCI_SLOT(devfn),
+			       PCI_FUNC(devfn),
 
 			     /* Utilise and force the BE to be consistent with
 				configuration read behaviour */
 			     (~(0xf << size) << (where & 3)), /* BE */
 			     0x1); /* force PCIe BE */
 
-	/* write to the configuration space */
 #ifdef FPGA_QUIRK_ABORTS
 	writew(cfgnum, pp->base + PCIE_CFGNUM);
 	writeb((cfgnum >> 16), pp->base + PCIE_CFGNUM + 2);
@@ -205,16 +180,11 @@ static int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 	return virq;
 }
 
-static int __init xr3pci_probe2(struct xr3pci_port *pp)
+static int xr3pci_check_device(struct xr3pci_port *pp)
 {
-	/* gain some confidence that we are talking to the correct device by
-	   reading registers with known values */
 	u32 ver;
 
-	/* verify hardwired vendor, device, revision IDs */
-	//TODO: PLDA document doesn't make clear how this applies to root ports
 	ver = readl(pp->base + PCIE_PCI_IDS_1);
-	//TODO: this doesn't work IDS_1 is 0xa! 
 	if (!((ver  & 0xffff) == DEVICE_VENDOR_ID &&
 	      (ver  & 0xffff0000) >> 16 == DEVICE_DEVICE_ID)) {
 		printk("Unable to detect " DEVICE_NAME);
@@ -223,12 +193,14 @@ static int __init xr3pci_probe2(struct xr3pci_port *pp)
 
 	ver = readl(pp->base + PCIE_BASIC_STATU);
 	printk(DEVICE_NAME " %dx gen %d link negotiated\n", ver & 0xff, (ver & 0xf00) >> 8);
+
+#ifdef FPGA_QUIRK_NO_LINK
 	if (!(ver & 0xff)) {
 		printk(DEVICE_NAME ": No link detected\n");
 		return -1;
 	}
+#endif
 	
-	/* top nibble describes if core is configured as native endpoint or root port */
 	if ((readl(pp->base + PCIE_BASIC_CONF) & 0xf0000000) != 0x10000000) {
 		printk(DEVICE_NAME ": Core is not a RC\n");
 		return -1;
@@ -237,27 +209,8 @@ static int __init xr3pci_probe2(struct xr3pci_port *pp)
 	return 0;
 }
 
-int __init xr3pci_setup(int nr, struct pci_sys_data *sys)
+static int xr3pci_setup_ats(struct xr3pci_port *pp)
 {
-	int x;
-	struct xr3pci_port *pp;
-
-	struct device_node *np = sys->of_node;
-
-	pp = kzalloc(sizeof(struct xr3pci_port), GFP_KERNEL);
-	WARN_ON(!pp);
-
-	sys->private_data = pp;
-
-	/* add DT resources to the controller */
-	if (xr3pci_get_resources(pp, np)) {
-		printk("oopp\n");
-	}
-
-	if (xr3pci_probe2(pp)) {
-		return -1;
-	}
-
 	/* set up RC address translation (assuming that all tables default to
 	   disabled/un-implemented) */
 
@@ -283,6 +236,11 @@ int __init xr3pci_setup(int nr, struct pci_sys_data *sys)
 	writel(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_TRSL_ADDR_LWR);
 #endif
 
+	return 0;
+}
+
+static int xr3pci_setup_int(struct xr3pci_port *pp)
+{
 	/* Enable IRQs for MSIs and legacy interrupts */
 	writel(INT_MSI | INT_INTX, pp->base + IMASK_LOCAL);
 
@@ -294,7 +252,13 @@ int __init xr3pci_setup(int nr, struct pci_sys_data *sys)
 	}
 #endif
 
+	return 0;
+}
+
+int xr3pci_add_pci_resources(struct xr3pci_port *pp, struct pci_sys_data *sys)
+{
 	const __be32 *last = NULL;
+	struct device_node *np = sys->of_node;
 	struct resource *res = kzalloc(sizeof(struct resource), GFP_KERNEL);
 
 	while ((last = of_pci_process_ranges(np, res, last))) {
@@ -316,16 +280,13 @@ int __init xr3pci_setup(int nr, struct pci_sys_data *sys)
 		res = kzalloc(sizeof(struct resource), GFP_KERNEL);
 	}
 	kfree(res);
-
-	return 1;
+	return 0;
 }
 
-static int __init xr3pci_get_resources(struct xr3pci_port *pp, struct device_node *np)
+static int xr3pci_get_resources(struct xr3pci_port *pp, struct device_node *np)
 {
 	int err;
 	struct resource res;
-
-	/* Host bridge configuration registers */
 
 	err = of_address_to_resource(np, 0, &res);
 	if (err) {
@@ -346,24 +307,59 @@ static int __init xr3pci_get_resources(struct xr3pci_port *pp, struct device_nod
 	}
 
 	return 0;
-
 	
-	iounmap(pp->base);
 err_map_io:
 	release_mem_region(res.start, resource_size(&res));
 
 	return err;
 }
 
-static void __devinit xr3pci_quirk_class(struct pci_dev *pdev)
+int __init xr3pci_setup(int nr, struct pci_sys_data *sys)
+{
+	struct xr3pci_port *pp;
+	struct device_node *np = sys->of_node;
+
+	pp = kzalloc(sizeof(struct xr3pci_port), GFP_KERNEL);
+	WARN_ON(!pp);
+
+	sys->private_data = pp;
+
+	/* add DT resources to the controller */
+	if (xr3pci_get_resources(pp, np))
+		return -1;
+
+	if (xr3pci_check_device(pp))
+		return -1;
+
+	if (xr3pci_setup_ats(pp))
+		return -1;
+
+	if (xr3pci_setup_int(pp))
+		return -1;
+
+	if (xr3pci_add_pci_resources(pp, sys))
+		return -1;
+
+	return 1;
+}
+
+#ifdef FPGA_QUIRK_FPGA_CLASS
+static void xr3pci_quirk_class(struct pci_dev *pdev)
 {
 	pdev->class = PCI_CLASS_BRIDGE_PCI << 8;
 }
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_PLDA, PCI_DEVICE_ID_XR3PCI, xr3pci_quirk_class);
+#endif
 
-static int xr3pci_probe(struct platform_device *dev)
+static int __init xr3pci_probe(struct platform_device *dev)
 {
-	return xr3pci_setup_arch(dev, xr3pci_map_irq, &xr3pci_ops, xr3pci_setup);
+	/* At present there is no way to register PCI host drivers in a common
+	   architecture agnostic way. We work around this by calling our own
+	   arch call back which provides methods that can be plumbed into
+	   whichever architecture this is used on. */
+	return xr3pci_setup_arch(dev, 
+				 xr3pci_map_irq, &xr3pci_ops, xr3pci_setup);
+	return 0;
 }
 
 static const struct __initconst of_device_id xr3pci_device_id[] = {
@@ -373,7 +369,6 @@ static const struct __initconst of_device_id xr3pci_device_id[] = {
 MODULE_DEVICE_TABLE(of, xr3pci_device_id);
 
 static struct platform_driver xr3pci_driver = {
-	.probe		= xr3pci_probe,
 	.driver		= {
 		.name 	= "xr3pci",
 		.owner	= THIS_MODULE,
@@ -383,7 +378,7 @@ static struct platform_driver xr3pci_driver = {
 
 static int __init xr3pci_init(void)
 {
-	return platform_driver_register(&xr3pci_driver);
+	return platform_driver_probe(&xr3pci_driver, xr3pci_probe);
 }
 
 subsys_initcall(xr3pci_init);
