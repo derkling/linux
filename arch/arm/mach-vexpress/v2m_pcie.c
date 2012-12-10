@@ -28,15 +28,6 @@
 #include <asm/signal.h>
 #include <asm/mach/pci.h>
 
-static struct device_node* npnr[5]; //TODO:this is broken
-
-struct device_node *pcibios_get_phb_of_node(struct pci_bus *bus)
-{
-	struct pci_sys_data *sys = bus->sysdata;
-
-	return of_node_get(npnr[sys->busnr]);
-}
-
 static int xr3pci_abort(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 {
 	unsigned long pc = instruction_pointer(regs);

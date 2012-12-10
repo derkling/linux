@@ -11,6 +11,7 @@
 #include <linux/slab.h>
 #include <linux/init.h>
 #include <linux/io.h>
+#include <linux/of.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/pci.h>
@@ -627,4 +628,10 @@ int pci_mmap_page_range(struct pci_dev *dev, struct vm_area_struct *vma,
 		return -EAGAIN;
 
 	return 0;
+}
+
+struct device_node *pcibios_get_phb_of_node(struct pci_bus *bus)
+{
+	struct pci_sys_data *sys = bus->sysdata;
+	return of_node_get(sys->of_node);
 }
