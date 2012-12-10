@@ -29,25 +29,19 @@ void __iomem *pci_iomap(struct pci_dev *dev, int bar, unsigned long maxlen)
 	resource_size_t len = pci_resource_len(dev, bar);
 	unsigned long flags = pci_resource_flags(dev, bar);
 
-	void *virt = NULL;
-
 	if (!len || !start)
 		return NULL;
 	if (maxlen && len > maxlen)
 		len = maxlen;
 	if (flags & IORESOURCE_IO)
-		virt = __pci_ioport_map(dev, start, len);
+		return __pci_ioport_map(dev, start, len);
 	if (flags & IORESOURCE_MEM) {
 		if (flags & IORESOURCE_CACHEABLE)
-			virt = ioremap(start, len);
-		else
-			virt = ioremap_nocache(start, len);
+			return ioremap(start, len);
+		return ioremap_nocache(start, len);
 	}
-	
-	printk("PHYS 0x%x = VIRT 0x%x (len 0x%x)\n", start, virt, len);
-
 	/* What? */
-	return virt;
+	return NULL;
 }
 
 EXPORT_SYMBOL(pci_iomap);

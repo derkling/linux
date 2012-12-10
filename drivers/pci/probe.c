@@ -1295,7 +1295,6 @@ static void pci_init_capabilities(struct pci_dev *dev)
 	pci_enable_acs(dev);
 }
 
-static void pcie_write_mps(struct pci_dev *dev, int mps);
 void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
 {
 	device_initialize(&dev->dev);
@@ -1328,12 +1327,6 @@ void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
 	down_write(&pci_bus_sem);
 	list_add_tail(&dev->bus_list, &bus->devices);
 	up_write(&pci_bus_sem);
-
-	//////
-	pcie_write_mps(dev, 128);// 128 << 3);
-//	pcie_write_mps(dev, 256);// 128 << 3);
-//	pcie_write_mps(dev, 1024);// 128 << 3);
-//	pcie_write_mps(dev, 2048);// 128 << 3);
 }
 
 struct pci_dev *__ref pci_scan_single_device(struct pci_bus *bus, int devfn)
@@ -1513,10 +1506,8 @@ static void pcie_write_mrrs(struct pci_dev *dev)
 	/* In the "safe" case, do not configure the MRRS.  There appear to be
 	 * issues with setting MRRS to 0 on a number of devices.
 	 */
-	printk("+BUrrG\n");
 	if (pcie_bus_config != PCIE_BUS_PERFORMANCE)
 		return;
-	printk("-BUrrG\n");
 
 	/* For Max performance, the MRRS must be set to the largest supported
 	 * value.  However, it cannot be configured larger than the MPS the
@@ -1558,7 +1549,7 @@ static int pcie_bus_configure_set(struct pci_dev *dev, void *data)
 	pcie_write_mps(dev, mps);
 	pcie_write_mrrs(dev);
 
-	printk("PCI-E Max Payload Size set to %4d/%4d (was %4d), "
+	dev_info(&dev->dev, "PCI-E Max Payload Size set to %4d/%4d (was %4d), "
 		 "Max Read Rq %4d\n", pcie_get_mps(dev), 128 << dev->pcie_mpss,
 		 orig_mps, pcie_get_readrq(dev));
 
@@ -1572,15 +1563,13 @@ static int pcie_bus_configure_set(struct pci_dev *dev, void *data)
 void pcie_bus_configure_settings(struct pci_bus *bus, u8 mpss)
 {
 	u8 smpss;
-printk("an\n");
+
 	if (!pci_is_pcie(bus->self))
 		return;
 
-printk("bn\n");
 	if (pcie_bus_config == PCIE_BUS_TUNE_OFF)
 		return;
 
-printk("cn\n");
 	/* FIXME - Peer to peer DMA is possible, though the endpoint would need
 	 * to be aware to the MPS of the destination.  To work around this,
 	 * simply force the MPS of the entire system to the smallest possible.

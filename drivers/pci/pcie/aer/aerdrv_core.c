@@ -51,8 +51,8 @@ int pci_enable_pcie_error_reporting(struct pci_dev *dev)
 	pci_read_config_word(dev, pos + PCI_EXP_DEVCTL, &reg16);
 	reg16 |= (PCI_EXP_DEVCTL_CERE |
 		PCI_EXP_DEVCTL_NFERE |
-		PCI_EXP_DEVCTL_FERE/* |
-		PCI_EXP_DEVCTL_URRE*/);
+		PCI_EXP_DEVCTL_FERE |
+		PCI_EXP_DEVCTL_URRE);
 	pci_write_config_word(dev, pos + PCI_EXP_DEVCTL, reg16);
 
 	return 0;
@@ -74,8 +74,8 @@ int pci_disable_pcie_error_reporting(struct pci_dev *dev)
 	pci_read_config_word(dev, pos + PCI_EXP_DEVCTL, &reg16);
 	reg16 &= ~(PCI_EXP_DEVCTL_CERE |
 		PCI_EXP_DEVCTL_NFERE |
-		PCI_EXP_DEVCTL_FERE/*|
-		PCI_EXP_DEVCTL_URRE*/);
+		PCI_EXP_DEVCTL_FERE |
+		PCI_EXP_DEVCTL_URRE);
 	pci_write_config_word(dev, pos + PCI_EXP_DEVCTL, reg16);
 
 	return 0;
@@ -160,8 +160,8 @@ static bool is_error_source(struct pci_dev *dev, struct aer_err_info *e_info)
 	if (!(reg16 & (
 		PCI_EXP_DEVCTL_CERE |
 		PCI_EXP_DEVCTL_NFERE |
-		PCI_EXP_DEVCTL_FERE /*|
-		PCI_EXP_DEVCTL_URRE*/)))
+		PCI_EXP_DEVCTL_FERE |
+		PCI_EXP_DEVCTL_URRE)))
 		return false;
 	pos = pci_find_ext_capability(dev, PCI_EXT_CAP_ID_ERR);
 	if (!pos)

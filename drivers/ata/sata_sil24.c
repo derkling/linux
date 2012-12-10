@@ -33,22 +33,6 @@
 #define DRV_NAME	"sata_sil24"
 #define DRV_VERSION	"1.1"
 
-void writelp(u32 val, void *addr)
-{		
-	printk(" - Write 0x%x to 0x%x\n", val, addr);
-	writel(val, addr);
-}
-
-u32 readlp(void *addr)
-{
-	printk(" - Read from 0x%x...\n", addr);
-	u32 val = readl(addr);
-	printk("     got 0x%x\n", val);
-	return val;
-}
-
-#define writel writelp
-#define readl readlp
 /*
  * Port request block (PRB) 32 bytes
  */
@@ -433,7 +417,7 @@ static struct ata_port_operations sil24_ops = {
 #endif
 };
 
-static bool sata_sil24_msi = false;    /* Disable MSI */
+static bool sata_sil24_msi;    /* Disable MSI */
 module_param_named(msi, sata_sil24_msi, bool, S_IRUGO);
 MODULE_PARM_DESC(msi, "Enable MSI (Default: false)");
 
@@ -506,9 +490,6 @@ static void sil24_read_tf(struct ata_port *ap, int tag, struct ata_taskfile *tf)
 	u8 fis[6 * 4];
 
 	prb = port + PORT_LRAM + sil24_tag(tag) * PORT_LRAM_SLOT_SZ;
-
-	printk("PROB 0x%x\n", prb);
-
 	memcpy_fromio(fis, prb->fis, sizeof(fis));
 	ata_tf_from_fis(fis, tf);
 }
@@ -608,9 +589,9 @@ static int sil24_init_port(struct ata_port *ap)
 
 	writel(PORT_CS_INIT, port + PORT_CTRL_STAT);
 	ata_wait_register(ap, port + PORT_CTRL_STAT,
-			  PORT_CS_INIT, PORT_CS_INIT, 10, 1000);
+			  PORT_CS_INIT, PORT_CS_INIT, 10, 100);
 	tmp = ata_wait_register(ap, port + PORT_CTRL_STAT,
-				PORT_CS_RDY, 0, 10, 1000);
+				PORT_CS_RDY, 0, 10, 100);
 
 	if ((tmp & (PORT_CS_INIT | PORT_CS_RDY)) != PORT_CS_RDY) {
 		pp->do_port_rst = 1;
@@ -646,8 +627,7 @@ static int sil24_exec_polled_cmd(struct ata_port *ap, int pmp,
 	 */
 	wmb();
 	writel((u32)paddr, port + PORT_CMD_ACTIVATE);
-
-	writel((u64)paddr >> 32, port + PORT_CMD_ACTIVATE + 4);//last successful write
+	writel((u64)paddr >> 32, port + PORT_CMD_ACTIVATE + 4);
 
 	irq_mask = (PORT_IRQ_COMPLETE | PORT_IRQ_ERROR) << PORT_IRQ_RAW_SHIFT;
 	irq_stat = ata_wait_register(ap, port + PORT_IRQ_STAT, irq_mask, 0x0,
@@ -754,7 +734,7 @@ static int sil24_hardreset(struct ata_link *link, unsigned int *class,
 	/* sil24 does the right thing(tm) without any protection */
 	sata_set_spd(link);
 
-	tout_msec = 1000;
+	tout_msec = 100;
 	if (ata_link_online(link))
 		tout_msec = 5000;
 
@@ -797,56 +777,20 @@ static int sil24_hardreset(struct ata_link *link, unsigned int *class,
 	return -EIO;
 }
 
-static void *andy = NULL;
-static struct scatterlist *ggsg;
-static int ggne;
-static struct ata_queued_cmd *ggqc;
-
-void dump(int cl)
-{
-	mdelay(1000);
-#if 0
-	if (!in_interrupt()){
-	unsigned int* a = andy;
-	int c=0;
-
-	dma_sync_sg_for_cpu(ggqc->ap->dev, ggsg, ggne, 0);
-
-	if (cl)
-	memset(a, 0xff, 0x200);	
-
-	for (c=0;c<0x200/4/8;c++) {
-	printk("0x%08x: 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0%08x\n", 
-		a, *a++, *a++, *a++, *a++,
-		*a++, *a++, *a++, *a++);
-	}
-	}
-#endif
-}
-
 static inline void sil24_fill_sg(struct ata_queued_cmd *qc,
 				 struct sil24_sge *sge)
 {
 	struct scatterlist *sg;
 	struct sil24_sge *last_sge = NULL;
 	unsigned int si;
-	ggqc = qc;
 
 	for_each_sg(qc->sg, sg, qc->n_elem, si) {
-
-		andy = ioremap_nocache(sg_dma_address(sg), 0x200);
 		sge->addr = cpu_to_le64(sg_dma_address(sg));
-		sge->cnt = cpu_to_le32(sg_dma_len(sg)); //packet size
+		sge->cnt = cpu_to_le32(sg_dma_len(sg));
 		sge->flags = 0;
 
 		last_sge = sge;
 		sge++;
-		
-		ggsg = sg;
-		ggne = qc->n_elem;
-		printk("ggne is %d\n", ggne);
-		printk("SG address 0x%x count 0x%x\n", sg_dma_address(sg), sg_dma_len(sg));
-		dump(1);
 	}
 
 	last_sge->flags = cpu_to_le32(SGE_TRM);
@@ -1016,24 +960,7 @@ static void sil24_freeze(struct ata_port *ap)
 	/* Port-wide IRQ mask in HOST_CTRL doesn't really work, clear
 	 * PORT_IRQ_ENABLE instead.
 	 */
-	printk("DELAY\n");
-	if (andy) {
-		printk("SG 0x%x\n", *(unsigned int *)andy);
-		dump(0);
-	}
-	printk("HANG...\n");
-	if (!in_interrupt()){
-	void *a = ioremap_nocache(0x30000000, 0x2000);
-	printk("REGS ARE 0x%x, 0x%x, 0x%x, 0%x, 0x%x, 0x%x\n", readl(a+0x4), readl(a+0x14), readl(a+0x30), readl(a+0x90), readl(a+0x184), readl(a+0x18));
-	printk("DELAY\n");
-	printk("STILL HANG...\n");
-	}
-	
-	readl(port + PORT_IRQ_ENABLE_CLR);
-//	readl(port + PORT_IRQ_ENABLE_CLR);
-//	readl(port + PORT_IRQ_ENABLE_CLR);
 	writel(0xffff, port + PORT_IRQ_ENABLE_CLR);
-	printk("NOT\n");
 }
 
 static void sil24_thaw(struct ata_port *ap)
@@ -1225,7 +1152,6 @@ static irqreturn_t sil24_interrupt(int irq, void *dev_instance)
 	unsigned handled = 0;
 	u32 status;
 	int i;
-	printk("INTERRUPT!!!!\n");
 
 	status = readl(host_base + HOST_IRQ_STAT);
 
@@ -1289,8 +1215,6 @@ static int sil24_port_start(struct ata_port *ap)
 		return -ENOMEM;
 	memset(cb, 0, cb_size);
 
-	printk("--- CMD BLOCK 0x%x\n", cb);
-
 	pp->cmd_block = cb;
 	pp->cmd_block_dma = cb_dma;
 
@@ -1329,7 +1253,7 @@ static void sil24_init_controller(struct ata_host *host)
 			writel(PORT_CS_PORT_RST, port + PORT_CTRL_CLR);
 			tmp = ata_wait_register(NULL, port + PORT_CTRL_STAT,
 						PORT_CS_PORT_RST,
-						PORT_CS_PORT_RST, 10, 1000);
+						PORT_CS_PORT_RST, 10, 100);
 			if (tmp & PORT_CS_PORT_RST)
 				dev_err(host->dev,
 					"failed to clear port RST\n");
@@ -1342,8 +1266,6 @@ static void sil24_init_controller(struct ata_host *host)
 	/* Turn on interrupts */
 	writel(IRQ_STAT_4PORTS, host_base + HOST_CTRL);
 }
-
-static bool first = false;
 
 static int sil24_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
@@ -1427,11 +1349,7 @@ static int sil24_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		pci_intx(pdev, 0);
 	}
 
-//	if (first) {
-		printk("MASTER REMOVED\n");
-		pci_set_master(pdev);
-//	}
-	first = true;
+	pci_set_master(pdev);
 	return ata_host_activate(host, pdev->irq, sil24_interrupt, IRQF_SHARED,
 				 &sil24_sht);
 }

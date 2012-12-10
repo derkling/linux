@@ -71,15 +71,6 @@
 #include "libata.h"
 #include "libata-transport.h"
 
-u32 readlr(void *addr)
-{
-	printk(".\n");
-	u32 val = ioread32(addr);
-	printk(" - Read 0x%x from 0x%x\n", val, addr);
-	return val;
-}
-
-#define ioread32 readlr
 /* debounce timing parameters in msecs { interval, duration, timeout } */
 const unsigned long sata_deb_timing_normal[]		= {   5,  100, 2000 };
 const unsigned long sata_deb_timing_hotplug[]		= {  25,  500, 2000 };
@@ -1703,8 +1694,6 @@ unsigned ata_exec_internal_sg(struct ata_device *dev,
 
 	spin_unlock_irqrestore(ap->lock, flags);
 
-
-//	return 0;//
 	if ((err_mask & AC_ERR_TIMEOUT) && auto_timeout)
 		ata_internal_cmd_timed_out(dev, command);
 
@@ -1845,16 +1834,8 @@ static u32 ata_pio_mask_no_iordy(const struct ata_device *adev)
 unsigned int ata_do_dev_read_id(struct ata_device *dev,
 					struct ata_taskfile *tf, u16 *id)
 {
-	int x=0;
-	printk("READ ID\n");
-	int a=  ata_exec_internal(dev, tf, NULL, DMA_FROM_DEVICE,
-				     id, sizeof(id[0]) * ATA_ID_WORDS /*//i / 2*/, 0);
-//i	for (x=0;x<10;x++) {
-//i	mdelay(1000);
-//i	a=  ata_exec_internal(dev, tf, NULL, DMA_FROM_DEVICE,
-//i				     id, sizeof(id[0]) * ATA_ID_WORDS / 2, 0);
-//i	}
-	return a;
+	return ata_exec_internal(dev, tf, NULL, DMA_FROM_DEVICE,
+				     id, sizeof(id[0]) * ATA_ID_WORDS, 0);
 }
 
 /**
@@ -1925,10 +1906,8 @@ retry:
 
 	if (ap->ops->read_id)
 		err_mask = ap->ops->read_id(dev, &tf, id);
-	else {
-		printk("PERSONAL\n");
+	else
 		err_mask = ata_do_dev_read_id(dev, &tf, id);
-	}
 
 	if (err_mask) {
 		if (err_mask & AC_ERR_NODEV_HINT) {
@@ -2430,11 +2409,9 @@ int ata_dev_configure(struct ata_device *dev)
 		dev->horkage |= ATA_HORKAGE_STUCK_ERR;
 	}
 
-	if (dev->horkage & ATA_HORKAGE_MAX_SEC_128) {
-		printk("---------------------------------> ***** <---------------------\n");
+	if (dev->horkage & ATA_HORKAGE_MAX_SEC_128)
 		dev->max_sectors = min_t(unsigned int, ATA_MAX_SECTORS_128,
 					 dev->max_sectors);
-	}
 
 	if (ap->ops->dev_config)
 		ap->ops->dev_config(dev);
@@ -6161,11 +6138,8 @@ int ata_host_activate(struct ata_host *host, int irq,
 		return ata_host_register(host, sht);
 	}
 
-	printk("REQUEST IRQ %d\n", irq);
 	rc = devm_request_irq(host->dev, irq, irq_handler, irq_flags,
 			      dev_driver_string(host->dev), host);
-
-	printk("RC IS %d\n", rc);
 	if (rc)
 		return rc;
 
@@ -6639,7 +6613,6 @@ u32 ata_wait_register(struct ata_port *ap, void __iomem *reg, u32 mask, u32 val,
 	unsigned long deadline;
 	u32 tmp;
 
-	printk("ATA READ 32\n");
 	tmp = ioread32(reg);
 
 	/* Calculate timeout _after_ the first read to make sure
@@ -6650,8 +6623,6 @@ u32 ata_wait_register(struct ata_port *ap, void __iomem *reg, u32 mask, u32 val,
 
 	while ((tmp & mask) == val && time_before(jiffies, deadline)) {
 		ata_msleep(ap, interval);
-		printk("ATA READ 32**\n");
-//		iowrite32(tmp, reg);
 		tmp = ioread32(reg);
 	}
 

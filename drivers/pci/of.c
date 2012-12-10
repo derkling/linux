@@ -43,7 +43,7 @@ void pci_release_bus_of_node(struct pci_bus *bus)
 	bus->dev.of_node = NULL;
 }
 
-struct device_node * __weak noinline pcibios_get_phb_of_node(struct pci_bus *bus)
+struct device_node * __weak pcibios_get_phb_of_node(struct pci_bus *bus)
 {
 	/* This should only be called for PHBs */
 	if (WARN_ON(bus->self || bus->parent))
