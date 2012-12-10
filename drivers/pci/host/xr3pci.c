@@ -38,6 +38,13 @@
 
 #include "xr3pci.h"
 
+extern void __init xr3pci_setup_arch(
+	struct platform_device *dev,
+	int (*map_irq)(const struct pci_dev *, u8, u8),
+	struct pci_ops *ops,
+	int (*setup)(int nr, struct pci_sys_data *));
+
+
 struct xr3pci_port {
 	void __iomem	*base;
 #ifdef FPGA_QUIRK_INTX_CLEAR
@@ -198,7 +205,7 @@ static int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 	return virq;
 }
 
-static int __init xr3pci_probe(struct xr3pci_port *pp)
+static int __init xr3pci_probe2(struct xr3pci_port *pp)
 {
 	/* gain some confidence that we are talking to the correct device by
 	   reading registers with known values */
@@ -237,11 +244,6 @@ int __init xr3pci_setup(int nr, struct pci_sys_data *sys)
 
 	struct device_node *np = sys->of_node;
 
-//	WARN_ON(nr);
-//	if (nr >= xr3pci_hw_pci.nr_controllers)
-//		return 0;
-	printk("SETUP\n");
-
 	pp = kzalloc(sizeof(struct xr3pci_port), GFP_KERNEL);
 	WARN_ON(!pp);
 
@@ -252,7 +254,7 @@ int __init xr3pci_setup(int nr, struct pci_sys_data *sys)
 		printk("oopp\n");
 	}
 
-	if (xr3pci_probe(pp)) {
+	if (xr3pci_probe2(pp)) {
 		return -1;
 	}
 
@@ -359,13 +361,33 @@ static void __devinit xr3pci_quirk_class(struct pci_dev *pdev)
 }
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_PLDA, PCI_DEVICE_ID_XR3PCI, xr3pci_quirk_class);
 
-//TODO does ILOCAL also need to be cleared after INTx interrpt?
-void __init xr3pci_setup_arch(
-	int (**map_irq)(const struct pci_dev *, u8, u8),
-	struct pci_ops **ops,
-	int (**setup)(struct pci_sys_data *, struct device_node *))
+static int xr3pci_probe(struct platform_device *dev)
 {
-	*map_irq = xr3pci_map_irq;
-	*ops = &xr3pci_ops;
-	*setup = xr3pci_setup;
+	return xr3pci_setup_arch(dev, xr3pci_map_irq, &xr3pci_ops, xr3pci_setup);
 }
+
+static const struct __initconst of_device_id xr3pci_device_id[] = {
+	{ .compatible = "arm,xr3pci", },
+	{},
+};
+MODULE_DEVICE_TABLE(of, xr3pci_device_id);
+
+static struct platform_driver xr3pci_driver = {
+	.probe		= xr3pci_probe,
+	.driver		= {
+		.name 	= "xr3pci",
+		.owner	= THIS_MODULE,
+		.of_match_table = xr3pci_device_id,
+	},
+};
+
+static int __init xr3pci_init(void)
+{
+	return platform_driver_register(&xr3pci_driver);
+}
+
+subsys_initcall(xr3pci_init);
+
+MODULE_AUTHOR("Andrew Murray <Andrew.Murray@arm.com>");
+MODULE_DESCRIPTION("XR3PCI Host Bridge drver");
+MODULE_LICENSE("GPL v2");
