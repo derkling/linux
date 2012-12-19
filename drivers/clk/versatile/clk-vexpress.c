@@ -98,21 +98,11 @@ struct clk *vexpress_sp810_of_get(struct of_phandle_args *clkspec, void *data)
 	return vexpress_sp810_timerclken[clkspec->args[0]];
 }
 
-static const __initconst struct of_device_id vexpress_fixed_clk_match[] = {
-	{ .compatible = "fixed-clock", .data = of_fixed_clk_setup, },
-	{ .compatible = "arm,vexpress-osc", .data = vexpress_osc_of_setup, },
-	{}
-};
-
-void __init vexpress_clk_of_init(void)
+static void __init vexpress_sp810_of_setup(struct device_node *node)
 {
-	struct device_node *node;
 	struct clk *clk;
 	struct clk *refclk, *timclk;
 
-	of_clk_init(vexpress_fixed_clk_match);
-
-	node = of_find_compatible_node(NULL, NULL, "arm,sp810");
 	vexpress_sp810_init(of_iomap(node, 0));
 	of_clk_add_provider(node, vexpress_sp810_of_get, NULL);
 
@@ -137,5 +127,21 @@ void __init vexpress_clk_of_init(void)
 	WARN_ON(clk_register_clkdev(vexpress_sp810_timerclken[1],
 				"v2m-timer1", "sp804"));
 }
+
+static const __initconst struct of_device_id vexpress_clk_match[] = {
+	{ .compatible = "fixed-clock", .data = of_fixed_clk_setup, },
+	{ .compatible = "arm,vexpress-osc", .data = vexpress_osc_of_setup, },
+	{ .compatible = "arm,sp810", .data = vexpress_sp810_of_setup, },
+	{}
+};
+
+int __init vexpress_clk_of_init(void)
+{
+	of_clk_init(vexpress_clk_match);
+	return 0;
+}
+#ifdef CONFIG_ARM64
+arch_initcall(vexpress_clk_of_init);
+#endif
 
 #endif
