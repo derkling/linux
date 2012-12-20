@@ -96,7 +96,7 @@ static int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 	/*
 	 * Update the pen release flag.
 	 */
-	write_pen_release(cpu);
+	write_pen_release(cpu_logical_map(cpu));
 
 	/*
 	 * Send an event, causing the secondaries to read pen_release.
@@ -234,6 +234,7 @@ void __init smp_prepare_boot_cpu(void)
 
 static void (*smp_cross_call)(const struct cpumask *, unsigned int);
 static phys_addr_t cpu_release_addr[NR_CPUS];
+u64 __cpu_logical_map[NR_CPUS];
 
 /*
  * Enumerate the possible CPU set from the device tree.
@@ -242,7 +243,8 @@ void __init smp_init_cpus(void)
 {
 	const char *enable_method;
 	struct device_node *dn = NULL;
-	int cpu = 0;
+	int cpu = 0, i, len;
+	const u32 *hwid;
 
 	while ((dn = of_find_node_by_type(dn, "cpu"))) {
 		if (cpu >= NR_CPUS)
@@ -268,7 +270,20 @@ void __init smp_init_cpus(void)
 			goto next;
 		}
 
-		set_cpu_possible(cpu, true);
+		/*
+		 * Create a logical mapping between the cpu number and its
+		 * hardware id as specified in device tree
+		 */
+		hwid = of_get_property(dn, "reg", &len);
+		if (!hwid || len != 4) {
+			pr_err("CPU %d: missing or invalid reg property\n", cpu);
+			goto next;
+		}
+
+		i = (be32_to_cpup(hwid) == (read_cpuid_mpidr() & 0xffffff)) ? 0 : cpu;
+		cpu_logical_map(i) = be32_to_cpup(hwid);
+
+		set_cpu_possible(i, true);
 next:
 		cpu++;
 	}

@@ -66,4 +66,11 @@ extern volatile unsigned long secondary_holding_pen_release;
 extern void arch_send_call_function_single_ipi(int cpu);
 extern void arch_send_call_function_ipi_mask(const struct cpumask *mask);
 
+/*
+ * Logical CPU mapping
+ */
+
+extern u64 __cpu_logical_map[NR_CPUS];
+#define cpu_logical_map(cpu)	__cpu_logical_map[cpu]
+
 #endif /* ifndef __ASM_SMP_H */

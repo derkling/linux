@@ -17,6 +17,7 @@
 #define __ASM_CPUTYPE_H
 
 #define ID_MIDR_EL1		"midr_el1"
+#define ID_MPIDR_EL1		"mpidr_el1"
 #define ID_CTR_EL0		"ctr_el0"
 
 #define ID_AA64PFR0_EL1		"id_aa64pfr0_el1"
@@ -44,6 +45,11 @@ static inline u32 __attribute_const__ read_cpuid_id(void)
 static inline u32 __attribute_const__ read_cpuid_cachetype(void)
 {
 	return read_cpuid(ID_CTR_EL0);
+}
+
+static inline u64 __attribute_const__ read_cpuid_mpidr(void)
+{
+	return read_cpuid(ID_MPIDR_EL1);
 }
 
 #endif
