@@ -101,7 +101,7 @@ static void __init setup_processor(void)
 	/*
 	 * locate processor in the list of supported processor
 	 * types.  The linker builds this table for us from the
-	 * entries in arch/arm/mm/proc.S
+	 * entries in arch/arm64/mm/proc.S
 	 */
 	cpu_info = lookup_processor_type(read_cpuid_id());
 	if (!cpu_info) {
