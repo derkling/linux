@@ -55,6 +55,14 @@ struct gic_chip_data {
 #define MAX_GIC_NR	1
 #endif
 
+/*
+ * The GIC mapping of CPU interfaces does not necessarily match
+ * the logical CPU numbering. Let's use a mapping as returned
+ * by the GIC itself.
+ */
+#define NR_GIC_CPU_IF	8
+static u8 gic_cpu_map[NR_GIC_CPU_IF] __read_mostly;
+
 static struct gic_chip_data gic_data[MAX_GIC_NR] __read_mostly;
 
 static inline void __iomem *gic_dist_base(struct irq_data *d)
@@ -154,11 +162,11 @@ static int gic_set_affinity(struct irq_data *d, const struct cpumask *mask_val,
 	unsigned int cpu = cpumask_any_and(mask_val, cpu_online_mask);
 	u32 val, mask, bit;
 
-	if (cpu >= 8 || cpu >= nr_cpu_ids)
+	if (cpu >= NR_GIC_CPU_IF || cpu >= nr_cpu_ids)
 		return -EINVAL;
 
 	mask = 0xff << shift;
-	bit = 1 << (cpu + shift);
+	bit = gic_cpu_map[cpu] << shift;
 
 	raw_spin_lock(&irq_controller_lock);
 	val = readl_relaxed(reg) & ~mask;
@@ -244,11 +252,8 @@ static void __init gic_dist_init(struct gic_chip_data *gic)
 {
 	unsigned int i;
 	void __iomem *base = gic->dist_base;
-	u32 cpumask = 1 << smp_processor_id();
+	u32 cpumask;
 	unsigned int gic_irqs = gic->gic_irqs;
-
-	cpumask |= cpumask << 8;
-	cpumask |= cpumask << 16;
 
 	writel_relaxed(0, base + GIC_DIST_CTRL);
 
@@ -261,6 +266,7 @@ static void __init gic_dist_init(struct gic_chip_data *gic)
 	/*
 	 * Set all global interrupts to this CPU only.
 	 */
+	cpumask = readl_relaxed(base + GIC_DIST_TARGET + 0);
 	for (i = 32; i < gic_irqs; i += 4)
 		writel_relaxed(cpumask, base + GIC_DIST_TARGET + i * 4 / 4);
 
@@ -284,7 +290,23 @@ static void __cpuinit gic_cpu_init(struct gic_chip_data *gic)
 {
 	void __iomem *dist_base = gic->dist_base;
 	void __iomem *base = gic->cpu_base;
+	unsigned int cpu_mask, cpu = smp_processor_id();
 	int i;
+
+	/*
+	 * Get what the GIC says our CPU mask is.
+	 */
+	BUG_ON(cpu >= NR_GIC_CPU_IF);
+	cpu_mask = readl_relaxed(dist_base + GIC_DIST_TARGET + 0);
+	gic_cpu_map[cpu] = cpu_mask;
+
+	/*
+	 * Clear our mask from the other map entries in case they're
+	 * still undefined.
+	 */
+	for (i = 0; i < NR_GIC_CPU_IF; i++)
+		if (i != cpu)
+			gic_cpu_map[i] &= ~cpu_mask;
 
 	/*
 	 * Deal with the banked PPI and SGI interrupts - disable all
@@ -351,13 +373,20 @@ static void __init gic_init(unsigned int gic_nr, unsigned int irq_start,
 {
 	irq_hw_number_t hwirq_base;
 	struct gic_chip_data *gic;
-	int gic_irqs, irq_base;
+	int gic_irqs, irq_base, i;
 
 	BUG_ON(gic_nr >= MAX_GIC_NR);
 
 	gic = &gic_data[gic_nr];
 	gic->dist_base = dist_base;
 	gic->cpu_base = cpu_base;
+
+	/*
+	 * Initialize the CPU interface map to all CPUs.
+	 * It will be refined as each CPU probes its ID.
+	 */
+	for (i = 0; i < NR_GIC_CPU_IF; i++)
+		gic_cpu_map[i] = 0xff;
 
 	/*
 	 * For primary GICs, skip over SGIs.
@@ -415,7 +444,11 @@ static struct notifier_block __cpuinitdata gic_cpu_notifier = {
 
 static void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 {
-	unsigned long map = *cpus_addr(*mask);
+	int cpu;
+	unsigned long map = 0;
+
+	for_each_cpu(cpu, mask)
+		map |= gic_cpu_map[cpu];
 
 	/* this always happens on GIC0 */
 	writel_relaxed(map << 16 | irq, gic_data[0].dist_base + GIC_DIST_SOFTINT);
