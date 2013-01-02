@@ -239,10 +239,16 @@ static int xr3pci_setup_ats(struct xr3pci_port *pp)
 	return 0;
 }
 
+static irqreturn_t interr(int irq, void *d)
+{
+	printk("INTERRUPT ------%d\n", irq);
+	return IRQ_HANDLED;
+}
+
 static int xr3pci_setup_int(struct xr3pci_port *pp)
 {
 	/* Enable IRQs for MSIs and legacy interrupts */
-	writel(INT_MSI | INT_INTX, pp->base + IMASK_LOCAL);
+	writel(0xffffffff, pp->base + IMASK_LOCAL);
 
 #ifdef FPGA_QUIRK_INTX_CLEAR
 	pp->intx_irq_domain = irq_domain_add_linear(NULL, 4, &xr3pci_irq_nop_ops, NULL);
@@ -251,6 +257,15 @@ static int xr3pci_setup_int(struct xr3pci_port *pp)
 		return -1;
 	}
 #endif
+
+	if (request_irq(148, interr, 0, "", NULL)) printk("BAD!\n");
+	if (request_irq(147, interr, 0, "", NULL)) printk("BAD!\n");
+	if (request_irq(146, interr, 0, "", NULL)) printk("BAD!\n");
+	if (request_irq(145, interr, 0, "", NULL)) printk("BAD!\n");
+	if (request_irq(144, interr, 0, "", NULL)) printk("BAD!\n");
+	if (request_irq(143, interr, 0, "", NULL)) printk("BAD!\n");
+	if (request_irq(142, interr, 0, "", NULL)) printk("BAD!\n");
+	if (request_irq(141, interr, 0, "", NULL)) printk("BAD!\n");
 
 	return 0;
 }
