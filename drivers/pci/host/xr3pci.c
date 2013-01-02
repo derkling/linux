@@ -115,7 +115,7 @@ struct pci_ops xr3pci_ops = {
 };
 
 #ifdef FPGA_QUIRK_INTX_CLEAR
-static void xr3pci_msix_irq_handler(unsigned int irq, struct irq_desc *desc)
+static void xr3pci_intx_irq_handler(unsigned int irq, struct irq_desc *desc)
 {
 	unsigned long status, flags;
 	struct irq_chip *chip = irq_get_chip(irq);
@@ -130,7 +130,7 @@ static void xr3pci_msix_irq_handler(unsigned int irq, struct irq_desc *desc)
 	spin_lock_irqsave(&irq_lock, flags);
 	status = (readl(pp->base + ISTATUS_LOCAL) & INT_INTX) >> 24;
 
-	/* handle all pending MSIx interrupts */
+	/* handle all pending INTx interrupts */
 	while (status) {
 		u8 pin = find_first_bit(&status, 4);
 		int virq = irq_linear_revmap(pp->intx_irq_domain, pin);
@@ -166,8 +166,9 @@ static int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 	}
 
 #ifdef FPGA_QUIRK_INTX_CLEAR
-	/* set up common chained handler for MSIx interrutps */
-	irq_set_chained_handler(virq, xr3pci_msix_irq_handler);
+	printk("INTx on %d\n", virq);
+	/* set up common chained handler for INTx interrutps */
+	irq_set_chained_handler(virq, xr3pci_intx_irq_handler);
 	irq_set_handler_data(virq, pp);
 
 	/* create interrupt for INTx users to request which though its cascade

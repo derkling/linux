@@ -51,10 +51,6 @@
 #define DEVICE_VENDOR_ID  0x1556
 #define DEVICE_DEVICE_ID  0x1100
 
-//TODO
-#define IRQ_MSI_BASE 260
-#define MAX_SUPPORTED_NO_MSI 32
-
 /* Bridge Configuration Space Registers */
 #define BRIDGE_INT_REGS		0x0
 #define BRIDGE_PCIE_CONFIG	0x1000
