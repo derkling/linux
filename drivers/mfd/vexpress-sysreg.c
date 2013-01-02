@@ -318,8 +318,9 @@ void __init vexpress_sysreg_early_init(void __iomem *base)
 	struct device_node *node = of_find_compatible_node(NULL, NULL,
 			"arm,vexpress-sysreg");
 
-	if (node)
-		base = of_iomap(node, 0);
+	if (!node)
+		return;
+	base = of_iomap(node, 0);
 
 	if (WARN_ON(!base))
 		return;
@@ -338,6 +339,8 @@ void __init vexpress_sysreg_early_init(void __iomem *base)
 
 void __init vexpress_sysreg_of_early_init(void)
 {
+	if (vexpress_sysreg_base)
+		return;
 	vexpress_sysreg_early_init(NULL);
 }
 
@@ -470,6 +473,7 @@ static struct platform_driver vexpress_sysreg_driver = {
 
 static int __init vexpress_sysreg_init(void)
 {
+	vexpress_sysreg_of_early_init();
 	return platform_driver_register(&vexpress_sysreg_driver);
 }
 core_initcall(vexpress_sysreg_init);
