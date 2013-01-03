@@ -75,6 +75,7 @@ struct smp_enable_ops {
 };
 
 extern const struct smp_enable_ops smp_spin_table_ops;
+extern const struct smp_enable_ops smp_psci_ops;
 
 /*
  * Logical CPU mapping
