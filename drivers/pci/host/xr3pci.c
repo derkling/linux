@@ -37,6 +37,8 @@ struct xr3pci_port {
 #endif
 };
 
+//TODO: what prevents 1:1:0 being probebd ?
+
 static int xr3pci_read_config(struct pci_bus *bus, unsigned int devfn, int where,
 			int size, u32 *val)
 {
@@ -249,7 +251,7 @@ static irqreturn_t interr(int irq, void *d)
 static int xr3pci_setup_int(struct xr3pci_port *pp)
 {
 	/* Enable IRQs for MSIs and legacy interrupts */
-	writel(0xffffffff, pp->base + IMASK_LOCAL);
+	writel(0xff77ffff, pp->base + IMASK_LOCAL);
 
 #ifdef FPGA_QUIRK_INTX_CLEAR
 	pp->intx_irq_domain = irq_domain_add_linear(NULL, 4, &xr3pci_irq_nop_ops, NULL);
