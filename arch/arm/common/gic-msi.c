@@ -21,6 +21,7 @@
 #include <linux/pci.h>
 #include <linux/module.h>
 #include <linux/slab.h>
+#include <linux/delay.h>
 #include <linux/spinlock.h>
 #include <linux/msi.h>
 #include <linux/of.h>
@@ -37,7 +38,7 @@
 //TODO for now support only a single MSI per device and do not support MSI-X
 
 //TODO: Remove me
-#define pr_debug printk
+//#define pr_debug printk
 
 /* Maximum number of MSIs supported by this driver */
 #define MAX_SUPPORTED_MSIS	32
@@ -203,8 +204,17 @@ again:
 
 	irq_set_msi_desc(irq, desc);
 
+	
+	struct pci_dev *pci;
+	pci = pci_get_bus_and_slot(0, 0);
+	u32 v;
+		pci_read_config_dword(pci, 0x10,
+					&v);
+	data->msi_capture_reg = (v & ~0x7f) + 0x190; //pci_resource_start(pdev, 0) + 0x190;//0x50100190;//of_iomap(node, 1);
+
 	msg.address_hi = 0; //TODO: 32 bit for now
 	msg.address_lo = (u32)data->msi_capture_reg;
+	printk("addr 0x%p\n", msg.address_lo);
 	msg.data = vector;
 	write_msi_msg(irq, &msg);
 
@@ -265,9 +275,12 @@ int __devinit gic_msi_probe(struct platform_device *pdev)
 	irq_set_chained_handler(data->transitional_irq, gic_msi_handler);	
 #endif
 
-	data->msi_capture_reg = 0x50100190;//of_iomap(node, 1);
-	if (WARN(!data->msi_capture_reg, "Unable to map MSI capture register"))
-		goto err_irq;
+//	struct pci_dev *pci;
+//	pci = pci_get_bus_and_slot(0, 0);
+//
+//	data->msi_capture_reg = pci_resource_start(pdev, 0);//0x50100190;//of_iomap(node, 1);
+//	if (WARN(!data->msi_capture_reg, "Unable to map MSI capture register"))
+//		goto err_irq;
 
 	gd = data;
 	if (WARN(pci_register_msi_controller(&msi_controller_ops), "Unable to register MSI controller"))
@@ -300,7 +313,7 @@ static int __devexit gic_msi_remove(struct platform_device *pdev)
 	
 	data = platform_get_drvdata(pdev);
 
-	iounmap(data->msi_capture_reg);
+//	iounmap(data->msi_capture_reg);
 
 #ifdef FPGA_TRANSITIONAL_DRIVER 
 {
