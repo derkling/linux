@@ -1727,12 +1727,28 @@ unsigned ata_exec_internal(struct ata_device *dev,
 	struct scatterlist *psg = NULL, sg;
 	unsigned int n_elem = 0;
 
+//if (timeout == 2)
+//{
+//	static struct scatterlist *psg_s = NULL, sg_s;
+//	if (psg == NULL) {
+//		WARN_ON(!buf);
+//		sg_init_one(&sg_s, buf, buflen);
+//		psg_s = &sg_s;
+//		n_elem++;
+//	} else {
+//		psg = psg_s;
+//		sg = sg_s;
+//	}
+//
+//	timeout = 0;
+//} else {
 	if (dma_dir != DMA_NONE) {
 		WARN_ON(!buf);
 		sg_init_one(&sg, buf, buflen);
 		psg = &sg;
 		n_elem++;
 	}
+//}
 
 	return ata_exec_internal_sg(dev, tf, cdb, dma_dir, psg, n_elem,
 				    timeout);
@@ -1834,8 +1850,13 @@ static u32 ata_pio_mask_no_iordy(const struct ata_device *adev)
 unsigned int ata_do_dev_read_id(struct ata_device *dev,
 					struct ata_taskfile *tf, u16 *id)
 {
-	return ata_exec_internal(dev, tf, NULL, DMA_FROM_DEVICE,
-				     id, sizeof(id[0]) * ATA_ID_WORDS, 0);
+//	printk("LOOPING...\n");
+//	while (1)
+//	{
+	ata_exec_internal(dev, tf, NULL, DMA_FROM_DEVICE,
+			     id, sizeof(id[0]) * ATA_ID_WORDS, 0);
+//	}
+	return 0;
 }
 
 /**
