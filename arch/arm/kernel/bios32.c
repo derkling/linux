@@ -488,6 +488,7 @@ void __init pci_common_init(struct hw_pci *hw)
 
 	list_for_each_entry(sys, &head, node) {
 		struct pci_bus *bus = sys->bus;
+		struct pci_bus *child;
 
 		pci_bus_fixup_irqs(bus, pcibios_swizzle, pcibios_map_irq);
 
@@ -510,7 +511,6 @@ void __init pci_common_init(struct hw_pci *hw)
 			/*
 			 * Configure children (MPS, MRRS)
 			 */
-			struct pci_bus *child;
 			list_for_each_entry(child, &bus->children, node) {
 				struct pci_dev *self = child->self;
 				if (!self)

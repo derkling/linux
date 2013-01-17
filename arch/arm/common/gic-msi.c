@@ -58,6 +58,7 @@
 
 /* Shared registers of the XR3PCI which are used to report interrupt status */
 #ifdef FPGA_TRANSITIONAL_DRIVER
+#define XR3PCI_INT_REGS		0x30000180
 #define IMASK_LOCAL		0x0
 #define ISTATUS_LOCAL		0x4
 #define ISTATUS_MSI		0x14
