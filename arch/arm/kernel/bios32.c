@@ -506,6 +506,17 @@ void __init pci_common_init(struct hw_pci *hw)
 			 * Enable bridges
 			 */
 			pci_enable_bridges(bus);
+
+			/*
+			 * Configure children (MPS, MRRS)
+			 */
+			struct pci_bus *child;
+			list_for_each_entry(child, &bus->children, node) {
+				struct pci_dev *self = child->self;
+				if (!self)
+					continue;
+				pcie_bus_configure_settings(child, self->pcie_mpss);
+			}
 		}
 
 		/*

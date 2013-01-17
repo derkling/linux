@@ -29,16 +29,11 @@
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 
-#include <asm/io.h>
+#include <linux/io.h>
 #include <asm/mach/pci.h>
 #include <asm/mach/irq.h>
 
 #ifdef CONFIG_PCI_MSI
-
-//TODO for now support only a single MSI per device and do not support MSI-X
-
-//TODO: Remove me
-//#define pr_debug printk
 
 /* Maximum number of MSIs supported by this driver */
 #define MAX_SUPPORTED_MSIS	32
@@ -50,6 +45,8 @@
  * support in this driver for XR3PCI's MSI is a stop-gap. As a result this
  * driver supports the XR3PCI's MSI but is designed with the potential GIC
  * implementation in mind.
+ *
+ * This driver supports only 1 MSI per device
  *
  * When FPGA_TRANSITIONAL_DRIVER is set, the XR3PCI's MSI capabilities are
  * used - this results in sharing MMIO used by the XR3PCI driver.
@@ -69,7 +66,6 @@
 
 struct gic_msi_data {
 	void __iomem *msi_capture_reg;
-	int max_vectors;
 	DECLARE_BITMAP(msi_irq_in_use, MAX_SUPPORTED_MSIS);
 #ifdef FPGA_TRANSITIONAL_DRIVER
 	void __iomem *transitional_regs;
@@ -81,7 +77,7 @@ struct gic_msi_data {
 /* We permit only one MSI driver instance, this is it. A future implementation
    may update the arch_[setup|teardown]_msi_irq callbacks to map pci buses to
    MSI handlers */
-static struct gic_msi_data *gd = NULL;
+static struct gic_msi_data *gd;
 
 #ifdef FPGA_TRANSITIONAL_DRIVER
 static void gic_msi_nop(struct irq_data *d)
@@ -98,11 +94,12 @@ static struct irq_chip gic_msi_chip = {
 	.irq_unmask = unmask_msi_irq,
 };
 
-static int gic_msi_map(struct irq_domain *h, unsigned int virq, irq_hw_number_t hw)
+static int gic_msi_map(struct irq_domain *h, unsigned int virq,
+			irq_hw_number_t hw)
 {
 	pr_debug("%s:%d gic_msi_map\n", __func__, __LINE__);
 	irq_set_chip_and_handler(virq, &gic_msi_chip, handle_simple_irq);
-	
+
 	return 0;
 }
 
@@ -112,7 +109,7 @@ static const struct irq_domain_ops msi_ops = {
 
 static void gic_msi_handler(unsigned int irq, struct irq_desc *desc)
 {
-	int j;
+	int j, virq;
 	unsigned long status;
 	struct gic_msi_data *data;
 	struct irq_chip *chip = irq_get_chip(irq);
@@ -121,17 +118,16 @@ static void gic_msi_handler(unsigned int irq, struct irq_desc *desc)
 	data = irq_desc_get_handler_data(desc);
 	pr_debug("%s:%d gic_msi_handler for IRQ %d\n", __func__, __LINE__, irq);
 
-	/* check an MSI really occured */	
+	/* check an MSI really occured */
 	if (!(readl(data->transitional_regs + ISTATUS_LOCAL) & INT_MSI))
 		goto out;
 
 	/* call handlers for pending MSIs */
 	status = readl(data->transitional_regs + ISTATUS_MSI);
 	while (status) {
-		j = find_first_bit(&status, data->max_vectors);
-
-		int virq = irq_linear_revmap(data->transitional_domain, j);
-		pr_debug("%s:%d MSI %d occured - hwirq %d, virt irq %d?\n", 
+		j = find_first_bit(&status, MAX_SUPPORTED_MSIS);
+		virq = irq_linear_revmap(data->transitional_domain, j);
+		pr_debug("%s:%d MSI %d occured - hwirq %d, virt irq %d?\n",
 			__func__, __LINE__, j, j, virq);
 		writel((1 << j), data->transitional_regs + ISTATUS_MSI);
 
@@ -140,7 +136,7 @@ static void gic_msi_handler(unsigned int irq, struct irq_desc *desc)
 
 		status = readl(data->transitional_regs + ISTATUS_MSI);
 	}
-	
+
 	/* clear MSI interrupt */
 	writel(INT_MSI, data->transitional_regs + ISTATUS_LOCAL);
 
@@ -157,12 +153,12 @@ int obtain_vector_irq(struct gic_msi_data *data, int vector, int *irq)
 		pr_err("Unable to allocate virtual IRQ\n");
 		return -ENOSPC;
 	}
-	
+
 	return 0;
 #else
-	/* TODO: Use DF to provide simple mapping between MSI vectors and 
-                 SPIs */
-	//*irq = SPI;
+	/* TODO: Use DF to provide simple mapping between MSI vectors and
+		SPIs
+		*irq = SPI; */
 	return -ENOSPC;
 #endif
 }
@@ -176,15 +172,13 @@ void release_vector_irq(int irq)
 
 /**
  * Satisfy an MSI request
- *
- * This implementation is weak as to provide a default GIC-MSI implementation
- * without breaking ARM platforms with existing implementations.
  */
 int gic_msi_setup_irq(struct pci_dev *pdev, struct msi_desc *desc)
 {
 	int irq, vector;
 	struct msi_msg msg;
 	struct gic_msi_data *data = gd;
+	struct pci_dev *phb;
 
 	if (WARN(!data, "No MSI handler"))
 		return 1;
@@ -192,7 +186,7 @@ int gic_msi_setup_irq(struct pci_dev *pdev, struct msi_desc *desc)
 	pr_debug("%s:%d arch_setup_msi_irq\n", __func__, __LINE__);
 
 again:
-	vector = find_first_zero_bit(data->msi_irq_in_use, data->max_vectors);
+	vector = find_first_zero_bit(data->msi_irq_in_use, MAX_SUPPORTED_MSIS);
 
 	if (test_and_set_bit(vector, data->msi_irq_in_use))
 		goto again;
@@ -204,17 +198,12 @@ again:
 
 	irq_set_msi_desc(irq, desc);
 
-	
-	struct pci_dev *pci;
-	pci = pci_get_bus_and_slot(0, 0);
-	u32 v;
-		pci_read_config_dword(pci, 0x10,
-					&v);
-	data->msi_capture_reg = (v & ~0x7f) + 0x190; //pci_resource_start(pdev, 0) + 0x190;//0x50100190;//of_iomap(node, 1);
+	phb = pci_get_bus_and_slot(0, 0);
+	data->msi_capture_reg = (void *)(pci_resource_start(phb, 0) + 0x190);
 
-	msg.address_hi = 0; //TODO: 32 bit for now
+	/* use only lower 32 bits of MSI capture address */
+	msg.address_hi = 0;
 	msg.address_lo = (u32)data->msi_capture_reg;
-	printk("addr 0x%p\n", msg.address_lo);
 	msg.data = vector;
 	write_msi_msg(irq, &msg);
 
@@ -246,50 +235,40 @@ int __devinit gic_msi_probe(struct platform_device *pdev)
 	data = kzalloc(sizeof(struct gic_msi_data), GFP_KERNEL);
 	if (WARN(!data, "Unable to allocate memory"))
 		return 1;
-	
+
 	platform_set_drvdata(pdev, data);
 
-#ifdef FPGA_TRANSITIONAL_DRIVER 
-	if (of_property_read_u32(node, "msi-max-vectors", &(data->max_vectors))) {
-		pr_err("No msi-max-vectors property in device tree\n");
-		goto err_kzalloc;
-	}
-
-	data->transitional_domain = irq_domain_add_linear(NULL, data->max_vectors, &msi_ops, NULL);
+#ifdef FPGA_TRANSITIONAL_DRIVER
+	data->transitional_domain = irq_domain_add_linear(NULL,
+					MAX_SUPPORTED_MSIS, &msi_ops, NULL);
 	if (WARN(!data->transitional_domain, "Unable to allocate irq_domain"))
 		goto err_kzalloc;
 
 	data->transitional_regs = of_iomap(node, 0);
 	if (WARN(!data->transitional_regs, "Unable to map MSI registers"))
 		goto err_domain;
-	
+
 	data->transitional_irq = irq_of_parse_and_map(node, 0);
 	if (WARN(!data->transitional_irq, "Unable to map IRQ"))
 		goto err_iomap;
-	
+
 	if (irq_set_handler_data(data->transitional_irq, data)) {
 		pr_err("Unable to set IRQ handler\n");
 		goto err_irq;
 	}
 
-	irq_set_chained_handler(data->transitional_irq, gic_msi_handler);	
+	irq_set_chained_handler(data->transitional_irq, gic_msi_handler);
 #endif
 
-//	struct pci_dev *pci;
-//	pci = pci_get_bus_and_slot(0, 0);
-//
-//	data->msi_capture_reg = pci_resource_start(pdev, 0);//0x50100190;//of_iomap(node, 1);
-//	if (WARN(!data->msi_capture_reg, "Unable to map MSI capture register"))
-//		goto err_irq;
-
 	gd = data;
-	if (WARN(pci_register_msi_controller(&msi_controller_ops), "Unable to register MSI controller"))
+	if (WARN(pci_register_msi_controller(&msi_controller_ops),
+					"Unable to register MSI controller"))
 		goto err_irq;
 
 	return 0;
 
 err_irq:
-#ifdef FPGA_TRANSITIONAL_DRIVER 
+#ifdef FPGA_TRANSITIONAL_DRIVER
 	irq_dispose_mapping(data->transitional_irq);
 err_iomap:
 	iounmap(data->transitional_regs);
@@ -310,21 +289,22 @@ err_kzalloc:
 static int __devexit gic_msi_remove(struct platform_device *pdev)
 {
 	struct gic_msi_data *data;
-	
+
 	data = platform_get_drvdata(pdev);
 
-//	iounmap(data->msi_capture_reg);
+	if (data && data->msi_capture_reg)
+		iounmap(data->msi_capture_reg);
 
-#ifdef FPGA_TRANSITIONAL_DRIVER 
+#ifdef FPGA_TRANSITIONAL_DRIVER
 {
 	int j, irq;
-	irq_set_chained_handler(data->transitional_irq, NULL);	
+	irq_set_chained_handler(data->transitional_irq, NULL);
 	irq_dispose_mapping(data->transitional_irq);
 	iounmap(data->transitional_regs);
 
-again:	
-	j = find_first_bit(data->msi_irq_in_use, data->max_vectors);
-  	irq = irq_find_mapping(data->transitional_domain, j);
+again:
+	j = find_first_bit(data->msi_irq_in_use, MAX_SUPPORTED_MSIS);
+	irq = irq_find_mapping(data->transitional_domain, j);
 	if (irq) {
 		irq_dispose_mapping(irq);
 		goto again;
@@ -335,7 +315,7 @@ again:
 #endif
 
 	kfree(data);
-	return 0;	
+	return 0;
 }
 
 static const struct of_device_id gic_msi_ids[] __devinitconst = {

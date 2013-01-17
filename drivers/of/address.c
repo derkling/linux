@@ -243,7 +243,7 @@ const __be32 *of_pci_process_ranges(struct device_node *node,
 	if (start == NULL)
 		return NULL;
 
-	end = start + rlen;
+	end = start + rlen / sizeof(__be32);
 
 	if (!from)
 		from = start;

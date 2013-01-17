@@ -25,10 +25,11 @@
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 
-#include <asm/signal.h>
+#include <linux/signal.h>
 #include <asm/mach/pci.h>
 
-static int xr3pci_abort(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
+static int xr3pci_abort(unsigned long addr, unsigned int fsr,
+			struct pt_regs *regs)
 {
 	unsigned long pc = instruction_pointer(regs);
 	unsigned long instr = *(unsigned long *)pc;
@@ -52,8 +53,9 @@ int __init xr3pci_setup_arch(
 {
 	static struct hw_pci xr3pci_hw_pci = { 0 };
 
-	/* Temporary abort handler until hardware behaves itself */	
-	hook_fault_code(16 + 6, xr3pci_abort, SIGBUS, 0, "imprecise external abort");
+	/* At present the xr3pci returns bus errors when URs are received */
+	hook_fault_code(16 + 6, xr3pci_abort, SIGBUS, 0,
+			"imprecise external abort");
 
 	xr3pci_hw_pci.map_irq = map_irq;
 	xr3pci_hw_pci.ops = ops;

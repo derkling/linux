@@ -37,10 +37,8 @@ struct xr3pci_port {
 #endif
 };
 
-//TODO: what prevents 1:1:0 being probebd ?
-
-static int xr3pci_read_config(struct pci_bus *bus, unsigned int devfn, int where,
-			int size, u32 *val)
+static int xr3pci_read_config(struct pci_bus *bus, unsigned int devfn,
+				int where, int size, u32 *val)
 {
 	u32 cfgnum;
 	struct pci_sys_data *sys = bus->sysdata;
@@ -57,12 +55,7 @@ static int xr3pci_read_config(struct pci_bus *bus, unsigned int devfn, int where
 			     (~(0xf << size) << (where & 3)), /* BE */
 			     0x1); /* force PCIe BE */
 
-#ifdef FPGA_QUIRK_ABORTS
-	writew(cfgnum, pp->base + PCIE_CFGNUM);
-	writeb((cfgnum >> 16), pp->base + PCIE_CFGNUM + 2);
-#else
 	writel(cfgnum, pp->base + PCIE_CFGNUM);
-#endif
 	*val = readl(pp->base + BRIDGE_PCIE_CONFIG + (where & ~0x3));
 
 	if (*val == ~0)
@@ -84,8 +77,8 @@ static int xr3pci_read_config(struct pci_bus *bus, unsigned int devfn, int where
 /**
  * Stimulate a configuration write request
  */
-static int xr3pci_write_config(struct pci_bus *bus, unsigned int devfn, int where,
-			     int size, u32 val)
+static int xr3pci_write_config(struct pci_bus *bus, unsigned int devfn,
+				int where, int size, u32 val)
 {
 	u32 cfgnum;
 	struct pci_sys_data *sys = bus->sysdata;
@@ -100,20 +93,16 @@ static int xr3pci_write_config(struct pci_bus *bus, unsigned int devfn, int wher
 			     (~(0xf << size) << (where & 3)), /* BE */
 			     0x1); /* force PCIe BE */
 
-#ifdef FPGA_QUIRK_ABORTS
-	writew(cfgnum, pp->base + PCIE_CFGNUM);
-	writeb((cfgnum >> 16), pp->base + PCIE_CFGNUM + 2);
-#else
 	writel(cfgnum, pp->base + PCIE_CFGNUM);
-#endif
-	writel(val << ((where & 3) * 8), pp->base + BRIDGE_PCIE_CONFIG + (where & ~0x3));
+	writel(val << ((where & 3) * 8),
+		pp->base + BRIDGE_PCIE_CONFIG + (where & ~0x3));
 
 	return PCIBIOS_SUCCESSFUL;
 }
 
 struct pci_ops xr3pci_ops = {
-	.read 	= xr3pci_read_config,
-	.write 	= xr3pci_write_config, 
+	.read	= xr3pci_read_config,
+	.write	= xr3pci_write_config,
 };
 
 #ifdef FPGA_QUIRK_INTX_CLEAR
@@ -122,12 +111,12 @@ static void xr3pci_intx_irq_handler(unsigned int irq, struct irq_desc *desc)
 	unsigned long status, flags;
 	struct irq_chip *chip = irq_get_chip(irq);
 	struct xr3pci_port *pp = irq_desc_get_handler_data(desc);
-	
+
 	/* this handler is used for each INTx interrupt source, prevent
 	 * duplicate calls to generic_handle_irq with spin lock
 	 */
 	static DEFINE_SPINLOCK(irq_lock);
-	
+
 	chained_irq_enter(chip, desc);
 	spin_lock_irqsave(&irq_lock, flags);
 	status = (readl(pp->base + ISTATUS_LOCAL) & INT_INTX) >> 24;
@@ -168,14 +157,12 @@ static int __init xr3pci_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 	}
 
 #ifdef FPGA_QUIRK_INTX_CLEAR
-	printk("INTx on %d\n", virq);
 	/* set up common chained handler for INTx interrutps */
 	irq_set_chained_handler(virq, xr3pci_intx_irq_handler);
 	irq_set_handler_data(virq, pp);
 
 	/* create interrupt for INTx users to request which though its cascade
-	 * will correctly clear interrupt registers in XpressRICH3
-	 */
+	   will correctly clear interrupt registers in XpressRICH3 */
 	virq = irq_create_mapping(pp->intx_irq_domain, pin-1);
 	irq_set_chip_and_handler(virq, &xr3pci_irq_nop_chip, handle_simple_irq);
 #endif
@@ -190,22 +177,19 @@ static int xr3pci_check_device(struct xr3pci_port *pp)
 	ver = readl(pp->base + PCIE_PCI_IDS_1);
 	if (!((ver  & 0xffff) == DEVICE_VENDOR_ID &&
 	      (ver  & 0xffff0000) >> 16 == DEVICE_DEVICE_ID)) {
-		printk("Unable to detect " DEVICE_NAME);
+		pr_err("Unable to detect " DEVICE_NAME);
 		return -1;
 	}
 
 	ver = readl(pp->base + PCIE_BASIC_STATU);
-	printk(DEVICE_NAME " %dx gen %d link negotiated\n", ver & 0xff, (ver & 0xf00) >> 8);
+	pr_info(DEVICE_NAME " %dx gen %d link negotiated\n", ver & 0xff,
+				(ver & 0xf00) >> 8);
 
-#ifdef FPGA_QUIRK_NO_LINK
-	if (!(ver & 0xff)) {
-		printk(DEVICE_NAME ": No link detected\n");
-		return -1;
-	}
-#endif
-	
+	if (!(ver & 0xff))
+		pr_err(DEVICE_NAME ": No link detected\n");
+
 	if ((readl(pp->base + PCIE_BASIC_CONF) & 0xf0000000) != 0x10000000) {
-		printk(DEVICE_NAME ": Core is not a RC\n");
+		pr_err(DEVICE_NAME ": Core is not a RC\n");
 		return -1;
 	}
 
@@ -221,54 +205,32 @@ static int xr3pci_setup_ats(struct xr3pci_port *pp)
 	writel(0x7f, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_SRC_ADDR_LWR);
 	writel(0x0, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_SRC_ADDR_UPR);
 	writel(0x0, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_TRSL_ADDR_UPR);
-#ifdef FPGA_QUIRK_ABORTS
-	writeb(0x4, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_TRSL_PARAM);
-#else
 	writel(0x4, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_TRSL_PARAM);
 	writel(0x0, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_TRSL_ADDR_LWR);
-#endif
 
 	/* 1:1 mapping for outbound AXI slave 0 transcations to PCIe */
 	writel(0x7f, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_SRC_ADDR_LWR);
 	writel(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_SRC_ADDR_UPR);
 	writel(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_TRSL_ADDR_UPR);
-#ifdef FPGA_QUIRK_ABORTS
-	writeb(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_TRSL_PARAM);
-#else
 	writel(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_TRSL_PARAM);
 	writel(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_TRSL_ADDR_LWR);
-#endif
 
 	return 0;
 }
 
-static irqreturn_t interr(int irq, void *d)
-{
-	printk("INTERRUPT ------%d\n", irq);
-	return IRQ_HANDLED;
-}
-
 static int xr3pci_setup_int(struct xr3pci_port *pp)
 {
-	/* Enable IRQs for MSIs and legacy interrupts */
-	writel(0xff77ffff, pp->base + IMASK_LOCAL);
-
 #ifdef FPGA_QUIRK_INTX_CLEAR
-	pp->intx_irq_domain = irq_domain_add_linear(NULL, 4, &xr3pci_irq_nop_ops, NULL);
+	pp->intx_irq_domain = irq_domain_add_linear(NULL, 4,
+					&xr3pci_irq_nop_ops, NULL);
 	if (!pp->intx_irq_domain) {
 		pr_err(DEVICE_NAME ": Failed to create IRQ domain\n");
 		return -1;
 	}
 #endif
 
-	if (request_irq(148, interr, 0, "", NULL)) printk("BAD!\n");
-	if (request_irq(147, interr, 0, "", NULL)) printk("BAD!\n");
-	if (request_irq(146, interr, 0, "", NULL)) printk("BAD!\n");
-	if (request_irq(145, interr, 0, "", NULL)) printk("BAD!\n");
-	if (request_irq(144, interr, 0, "", NULL)) printk("BAD!\n");
-	if (request_irq(143, interr, 0, "", NULL)) printk("BAD!\n");
-	if (request_irq(142, interr, 0, "", NULL)) printk("BAD!\n");
-	if (request_irq(141, interr, 0, "", NULL)) printk("BAD!\n");
+	/* Enable IRQs for MSIs and legacy interrupts */
+	writel(INT_MSI | INT_INTX, pp->base + IMASK_LOCAL);
 
 	return 0;
 }
@@ -282,17 +244,20 @@ int xr3pci_add_pci_resources(struct xr3pci_port *pp, struct pci_sys_data *sys)
 	while ((last = of_pci_process_ranges(np, res, last))) {
 		if (res->flags & IORESOURCE_MEM) {
 			if (request_resource(&iomem_resource, res)) {
-				pr_err(DEVICE_NAME ": Failed to request PCIe memory\n");
+				pr_err(DEVICE_NAME
+				": Failed to request PCIe memory\n");
 				continue;
 			}
-			pci_add_resource_offset(&sys->resources, res, sys->mem_offset);
-		}
-		else if (res->flags & IORESOURCE_IO) {
+			pci_add_resource_offset(&sys->resources, res,
+						sys->mem_offset);
+		} else if (res->flags & IORESOURCE_IO) {
 			if (request_resource(&ioport_resource, res)) {
-				pr_err(DEVICE_NAME ": Failed to request PCIe IO\n");
+				pr_err(DEVICE_NAME
+				": Failed to request PCIe IO\n");
 				continue;
 			}
-			pci_add_resource_offset(&sys->resources, res, sys->io_offset);
+			pci_add_resource_offset(&sys->resources, res,
+						sys->io_offset);
 		}
 
 		res = kzalloc(sizeof(struct resource), GFP_KERNEL);
@@ -308,28 +273,48 @@ static int xr3pci_get_resources(struct xr3pci_port *pp, struct device_node *np)
 
 	err = of_address_to_resource(np, 0, &res);
 	if (err) {
-		pr_err(DEVICE_NAME ": Failed to find configuration registers in DT\n");
+		pr_err(DEVICE_NAME
+			": Failed to find configuration registers in DT\n");
 		return err;
 	}
 
 	if (!request_mem_region(res.start, resource_size(&res), DEVICE_NAME)) {
-		pr_err(DEVICE_NAME ": Failed to request configuration registers resource\n");
+		pr_err(DEVICE_NAME
+			": Failed to request config registers resource\n");
 		return -EBUSY;
 	}
 
 	pp->base = ioremap_nocache(res.start, resource_size(&res));
 	if (!pp->base) {
-		pr_err(DEVICE_NAME ": Failed to map configuration registers resource\n");
+		pr_err(DEVICE_NAME
+			": Failed to map configuration registers resource\n");
 		err = -ENOMEM;
 		goto err_map_io;
 	}
 
 	return 0;
-	
+
 err_map_io:
 	release_mem_region(res.start, resource_size(&res));
 
 	return err;
+}
+
+void __init xr3pci_teardown(struct xr3pci_port *pp, struct device_node *np)
+{
+	int err;
+	struct resource res;
+
+	if (pp->base) {
+		iounmap(pp->base);
+
+		err = of_address_to_resource(np, 0, &res);
+		if (!err)
+			release_mem_region(res.start, resource_size(&res));
+	}
+
+	if (pp->intx_irq_domain)
+		irq_domain_remove(pp->intx_irq_domain);
 }
 
 int __init xr3pci_setup(int nr, struct pci_sys_data *sys)
@@ -342,23 +327,25 @@ int __init xr3pci_setup(int nr, struct pci_sys_data *sys)
 
 	sys->private_data = pp;
 
-	/* add DT resources to the controller */
 	if (xr3pci_get_resources(pp, np))
-		return -1;
+		goto err;
 
 	if (xr3pci_check_device(pp))
-		return -1;
-
-	if (xr3pci_setup_ats(pp))
-		return -1;
+		goto err;
 
 	if (xr3pci_setup_int(pp))
-		return -1;
+		goto err;
+
+	if (xr3pci_setup_ats(pp))
+		goto err;
 
 	if (xr3pci_add_pci_resources(pp, sys))
-		return -1;
+		goto err;
 
 	return 1;
+err:
+	xr3pci_teardown(pp, np);
+	return -1;
 }
 
 #ifdef FPGA_QUIRK_FPGA_CLASS
@@ -366,7 +353,8 @@ static void xr3pci_quirk_class(struct pci_dev *pdev)
 {
 	pdev->class = PCI_CLASS_BRIDGE_PCI << 8;
 }
-DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_PLDA, PCI_DEVICE_ID_XR3PCI, xr3pci_quirk_class);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_PLDA, PCI_DEVICE_ID_XR3PCI,
+			xr3pci_quirk_class);
 #endif
 
 static int __init xr3pci_probe(struct platform_device *dev)
@@ -375,7 +363,7 @@ static int __init xr3pci_probe(struct platform_device *dev)
 	   architecture agnostic way. We work around this by calling our own
 	   arch call back which provides methods that can be plumbed into
 	   whichever architecture this is used on. */
-	return xr3pci_setup_arch(dev, 
+	return xr3pci_setup_arch(dev,
 				 xr3pci_map_irq, &xr3pci_ops, xr3pci_setup);
 	return 0;
 }
@@ -388,7 +376,7 @@ MODULE_DEVICE_TABLE(of, xr3pci_device_id);
 
 static struct platform_driver xr3pci_driver = {
 	.driver		= {
-		.name 	= "xr3pci",
+		.name	= "xr3pci",
 		.owner	= THIS_MODULE,
 		.of_match_table = xr3pci_device_id,
 	},

@@ -27,20 +27,6 @@
  */
 #define FPGA_QUIRK_INTX_CLEAR
 
-/* The XpressRICH3 generates aborts when accessing registers which include
- * reserved bits. An abort handler is already in place, however the abort
- * still results in strange effects for writes. This quirk changes accesses
- * to limit aborts.
- */
-#define FPGA_QUIRK_ABORTS
-
-/* The XpressRICH3 doesn't generate its own URs but instead passes
- * configuration requests that it doesn't understand downstream. This means
- * that where there is no link configuration requests do not get responses
- * and this results in deadlock - thus where there is no link, don't enumerate.
- */
-#define FPGA_QUIRK_NO_LINK
-
 /* The XpressRIC3 doesn't describe itself as a bridge. This is required for
  * correct/normal enumeration. This quirk changes that.
  */
@@ -56,7 +42,6 @@
 #define BRIDGE_PCIE_CONFIG	0x1000
 #define BRIDGE_EXT_REGS		0x2000
 
-//TODO: consider NDA/disclosure
 /* Bridge Configuration Space Register Definations */
 /* Bridge Internal Registers */
 /* Control and Status Registers */
@@ -138,9 +123,11 @@
 #define PCIE_CFGNUM_DEV(d)		(((d)  & 0x1f) <<  3)
 #define PCIE_CFGNUM_FUN(f)		(((f)  &  0x7) <<  0)
 
-#define PCIE_CFGNUM_R(b, d, f, be, fo)	(PCIE_CFGNUM_BUS(b) | PCIE_CFGNUM_DEV(d) | \
+#define PCIE_CFGNUM_R(b, d, f, be, fo)	(PCIE_CFGNUM_BUS(b) | \
+					 PCIE_CFGNUM_DEV(d) | \
 					 PCIE_CFGNUM_FUN(f) | \
-					 PCIE_CFGNUM_BYTE_EN(be) | PCIE_CFGNUM_FORCE_BE(fo))
+					 PCIE_CFGNUM_BYTE_EN(be) | \
+					 PCIE_CFGNUM_FORCE_BE(fo))
 
 
 
