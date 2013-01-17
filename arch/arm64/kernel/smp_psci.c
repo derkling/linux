@@ -36,7 +36,7 @@ static int __init smp_psci_prepare_cpu(int cpu)
 		return -ENODEV;
 	}
 
-	err = psci_ops.cpu_on(cpu, __pa(secondary_holding_pen));
+	err = psci_ops.cpu_on(cpu_logical_map(cpu), __pa(secondary_holding_pen));
 	if (err) {
 		pr_err("psci: failed to boot CPU%d (%d)\n", cpu, err);
 		return err;
@@ -47,6 +47,6 @@ static int __init smp_psci_prepare_cpu(int cpu)
 
 const struct smp_enable_ops smp_psci_ops __initconst = {
 	.name		= "psci",
-	.init_cpu 	= smp_psci_init_cpu,
+	.init_cpu	= smp_psci_init_cpu,
 	.prepare_cpu	= smp_psci_prepare_cpu,
 };
