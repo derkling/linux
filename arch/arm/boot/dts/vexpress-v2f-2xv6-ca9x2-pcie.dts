@@ -62,7 +62,6 @@
 			/* I/O is 0x2f000000 - 0x2fffffff */
 			/* divided memory into prefetchable / non-prefetchable */
 		ranges = <0x42000000 0 0x50000000 0x50000000 0 0x08000000 /* 32bit 256MB Prefetchable 1:1 */
-		   	  0x01000000 0 0x48000000 0x48000000 0 0x8000000
 		   	  0x02000000 0 0x40000000 0x40000000 0 0x8000000>; /* 32bit 256MB Non prefetchable 1:1 */
 
 		#interrupt-cells = <1>;
