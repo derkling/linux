@@ -110,6 +110,12 @@ config ARCH_VEXPRESS
 	  This enables support for the ARMv8 software model (Versatile
 	  Express).
 
+config ARCH_JUNO
+	bool "Juno Platform"
+	select ARCH_REQUIRE_GPIOLIB
+	select ARM_GIC
+	help
+	  This enables support for the ARMv8 Juno Platform.
 endmenu
 
 source "drivers/irqchip/Kconfig"
