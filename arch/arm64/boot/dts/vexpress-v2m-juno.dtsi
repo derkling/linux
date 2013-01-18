@@ -1,0 +1,96 @@
+/*
+ * ARM Ltd. Versatile Express
+ *
+ * Motherboard Express uATX
+ * V2M-P1
+ *
+ * HBI-0190D
+ *
+ * RS1 memory map ("ARM Cortex-A Series memory map" in the board's
+ * Technical Reference Manual)
+ *
+ */
+
+	motherboard {
+		arm,v2m-memory-map = "rs1";
+		#address-cells = <2>; /* SMB chipselect number and offset */
+		#size-cells = <1>;
+		#interrupt-cells = <1>;
+
+		/* v2m_clk24mhz: clk24mhz {
+			compatible = "fixed-clock";
+			#clock-cells = <0>;
+			clock-frequency = <24000000>;
+			clock-output-names = "v2m:clk24mhz";
+		};
+
+		v2m_refclk1mhz: refclk1mhz {
+			compatible = "fixed-clock";
+			#clock-cells = <0>;
+			clock-frequency = <1000000>;
+			clock-output-names = "v2m:refclk1mhz";
+		};
+
+		v2m_refclk32khz: refclk32khz {
+			compatible = "fixed-clock";
+			#clock-cells = <0>;
+			clock-frequency = <32768>;
+			clock-output-names = "v2m:refclk32khz";
+		}; */
+
+		iofpga@3,00000000 {
+			compatible = "arm,amba-bus", "simple-bus";
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges = <0 3 0 0x200000>;
+
+/*			v2m_sysreg: sysreg@010000 {
+				compatible = "arm,vexpress-sysreg";
+				reg = <0x010000 0x1000>;
+				gpio-controller;
+				#gpio-cells = <2>;
+			};
+
+			v2m_sysctl: sysctl@020000 {
+				compatible = "arm,sp810", "arm,primecell";
+				reg = <0x020000 0x1000>;
+				clocks = <&v2m_refclk32khz>, <&v2m_refclk1mhz>, <&v2m_clk24mhz>;
+				clock-names = "refclk", "timclk", "apb_pclk";
+				#clock-cells = <1>;
+				clock-output-names = "timerclken0", "timerclken1", "timerclken2", "timerclken3";
+			};
+*/
+			v2m_serial0: uart@090000 {
+				compatible = "arm,pl011", "arm,primecell";
+				reg = <0x090000 0x1000>;
+				interrupts = <5>;
+/*				clocks = <&v2m_clk24mhz>, <&v2m_clk24mhz>;
+				clock-names = "uartclk", "apb_pclk";*/
+			};
+
+			v2m_serial1: uart@0a0000 {
+				compatible = "arm,pl011", "arm,primecell";
+				reg = <0x0a0000 0x1000>;
+				interrupts = <6>;
+/*				clocks = <&v2m_clk24mhz>, <&v2m_clk24mhz>;
+				clock-names = "uartclk", "apb_pclk";*/
+			};
+
+			v2m_serial2: uart@0b0000 {
+				compatible = "arm,pl011", "arm,primecell";
+				reg = <0x0b0000 0x1000>;
+				interrupts = <7>;
+/*				clocks = <&v2m_clk24mhz>, <&v2m_clk24mhz>;
+				clock-names = "uartclk", "apb_pclk";*/
+			};
+
+			v2m_serial3: uart@0c0000 {
+				compatible = "arm,pl011", "arm,primecell";
+				reg = <0x0c0000 0x1000>;
+				interrupts = <8>;
+/*				clocks = <&v2m_clk24mhz>, <&v2m_clk24mhz>;
+				clock-names = "uartclk", "apb_pclk";*/
+			};
+
+		};
+	};
