@@ -160,6 +160,12 @@ config CPU_FREQ_GOV_ONDEMAND
 
 	  If in doubt, say N.
 
+config CPU_FREQ_GOV_INTERACTIVE2
+	tristate "'interactive2' cpufreq policy governor"
+	default y if CPU_FREQ_GOV_INTERACTIVE
+	help
+	  copy of 'interactive' governor to be used on big.LITTLE MP systems
+
 config CPU_FREQ_GOV_CONSERVATIVE
 	tristate "'conservative' cpufreq governor"
 	depends on CPU_FREQ
