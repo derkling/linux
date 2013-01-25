@@ -114,6 +114,8 @@ config ARCH_JUNO
 	bool "Juno Platform"
 	select ARCH_REQUIRE_GPIOLIB
 	select ARM_GIC
+	select COMMON_CLK_VERSATILE
+	select VEXPRESS_CONFIG
 	help
 	  This enables support for the ARMv8 Juno Platform.
 endmenu
