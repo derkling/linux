@@ -203,6 +203,10 @@ dtb-$(CONFIG_ARCH_VEXPRESS) += vexpress-v2p-ca5s.dtb \
 	vexpress-v2p-ca9.dtb \
 	vexpress-v2p-ca15-tc1.dtb \
 	vexpress-v2p-ca15_a7.dtb
+	vexpress-v2p-ca15-tc2_a15only.dtb \
+	vexpress-v2p-ca15-tc2_a7bootcluster.dtb \
+	vexpress-v2p-ca15-tc2_a7only.dtb \
+	vexpress-v2p-ca15_a7.dtb
 dtb-$(CONFIG_ARCH_VIRT) += xenvm-4.2.dtb
 dtb-$(CONFIG_ARCH_VT8500) += vt8500-bv07.dtb \
 	wm8505-ref.dtb \
