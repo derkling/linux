@@ -662,26 +662,20 @@ static struct pmu cpumf_pmu = {
 	.cancel_txn   = cpumf_pmu_cancel_txn,
 };
 
-static int cpumf_pmu_notifier(struct notifier_block *self, unsigned long action,
-			      void *hcpu)
+static int cpumf_pmf_setup(unsigned int cpu, int flags)
 {
-	unsigned int cpu = (long) hcpu;
-	int flags;
+	smp_call_function_single(cpu, setup_pmc_cpu, &flags, 1);
+	return 0;
+}
 
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_ONLINE:
-		flags = PMC_INIT;
-		smp_call_function_single(cpu, setup_pmc_cpu, &flags, 1);
-		break;
-	case CPU_DOWN_PREPARE:
-		flags = PMC_RELEASE;
-		smp_call_function_single(cpu, setup_pmc_cpu, &flags, 1);
-		break;
-	default:
-		break;
-	}
+static int s390_pmu_online_cpu(unsigned int cpu)
+{
+	return cpumf_pmf_setup(cpu, PMC_INIT);
+}
 
-	return NOTIFY_OK;
+static int s390_pmu_offline_cpu(unsigned int cpu)
+{
+	return cpumf_pmf_setup(cpu, PMC_RELEASE);
 }
 
 static int __init cpumf_pmu_init(void)
@@ -701,7 +695,7 @@ static int __init cpumf_pmu_init(void)
 	if (rc) {
 		pr_err("Registering for CPU-measurement alerts "
 		       "failed with rc=%i\n", rc);
-		goto out;
+		return rc;
 	}
 
 	/* The CPU measurement counter facility does not have overflow
@@ -716,10 +710,9 @@ static int __init cpumf_pmu_init(void)
 		pr_err("Registering the cpum_cf PMU failed with rc=%i\n", rc);
 		unregister_external_irq(EXT_IRQ_MEASURE_ALERT,
 					cpumf_measurement_alert);
-		goto out;
+		return rc;
 	}
-	perf_cpu_notifier(cpumf_pmu_notifier);
-out:
-	return rc;
+	return cpuhp_setup_state(CPUHP_PERF_S390_CF_ONLINE, s390_pmu_online_cpu,
+				 s390_pmu_offline_cpu);
 }
 early_initcall(cpumf_pmu_init);
