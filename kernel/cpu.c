@@ -23,13 +23,25 @@
 #include <linux/tick.h>
 #include <linux/irq.h>
 #include <trace/events/power.h>
+#include <linux/cpuhotplug.h>
 
 #include "smpboot.h"
+
+/* CPU state */
+static DEFINE_PER_CPU(enum cpuhp_state, cpuhp_state);
+
+struct cpuhp_step {
+	int (*startup)(unsigned int cpu);
+	int (*teardown)(unsigned int cpu);
+};
+
+static struct cpuhp_step cpuhp_bp_states[];
 
 #ifdef CONFIG_SMP
 /* Serializes the updates to cpu_online_mask, cpu_present_mask */
 static DEFINE_MUTEX(cpu_add_remove_lock);
-static bool cpuhp_tasks_frozen;
+bool cpuhp_tasks_frozen;
+EXPORT_SYMBOL_GPL(cpuhp_tasks_frozen);
 
 /*
  * The following two APIs (cpu_maps_update_begin/done) must be used when
@@ -403,8 +415,6 @@ static int takedown_cpu(unsigned int cpu)
 	else
 		synchronize_rcu();
 
-	smpboot_park_threads(cpu);
-
 	/*
 	 * Prevent irq alloc/free while the dying cpu reorganizes the
 	 * interrupt affinities.
@@ -453,10 +463,32 @@ static int notify_dead(unsigned int cpu)
 	return 0;
 }
 
+#else
+#define notify_down_prepare	NULL
+#define takedown_cpu		NULL
+#define notify_dead		NULL
+#endif
+
+#ifdef CONFIG_HOTPLUG_CPU
+static void undo_cpu_down(unsigned int cpu, int step)
+{
+	while (step++ < CPUHP_MAX) {
+		/*
+		 * Transitional check. Will be removed when we have a
+		 * fully symmetric mechanism
+		 */
+		if (!cpuhp_bp_states[step].teardown)
+			continue;
+
+		if (cpuhp_bp_states[step].startup)
+			cpuhp_bp_states[step].startup(cpu);
+	}
+}
+
 /* Requires cpu_add_remove_lock to be held */
 static int __ref _cpu_down(unsigned int cpu, int tasks_frozen)
 {
-	int err;
+	int ret = 0, step;
 
 	if (num_online_cpus() == 1)
 		return -EBUSY;
@@ -468,20 +500,23 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen)
 
 	cpuhp_tasks_frozen = tasks_frozen;
 
-	err = notify_down_prepare(cpu);
-	if (err)
-		goto out_release;
-	err = takedown_cpu(cpu);
-	if (err)
-		goto out_release;
+	for (step = per_cpu(cpuhp_state, cpu); step > 0; step--) {
+		if (cpuhp_bp_states[step].teardown) {
+			ret = cpuhp_bp_states[step].teardown(cpu);
+			if (ret) {
+				undo_cpu_down(cpu, step + 1);
+				step = CPUHP_MAX;
+				break;
+			}
+		}
+	}
+	/* Store the current cpu state */
+	per_cpu(cpuhp_state, cpu) = step;
 
-	notify_dead(cpu);
-
-out_release:
 	cpu_hotplug_done();
-	if (!err)
+	if (!ret)
 		cpu_notify_nofail(CPU_POST_DEAD, cpu);
-	return err;
+	return ret;
 }
 
 int cpu_down(unsigned int cpu)
@@ -504,43 +539,25 @@ out:
 EXPORT_SYMBOL(cpu_down);
 #endif /*CONFIG_HOTPLUG_CPU*/
 
-/*
- * Unpark per-CPU smpboot kthreads at CPU-online time.
- */
-static int smpboot_thread_call(struct notifier_block *nfb,
-			       unsigned long action, void *hcpu)
+static void undo_cpu_up(unsigned int cpu, int step)
 {
-	int cpu = (long)hcpu;
-
-	switch (action & ~CPU_TASKS_FROZEN) {
-
-	case CPU_DOWN_FAILED:
-	case CPU_ONLINE:
-		smpboot_unpark_threads(cpu);
-		break;
-
-	default:
-		break;
+	while (step--) {
+		/*
+		 * Transitional check. Will be removed when we have a
+		 * fully symmetric mechanism
+		 */
+		if (!cpuhp_bp_states[step].startup)
+			continue;
+		if (cpuhp_bp_states[step].teardown)
+			cpuhp_bp_states[step].teardown(cpu);
 	}
-
-	return NOTIFY_OK;
-}
-
-static struct notifier_block smpboot_thread_notifier = {
-	.notifier_call = smpboot_thread_call,
-	.priority = CPU_PRI_SMPBOOT,
-};
-
-void smpboot_thread_init(void)
-{
-	register_cpu_notifier(&smpboot_thread_notifier);
 }
 
 /* Requires cpu_add_remove_lock to be held */
 static int _cpu_up(unsigned int cpu, int tasks_frozen)
 {
+	int ret = 0, step;
 	struct task_struct *idle;
-	int ret;
 
 	cpu_hotplug_begin();
 
@@ -549,6 +566,7 @@ static int _cpu_up(unsigned int cpu, int tasks_frozen)
 		goto out;
 	}
 
+	/* Let it fail before we try to bring the cpu up */
 	idle = idle_thread_get(cpu);
 	if (IS_ERR(idle)) {
 		ret = PTR_ERR(idle);
@@ -557,22 +575,20 @@ static int _cpu_up(unsigned int cpu, int tasks_frozen)
 
 	cpuhp_tasks_frozen = tasks_frozen;
 
-	ret = smpboot_create_threads(cpu);
-	if (ret)
-		goto out;
-
-	ret = notify_prepare(cpu);
-	if (ret)
-		goto out;
-
-	ret = bringup_cpu(cpu);
-	if (ret)
-		goto out;
-
-	notify_online(cpu);
+	for (step = per_cpu(cpuhp_state, cpu); step < CPUHP_MAX; step++) {
+		if (cpuhp_bp_states[step].startup) {
+			ret = cpuhp_bp_states[step].startup(cpu);
+			if (ret) {
+				undo_cpu_up(cpu, step - 1);
+				step = 0;
+				break;
+			}
+		}
+	}
+	/* Store the current cpu state */
+	per_cpu(cpuhp_state, cpu) = step;
 out:
 	cpu_hotplug_done();
-
 	return ret;
 }
 
@@ -766,6 +782,52 @@ void notify_cpu_starting(unsigned int cpu)
 
 #endif /* CONFIG_SMP */
 
+/* Boot processor state steps */
+static struct cpuhp_step cpuhp_bp_states[] = {
+	[CPUHP_OFFLINE] = {
+		.startup = NULL,
+		.teardown = NULL,
+	},
+#ifdef CONFIG_SMP
+	[CPUHP_CREATE_THREADS] = {
+		.startup = smpboot_create_threads,
+		.teardown = NULL,
+	},
+	[CPUHP_NOTIFY_PREPARE] = {
+		.startup = notify_prepare,
+		.teardown = NULL,
+	},
+	[CPUHP_NOTIFY_DEAD] = {
+		.startup = NULL,
+		.teardown = notify_dead,
+	},
+	[CPUHP_BRINGUP_CPU] = {
+		.startup = bringup_cpu,
+		.teardown = NULL,
+	},
+	[CPUHP_TEARDOWN_CPU] = {
+		.startup = NULL,
+		.teardown = takedown_cpu,
+	},
+	[CPUHP_PERCPU_THREADS] = {
+		.startup = smpboot_unpark_threads,
+		.teardown = smpboot_park_threads,
+	},
+	[CPUHP_NOTIFY_ONLINE] = {
+		.startup = notify_online,
+		.teardown = NULL,
+	},
+	[CPUHP_NOTIFY_DOWN_PREPARE] = {
+		.startup = NULL,
+		.teardown = notify_down_prepare,
+	},
+#endif
+	[CPUHP_MAX] = {
+		.startup = NULL,
+		.teardown = NULL,
+	},
+};
+
 /*
  * cpu_bit_bitmap[] is a special, "compressed" data structure that
  * represents all NR_CPUS bits binary values of 1<<nr.
@@ -862,4 +924,26 @@ void init_cpu_possible(const struct cpumask *src)
 void init_cpu_online(const struct cpumask *src)
 {
 	cpumask_copy(to_cpumask(cpu_online_bits), src);
+}
+
+/*
+ * Activate the first processor.
+ */
+void __init boot_cpu_init(void)
+{
+	int cpu = smp_processor_id();
+
+	/* Mark the boot cpu "present", "online" etc for SMP and UP case */
+	set_cpu_online(cpu, true);
+	set_cpu_active(cpu, true);
+	set_cpu_present(cpu, true);
+	set_cpu_possible(cpu, true);
+}
+
+/*
+ * Must be called _AFTER_ setting up the per_cpu areas
+ */
+void __init boot_cpu_state_init(void)
+{
+	per_cpu(cpuhp_state, smp_processor_id()) = CPUHP_MAX;
 }
