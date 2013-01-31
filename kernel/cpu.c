@@ -23,7 +23,6 @@
 #include <linux/tick.h>
 #include <linux/irq.h>
 #include <trace/events/power.h>
-#include <linux/cpuhotplug.h>
 
 #include "smpboot.h"
 
@@ -868,6 +867,190 @@ static struct cpuhp_step cpuhp_ap_states[] = {
 		.teardown = NULL,
 	},
 };
+
+/* Sanity check for callbacks */
+static int cpuhp_cb_check(enum cpuhp_state state)
+{
+	if (state <= CPUHP_OFFLINE || state >= CPUHP_MAX)
+		return -EINVAL;
+	return 0;
+}
+
+static bool cpuhp_is_ap_state(enum cpuhp_state state)
+{
+	return (state > CPUHP_AP_OFFLINE && state < CPUHP_AP_MAX);
+}
+
+static void cpuhp_store_callbacks(enum cpuhp_state state,
+				  int (*startup)(unsigned int cpu),
+				  int (*teardown)(unsigned int cpu))
+{
+	/* (Un)Install the callbacks for further cpu hotplug operations */
+	struct cpuhp_step *sp;
+
+	sp = cpuhp_is_ap_state(state) ? cpuhp_ap_states : cpuhp_bp_states;
+	sp[state].startup = startup;
+	sp[state].teardown = teardown;
+}
+
+static void *cpuhp_get_teardown_cb(enum cpuhp_state state)
+{
+	/* (Un)Install the callbacks for further cpu hotplug operations */
+	struct cpuhp_step *sp;
+
+	sp = cpuhp_is_ap_state(state) ? cpuhp_ap_states : cpuhp_bp_states;
+	return sp[state].teardown;
+}
+
+/* Helper function to run callback on the target cpu */
+static void cpuhp_on_cpu_cb(void *__cb)
+{
+	int (*cb)(unsigned int cpu) = __cb;
+
+	BUG_ON(cb(smp_processor_id()));
+}
+
+/*
+ * Call the startup/teardown function for a step either on the AP or
+ * on the current CPU.
+ */
+static int cpuhp_issue_call(int cpu, enum cpuhp_state state,
+			    int (*cb)(unsigned int), bool bringup)
+{
+	int ret;
+
+	if (!cb)
+		return 0;
+
+	if (cpuhp_is_ap_state(state)) {
+		/*
+		 * Note, that a function called on the AP is not
+		 * allowed to fail.
+		 */
+		smp_call_function_single(cpu, cpuhp_on_cpu_cb, cb, 1);
+		return 0;
+	}
+
+	/*
+	 * The non AP bound callbacks can fail on bringup. On teardown
+	 * e.g. module removal we crash for now.
+	 */
+	ret = cb(cpu);
+	BUG_ON(ret && !bringup);
+	return ret;
+}
+
+/*
+ * Called from __cpuhp_setup_state on a recoverable failure.
+ *
+ * Note: The teardown callbacks for rollback are not allowed to fail!
+ */
+static void cpuhp_rollback_install(int failedcpu, enum cpuhp_state state,
+				   int (*teardown)(unsigned int cpu))
+{
+	int cpu;
+
+	if (!teardown)
+		return;
+
+	/* Roll back the already executed steps on the other cpus */
+	for_each_present_cpu(cpu) {
+		int cpustate = per_cpu(cpuhp_state, cpu);
+
+		if (cpu >= failedcpu)
+			break;
+
+		/* Did we invoke the startup call on that cpu ? */
+		if (cpustate >= state)
+			cpuhp_issue_call(cpu, state, teardown, false);
+	}
+}
+
+/**
+ * __cpuhp_setup_state - Setup the callbacks for an hotplug machine state
+ * @state:	The state to setup
+ * @invoke:	If true, the startup function is invoked for cpus where
+ *		cpu state >= @state
+ * @startup:	startup callback function
+ * @teardown:	teardown callback function
+ *
+ * Returns 0 if successful, otherwise a proper error code
+ */
+int __cpuhp_setup_state(enum cpuhp_state state, bool invoke,
+			int (*startup)(unsigned int cpu),
+			int (*teardown)(unsigned int cpu))
+{
+	int cpu, ret = 0;
+
+	if (cpuhp_cb_check(state))
+		return -EINVAL;
+
+	get_online_cpus();
+
+	if (!invoke || !startup)
+		goto install;
+
+	/*
+	 * Try to call the startup callback for each present cpu
+	 * depending on the hotplug state of the cpu.
+	 */
+	for_each_present_cpu(cpu) {
+		int ret, cpustate = per_cpu(cpuhp_state, cpu);
+
+		if (cpustate < state)
+			continue;
+
+		ret = cpuhp_issue_call(cpu, state, startup, true);
+		if (ret) {
+			cpuhp_rollback_install(cpu, state, teardown);
+			goto out;
+		}
+	}
+install:
+	cpuhp_store_callbacks(state, startup, teardown);
+out:
+	put_online_cpus();
+	return ret;
+}
+EXPORT_SYMBOL(__cpuhp_setup_state);
+
+/**
+ * __cpuhp_remove_state - Remove the callbacks for an hotplug machine state
+ * @state:	The state to remove
+ * @invoke:	If true, the teardown function is invoked for cpus where
+ *		cpu state >= @state
+ *
+ * The teardown callback is currently not allowed to fail. Think
+ * about module removal!
+ */
+void __cpuhp_remove_state(enum cpuhp_state state, bool invoke)
+{
+	int (*teardown)(unsigned int cpu) = cpuhp_get_teardown_cb(state);
+	int cpu;
+
+	BUG_ON(cpuhp_cb_check(state));
+
+	get_online_cpus();
+
+	if (!invoke || !teardown)
+		goto remove;
+
+	/*
+	 * Call the teardown callback for each present cpu depending
+	 * on the hotplug state of the cpu. This function is not
+	 * allowed to fail currently!
+	 */
+	for_each_present_cpu(cpu) {
+		int cpustate = per_cpu(cpuhp_state, cpu);
+
+		if (cpustate >= state)
+			cpuhp_issue_call(cpu, state, teardown, false);
+	}
+remove:
+	cpuhp_store_callbacks(state, NULL, NULL);
+	put_online_cpus();
+}
+EXPORT_SYMBOL(__cpuhp_remove_state);
 
 /*
  * cpu_bit_bitmap[] is a special, "compressed" data structure that
