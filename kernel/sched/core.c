@@ -5556,45 +5556,23 @@ static void set_cpu_rq_start_time(void)
 	rq->age_stamp = sched_clock_cpu(cpu);
 }
 
-static int sched_cpu_active(struct notifier_block *nfb,
-				      unsigned long action, void *hcpu)
+static int sched_offline_cpu(unsigned int cpu)
 {
-	int cpu = (long)hcpu;
-
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_STARTING:
-		set_cpu_rq_start_time();
-		return NOTIFY_OK;
-
-	case CPU_ONLINE:
-		/*
-		 * At this point a starting CPU has marked itself as online via
-		 * set_cpu_online(). But it might not yet have marked itself
-		 * as active, which is essential from here on.
-		 */
-		set_cpu_active(cpu, true);
-		stop_machine_unpark(cpu);
-		return NOTIFY_OK;
-
-	case CPU_DOWN_FAILED:
-		set_cpu_active(cpu, true);
-		return NOTIFY_OK;
-
-	default:
-		return NOTIFY_DONE;
-	}
+	set_cpu_active(cpu, false);
+	return 0;
 }
 
-static int sched_cpu_inactive(struct notifier_block *nfb,
-					unsigned long action, void *hcpu)
+static int sched_cpu_active_starting(unsigned int cpu)
 {
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_DOWN_PREPARE:
-		set_cpu_active((long)hcpu, false);
-		return NOTIFY_OK;
-	default:
-		return NOTIFY_DONE;
-	}
+	set_cpu_rq_start_time();
+	return 0;
+}
+
+static int sched_online_cpu(unsigned int cpu)
+{
+	set_cpu_active(cpu, true);
+	stop_machine_unpark(cpu);
+	return 0;
 }
 
 static int __init migration_init(void)
@@ -5608,10 +5586,11 @@ static int __init migration_init(void)
 	migration_call(&migration_notifier, CPU_ONLINE, cpu);
 	register_cpu_notifier(&migration_notifier);
 
-	/* Register cpu active notifiers */
-	cpu_notifier(sched_cpu_active, CPU_PRI_SCHED_ACTIVE);
-	cpu_notifier(sched_cpu_inactive, CPU_PRI_SCHED_INACTIVE);
-
+	cpuhp_setup_state_nocalls(CPUHP_AP_SCHED_STARTING,
+				  sched_cpu_active_starting, NULL);
+	cpuhp_setup_state_nocalls(CPUHP_SCHED_ONLINE, sched_online_cpu,
+				  NULL);
+	cpuhp_setup_state_nocalls(CPUHP_SCHED_OFFLINE, NULL, sched_offline_cpu);
 	return 0;
 }
 early_initcall(migration_init);
@@ -6780,42 +6759,22 @@ static void sched_domains_numa_masks_clear(int cpu)
 	}
 }
 
-/*
- * Update sched_domains_numa_masks[level][node] array when new cpus
- * are onlined.
- */
-static int sched_domains_numa_masks_update(struct notifier_block *nfb,
-					   unsigned long action,
-					   void *hcpu)
+static int sched_online_numa_cpu(unsigned int cpu)
 {
-	int cpu = (long)hcpu;
-
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_ONLINE:
-		sched_domains_numa_masks_set(cpu);
-		break;
-
-	case CPU_DEAD:
-		sched_domains_numa_masks_clear(cpu);
-		break;
-
-	default:
-		return NOTIFY_DONE;
-	}
-
-	return NOTIFY_OK;
-}
-#else
-static inline void sched_init_numa(void)
-{
-}
-
-static int sched_domains_numa_masks_update(struct notifier_block *nfb,
-					   unsigned long action,
-					   void *hcpu)
-{
+	sched_domains_numa_masks_set(cpu);
 	return 0;
 }
+
+static int sched_dead_numa_cpu(unsigned int cpu)
+{
+	sched_domains_numa_masks_clear(cpu);
+	return 0;
+}
+
+#else
+static inline void sched_init_numa(void) { }
+#define sched_online_numa_cpu	NULL
+#define sched_dead_numa_cpu	NULL
 #endif /* CONFIG_NUMA */
 
 static int __sdt_alloc(const struct cpumask *cpu_map)
@@ -7195,6 +7154,7 @@ match2:
 	mutex_unlock(&sched_domains_mutex);
 }
 
+#ifdef CONFIG_HOTPLUG_CPU
 static int num_cpus_frozen;	/* used to mark begin/end of suspend/resume */
 
 /*
@@ -7205,13 +7165,9 @@ static int num_cpus_frozen;	/* used to mark begin/end of suspend/resume */
  * If we come here as part of a suspend/resume, don't touch cpusets because we
  * want to restore it back to its original state upon resume anyway.
  */
-static int cpuset_cpu_active(struct notifier_block *nfb, unsigned long action,
-			     void *hcpu)
+static int cpuset_cpu_active(unsigned int cpu)
 {
-	switch (action) {
-	case CPU_ONLINE_FROZEN:
-	case CPU_DOWN_FAILED_FROZEN:
-
+	if (cpuhp_tasks_frozen) {
 		/*
 		 * num_cpus_frozen tracks how many CPUs are involved in suspend
 		 * resume sequence. As long as this is not the last online
@@ -7221,35 +7177,29 @@ static int cpuset_cpu_active(struct notifier_block *nfb, unsigned long action,
 		num_cpus_frozen--;
 		if (likely(num_cpus_frozen)) {
 			partition_sched_domains(1, NULL, NULL);
-			break;
+			return 0;
 		}
-
 		/*
 		 * This is the last CPU online operation. So fall through and
 		 * restore the original sched domains by considering the
 		 * cpuset configurations.
 		 */
-
-	case CPU_ONLINE:
-		cpuset_update_active_cpus(true);
-		break;
-	default:
-		return NOTIFY_DONE;
 	}
-	return NOTIFY_OK;
+	cpuset_update_active_cpus(true);
+	return 0;
 }
 
-static int cpuset_cpu_inactive(struct notifier_block *nfb, unsigned long action,
-			       void *hcpu)
+static int cpuset_cpu_inactive(unsigned int cpu)
 {
 	unsigned long flags;
-	long cpu = (long)hcpu;
 	struct dl_bw *dl_b;
 	bool overflow;
 	int cpus;
 
-	switch (action) {
-	case CPU_DOWN_PREPARE:
+	if (cpuhp_tasks_frozen) {
+		num_cpus_frozen++;
+		partition_sched_domains(1, NULL, NULL);
+	} else {
 		rcu_read_lock_sched();
 		dl_b = dl_bw_of(cpu);
 
@@ -7261,18 +7211,17 @@ static int cpuset_cpu_inactive(struct notifier_block *nfb, unsigned long action,
 		rcu_read_unlock_sched();
 
 		if (overflow)
-			return notifier_from_errno(-EBUSY);
+			return -EBUSY;
+
 		cpuset_update_active_cpus(false);
-		break;
-	case CPU_DOWN_PREPARE_FROZEN:
-		num_cpus_frozen++;
-		partition_sched_domains(1, NULL, NULL);
-		break;
-	default:
-		return NOTIFY_DONE;
 	}
-	return NOTIFY_OK;
+
+	return 0;
 }
+#else
+#define cpuset_cpu_active	NULL
+#define cpuset_cpu_inactive	NULL
+#endif
 
 void __init sched_init_smp(void)
 {
@@ -7295,10 +7244,17 @@ void __init sched_init_smp(void)
 		cpumask_set_cpu(smp_processor_id(), non_isolated_cpus);
 	mutex_unlock(&sched_domains_mutex);
 
-	hotcpu_notifier(sched_domains_numa_masks_update, CPU_PRI_SCHED_ACTIVE);
-	hotcpu_notifier(cpuset_cpu_active, CPU_PRI_CPUSET_ACTIVE);
-	hotcpu_notifier(cpuset_cpu_inactive, CPU_PRI_CPUSET_INACTIVE);
-
+	/*
+	 * Note: These callbacks are installed late because we init
+	 * numa and sched domains after we brought up the cpus.
+	 */
+	cpuhp_setup_state_nocalls(CPUHP_SCHED_ONLINE_NUMA,
+				  sched_online_numa_cpu, NULL);
+	cpuhp_setup_state_nocalls(CPUHP_SCHED_DEAD, NULL, sched_dead_numa_cpu);
+	cpuhp_setup_state_nocalls(CPUHP_SCHED_CPUSET_ONLINE, cpuset_cpu_active,
+				  NULL);
+	cpuhp_setup_state_nocalls(CPUHP_SCHED_CPUSET_OFFLINE, NULL,
+				  cpuset_cpu_inactive);
 	init_hrtick();
 
 	/* Move init over to a non-isolated CPU */
