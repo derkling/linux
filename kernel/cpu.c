@@ -821,6 +821,10 @@ static struct cpuhp_step cpuhp_bp_states[] = {
 		.startup = smpcfd_prepare_cpu,
 		.teardown = smpcfd_dead_cpu,
 	},
+	[CPUHP_RELAY_PREPARE] = {
+		.startup = relay_prepare_cpu,
+		.teardown = NULL,
+	},
 	[CPUHP_NOTIFY_PREPARE] = {
 		.startup = notify_prepare,
 		.teardown = NULL,

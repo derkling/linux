@@ -28,6 +28,7 @@ enum cpuhp_state {
 	CPUHP_PROFILE_PREPARE,		/* P: 0 S: profile_prepare_cpu T: profile_dead_cpu C: I */
 	CPUHP_X2APIC_PREPARE,		/* P: 0 S: x2apic_prepare_cpu T: x2apic_dead_cpu C: I */
 	CPUHP_SMPCFD_PREPARE,		/* P: 0 S: smpcfd_prepare_cpu T: smpcfd_dead_cpu C: C */
+	CPUHP_RELAY_PREPARE,		/* P: 0 S: relay_prepare_cpu T: NULL C: C */
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
 	CPUHP_X86_APB_DEAD,		/* P: -20 S: NULL T: apbt_cpu_dead C: I */
@@ -236,5 +237,11 @@ int timers_dead_cpu(unsigned int cpu);
 int smpcfd_prepare_cpu(unsigned int cpu);
 int smpcfd_dead_cpu(unsigned int cpu);
 int smpcfd_dying_cpu(unsigned int cpu);
+
+#ifdef CONFIG_RELAY
+int relay_prepare_cpu(unsigned int cpu);
+#else
+#define relay_prepare_cpu	NULL
+#endif
 
 #endif
