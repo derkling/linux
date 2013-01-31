@@ -3115,19 +3115,16 @@ static int hardware_enable_all(void)
 	return r;
 }
 
-static int kvm_cpu_hotplug(struct notifier_block *notifier, unsigned long val,
-			   void *v)
+static int kvm_starting_cpu(unsigned int cpu)
 {
-	val &= ~CPU_TASKS_FROZEN;
-	switch (val) {
-	case CPU_DYING:
-		hardware_disable();
-		break;
-	case CPU_STARTING:
-		hardware_enable();
-		break;
-	}
-	return NOTIFY_OK;
+	hardware_enable();
+	return 0;
+}
+
+static int kvm_dying_cpu(unsigned int cpu)
+{
+	hardware_disable();
+	return 0;
 }
 
 static int kvm_reboot(struct notifier_block *notifier, unsigned long val,
@@ -3396,10 +3393,6 @@ int kvm_io_bus_unregister_dev(struct kvm *kvm, enum kvm_bus bus_idx,
 	return r;
 }
 
-static struct notifier_block kvm_cpu_notifier = {
-	.notifier_call = kvm_cpu_hotplug,
-};
-
 static int vm_stat_get(void *_offset, u64 *val)
 {
 	unsigned offset = (long)_offset;
@@ -3559,7 +3552,8 @@ int kvm_init(void *opaque, unsigned vcpu_size, unsigned vcpu_align,
 			goto out_free_1;
 	}
 
-	r = register_cpu_notifier(&kvm_cpu_notifier);
+	r = cpuhp_setup_state_nocalls(CPUHP_AP_KVM_STARTING, kvm_starting_cpu,
+				      kvm_dying_cpu);
 	if (r)
 		goto out_free_2;
 	register_reboot_notifier(&kvm_reboot_notifier);
@@ -3613,7 +3607,7 @@ out_free:
 	kmem_cache_destroy(kvm_vcpu_cache);
 out_free_3:
 	unregister_reboot_notifier(&kvm_reboot_notifier);
-	unregister_cpu_notifier(&kvm_cpu_notifier);
+	cpuhp_remove_state_nocalls(CPUHP_AP_KVM_STARTING);
 out_free_2:
 out_free_1:
 	kvm_arch_hardware_unsetup();
@@ -3636,7 +3630,7 @@ void kvm_exit(void)
 	kvm_async_pf_deinit();
 	unregister_syscore_ops(&kvm_syscore_ops);
 	unregister_reboot_notifier(&kvm_reboot_notifier);
-	unregister_cpu_notifier(&kvm_cpu_notifier);
+	cpuhp_remove_state_nocalls(CPUHP_AP_KVM_STARTING);
 	on_each_cpu(hardware_disable_nolock, NULL, 1);
 	kvm_arch_hardware_unsetup();
 	kvm_arch_exit();
