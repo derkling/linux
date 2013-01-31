@@ -378,12 +378,6 @@ static int notify_down_prepare(unsigned int cpu)
 	return err;
 }
 
-static int notify_dying(unsigned int cpu)
-{
-	cpu_notify(CPU_DYING, cpu);
-	return 0;
-}
-
 /* Take this CPU down. */
 static int take_cpu_down(void *_param)
 {
@@ -444,7 +438,7 @@ static int takedown_cpu(unsigned int cpu)
 	BUG_ON(cpu_online(cpu));
 
 	/*
-	 * The migration_call() CPU_DYING callback will have removed all
+	 * The CPUHP_AP_SCHED_MIGRATE_DYING callback will have removed all
 	 * runnable tasks from the cpu, there's only the idle task left now
 	 * that the migration thread is done doing the stop_machine thing.
 	 *
@@ -477,7 +471,6 @@ static int notify_dead(unsigned int cpu)
 #define notify_down_prepare	NULL
 #define takedown_cpu		NULL
 #define notify_dead		NULL
-#define notify_dying		NULL
 #endif
 
 #ifdef CONFIG_HOTPLUG_CPU
@@ -886,10 +879,6 @@ static struct cpuhp_step cpuhp_bp_states[] = {
 /* Application processor state steps */
 static struct cpuhp_step cpuhp_ap_states[] = {
 #ifdef CONFIG_SMP
-	[CPUHP_AP_NOTIFY_DYING] = {
-		.startup = NULL,
-		.teardown = notify_dying,
-	},
 	[CPUHP_AP_RCUTREE_DYING] = {
 		.startup = NULL,
 		.teardown = rcutree_dying_cpu,

@@ -76,7 +76,6 @@ enum cpuhp_state {
 	CPUHP_AP_ARM_CORESIGHT4_STARTING,	/* P: 0 S: etm4_starting_cpu T: etm4_dying_cpu C: P */
 	CPUHP_AP_ARM64_ISNDEP_STARTING,		/* P: 0 S: run_all_insn_set_hw_mode T: NULL C: P */
 	CPUHP_AP_LEDTRIG_STARTING,		/* P: 0 S: ledtrig_starting_cpu T: ledtrig_dying_cpu C: I */
-	CPUHP_AP_NOTIFY_DYING,		/* P: CPU_DYING S: NULL T: notify_dying C: C */
 	CPUHP_AP_RCUTREE_DYING,		/* P: 0 S: NULL T: rcutree_dying_cpu C: C */
 	CPUHP_AP_SMPCFD_DYING,		/* P: 0 S: NULL T: smpcfd_dying_cpu C: C */
 	CPUHP_AP_X86_TBOOT_DYING,	/* P: 0 S: NULL T: tboot_dying_cpu C: I */
