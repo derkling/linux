@@ -24,6 +24,7 @@ enum cpuhp_state {
 	CPUHP_SCHED_MIGRATE_PREP,	/* P: 10 S: sched_migration_prepare_cpu T: sched_migration_dead_cpu C: C */
 	CPUHP_WORKQUEUE_PREP,		/* P: 5 S: workqueue_prepare_cpu T: NULL C: C */
 	CPUHP_RCUTREE_PREPARE,		/* P: 0 S: rcutree_prepare_cpu T: rcutree_dead_cpu C: C */
+	CPUHP_HRTIMERS_PREPARE,		/* P: 0 S: hrtimers_prepare_cpu T: hrtimers_dead_cpu C: C */
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
 	CPUHP_X86_APB_DEAD,		/* P: -20 S: NULL T: apbt_cpu_dead C: I */
@@ -212,6 +213,13 @@ int rcutree_dying_idle_cpu(unsigned int cpu);
 #define rcutree_offline_cpu	NULL
 #define rcutree_dead_cpu	NULL
 #define rcutree_dying_cpu	NULL
+#endif
+
+int hrtimers_prepare_cpu(unsigned int cpu);
+#ifdef CONFIG_HOTPLUG_CPU
+int hrtimers_dead_cpu(unsigned int cpu);
+#else
+#define hrtimers_dead_cpu	NULL
 #endif
 
 #endif

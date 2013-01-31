@@ -820,6 +820,10 @@ static struct cpuhp_step cpuhp_bp_states[] = {
 		.startup = rcutree_prepare_cpu,
 		.teardown = rcutree_dead_cpu,
 	},
+	[CPUHP_HRTIMERS_PREPARE] = {
+		.startup = hrtimers_prepare_cpu,
+		.teardown = hrtimers_dead_cpu,
+	},
 	[CPUHP_NOTIFY_PREPARE] = {
 		.startup = notify_prepare,
 		.teardown = NULL,
