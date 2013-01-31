@@ -815,6 +815,10 @@ static struct cpuhp_step cpuhp_bp_states[] = {
 		.startup = smpboot_create_threads,
 		.teardown = NULL,
 	},
+	[CPUHP_PERF_PREPARE] = {
+		.startup = perf_event_init_cpu,
+		.teardown = perf_event_exit_cpu,
+	},
 	[CPUHP_NOTIFY_PREPARE] = {
 		.startup = notify_prepare,
 		.teardown = NULL,
@@ -834,6 +838,10 @@ static struct cpuhp_step cpuhp_bp_states[] = {
 	[CPUHP_PERCPU_THREADS] = {
 		.startup = smpboot_unpark_threads,
 		.teardown = smpboot_park_threads,
+	},
+	[CPUHP_PERF_ONLINE] = {
+		.startup = perf_event_init_cpu,
+		.teardown = perf_event_exit_cpu,
 	},
 	[CPUHP_NOTIFY_ONLINE] = {
 		.startup = notify_online,
