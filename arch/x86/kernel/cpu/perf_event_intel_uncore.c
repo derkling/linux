@@ -1029,7 +1029,7 @@ static void uncore_kfree_boxes(void)
 	}
 }
 
-static void uncore_cpu_dying(int cpu)
+static int uncore_dead_cpu(unsigned int cpu)
 {
 	struct intel_uncore_type *type;
 	struct intel_uncore_pmu *pmu;
@@ -1046,9 +1046,12 @@ static void uncore_cpu_dying(int cpu)
 				list_add(&box->list, &boxes_to_free);
 		}
 	}
+	uncore_kfree_boxes();
+	return 0;
 }
 
-static int uncore_cpu_starting(int cpu)
+/* Must run on the target cpu */
+static int uncore_starting_cpu(unsigned int cpu)
 {
 	struct intel_uncore_type *type;
 	struct intel_uncore_pmu *pmu;
@@ -1091,12 +1094,12 @@ static int uncore_cpu_starting(int cpu)
 	return 0;
 }
 
-static int uncore_cpu_prepare(int cpu, int phys_id)
+static int uncore_prepare_cpu(unsigned int cpu)
 {
 	struct intel_uncore_type *type;
 	struct intel_uncore_pmu *pmu;
 	struct intel_uncore_box *box;
-	int i, j;
+	int i, j, phys_id = -1;
 
 	for (i = 0; uncore_msr_uncores[i]; i++) {
 		type = uncore_msr_uncores[i];
@@ -1155,13 +1158,13 @@ uncore_change_context(struct intel_uncore_type **uncores, int old_cpu, int new_c
 	}
 }
 
-static void uncore_event_exit_cpu(int cpu)
+static int uncore_offline_cpu(unsigned int cpu)
 {
 	int i, phys_id, target;
 
 	/* if exiting cpu is used for collecting uncore events */
 	if (!cpumask_test_and_clear_cpu(cpu, &uncore_cpu_mask))
-		return;
+		return 0;
 
 	/* find a new cpu to collect uncore events */
 	phys_id = topology_physical_package_id(cpu);
@@ -1181,77 +1184,26 @@ static void uncore_event_exit_cpu(int cpu)
 
 	uncore_change_context(uncore_msr_uncores, cpu, target);
 	uncore_change_context(uncore_pci_uncores, cpu, target);
+	return 0;
 }
 
-static void uncore_event_init_cpu(int cpu)
+static int uncore_online_cpu(unsigned int cpu)
 {
 	int i, phys_id;
 
 	phys_id = topology_physical_package_id(cpu);
 	for_each_cpu(i, &uncore_cpu_mask) {
 		if (phys_id == topology_physical_package_id(i))
-			return;
+			return 0;
 	}
-
 	cpumask_set_cpu(cpu, &uncore_cpu_mask);
 
 	uncore_change_context(uncore_msr_uncores, -1, cpu);
 	uncore_change_context(uncore_pci_uncores, -1, cpu);
-}
 
-static int uncore_cpu_notifier(struct notifier_block *self,
-			       unsigned long action, void *hcpu)
-{
-	unsigned int cpu = (long)hcpu;
+	uncore_kfree_boxes();
 
-	/* allocate/free data structure for uncore box */
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_UP_PREPARE:
-		uncore_cpu_prepare(cpu, -1);
-		break;
-	case CPU_STARTING:
-		uncore_cpu_starting(cpu);
-		break;
-	case CPU_UP_CANCELED:
-	case CPU_DYING:
-		uncore_cpu_dying(cpu);
-		break;
-	case CPU_ONLINE:
-	case CPU_DEAD:
-		uncore_kfree_boxes();
-		break;
-	default:
-		break;
-	}
-
-	/* select the cpu that collects uncore events */
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_DOWN_FAILED:
-	case CPU_STARTING:
-		uncore_event_init_cpu(cpu);
-		break;
-	case CPU_DOWN_PREPARE:
-		uncore_event_exit_cpu(cpu);
-		break;
-	default:
-		break;
-	}
-
-	return NOTIFY_OK;
-}
-
-static struct notifier_block uncore_cpu_nb = {
-	.notifier_call	= uncore_cpu_notifier,
-	/*
-	 * to migrate uncore events, our notifier should be executed
-	 * before perf core's notifier.
-	 */
-	.priority	= CPU_PRI_PERF + 1,
-};
-
-static void __init uncore_cpu_setup(void *dummy)
-{
-	uncore_cpu_starting(smp_processor_id());
+	return 0;
 }
 
 static int __init uncore_cpu_init(void)
@@ -1298,6 +1250,21 @@ static int __init uncore_cpu_init(void)
 	if (ret)
 		return ret;
 
+	/*
+	 * Install callbacks. Core will call them for each online
+	 * cpu.
+	 *
+	 * FIXME: This should check the return value, but the original
+	 * code did not do that either and I have no idea how to undo
+	 * uncore_types_init(). Brilliant stuff that, isn't it ?
+	 */
+	cpuhp_setup_state(CPUHP_PERF_X86_UNCORE_PREP, uncore_prepare_cpu,
+			  uncore_dead_cpu);
+	cpuhp_setup_state(CPUHP_AP_PERF_X86_UNCORE_STARTING,
+			  uncore_starting_cpu, NULL);
+	cpuhp_setup_state(CPUHP_PERF_X86_UNCORE_ONLINE, uncore_online_cpu,
+			  uncore_offline_cpu);
+
 	return 0;
 }
 
@@ -1318,41 +1285,6 @@ static int __init uncore_pmus_register(void)
 	return 0;
 }
 
-static void __init uncore_cpumask_init(void)
-{
-	int cpu;
-
-	/*
-	 * ony invoke once from msr or pci init code
-	 */
-	if (!cpumask_empty(&uncore_cpu_mask))
-		return;
-
-	cpu_notifier_register_begin();
-
-	for_each_online_cpu(cpu) {
-		int i, phys_id = topology_physical_package_id(cpu);
-
-		for_each_cpu(i, &uncore_cpu_mask) {
-			if (phys_id == topology_physical_package_id(i)) {
-				phys_id = -1;
-				break;
-			}
-		}
-		if (phys_id < 0)
-			continue;
-
-		uncore_cpu_prepare(cpu, phys_id);
-		uncore_event_init_cpu(cpu);
-	}
-	on_each_cpu(uncore_cpu_setup, NULL, 1);
-
-	__register_cpu_notifier(&uncore_cpu_nb);
-
-	cpu_notifier_register_done();
-}
-
-
 static int __init intel_uncore_init(void)
 {
 	int ret;
@@ -1371,7 +1303,6 @@ static int __init intel_uncore_init(void)
 		uncore_pci_exit();
 		goto fail;
 	}
-	uncore_cpumask_init();
 
 	uncore_pmus_register();
 	return 0;
