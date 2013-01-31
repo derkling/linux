@@ -4214,69 +4214,73 @@ rcu_init_percpu_data(int cpu, struct rcu_state *rsp)
 	raw_spin_unlock_irqrestore(&rnp->lock, flags);
 }
 
-static void rcu_prepare_cpu(int cpu)
+int rcutree_prepare_cpu(unsigned int cpu)
 {
 	struct rcu_state *rsp;
 
 	for_each_rcu_flavor(rsp)
 		rcu_init_percpu_data(cpu, rsp);
+
+	rcu_prepare_kthreads(cpu);
+	rcu_spawn_all_nocb_kthreads(cpu);
+
+	return 0;
 }
 
-/*
- * Handle CPU online/offline notification events.
- */
-int rcu_cpu_notify(struct notifier_block *self,
-		   unsigned long action, void *hcpu)
+int rcutree_dead_cpu(unsigned int cpu)
 {
-	long cpu = (long)hcpu;
-	struct rcu_data *rdp = per_cpu_ptr(rcu_state_p->rda, cpu);
-	struct rcu_node *rnp = rdp->mynode;
 	struct rcu_state *rsp;
 
-	switch (action) {
-	case CPU_UP_PREPARE:
-	case CPU_UP_PREPARE_FROZEN:
-		rcu_prepare_cpu(cpu);
-		rcu_prepare_kthreads(cpu);
-		rcu_spawn_all_nocb_kthreads(cpu);
-		break;
-	case CPU_ONLINE:
-	case CPU_DOWN_FAILED:
-		sync_sched_exp_online_cleanup(cpu);
-		rcu_boost_kthread_setaffinity(rnp, -1);
-		break;
-	case CPU_DOWN_PREPARE:
-		rcu_boost_kthread_setaffinity(rnp, cpu);
-		break;
-	case CPU_DYING:
-	case CPU_DYING_FROZEN:
-		for_each_rcu_flavor(rsp)
-			rcu_cleanup_dying_cpu(rsp);
-		break;
-	case CPU_DYING_IDLE:
-		/* QS for any half-done expedited RCU-sched GP. */
-		preempt_disable();
-		rcu_report_exp_rdp(&rcu_sched_state,
-				   this_cpu_ptr(rcu_sched_state.rda), true);
-		preempt_enable();
-
-		for_each_rcu_flavor(rsp) {
-			rcu_cleanup_dying_idle_cpu(cpu, rsp);
-		}
-		break;
-	case CPU_DEAD:
-	case CPU_DEAD_FROZEN:
-	case CPU_UP_CANCELED:
-	case CPU_UP_CANCELED_FROZEN:
-		for_each_rcu_flavor(rsp) {
-			rcu_cleanup_dead_cpu(cpu, rsp);
-			do_nocb_deferred_wakeup(per_cpu_ptr(rsp->rda, cpu));
-		}
-		break;
-	default:
-		break;
+	for_each_rcu_flavor(rsp) {
+		rcu_cleanup_dead_cpu(cpu, rsp);
+		do_nocb_deferred_wakeup(per_cpu_ptr(rsp->rda, cpu));
 	}
-	return NOTIFY_OK;
+	return 0;
+}
+
+static void rcutree_affinity_setting(unsigned int cpu, int outgoing)
+{
+	struct rcu_data *rdp = per_cpu_ptr(rcu_state_p->rda, cpu);
+
+	rcu_boost_kthread_setaffinity(rdp->mynode, outgoing);
+}
+
+int rcutree_online_cpu(unsigned int cpu)
+{
+	sync_sched_exp_online_cleanup(cpu);
+	rcutree_affinity_setting(cpu, -1);
+	return 0;
+}
+
+int rcutree_offline_cpu(unsigned int cpu)
+{
+	rcutree_affinity_setting(cpu, cpu);
+	return 0;
+}
+
+int rcutree_dying_cpu(unsigned int cpu)
+{
+	struct rcu_state *rsp;
+
+	for_each_rcu_flavor(rsp)
+		rcu_cleanup_dying_cpu(rsp);
+
+	return 0;
+}
+
+int rcutree_dying_idle_cpu(unsigned int cpu)
+{
+	struct rcu_state *rsp;
+
+	preempt_disable();
+	rcu_report_exp_rdp(&rcu_sched_state,
+			   this_cpu_ptr(rcu_sched_state.rda), true);
+	preempt_enable();
+
+	for_each_rcu_flavor(rsp)
+		rcu_cleanup_dying_idle_cpu(cpu, rsp);
+
+	return 0;
 }
 
 static int rcu_pm_notify(struct notifier_block *self,
@@ -4588,10 +4592,9 @@ void __init rcu_init(void)
 	 * this is called early in boot, before either interrupts
 	 * or the scheduler are operational.
 	 */
-	cpu_notifier(rcu_cpu_notify, 0);
 	pm_notifier(rcu_pm_notify, 0);
 	for_each_online_cpu(cpu)
-		rcu_cpu_notify(NULL, CPU_UP_PREPARE, (void *)(long)cpu);
+		rcutree_prepare_cpu(cpu);
 }
 
 #include "tree_plugin.h"

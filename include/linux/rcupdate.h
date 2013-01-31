@@ -326,8 +326,6 @@ void rcu_sched_qs(void);
 void rcu_bh_qs(void);
 void rcu_check_callbacks(int user);
 struct notifier_block;
-int rcu_cpu_notify(struct notifier_block *self,
-		   unsigned long action, void *hcpu);
 
 #ifdef CONFIG_RCU_STALL_COMMON
 void rcu_sysrq_start(void);

@@ -816,6 +816,10 @@ static struct cpuhp_step cpuhp_bp_states[] = {
 		.startup = workqueue_prepare_cpu,
 		.teardown = NULL,
 	},
+	[CPUHP_RCUTREE_PREPARE] = {
+		.startup = rcutree_prepare_cpu,
+		.teardown = rcutree_dead_cpu,
+	},
 	[CPUHP_NOTIFY_PREPARE] = {
 		.startup = notify_prepare,
 		.teardown = NULL,
@@ -848,6 +852,10 @@ static struct cpuhp_step cpuhp_bp_states[] = {
 		.startup = workqueue_online_cpu,
 		.teardown = NULL,
 	},
+	[CPUHP_RCUTREE_ONLINE] = {
+		.startup = rcutree_online_cpu,
+		.teardown = rcutree_offline_cpu,
+	},
 	[CPUHP_NOTIFY_ONLINE] = {
 		.startup = notify_online,
 		.teardown = NULL,
@@ -869,6 +877,10 @@ static struct cpuhp_step cpuhp_ap_states[] = {
 	[CPUHP_AP_NOTIFY_DYING] = {
 		.startup = NULL,
 		.teardown = notify_dying,
+	},
+	[CPUHP_AP_RCUTREE_DYING] = {
+		.startup = NULL,
+		.teardown = rcutree_dying_cpu,
 	},
 	[CPUHP_AP_SCHED_NOHZ_DYING] = {
 		.startup = NULL,

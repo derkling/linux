@@ -23,6 +23,7 @@ enum cpuhp_state {
 	CPUHP_PERF_PREPARE,		/* P: 20 S: perf_event_init_cpu T: perf_event_exit_cpu C: C */
 	CPUHP_SCHED_MIGRATE_PREP,	/* P: 10 S: sched_migration_prepare_cpu T: sched_migration_dead_cpu C: C */
 	CPUHP_WORKQUEUE_PREP,		/* P: 5 S: workqueue_prepare_cpu T: NULL C: C */
+	CPUHP_RCUTREE_PREPARE,		/* P: 0 S: rcutree_prepare_cpu T: rcutree_dead_cpu C: C */
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
 	CPUHP_X86_APB_DEAD,		/* P: -20 S: NULL T: apbt_cpu_dead C: I */
@@ -70,6 +71,7 @@ enum cpuhp_state {
 	CPUHP_AP_ARM64_ISNDEP_STARTING,		/* P: 0 S: run_all_insn_set_hw_mode T: NULL C: P */
 	CPUHP_AP_LEDTRIG_STARTING,		/* P: 0 S: ledtrig_starting_cpu T: ledtrig_dying_cpu C: I */
 	CPUHP_AP_NOTIFY_DYING,		/* P: CPU_DYING S: NULL T: notify_dying C: C */
+	CPUHP_AP_RCUTREE_DYING,		/* P: 0 S: NULL T: rcutree_dying_cpu C: C */
 	CPUHP_AP_X86_TBOOT_DYING,	/* P: 0 S: NULL T: tboot_dying_cpu C: I */
 	CPUHP_AP_SCHED_NOHZ_DYING,	/* P: 0 S: NULL T: nohz_balance_exit_idle C: C */
 	CPUHP_AP_SCHED_MIGRATE_DYING,	/* P: 10 S: NULL T: sched_migration_dying_cpu C: C */
@@ -97,6 +99,7 @@ enum cpuhp_state {
 	CPUHP_WORKQUEUE_ONLINE,		/* P: 5 S: workqueue_online_cpu T: NULL C: C */
 	CPUHP_ARM_CORESIGHT_ONLINE,	/* P: 0 S: etm_online_cpu T: NULL C: P */
 	CPUHP_ARM_CORESIGHT4_ONLINE,	/* P: 0 S: etm4_online_cpu T: NULL C: P */
+	CPUHP_RCUTREE_ONLINE,           /* P: 0 S: rcutree_online_cpu T: rcutree_offline_cpu C: C */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */
 	CPUHP_MAX,
@@ -194,5 +197,21 @@ int perf_event_exit_cpu(unsigned int cpu);
 int workqueue_prepare_cpu(unsigned int cpu);
 int workqueue_online_cpu(unsigned int cpu);
 int workqueue_offline_cpu(unsigned int cpu);
+
+/* RCUtree hotplug events */
+#if defined(CONFIG_TREE_RCU) || defined(CONFIG_PREEMPT_RCU)
+int rcutree_prepare_cpu(unsigned int cpu);
+int rcutree_online_cpu(unsigned int cpu);
+int rcutree_offline_cpu(unsigned int cpu);
+int rcutree_dead_cpu(unsigned int cpu);
+int rcutree_dying_cpu(unsigned int cpu);
+int rcutree_dying_idle_cpu(unsigned int cpu);
+#else
+#define rcutree_prepare_cpu	NULL
+#define rcutree_online_cpu	NULL
+#define rcutree_offline_cpu	NULL
+#define rcutree_dead_cpu	NULL
+#define rcutree_dying_cpu	NULL
+#endif
 
 #endif

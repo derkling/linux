@@ -68,8 +68,6 @@ struct notifier_block;
 					* sleep, must not fail */
 #define CPU_POST_DEAD		0x0009 /* CPU (unsigned)v dead, cpu_hotplug
 					* lock is dropped */
-#define CPU_DYING_IDLE		0x000B /* CPU (unsigned)v dying, reached
-					* idle loop. */
 #define CPU_BROKEN		0x000C /* CPU (unsigned)v did not die properly,
 					* perhaps due to preemption. */
 
