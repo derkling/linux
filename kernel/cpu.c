@@ -825,6 +825,10 @@ static struct cpuhp_step cpuhp_bp_states[] = {
 		.startup = relay_prepare_cpu,
 		.teardown = NULL,
 	},
+	[CPUHP_SLAB_PREPARE] = {
+		.startup = slab_prepare_cpu,
+		.teardown = slab_dead_cpu,
+	},
 	[CPUHP_NOTIFY_PREPARE] = {
 		.startup = notify_prepare,
 		.teardown = NULL,
@@ -868,6 +872,10 @@ static struct cpuhp_step cpuhp_bp_states[] = {
 	[CPUHP_NOTIFY_ONLINE] = {
 		.startup = notify_online,
 		.teardown = NULL,
+	},
+	[CPUHP_SLAB_ONLINE] = {
+		.startup = slab_online_cpu,
+		.teardown = slab_offline_cpu,
 	},
 	[CPUHP_NOTIFY_DOWN_PREPARE] = {
 		.startup = NULL,

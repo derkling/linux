@@ -29,6 +29,7 @@ enum cpuhp_state {
 	CPUHP_X2APIC_PREPARE,		/* P: 0 S: x2apic_prepare_cpu T: x2apic_dead_cpu C: I */
 	CPUHP_SMPCFD_PREPARE,		/* P: 0 S: smpcfd_prepare_cpu T: smpcfd_dead_cpu C: C */
 	CPUHP_RELAY_PREPARE,		/* P: 0 S: relay_prepare_cpu T: NULL C: C */
+	CPUHP_SLAB_PREPARE,		/* P: 0 S: slab_prepare_cpu T: slab_dead_cpu C: C */
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
 	CPUHP_X86_APB_DEAD,		/* P: -20 S: NULL T: apbt_cpu_dead C: I */
@@ -109,6 +110,7 @@ enum cpuhp_state {
 	CPUHP_ARM_CORESIGHT4_ONLINE,	/* P: 0 S: etm4_online_cpu T: NULL C: P */
 	CPUHP_RCUTREE_ONLINE,           /* P: 0 S: rcutree_online_cpu T: rcutree_offline_cpu C: C */
 	CPUHP_PROFILE_ONLINE,		/* P: 0 S: profile_online_cpu T: NULL C: I */
+	CPUHP_SLAB_ONLINE,		/* P: 0 S: slab_online_cpu T: slab_offline_cpu C: C */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */
@@ -242,6 +244,19 @@ int smpcfd_dying_cpu(unsigned int cpu);
 int relay_prepare_cpu(unsigned int cpu);
 #else
 #define relay_prepare_cpu	NULL
+#endif
+
+/* slab hotplug events */
+#if defined(CONFIG_SLAB) && defined(CONFIG_SMP)
+int slab_prepare_cpu(unsigned int cpu);
+int slab_online_cpu(unsigned int cpu);
+int slab_offline_cpu(unsigned int cpu);
+int slab_dead_cpu(unsigned int cpu);
+#else
+#define slab_prepare_cpu	NULL
+#define slab_online_cpu		NULL
+#define slab_offline_cpu	NULL
+#define slab_dead_cpu		NULL
 #endif
 
 #endif
