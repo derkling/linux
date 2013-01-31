@@ -22,6 +22,7 @@ enum cpuhp_state {
 	CPUHP_PERF_SUPERH,		/* P: 20 S: sh_pmu_prepare_cpu T: NULL C: I */
 	CPUHP_PERF_PREPARE,		/* P: 20 S: perf_event_init_cpu T: perf_event_exit_cpu C: C */
 	CPUHP_SCHED_MIGRATE_PREP,	/* P: 10 S: sched_migration_prepare_cpu T: sched_migration_dead_cpu C: C */
+	CPUHP_WORKQUEUE_PREP,		/* P: 5 S: workqueue_prepare_cpu T: NULL C: C */
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
 	CPUHP_SCHED_DEAD,		/* P: INT_MAX S: NULL T: sched_dead_numa_cpu C: P */
@@ -47,6 +48,7 @@ enum cpuhp_state {
 	CPUHP_SCHED_CPUSET_ONLINE,	/* P: INT_MAX-1 S: cpuset_cpu_active T: NULL C: I */
 	CPUHP_SCHED_CPUSET_OFFLINE,	/* P: INT_MIN S: NULL T: cpuset_cpu_inactive C: I */
 	CPUHP_SCHED_OFFLINE,		/* P: INT_MIN+1 S: NULL T: sched_offline_cpu C: I */
+	CPUHP_WORKQUEUE_OFFLINE,	/* P: -5 S: NULL T: workqueue_offline_cpu C: C */
 	CPUHP_PERF_X86_UNCORE_ONLINE,	/* P: 21 S: uncore_online_cpu T: uncore_offline_cpu C: I */
 	CPUHP_PERF_X86_AMD_UNCORE_ONLINE, /* P: 21 S: amd_uncore_cpu_online T: amd_uncore_cpu_down_prepare C: I */
 	CPUHP_PERF_ONLINE,		/* P: 20 S: perf_event_init_cpu T: perf_event_exit_cpu C: C */
@@ -59,6 +61,7 @@ enum cpuhp_state {
 	CPUHP_PERF_S390_CF_ONLINE,	/* P: 20 S: s390_pmu_online_cpu T: s390_pmu_offline_cpu C: I */
 	CPUHP_PERF_S390_SF_ONLINE,	/* P: 20 S: s390_pmu_sf_online_cpu T: s390_pmu_sf_offline_cpu C: I */
 	CPUHP_SCHED_MIGRATE_ONLINE,	/* P: 10 S: sched_migration_online_cpu T: NULL C: C */
+	CPUHP_WORKQUEUE_ONLINE,		/* P: 5 S: workqueue_online_cpu T: NULL C: C */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */
 	CPUHP_MAX,
@@ -145,5 +148,10 @@ int perf_event_exit_cpu(unsigned int cpu);
 #define perf_event_init_cpu	NULL
 #define perf_event_exit_cpu	NULL
 #endif
+
+/* Workqueue related hotplug events */
+int workqueue_prepare_cpu(unsigned int cpu);
+int workqueue_online_cpu(unsigned int cpu);
+int workqueue_offline_cpu(unsigned int cpu);
 
 #endif
