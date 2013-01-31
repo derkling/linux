@@ -824,6 +824,10 @@ static struct cpuhp_step cpuhp_bp_states[] = {
 		.startup = hrtimers_prepare_cpu,
 		.teardown = hrtimers_dead_cpu,
 	},
+	[CPUHP_SMPCFD_PREPARE] = {
+		.startup = smpcfd_prepare_cpu,
+		.teardown = smpcfd_dead_cpu,
+	},
 	[CPUHP_NOTIFY_PREPARE] = {
 		.startup = notify_prepare,
 		.teardown = NULL,
@@ -889,6 +893,10 @@ static struct cpuhp_step cpuhp_ap_states[] = {
 	[CPUHP_AP_RCUTREE_DYING] = {
 		.startup = NULL,
 		.teardown = rcutree_dying_cpu,
+	},
+	[CPUHP_AP_SMPCFD_DYING] = {
+		.startup = NULL,
+		.teardown = smpcfd_dying_cpu,
 	},
 	[CPUHP_AP_SCHED_NOHZ_DYING] = {
 		.startup = NULL,

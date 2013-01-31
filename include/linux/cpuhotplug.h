@@ -27,6 +27,7 @@ enum cpuhp_state {
 	CPUHP_HRTIMERS_PREPARE,		/* P: 0 S: hrtimers_prepare_cpu T: hrtimers_dead_cpu C: C */
 	CPUHP_PROFILE_PREPARE,		/* P: 0 S: profile_prepare_cpu T: profile_dead_cpu C: I */
 	CPUHP_X2APIC_PREPARE,		/* P: 0 S: x2apic_prepare_cpu T: x2apic_dead_cpu C: I */
+	CPUHP_SMPCFD_PREPARE,		/* P: 0 S: smpcfd_prepare_cpu T: smpcfd_dead_cpu C: C */
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
 	CPUHP_X86_APB_DEAD,		/* P: -20 S: NULL T: apbt_cpu_dead C: I */
@@ -77,6 +78,7 @@ enum cpuhp_state {
 	CPUHP_AP_LEDTRIG_STARTING,		/* P: 0 S: ledtrig_starting_cpu T: ledtrig_dying_cpu C: I */
 	CPUHP_AP_NOTIFY_DYING,		/* P: CPU_DYING S: NULL T: notify_dying C: C */
 	CPUHP_AP_RCUTREE_DYING,		/* P: 0 S: NULL T: rcutree_dying_cpu C: C */
+	CPUHP_AP_SMPCFD_DYING,		/* P: 0 S: NULL T: smpcfd_dying_cpu C: C */
 	CPUHP_AP_X86_TBOOT_DYING,	/* P: 0 S: NULL T: tboot_dying_cpu C: I */
 	CPUHP_AP_SCHED_NOHZ_DYING,	/* P: 0 S: NULL T: nohz_balance_exit_idle C: C */
 	CPUHP_AP_SCHED_MIGRATE_DYING,	/* P: 10 S: NULL T: sched_migration_dying_cpu C: C */
@@ -230,5 +232,10 @@ int timers_dead_cpu(unsigned int cpu);
 #define hrtimers_dead_cpu	NULL
 #define timers_dead_cpu		NULL
 #endif
+
+/* SMP core functions */
+int smpcfd_prepare_cpu(unsigned int cpu);
+int smpcfd_dead_cpu(unsigned int cpu);
+int smpcfd_dying_cpu(unsigned int cpu);
 
 #endif
