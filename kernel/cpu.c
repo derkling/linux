@@ -870,6 +870,10 @@ static struct cpuhp_step cpuhp_ap_states[] = {
 		.startup = NULL,
 		.teardown = notify_dying,
 	},
+	[CPUHP_AP_SCHED_NOHZ_DYING] = {
+		.startup = NULL,
+		.teardown = nohz_balance_exit_idle,
+	},
 #endif
 	[CPUHP_MAX] = {
 		.startup = NULL,

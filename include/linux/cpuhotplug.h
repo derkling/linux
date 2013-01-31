@@ -71,6 +71,7 @@ enum cpuhp_state {
 	CPUHP_AP_LEDTRIG_STARTING,		/* P: 0 S: ledtrig_starting_cpu T: ledtrig_dying_cpu C: I */
 	CPUHP_AP_NOTIFY_DYING,		/* P: CPU_DYING S: NULL T: notify_dying C: C */
 	CPUHP_AP_X86_TBOOT_DYING,	/* P: 0 S: NULL T: tboot_dying_cpu C: I */
+	CPUHP_AP_SCHED_NOHZ_DYING,	/* P: 0 S: NULL T: nohz_balance_exit_idle C: C */
 	CPUHP_AP_SCHED_MIGRATE_DYING,	/* P: 10 S: NULL T: sched_migration_dying_cpu C: C */
 	CPUHP_AP_MAX,
 	CPUHP_TEARDOWN_CPU,		/* P: __cpu_die S: NULL T: takedown_cpu C: C */
@@ -173,6 +174,12 @@ static inline void cpuhp_remove_state_nocalls(enum cpuhp_state state)
 {
 	__cpuhp_remove_state(state, false);
 }
+
+#if defined(CONFIG_NO_HZ_COMMON)
+int nohz_balance_exit_idle(unsigned int cpu);
+#else
+#define nohz_balance_exit_idle	NULL
+#endif
 
  /* Performance counter hotplug functions */
 #ifdef CONFIG_PERF_EVENTS
