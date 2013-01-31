@@ -5486,68 +5486,62 @@ static void set_rq_offline(struct rq *rq)
 	}
 }
 
-/*
- * migration_call - callback that gets triggered when a CPU is added.
- * Here we can start up the necessary migration thread for the new CPU.
- */
-static int
-migration_call(struct notifier_block *nfb, unsigned long action, void *hcpu)
+static int sched_migration_prepare_cpu(unsigned int cpu)
 {
-	int cpu = (long)hcpu;
-	unsigned long flags;
 	struct rq *rq = cpu_rq(cpu);
 
-	switch (action & ~CPU_TASKS_FROZEN) {
-
-	case CPU_UP_PREPARE:
-		rq->calc_load_update = calc_load_update;
-		break;
-
-	case CPU_ONLINE:
-		/* Update our root-domain */
-		raw_spin_lock_irqsave(&rq->lock, flags);
-		if (rq->rd) {
-			BUG_ON(!cpumask_test_cpu(cpu, rq->rd->span));
-
-			set_rq_online(rq);
-		}
-		raw_spin_unlock_irqrestore(&rq->lock, flags);
-		break;
-
-#ifdef CONFIG_HOTPLUG_CPU
-	case CPU_DYING:
-		sched_ttwu_pending();
-		/* Update our root-domain */
-		raw_spin_lock_irqsave(&rq->lock, flags);
-		if (rq->rd) {
-			BUG_ON(!cpumask_test_cpu(cpu, rq->rd->span));
-			set_rq_offline(rq);
-		}
-		migrate_tasks(rq);
-		BUG_ON(rq->nr_running != 1); /* the migration thread */
-		raw_spin_unlock_irqrestore(&rq->lock, flags);
-		break;
-
-	case CPU_DEAD:
-		calc_load_migrate(rq);
-		break;
-#endif
-	}
-
+	rq->calc_load_update = calc_load_update;
 	update_max_interval();
-
-	return NOTIFY_OK;
+	return 0;
 }
 
-/*
- * Register at high priority so that task migration (migrate_all_tasks)
- * happens before everything else.  This has to be lower priority than
- * the notifier in the perf_event subsystem, though.
- */
-static struct notifier_block migration_notifier = {
-	.notifier_call = migration_call,
-	.priority = CPU_PRI_MIGRATION,
-};
+static int sched_migration_online_cpu(unsigned int cpu)
+{
+	struct rq *rq = cpu_rq(cpu);
+	unsigned long flags;
+
+	/* Update our root-domain */
+	raw_spin_lock_irqsave(&rq->lock, flags);
+	if (rq->rd) {
+		BUG_ON(!cpumask_test_cpu(cpu, rq->rd->span));
+		set_rq_online(rq);
+	}
+	raw_spin_unlock_irqrestore(&rq->lock, flags);
+	update_max_interval();
+	return 0;
+}
+
+#ifdef CONFIG_HOTPLUG_CPU
+static int sched_migration_dying_cpu(unsigned int cpu)
+{
+	struct rq *rq = cpu_rq(cpu);
+	unsigned long flags;
+
+	sched_ttwu_pending();
+	/* Update our root-domain */
+	raw_spin_lock_irqsave(&rq->lock, flags);
+	if (rq->rd) {
+		BUG_ON(!cpumask_test_cpu(cpu, rq->rd->span));
+		set_rq_offline(rq);
+	}
+	migrate_tasks(rq);
+	BUG_ON(rq->nr_running != 1); /* the migration thread */
+	raw_spin_unlock_irqrestore(&rq->lock, flags);
+	return 0;
+}
+
+static int sched_migration_dead_cpu(unsigned int cpu)
+{
+	struct rq *rq = cpu_rq(cpu);
+
+	calc_load_migrate(rq);
+	update_max_interval();
+	return 0;
+}
+#else
+#define sched_migration_dying_cpu	NULL
+#define sched_migration_dead_cpu	NULL
+#endif
 
 static void set_cpu_rq_start_time(void)
 {
@@ -5577,14 +5571,18 @@ static int sched_online_cpu(unsigned int cpu)
 
 static int __init migration_init(void)
 {
-	void *cpu = (void *)(long)smp_processor_id();
 	int err;
 
-	/* Initialize migration for the boot CPU */
-	err = migration_call(&migration_notifier, CPU_UP_PREPARE, cpu);
-	BUG_ON(err == NOTIFY_BAD);
-	migration_call(&migration_notifier, CPU_ONLINE, cpu);
-	register_cpu_notifier(&migration_notifier);
+	err = cpuhp_setup_state(CPUHP_SCHED_MIGRATE_PREP,
+				sched_migration_prepare_cpu,
+				sched_migration_dead_cpu);
+	BUG_ON(err);
+	err = cpuhp_setup_state(CPUHP_SCHED_MIGRATE_ONLINE,
+				sched_migration_online_cpu, NULL);
+	WARN_ON(err);
+	err = cpuhp_setup_state(CPUHP_AP_SCHED_MIGRATE_DYING, NULL,
+				sched_migration_dying_cpu);
+	WARN_ON(err);
 
 	cpuhp_setup_state_nocalls(CPUHP_AP_SCHED_STARTING,
 				  sched_cpu_active_starting, NULL);

@@ -21,6 +21,7 @@ enum cpuhp_state {
 	CPUHP_PERF_POWER,		/* P: 20 S: power_pmu_prepare_cpu T: NULL C: I */
 	CPUHP_PERF_SUPERH,		/* P: 20 S: sh_pmu_prepare_cpu T: NULL C: I */
 	CPUHP_PERF_PREPARE,		/* P: 20 S: perf_event_init_cpu T: perf_event_exit_cpu C: C */
+	CPUHP_SCHED_MIGRATE_PREP,	/* P: 10 S: sched_migration_prepare_cpu T: sched_migration_dead_cpu C: C */
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
 	CPUHP_SCHED_DEAD,		/* P: INT_MAX S: NULL T: sched_dead_numa_cpu C: P */
@@ -37,6 +38,7 @@ enum cpuhp_state {
 	CPUHP_AP_PERF_XTENSA_STARTING,		/* P: 20 S: xtensa_pmu_setup T: NULL C: I */
 	CPUHP_AP_NOTIFY_STARTING,	/* P: CPU_STARTING S: notify_starting T: NULL C: C */
 	CPUHP_AP_NOTIFY_DYING,		/* P: CPU_DYING S: NULL T: notify_dying C: C */
+	CPUHP_AP_SCHED_MIGRATE_DYING,	/* P: 10 S: NULL T: sched_migration_dying_cpu C: C */
 	CPUHP_AP_MAX,
 	CPUHP_TEARDOWN_CPU,		/* P: __cpu_die S: NULL T: takedown_cpu C: C */
 	CPUHP_PERCPU_THREADS,		/* P: 9 S: smpboot_unpark_threads T: smpboot_park_threads: C: C */
@@ -56,6 +58,7 @@ enum cpuhp_state {
 	CPUHP_PERF_X86_CSTATE_ONLINE,	/* P: 20 S: NULL T: cstate_cpu_exit C: I */
 	CPUHP_PERF_S390_CF_ONLINE,	/* P: 20 S: s390_pmu_online_cpu T: s390_pmu_offline_cpu C: I */
 	CPUHP_PERF_S390_SF_ONLINE,	/* P: 20 S: s390_pmu_sf_online_cpu T: s390_pmu_sf_offline_cpu C: I */
+	CPUHP_SCHED_MIGRATE_ONLINE,	/* P: 10 S: sched_migration_online_cpu T: NULL C: C */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */
 	CPUHP_MAX,
