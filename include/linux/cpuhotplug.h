@@ -17,6 +17,7 @@ enum cpuhp_state {
 	CPUHP_PERF_X86_AMD_UNCORE_PREP,	/* P: 21 S: amd_uncore_cpu_up_prepare T: amd_uncore_cpu_dead C: I */
 	CPUHP_PERF_X86_RAPL_PREP,	/* P: 20 S: rapl_cpu_prepare T: rapl_cpu_kfree C: I */
 	CPUHP_PERF_X86_PREPARE,		/* P: 20 S: x86_pmu_prepare_cpu T: x86_pmu_dead_cpu C: I */
+	CPUHP_PERF_BFIN,		/* P: 20 S: bfin_pmu_prepare_cpu T: NULL C: I */
 	CPUHP_PERF_PREPARE,		/* P: 20 S: perf_event_init_cpu T: perf_event_exit_cpu C: C */
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
