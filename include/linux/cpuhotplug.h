@@ -15,6 +15,7 @@ enum cpuhp_state {
 	CPUHP_CREATE_THREADS,		/* P: _cpu_up S: smpboot_create_threads T: NULL C: C */
 	CPUHP_PERF_X86_UNCORE_PREP,	/* P: 21 S: uncore_prepare_cpu T: uncore_dead_cpu C: I */
 	CPUHP_PERF_X86_AMD_UNCORE_PREP,	/* P: 21 S: amd_uncore_cpu_up_prepare T: amd_uncore_cpu_dead C: I */
+	CPUHP_PERF_X86_PREPARE,		/* P: 20 S: x86_pmu_prepare_cpu T: x86_pmu_dead_cpu C: I */
 	CPUHP_PERF_PREPARE,		/* P: 20 S: perf_event_init_cpu T: perf_event_exit_cpu C: C */
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
@@ -24,6 +25,7 @@ enum cpuhp_state {
 	CPUHP_AP_SCHED_STARTING,		/* P: INT_MAX S: sched_cpu_active_starting T: NULL C: C */
 	CPUHP_AP_PERF_X86_UNCORE_STARTING,	/* P: 21 S: uncore_starting_cpu T: NULL C: I */
 	CPUHP_AP_PERF_X86_AMD_UNCORE_STARTING,	/* P: 21 S: amd_uncore_cpu_starting T: NULL C: I */
+	CPUHP_AP_PERF_X86_STARTING,		/* P: 20 S: x86_pmu_starting_cpu T: x86_pmu_dying_cpu C: I */
 	CPUHP_AP_NOTIFY_STARTING,	/* P: CPU_STARTING S: notify_starting T: NULL C: C */
 	CPUHP_AP_NOTIFY_DYING,		/* P: CPU_DYING S: NULL T: notify_dying C: C */
 	CPUHP_AP_MAX,
@@ -37,6 +39,7 @@ enum cpuhp_state {
 	CPUHP_PERF_X86_UNCORE_ONLINE,	/* P: 21 S: uncore_online_cpu T: uncore_offline_cpu C: I */
 	CPUHP_PERF_X86_AMD_UNCORE_ONLINE, /* P: 21 S: amd_uncore_cpu_online T: amd_uncore_cpu_down_prepare C: I */
 	CPUHP_PERF_ONLINE,		/* P: 20 S: perf_event_init_cpu T: perf_event_exit_cpu C: C */
+	CPUHP_PERF_X86_ONLINE,		/* P: 20 S: x86_pmu_online_cpu T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */
 	CPUHP_MAX,

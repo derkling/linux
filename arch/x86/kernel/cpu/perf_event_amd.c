@@ -370,13 +370,13 @@ static int amd_pmu_cpu_prepare(int cpu)
 	WARN_ON_ONCE(cpuc->amd_nb);
 
 	if (boot_cpu_data.x86_max_cores < 2)
-		return NOTIFY_OK;
+		return 0;
 
 	cpuc->amd_nb = amd_alloc_nb(cpu);
 	if (!cpuc->amd_nb)
-		return NOTIFY_BAD;
+		return -ENOMEM;
 
-	return NOTIFY_OK;
+	return 0;
 }
 
 static void amd_pmu_cpu_starting(int cpu)
