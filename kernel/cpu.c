@@ -276,12 +276,6 @@ static int bringup_cpu(unsigned int cpu)
 	return 0;
 }
 
-static int notify_starting(unsigned int cpu)
-{
-	cpu_notify(CPU_STARTING, cpu);
-	return 0;
-}
-
 #ifdef CONFIG_HOTPLUG_CPU
 EXPORT_SYMBOL(register_cpu_notifier);
 EXPORT_SYMBOL(__register_cpu_notifier);
@@ -557,10 +551,9 @@ EXPORT_SYMBOL(cpu_down);
 #endif /*CONFIG_HOTPLUG_CPU*/
 
 /**
- * notify_cpu_starting(cpu) - call the CPU_STARTING notifiers
+ * notify_cpu_starting(cpu) - Invoke the callbacks on the starting CPU
  * @cpu: cpu that just started
  *
- * This function calls the cpu_chain notifiers with CPU_STARTING.
  * It must be called by the arch code on the new cpu, before the new cpu
  * enables interrupts and before the "boot" cpu returns from __cpu_up().
  */
@@ -873,10 +866,6 @@ static struct cpuhp_step cpuhp_bp_states[] = {
 /* Application processor state steps */
 static struct cpuhp_step cpuhp_ap_states[] = {
 #ifdef CONFIG_SMP
-	[CPUHP_AP_NOTIFY_STARTING] = {
-		.startup = notify_starting,
-		.teardown = NULL,
-	},
 	[CPUHP_AP_NOTIFY_DYING] = {
 		.startup = NULL,
 		.teardown = notify_dying,
