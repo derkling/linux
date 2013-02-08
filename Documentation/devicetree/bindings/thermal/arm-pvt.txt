@@ -1,0 +1,36 @@
+* ARM PVT Thermal Sensor
+
+** Node properties:
+
+- compatible : "arm,arm-pvt";
+- reg : address range of the pvt sensor registers;
+- trip-pointN : optional sub-node describing the Nth trip point. It has the
+  following mandatory properties -
+	- temp : trip temperature in milliCelsius
+	- type : trip point type, should be one of "active", "passive", "hot"
+	or "critical"
+  Trip point can also optionally define the following sub-node -
+	- cdevM : defines a cpu frequency based Mth cooling device with the following
+	mandatory property -
+		- cluster : phandle of the cluster this cooling device will control
+
+Example:
+arm_pvt@7fff0300 {
+	compatible = "arm,arm-pvt";
+	reg = <0 0x7fff0300 0 0x001c>;
+
+	trip-point0 {
+		temp = <40000>;
+		type = "active";
+		cdev0 {
+			cluster = <&cluster0>;
+		};
+		cdev1 {
+			cluster = <&cluster1>;
+		};
+	};
+	trip-point1 {
+		temp = <55000>;
+		type = "critical";
+	};
+};
