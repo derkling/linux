@@ -165,4 +165,10 @@ config INTEL_POWERCLAMP
 	  enforce idle time which results in more package C-state residency. The
 	  user interface is exposed via generic thermal framework.
 
+config ARM_PVT_THERMAL
+	tristate "ARM PVT sensor driver"
+	depends on CPU_THERMAL && OF
+	help
+	  Enable this option to include the ARM PVT sensor driver.
+
 endif
