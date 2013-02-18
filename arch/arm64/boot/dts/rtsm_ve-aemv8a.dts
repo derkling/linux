@@ -31,34 +31,34 @@
 	};
 
 	cpus {
-		#address-cells = <1>;
+		#address-cells = <2>;
 		#size-cells = <0>;
 
 		cpu@0 {
 			device_type = "cpu";
 			compatible = "arm,armv8";
-			reg = <0>;
+			reg = <0x0 0x0>;
 			enable-method = "spin-table";
 			cpu-release-addr = <0x0 0x8000fff8>;
 		};
 		cpu@1 {
 			device_type = "cpu";
 			compatible = "arm,armv8";
-			reg = <1>;
+			reg = <0x0 0x1>;
 			enable-method = "spin-table";
 			cpu-release-addr = <0x0 0x8000fff8>;
 		};
 		cpu@2 {
 			device_type = "cpu";
 			compatible = "arm,armv8";
-			reg = <2>;
+			reg = <0x0 0x2>;
 			enable-method = "spin-table";
 			cpu-release-addr = <0x0 0x8000fff8>;
 		};
 		cpu@3 {
 			device_type = "cpu";
 			compatible = "arm,armv8";
-			reg = <3>;
+			reg = <0x0 0x3>;
 			enable-method = "spin-table";
 			cpu-release-addr = <0x0 0x8000fff8>;
 		};

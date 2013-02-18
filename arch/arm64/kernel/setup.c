@@ -47,6 +47,7 @@
 #include <asm/cputable.h>
 #include <asm/sections.h>
 #include <asm/setup.h>
+#include <asm/smp_plat.h>
 #include <asm/cacheflush.h>
 #include <asm/tlbflush.h>
 #include <asm/traps.h>
@@ -265,6 +266,7 @@ void __init setup_arch(char **cmdline_p)
 
 	psci_init();
 
+	cpu_logical_map(0) = read_cpuid_mpidr() & MPIDR_HWID_BITMASK;
 #ifdef CONFIG_SMP
 	smp_init_cpus();
 #endif
