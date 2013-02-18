@@ -28,6 +28,8 @@
 
 #define MPIDR_HWID_BITMASK	0xff00ffffff
 
+#define INVALID_HWID		ULONG_MAX
+
 #define read_cpuid(reg) ({						\
 	u64 __val;							\
 	asm("mrs	%0, " reg : "=r" (__val));			\
