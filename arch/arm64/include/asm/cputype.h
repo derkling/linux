@@ -26,6 +26,8 @@
 #define ID_AA64ISAR0_EL1	"id_aa64isar0_el1"
 #define ID_AA64MMFR0_EL1	"id_aa64mmfr0_el1"
 
+#define MPIDR_HWID_BITMASK	0xff00ffffff
+
 #define read_cpuid(reg) ({						\
 	u64 __val;							\
 	asm("mrs	%0, " reg : "=r" (__val));			\
