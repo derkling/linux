@@ -14,6 +14,7 @@
 #include <linux/of.h>
 
 #include <asm/mach-types.h>
+#include <asm/mach/map.h>
 #include <asm/mach/pci.h>
 
 static int debug_pci;
@@ -645,4 +646,16 @@ struct device_node *pcibios_get_phb_of_node(struct pci_bus *bus)
 {
 	struct pci_sys_data *sys = bus->sysdata;
 	return of_node_get(sys->of_node);
+}
+
+void __init pci_map_io_early(unsigned long pfn)
+{
+	struct map_desc pci_io_desc = {
+		.virtual	= PCI_IO_VIRT_BASE,
+		.type		= MT_DEVICE,
+		.length		= SZ_64K,
+	};
+
+	pci_io_desc.pfn = pfn;
+	iotable_init(&pci_io_desc, 1);
 }

@@ -4,7 +4,6 @@
  *
  * Copyright (C) 2003-2004 Intel
  * Copyright (C) Tom Long Nguyen (tom.l.nguyen@intel.com)
- * Copyright (C) 2012 ARM Limited (andrew.murray@arm.com)
  */
 
 #include <linux/err.h>
@@ -995,11 +994,6 @@ int pci_enable_msix(struct pci_dev *dev, struct msix_entry *entries, int nvec)
 {
 	int status, nr_entries;
 	int i, j;
-
-	printk("DEVICE RQEUESTING MSI-X (%d entries) for dev %d, %d, %d\n", nvec, 
-	dev->bus->number,     /* bus */
-			       PCI_SLOT(dev->devfn), /* device */
-			       PCI_FUNC(dev->devfn)); /* function */
 
 	if (!entries)
 		return -EINVAL;

@@ -188,7 +188,8 @@ static int xr3pci_check_device(struct xr3pci_port *pp)
 	if (!(ver & 0xff))
 		pr_err(DEVICE_NAME ": No link detected\n");
 
-	if ((readl(pp->base + PCIE_BASIC_CONF) & 0xf0000000) != 0x10000000) {
+	if ((readl(pp->base + PCIE_BASIC_CONF) & BASIC_CONF_TYPE_MASK)
+			!= BASIC_CONF_TYPE_RP) {
 		pr_err(DEVICE_NAME ": Core is not a RC\n");
 		return -1;
 	}
@@ -201,6 +202,7 @@ static int xr3pci_setup_ats(struct xr3pci_port *pp)
 	/* set up RC address translation (assuming that all tables default to
 	   disabled/un-implemented) */
 
+#if 0
 	/* 1:1 mapping for inbound PCIe transactions to AXI slave 0 */
 	writel(0x7f, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_SRC_ADDR_LWR);
 	writel(0x0, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_SRC_ADDR_UPR);
@@ -210,6 +212,46 @@ static int xr3pci_setup_ats(struct xr3pci_port *pp)
 
 	/* 1:1 mapping for outbound AXI slave 0 transcations to PCIe */
 	writel(0x7f, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_SRC_ADDR_LWR);
+	writel(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_SRC_ADDR_UPR);
+	writel(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_TRSL_ADDR_UPR);
+	writel(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_TRSL_PARAM);
+	writel(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_TRSL_ADDR_LWR);
+#endif
+	//pci to axi
+	//4
+	writel(0x40000035, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_SRC_ADDR_LWR);
+	writel(0x0, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_SRC_ADDR_UPR);
+	writel(0x0, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_TRSL_ADDR_UPR);
+	writel(0x4, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_TRSL_PARAM);
+	writel(0x40000000, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_TRSL_ADDR_LWR);
+	//5
+	writel(0x50000035, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_SRC_ADDR_LWR);
+	writel(0x0, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_SRC_ADDR_UPR);
+	writel(0x0, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_TRSL_ADDR_UPR);
+	writel(0x4, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_TRSL_PARAM);
+	writel(0x50000000, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_TRSL_ADDR_LWR);
+	//io
+	writel(0x17, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_SRC_ADDR_LWR);
+	writel(0x0, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_SRC_ADDR_UPR);
+	writel(0x0, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_TRSL_ADDR_UPR);
+	writel(0x48000000, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_TRSL_PARAM);
+	writel(0x0, pp->base + ATR_PCIE_WIN0 + ATR_TBL_1 + ATR_TRSL_ADDR_LWR);
+
+	//axi to pci
+	//4
+	writel(0x40000035, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_SRC_ADDR_LWR);
+	writel(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_SRC_ADDR_UPR);
+	writel(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_TRSL_ADDR_UPR);
+	writel(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_TRSL_PARAM);
+	writel(0x40000000, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_TRSL_ADDR_LWR);
+	//5
+	writel(0x50000035, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_SRC_ADDR_LWR);
+	writel(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_SRC_ADDR_UPR);
+	writel(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_TRSL_ADDR_UPR);
+	writel(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_TRSL_PARAM);
+	writel(0x50000000, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_TRSL_ADDR_LWR);
+	//io
+	writel(0x48000017, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_SRC_ADDR_LWR);
 	writel(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_SRC_ADDR_UPR);
 	writel(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_TRSL_ADDR_UPR);
 	writel(0x0, pp->base + ATR_AXI4_SLV0 + ATR_TBL_1 + ATR_TRSL_PARAM);
@@ -237,32 +279,42 @@ static int xr3pci_setup_int(struct xr3pci_port *pp)
 
 int xr3pci_add_pci_resources(struct xr3pci_port *pp, struct pci_sys_data *sys)
 {
-	const __be32 *last = NULL;
 	struct device_node *np = sys->of_node;
-	struct resource *res = kzalloc(sizeof(struct resource), GFP_KERNEL);
+	struct resource *res;
 
-	while ((last = of_pci_process_ranges(np, res, last))) {
+	struct of_pci_range_iter iter;
+	for_each_of_pci_range(&iter, np) {
+		res = kzalloc(sizeof(struct resource), GFP_KERNEL);
+		if (!res) {
+			pr_err(DEVICE_NAME ": Unable to request memory for resource\n");
+			return -1;
+		}
+
+		range_iter_fill_resource(iter, np, res);
+
 		if (res->flags & IORESOURCE_MEM) {
 			if (request_resource(&iomem_resource, res)) {
 				pr_err(DEVICE_NAME
 				": Failed to request PCIe memory\n");
+				kfree(res);
 				continue;
 			}
 			pci_add_resource_offset(&sys->resources, res,
 						sys->mem_offset);
 		} else if (res->flags & IORESOURCE_IO) {
+			//sys->io_offset = 0x48000000;
+			printk("RET IS %d\n", pci_ioremap_io(0, 0x48000000));
+			pci_add_resource_offset(&sys->resources, res,
+						sys->io_offset);
 			if (request_resource(&ioport_resource, res)) {
 				pr_err(DEVICE_NAME
 				": Failed to request PCIe IO\n");
-				continue;
+//				kfree(res);
+//				continue;
 			}
-			pci_add_resource_offset(&sys->resources, res,
-						sys->io_offset);
 		}
-
-		res = kzalloc(sizeof(struct resource), GFP_KERNEL);
 	}
-	kfree(res);
+
 	return 0;
 }
 
@@ -285,36 +337,39 @@ static int xr3pci_get_resources(struct xr3pci_port *pp, struct device_node *np)
 	}
 
 	pp->base = ioremap_nocache(res.start, resource_size(&res));
-	if (!pp->base) {
-		pr_err(DEVICE_NAME
-			": Failed to map configuration registers resource\n");
-		err = -ENOMEM;
-		goto err_map_io;
-	}
+	if (pp->base)
+		return 0;
 
-	return 0;
+	pr_err(DEVICE_NAME
+		": Failed to map configuration registers resource\n");
 
-err_map_io:
 	release_mem_region(res.start, resource_size(&res));
-
-	return err;
+	return -ENOMEM;
 }
 
-void __init xr3pci_teardown(struct xr3pci_port *pp, struct device_node *np)
+void __init xr3pci_teardown(struct pci_sys_data *sys)
 {
 	int err;
 	struct resource res;
+	struct pci_host_bridge_window *window, *tmp;
+	struct xr3pci_port *pp = sys->private_data;
 
 	if (pp->base) {
 		iounmap(pp->base);
 
-		err = of_address_to_resource(np, 0, &res);
+		err = of_address_to_resource(sys->of_node, 0, &res);
 		if (!err)
 			release_mem_region(res.start, resource_size(&res));
 	}
 
 	if (pp->intx_irq_domain)
 		irq_domain_remove(pp->intx_irq_domain);
+	
+	list_for_each_entry_safe(window, tmp, &sys->resources, list)
+		kfree(window->res);
+	pci_free_resource_list(&sys->resources);
+
+	kfree(pp);
 }
 
 int __init xr3pci_setup(int nr, struct pci_sys_data *sys)
@@ -344,7 +399,7 @@ int __init xr3pci_setup(int nr, struct pci_sys_data *sys)
 
 	return 1;
 err:
-	xr3pci_teardown(pp, np);
+	xr3pci_teardown(sys);
 	return -1;
 }
 

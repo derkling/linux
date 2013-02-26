@@ -4,6 +4,29 @@
 #include <linux/errno.h>
 #include <linux/of.h>
 
+struct of_pci_range_iter {
+	const __be32 *range, *end;
+	int np, pna;
+
+	u32 pci_space;
+	u64 pci_addr;
+	u64 cpu_addr;
+	u64 size;
+	u32 flags;
+};
+
+#define for_each_of_pci_range(iter, np) \
+	for (; of_pci_process_ranges(iter, np);)
+
+#define range_iter_fill_resource(iter, np, res) \
+	do { \
+		res->flags = iter.flags; \
+		res->start = iter.cpu_addr; \
+		res->end = iter.cpu_addr + iter.size - 1; \
+		res->parent = res->child = res->sibling = NULL; \
+		res->name = np->full_name; \
+	} while (0)
+
 #ifdef CONFIG_OF_ADDRESS
 extern u64 of_translate_address(struct device_node *np, const __be32 *addr);
 extern int of_address_to_resource(struct device_node *dev, int index,
@@ -26,8 +49,8 @@ static inline unsigned long pci_address_to_pio(phys_addr_t addr) { return -1; }
 #define pci_address_to_pio pci_address_to_pio
 #endif
 
-const __be32 *of_pci_process_ranges(struct device_node *node,
-				    struct resource *res, const __be32 *from);
+struct of_pci_range_iter *of_pci_process_ranges(struct of_pci_range_iter *iter,
+						struct device_node *node);
 #else /* CONFIG_OF_ADDRESS */
 static inline int of_address_to_resource(struct device_node *dev, int index,
 					 struct resource *r)
@@ -50,8 +73,8 @@ static inline const u32 *of_get_address(struct device_node *dev, int index,
 {
 	return NULL;
 }
-const __be32 *of_pci_process_ranges(struct device_node *node,
-				    struct resource *res, const __be32 *from)
+struct of_pci_range_iter *of_pci_process_ranges(struct of_pci_range_iter *iter,
+						struct device_node *node)
 {
 	return NULL;
 }

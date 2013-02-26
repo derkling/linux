@@ -83,6 +83,10 @@ EXPORT_SYMBOL_GPL(ata_sff_port_ops);
  */
 u8 ata_sff_check_status(struct ata_port *ap)
 {
+	printk("WRITING\n");
+	iowrite8(1, ap->ioaddr.status_addr);
+	
+	printk("READING..... addre 0x%p\n", ap->ioaddr.status_addr);
 	return ioread8(ap->ioaddr.status_addr);
 }
 EXPORT_SYMBOL_GPL(ata_sff_check_status);
@@ -149,10 +153,14 @@ static u8 ata_sff_irq_status(struct ata_port *ap)
 
 static void ata_sff_sync(struct ata_port *ap)
 {
+	printk("a\n");
 	if (ap->ops->sff_check_altstatus)
 		ap->ops->sff_check_altstatus(ap);
-	else if (ap->ioaddr.altstatus_addr)
+	else if (ap->ioaddr.altstatus_addr) {
+		printk("b %p\n", &ap->ioaddr);
+		printk("b %x\n", ap->ioaddr.altstatus_addr);
 		ioread8(ap->ioaddr.altstatus_addr);
+	}
 }
 
 /**
@@ -1742,7 +1750,9 @@ void ata_sff_freeze(struct ata_port *ap)
 	 * ATA_NIEN manipulation.  Also, many controllers fail to mask
 	 * previously pending IRQ on ATA_NIEN assertion.  Clear it.
 	 */
+	printk("...\n");
 	ap->ops->sff_check_status(ap);
+	printk("OK!\n");
 
 	if (ap->ops->sff_irq_clear)
 		ap->ops->sff_irq_clear(ap);

@@ -220,53 +220,56 @@ int of_pci_address_to_resource(struct device_node *dev, int bar,
 }
 EXPORT_SYMBOL_GPL(of_pci_address_to_resource);
 
-const __be32 *of_pci_process_ranges(struct device_node *node,
-				    struct resource *res, const __be32 *from)
+struct of_pci_range_iter *of_pci_process_ranges(struct of_pci_range_iter *iter,
+						struct device_node *node)
 {
-	const __be32 *start, *end;
-	int na, ns, np, pna;
+	const int na = 3, ns = 2;
 	int rlen;
-	struct of_bus *bus;
-	WARN_ON(!res);
 
-	bus = of_match_bus(node);
-	bus->count_cells(node, &na, &ns);
-	if (!OF_CHECK_COUNTS(na, ns)) {
-		pr_err("Bad cell count for %s\n", node->full_name);
-		return NULL;
+	if (!iter->range) {
+		iter->pna = of_n_addr_cells(node);
+		iter->np = iter->pna + na + ns;
+
+		iter->range = of_get_property(node, "ranges", &rlen);
+		if (iter->range == NULL)
+			return NULL;
+
+		iter->end = iter->range + rlen / sizeof(__be32);
 	}
 
-	pna = of_n_addr_cells(node);
-	np = pna + na + ns;
-
-	start = of_get_property(node, "ranges", &rlen);
-	if (start == NULL)
+	if (iter->range + iter->np > iter->end)
 		return NULL;
 
-	end = start + rlen / sizeof(__be32);
+	iter->pci_space = be32_to_cpup(iter->range);
+	iter->flags = of_bus_pci_get_flags(iter->range);
+	iter->pci_addr = of_read_number(iter->range + 1, ns);
+	iter->cpu_addr = of_translate_address(node, iter->range + na);
+	iter->size = of_read_number(iter->range + iter->pna + na, ns);
 
-	if (!from)
-		from = start;
+	iter->range += iter->np;
 
-	while (from + np <= end) {
-		u64 cpu_addr, size;
+	/* Now consume following elements while they are contiguous */
+	while (iter->range + iter->np <= iter->end) {
+		u32 flags, pci_space;
+		u64 pci_addr, cpu_addr, size;
 
-		cpu_addr = of_translate_address(node, from + na);
-		size = of_read_number(from + na + pna, ns);
-		res->flags = bus->get_flags(from);
-		from += np;
+		pci_space = be32_to_cpup(iter->range);
+		flags = of_bus_pci_get_flags(iter->range);
+		pci_addr = of_read_number(iter->range + 1, ns);
+		cpu_addr = of_translate_address(node, iter->range + na);
+		size = of_read_number(iter->range + iter->pna + na, ns);
 
-		if (cpu_addr == OF_BAD_ADDR || size == 0)
-			continue;
+		if (flags != iter->flags)
+			break;
+		if (pci_addr != iter->pci_addr + iter->size ||
+		    cpu_addr != iter->cpu_addr + iter->size)
+			break;
 
-		res->name = node->full_name;
-		res->start = cpu_addr;
-		res->end = res->start + size - 1;
-		res->parent = res->child = res->sibling = NULL;
-		return from;
+		iter->size += size;
+		iter->range += iter->np;
 	}
 
-	return NULL;
+	return iter;
 }
 EXPORT_SYMBOL_GPL(of_pci_process_ranges);
 

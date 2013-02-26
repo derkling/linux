@@ -228,14 +228,14 @@ int __devinit gic_msi_probe(struct platform_device *pdev)
 	struct device_node *node = pdev->dev.of_node;
 
 	if (WARN(gd, "MSI handler already installed"))
-		return 1;
+		return -EEXIST;
 
 	if (WARN(!node, "No device tree node"))
-		return 1;
+		return -EINVAL;
 
 	data = kzalloc(sizeof(struct gic_msi_data), GFP_KERNEL);
 	if (WARN(!data, "Unable to allocate memory"))
-		return 1;
+		return -ENOMEM;
 
 	platform_set_drvdata(pdev, data);
 
@@ -279,7 +279,7 @@ err_kzalloc:
 #endif
 	kfree(data);
 
-	return 1;
+	return -EINVAL;
 }
 
 /**
