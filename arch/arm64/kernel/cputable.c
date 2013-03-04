@@ -24,6 +24,12 @@ extern unsigned long __cpu_setup(void);
 
 struct cpu_info __initdata cpu_table[] = {
 	{
+		.cpu_id_val	= 0x410fd070,
+		.cpu_id_mask	= 0xff0ffff0,
+		.cpu_name	= "ARM Cortex-A57",
+		.cpu_setup	= __cpu_setup,
+	},
+	{
 		.cpu_id_val	= 0x000f0000,
 		.cpu_id_mask	= 0x000f0000,
 		.cpu_name	= "AArch64 Processor",
