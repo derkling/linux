@@ -270,6 +270,23 @@
 		migrate		= <0x80100004>;
 	};
 
+	arm_pvt@7fff0300 {
+		compatible = "arm,arm-pvt";
+		reg = <0 0x7fff0300 0 0x001c>;
+
+		trip-point0 {
+			temp = <60000>;
+			type = "active";
+			cdev0 {
+				cluster = <&cluster0>;
+			};
+		};
+		trip-point1 {
+			temp = <65000>;
+			type = "critical";
+		};
+	};
+
 	dcc {
 		compatible = "arm,vexpress,config-bus";
 		arm,vexpress,config-bridge = <&v2m_sysreg>;
