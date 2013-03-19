@@ -1,0 +1,10 @@
+menu "Generic PCI Host Bridge Support"
+	depends on PCI
+
+config PCI_HOST_XR3
+	bool "XpressRICH 3 PCI Host Bridge"
+	depends on PCI && ARM64
+	help
+	  XpressRICH3-AXI PCI Host Bridge
+
+endmenu
