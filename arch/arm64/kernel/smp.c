@@ -257,6 +257,25 @@ static const struct smp_enable_ops * __init smp_get_enable_ops(const char *name)
 	return NULL;
 }
 
+#ifdef CONFIG_SCHED_HMP
+static const char * const little_cores[] = {
+	"arm,cortex-a53",
+	NULL,
+};
+
+static bool is_little_cpu(struct device_node *dn)
+{
+	const char * const *lc;
+	for (lc = little_cores; *lc; lc++)
+		if (of_device_is_compatible(dn, *lc))
+			return true;
+	return false;
+}
+
+struct cpumask hmp_fast_cpumask;
+struct cpumask hmp_slow_cpumask;
+#endif
+
 /*
  * Enumerate the possible CPU set from the device tree and build the
  * cpu logical map array containing MPIDR values related to logical
@@ -355,6 +374,13 @@ void __init smp_init_cpus(void)
 
 		pr_debug("cpu logical map 0x%llx\n", hwid);
 		cpu_logical_map(cpu) = hwid;
+
+#ifdef CONFIG_SCHED_HMP
+		if (is_little_cpu(dn))
+			cpumask_set_cpu(cpu, hmp_slow_cpumask);
+		else
+			cpumask_set_cpu(cpu, hmp_fast_cpumask);
+#endif
 next:
 		cpu++;
 	}
@@ -376,6 +402,17 @@ next:
 	for (i = 0; i < NR_CPUS; i++)
 		if (cpu_logical_map(i) != INVALID_HWID)
 			set_cpu_possible(i, true);
+
+#ifdef CONFIG_SCHED_HMP
+	/*
+	 * Check that the fast and slow cpumask contains data. Otherwise, reset
+	 * the masks so that all cpus are treated as equally fast.
+	 */
+	if (cpumask_empty(hmp_fast_cpumask) || cpumask_empty(hmp_slow_cpumask)) {
+		cpumask_setall(hmp_fast_cpumask);
+		cpumask_clear(hmp_slow_cpumask);
+	}
+#endif
 }
 
 void __init smp_prepare_cpus(unsigned int max_cpus)
