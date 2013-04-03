@@ -257,6 +257,18 @@ static const struct smp_enable_ops * __init smp_get_enable_ops(const char *name)
 	return NULL;
 }
 
+#ifdef CONFIG_SCHED_MC
+struct cpumask hmp_fast_cpumask;
+struct cpumask hmp_slow_cpumask;
+
+const struct cpumask *cpu_coregroup_mask(int cpu)
+{
+	if (cpumask_test_cpu(cpu, &hmp_slow_cpumask))
+		return &hmp_slow_cpumask;
+
+	return &hmp_fast_cpumask;
+}
+
 #ifdef CONFIG_SCHED_HMP
 static const char * const little_cores[] = {
 	"arm,cortex-a53",
@@ -271,10 +283,8 @@ static bool is_little_cpu(struct device_node *dn)
 			return true;
 	return false;
 }
-
-struct cpumask hmp_fast_cpumask;
-struct cpumask hmp_slow_cpumask;
 #endif
+#endif  /* CONFIG_SCHED_MC */
 
 /*
  * Enumerate the possible CPU set from the device tree and build the
@@ -287,6 +297,11 @@ void __init smp_init_cpus(void)
 	struct device_node *dn = NULL;
 	int i, cpu = 1;
 	bool bootcpu_valid = false;
+
+#ifdef CONFIG_SCHED_MC
+	cpumask_clear(&hmp_slow_cpumask);
+	cpumask_clear(&hmp_fast_cpumask);
+#endif
 
 	while ((dn = of_find_node_by_type(dn, "cpu"))) {
 		u64 hwid;
@@ -377,9 +392,9 @@ void __init smp_init_cpus(void)
 
 #ifdef CONFIG_SCHED_HMP
 		if (is_little_cpu(dn))
-			cpumask_set_cpu(cpu, hmp_slow_cpumask);
+			cpumask_set_cpu(cpu, &hmp_slow_cpumask);
 		else
-			cpumask_set_cpu(cpu, hmp_fast_cpumask);
+			cpumask_set_cpu(cpu, &hmp_fast_cpumask);
 #endif
 next:
 		cpu++;
@@ -403,14 +418,14 @@ next:
 		if (cpu_logical_map(i) != INVALID_HWID)
 			set_cpu_possible(i, true);
 
-#ifdef CONFIG_SCHED_HMP
+#if defined(CONFIG_SCHED_HMP) || defined(CONFIG_SCHED_MC)
 	/*
 	 * Check that the fast and slow cpumask contains data. Otherwise, reset
 	 * the masks so that all cpus are treated as equally fast.
 	 */
-	if (cpumask_empty(hmp_fast_cpumask) || cpumask_empty(hmp_slow_cpumask)) {
-		cpumask_setall(hmp_fast_cpumask);
-		cpumask_clear(hmp_slow_cpumask);
+	if (cpumask_empty(&hmp_fast_cpumask) || cpumask_empty(&hmp_slow_cpumask)) {
+		cpumask_setall(&hmp_fast_cpumask);
+		cpumask_clear(&hmp_slow_cpumask);
 	}
 #endif
 }

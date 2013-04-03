@@ -49,7 +49,9 @@
 
 #endif /* CONFIG_SCHED_HMP */
 
-
+#ifdef CONFIG_SCHED_MC
+const struct cpumask *cpu_coregroup_mask(int cpu);
+#endif
 
 #include <asm-generic/topology.h>
 
