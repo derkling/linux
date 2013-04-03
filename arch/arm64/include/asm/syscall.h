@@ -65,6 +65,7 @@ static inline void syscall_get_arguments(struct task_struct *task,
 		pr_warning("%s called with max args %d, handling only %d\n",
 			   __func__, i + n, SYSCALL_MAX_ARGS);
 		memset(args_bad, 0, n_bad * sizeof(args[0]));
+		n = SYSCALL_MAX_ARGS - i;
 	}
 
 	if (i == 0) {
