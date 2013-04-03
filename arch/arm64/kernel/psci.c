@@ -160,7 +160,7 @@ int __init psci_init(void)
 {
 	struct device_node *np;
 	const char *method;
-	u32 id;
+	u64 id;
 	int err = 0;
 
 	np = of_find_matching_node(NULL, psci_of_match);
@@ -185,22 +185,22 @@ int __init psci_init(void)
 		goto out_put_node;
 	}
 
-	if (!of_property_read_u32(np, "cpu_suspend", &id)) {
+	if (!of_property_read_u64(np, "cpu_suspend", &id)) {
 		psci_function_id[PSCI_FN_CPU_SUSPEND] = id;
 		psci_ops.cpu_suspend = psci_cpu_suspend;
 	}
 
-	if (!of_property_read_u32(np, "cpu_off", &id)) {
+	if (!of_property_read_u64(np, "cpu_off", &id)) {
 		psci_function_id[PSCI_FN_CPU_OFF] = id;
 		psci_ops.cpu_off = psci_cpu_off;
 	}
 
-	if (!of_property_read_u32(np, "cpu_on", &id)) {
+	if (!of_property_read_u64(np, "cpu_on", &id)) {
 		psci_function_id[PSCI_FN_CPU_ON] = id;
 		psci_ops.cpu_on = psci_cpu_on;
 	}
 
-	if (!of_property_read_u32(np, "migrate", &id)) {
+	if (!of_property_read_u64(np, "migrate", &id)) {
 		psci_function_id[PSCI_FN_MIGRATE] = id;
 		psci_ops.migrate = psci_migrate;
 	}

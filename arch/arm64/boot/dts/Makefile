@@ -1,4 +1,5 @@
 dtb-$(CONFIG_ARCH_VEXPRESS) += rtsm_ve-aemv8a.dtb foundation-v8.dtb
+dtb-y	+= juno.dtb
 
 targets += dtbs
 targets += $(dtb-y)
