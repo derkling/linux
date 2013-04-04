@@ -5,7 +5,8 @@
 #include <linux/of_address.h>
 #include <asm/prom.h>
 
-#if defined(CONFIG_PPC32) || defined(CONFIG_PPC64) || defined(CONFIG_MICROBLAZE)
+#if defined(CONFIG_PPC32) || defined(CONFIG_PPC64) || \
+	defined(CONFIG_MICROBLAZE) || defined(CONFIG_ARM64)
 #include <asm/pci-bridge.h>
 #endif
 
@@ -79,7 +80,8 @@ EXPORT_SYMBOL_GPL(of_pci_find_child_device);
  *   - Some 32 bits platforms such as 4xx can have physical space larger than
  *     32 bits so we need to use 64 bits values for the parsing
  */
-#if defined(CONFIG_PPC32) || defined(CONFIG_PPC64) || defined(CONFIG_MICROBLAZE)
+#if defined(CONFIG_PPC32) || defined(CONFIG_PPC64) || \
+	defined(CONFIG_MICROBLAZE) || defined(CONFIG_ARM64)
 void pci_process_bridge_OF_ranges(struct pci_controller *hose,
 				  struct device_node *dev, int primary)
 {
@@ -163,6 +165,8 @@ void pci_process_bridge_OF_ranges(struct pci_controller *hose,
 				pr_info(" \\--> Skipped (too many) !\n");
 				continue;
 			}
+
+#ifndef ARCH_SKIP_ISA_SUPPORT
 			/* Handles ISA memory hole space here */
 			if (range.pci_addr == 0) {
 				isa_mb = range.cpu_addr;
@@ -172,6 +176,7 @@ void pci_process_bridge_OF_ranges(struct pci_controller *hose,
 				hose->isa_mem_phys = range.cpu_addr;
 				hose->isa_mem_size = range.size;
 			}
+#endif
 
 			/* We get the PCI/Mem offset from the first range or
 			 * the, current one if the offset came from an ISA
