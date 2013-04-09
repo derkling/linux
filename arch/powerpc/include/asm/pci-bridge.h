@@ -10,6 +10,7 @@
 #include <linux/pci.h>
 #include <linux/list.h>
 #include <linux/ioport.h>
+#include <linux/of_pci.h>
 #include <asm-generic/pci-bridge.h>
 
 struct device_node;
@@ -230,10 +231,6 @@ extern int pcibios_map_io_space(struct pci_bus *bus);
 /* Get the PCI host controller for an OF device */
 extern struct pci_controller *pci_find_hose_for_OF_device(
 			struct device_node* node);
-
-/* Fill up host controller resources from the OF node */
-extern void pci_process_bridge_OF_ranges(struct pci_controller *hose,
-			struct device_node *dev, int primary);
 
 /* Allocate & free a PCI host bridge structure */
 extern struct pci_controller *pcibios_alloc_controller(struct device_node *dev);
