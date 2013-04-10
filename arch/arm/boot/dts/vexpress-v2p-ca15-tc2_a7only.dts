@@ -15,7 +15,7 @@
 	model = "V2P-CA15_CA7";
 	arm,hbi = <0x249>;
 	arm,vexpress,site = <0xf>;
-	compatible = "arm,vexpress,v2p-ca15,tc2", "arm,vexpress,v2p-ca15", "arm,vexpress", "arm,generic";
+	compatible = "arm,vexpress,v2p-ca15_a7", "arm,vexpress", "arm,generic";
 	interrupt-parent = <&gic>;
 	#address-cells = <2>;
 	#size-cells = <2>;
@@ -113,7 +113,7 @@
 	wdt@2a490000 {
 		compatible = "arm,sp805", "arm,primecell";
 		reg = <0 0x2a490000 0 0x1000>;
-		interrupts = <98>;
+		interrupts = <0 98 4>;
 		clocks = <&oscclk6a>, <&oscclk6a>;
 		clock-names = "wdogclk", "apb_pclk";
 	};
@@ -126,22 +126,6 @@
 		framebuffer = <0 0xff000000 0 0x01000000>;
 		clocks = <&oscclk5>;
 		clock-names = "pxlclk";
-	};
-
-	spc@7fff0000 {
-		compatible = "arm,spc";
-		reg = <0 0x7FFF0000 0 0x1000>;
-		interrupts = <0 95 4>;
-	};
-
-	cci@2c090000 {
-		compatible = "arm,cci";
-		reg = <0 0x2c090000 0 0x10000>;
-		interrupts = <0 101 4>,
-			     <0 102 4>,
-			     <0 103 4>,
-			     <0 104 4>,
-			     <0 105 4>;
 	};
 
 	memory-controller@2b0a0000 {
@@ -181,6 +165,16 @@
 		};
 	};
 
+	cci@2c090000 {
+		compatible = "arm,cci";
+		reg = <0 0x2c090000 0 0x10000>;
+		interrupts = <0 101 4>,
+			     <0 102 4>,
+			     <0 103 4>,
+			     <0 104 4>,
+			     <0 105 4>;
+	};
+
 	memory-controller@7ffd0000 {
 		compatible = "arm,pl354", "arm,primecell";
 		reg = <0 0x7ffd0000 0 0x1000>;
@@ -200,6 +194,12 @@
 			     <0 91 4>;
 		clocks = <&oscclk6a>;
 		clock-names = "apb_pclk";
+	};
+
+	spc@7fff0000 {
+		compatible = "arm,spc";
+		reg = <0 0x7fff0000 0 0x1000>;
+		interrupts = <0 95 4>;
 	};
 
 	timer {
@@ -234,12 +234,12 @@
 	};
 
 	psci {
-		compatible	= "arm,psci";
-		method		= "smc";
-		cpu_suspend	= <0x80100001>;
-		cpu_off		= <0x80100002>;
-		cpu_on		= <0x80100003>;
-		migrate		= <0x80100004>;
+		compatible      = "arm,psci";
+		method          = "smc";
+		cpu_suspend     = <0x80100001>;
+		cpu_off         = <0x80100002>;
+		cpu_on          = <0x80100003>;
+		migrate         = <0x80100004>;
 	};
 
 	dcc {
