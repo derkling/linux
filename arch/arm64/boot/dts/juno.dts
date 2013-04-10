@@ -122,7 +122,7 @@
 	soc_uart0: uart@7ff80000 {
 		compatible = "arm,pl011", "arm,primecell";
 		reg = <0x0 0x7ff80000 0x0 0x1000>;
-		interrupts = <83>;
+		interrupts = <0 83 4>;
 		clocks = <&soc_uartclk>, <&soc_refclk100mhz>;
 		clock-names = "uartclk", "apb_pclk";
 	};
@@ -130,7 +130,7 @@
 	/* soc_uart1: uart@7ff70000 {
 		compatible = "arm,pl011", "arm,primecell";
 		reg = <0x0 0x7ff70000 0x0 0x1000>;
-		interrupts = <84>;
+		interrupts = <0 84 4>;
 		clocks = <&soc_uartclk>, <&soc_refclk100mhz>;
 		clock-names = "uartclk", "apb_pclk";
 	}; */
