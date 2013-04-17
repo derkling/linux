@@ -3355,7 +3355,7 @@ static int __init hmp_cpu_mask_setup(void)
 	struct list_head *pos;
 	int dc, cpu;
 
-	pr_debug("Initializing HMP scheduler:\n");
+	pr_info("Initializing HMP scheduler:\n");
 
 	/* Initialize hmp_domains using platform code */
 	arch_get_hmp_domains(&hmp_domains);
@@ -3369,7 +3369,7 @@ static int __init hmp_cpu_mask_setup(void)
 	list_for_each(pos, &hmp_domains) {
 		domain = list_entry(pos, struct hmp_domain, hmp_domains);
 		cpulist_scnprintf(buf, 64, &domain->cpus);
-		pr_debug("  HMP domain %d: %s\n", dc, buf);
+		pr_info("  HMP domain %d: %s\n", dc, buf);
 
 		for_each_cpu_mask(cpu, domain->cpus) {
 			per_cpu(hmp_cpu_domain, cpu) = domain;
