@@ -61,8 +61,8 @@
 
 	memory@80000000 {
 		device_type = "memory";
-		reg = <0x00000000 0x80000000 0 0x80000000>;
-		/*      <0x00000008 0x80000000 0 0x80000000>; */
+		reg = <0x00000000 0x80000000 0 0x80000000>,
+		      <0x00000008 0x80000000 0 0x80000000>;
 	};
 
 	gic: interrupt-controller@2c001000 {
@@ -112,11 +112,26 @@
 		clock-output-names = "juno:uartclk";
 	};
 
+	soc_refclk24mhz: clk24mhz {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <24000000>;
+		clock-output-names = "juno:clk24mhz";
+	};
+
 	soc_refclk100mhz: refclk100mhz {
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
 		clock-frequency = <100000000>;
-		clock-output-names = "juno:apbclk";
+		clock-output-names = "juno:apb_pclk";
+	};
+
+	soc_fixed_3v3: fixedregulator@0 {
+		compatible = "regulator-fixed";
+		regulator-name = "3V3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-always-on;
 	};
 
 	soc_uart0: uart@7ff80000 {
@@ -127,13 +142,24 @@
 		clock-names = "uartclk", "apb_pclk";
 	};
 
-	/* soc_uart1: uart@7ff70000 {
+	/* this UART is reserved for secure software.
+	soc_uart1: uart@7ff70000 {
 		compatible = "arm,pl011", "arm,primecell";
 		reg = <0x0 0x7ff70000 0x0 0x1000>;
 		interrupts = <0 84 4>;
 		clocks = <&soc_uartclk>, <&soc_refclk100mhz>;
 		clock-names = "uartclk", "apb_pclk";
 	}; */
+
+	mmci@1c050000 {
+		compatible = "arm,pl180", "arm,primecell";
+		reg = <0x0 0x1c050000 0x0 0x1000>;
+		interrupts = <0 73 4 0 74 4>;
+		max-frequency = <12000000>;
+		vmmc-supply = <&soc_fixed_3v3>;
+		clocks = <&soc_refclk24mhz>, <&soc_refclk100mhz>;
+		clock-names = "mclk", "apb_pclk";
+	};
 
 /*	smb {
 		compatible = "simple-bus";
