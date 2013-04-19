@@ -8,6 +8,7 @@ config ARM64
 	select ARM_ARCH_TIMER
 	select ARM_GIC
 	select ARM_GIC_MSI
+	select ARCH_SUPPORTS_MSI
 	select CLONE_BACKWARDS
 	select COMMON_CLK
 	select GENERIC_CLOCKEVENTS
