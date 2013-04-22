@@ -295,7 +295,7 @@ void __init smp_init_cpus(void)
 {
 	const char *enable_method;
 	struct device_node *dn = NULL;
-	int i, cpu = 1;
+	int i, cpu = 0;
 	bool bootcpu_valid = false;
 
 #ifdef CONFIG_SCHED_MC
@@ -353,14 +353,6 @@ void __init smp_init_cpus(void)
 			}
 
 			bootcpu_valid = true;
-
-			/*
-			 * cpu_logical_map has already been
-			 * initialized and the boot cpu doesn't need
-			 * the enable-method so continue without
-			 * incrementing cpu.
-			 */
-			continue;
 		}
 
 		if (cpu >= NR_CPUS)
@@ -384,8 +376,13 @@ void __init smp_init_cpus(void)
 			goto next;
 		}
 
-		if (smp_enable_ops[cpu]->init_cpu(dn, cpu))
-			goto next;
+		/*
+		 * Skip CPU0 as this is already initialised
+		 */
+		if (cpu > 0) {
+			if (smp_enable_ops[cpu]->init_cpu(dn, cpu))
+				goto next;
+		}
 
 		pr_debug("cpu logical map 0x%llx\n", hwid);
 		cpu_logical_map(cpu) = hwid;
