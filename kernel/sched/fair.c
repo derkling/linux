@@ -224,12 +224,12 @@ void update_packing_domain(int cpu)
 
 		/* loop the sched groups to find the best one */
 		for (tmp = sg->next; tmp != sg; tmp = tmp->next) {
-			if (tmp->sgp->power * pack->group_weight >
-					pack->sgp->power * tmp->group_weight)
+			if (tmp->sgp->power_available * pack->group_weight >
+				pack->sgp->power_available * tmp->group_weight)
 				continue;
 
-			if ((tmp->sgp->power * pack->group_weight ==
-					pack->sgp->power * tmp->group_weight)
+			if ((tmp->sgp->power_available * pack->group_weight ==
+				pack->sgp->power_available * tmp->group_weight)
 			 && (cpumask_first(sched_group_cpus(tmp)) >= id))
 				continue;
 
@@ -269,12 +269,12 @@ void update_packing_buddy(int cpu, int activity)
 
 	/* loop the sched groups to find the best one */
 	for (tmp = sg->next; tmp != sg; tmp = tmp->next) {
-		if ((tmp->sgp->power * pack->group_weight) >
+		if ((tmp->sgp->power_available * pack->group_weight) >
 			(pack->sgp->power_available * tmp->group_weight))
 			continue;
 
-		if (((tmp->sgp->power * pack->group_weight) ==
-			 (pack->sgp->power * tmp->group_weight))
+		if (((tmp->sgp->power_available * pack->group_weight) ==
+			 (pack->sgp->power_available * tmp->group_weight))
 		 && (cpumask_first(sched_group_cpus(tmp)) >= id))
 			continue;
 
@@ -285,20 +285,20 @@ void update_packing_buddy(int cpu, int activity)
 		id = cpumask_first(sched_group_cpus(pack));
 	}
 
-	if ((cpu == id) || (activity <= power_of(id))) {
+	if ((cpu == id) || (activity <= available_of(id))) {
 		per_cpu(sd_pack_buddy, cpu) = id;
 		return;
 	}
 
 	for (tmp = pack; activity > 0; tmp = tmp->next) {
-		if (tmp->sgp->power > activity) {
+		if (tmp->sgp->power_available > activity) {
 			id = cpumask_first(sched_group_cpus(tmp));
-			activity -= power_of(id);
+			activity -= available_of(id);
 			if (cpu == id)
 				activity = 0;
 			while ((activity > 0) && (id < nr_cpu_ids)) {
 				id = cpumask_next(id, sched_group_cpus(tmp));
-				activity -= power_of(id);
+				activity -= available_of(id);
 				if (cpu == id)
 					activity = 0;
 			}
@@ -306,7 +306,7 @@ void update_packing_buddy(int cpu, int activity)
 			id = cpu;
 			activity = 0;
 		} else {
-			activity -= tmp->sgp->power;
+			activity -= tmp->sgp->power_available;
 		}
 	}
 
@@ -3391,7 +3391,8 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 		}
 
 		/* Adjust by relative CPU power of the group */
-		avg_load = (avg_load * SCHED_POWER_SCALE) / group->sgp->power;
+		avg_load = (avg_load * SCHED_POWER_SCALE)
+				/ group->sgp->power_available;
 
 		if (local_group) {
 			this_load = avg_load;
@@ -3574,10 +3575,10 @@ static int get_cpu_activity(int cpu)
 
 	if (sum == period) {
 		u32 overload = rq->nr_running > 1 ? 1 : 0;
-		return power_of(cpu) + overload;
+		return available_of(cpu) + overload;
 	}
 
-	return (sum * power_of(cpu)) / period;
+	return (sum * available_of(cpu)) / period;
 }
 
 /*
@@ -4617,8 +4618,12 @@ static void update_cpu_power(struct sched_domain *sd, int cpu)
 	cpu_rq(cpu)->cpu_available = power;
 	sdg->sgp->power_available = power;
 
+	if (!is_my_buddy(cpu, cpu))
+		power = 1;
+
 	cpu_rq(cpu)->cpu_power = power;
 	sdg->sgp->power = power;
+
 }
 
 void update_group_power(struct sched_domain *sd, int cpu)
