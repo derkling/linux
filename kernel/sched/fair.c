@@ -5808,6 +5808,26 @@ end:
 	clear_bit(NOHZ_BALANCE_KICK, nohz_flags(this_cpu));
 }
 
+static int check_nohz_buddy(int cpu)
+{
+	int buddy = per_cpu(sd_pack_buddy, cpu);
+
+	if (sysctl_sched_packing_mode != SCHED_PACKING_FULL)
+		return false;
+
+	/* No pack buddy for this CPU */
+	if (buddy == -1)
+		return false;
+
+	if (is_buddy_full(buddy))
+		return false;
+
+	if (cpumask_test_cpu(buddy, nohz.idle_cpus_mask))
+		return true;
+
+	return false;
+}
+
 /*
  * Current heuristic for kicking the idle load balancer in the presence
  * of an idle cpu is the system.
@@ -5843,6 +5863,10 @@ static inline int nohz_kick_needed(struct rq *rq, int cpu)
 		return 0;
 
 	if (rq->nr_running >= 2)
+		goto need_kick;
+
+	/* the buddy is idle and not busy so we can pack */
+	if (check_nohz_buddy(cpu))
 		goto need_kick;
 
 	rcu_read_lock();
