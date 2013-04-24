@@ -4750,6 +4750,9 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 				max_nr_running = nr_running;
 			if (min_nr_running > nr_running)
 				min_nr_running = nr_running;
+
+			if (!is_my_buddy(i, i) && nr_running > 0)
+				sgs->group_imb = 1;
 		}
 
 		sgs->group_load += load;
