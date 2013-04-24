@@ -3516,6 +3516,13 @@ static bool is_buddy_full(int cpu)
 	return (sum * 1024 >= period * 1000);
 }
 
+static bool is_my_buddy(int cpu, int buddy)
+{
+	int my_buddy = per_cpu(sd_pack_buddy, cpu);
+	return ((sysctl_sched_packing_mode != SCHED_PACKING_FULL) ||
+		(my_buddy == -1) || (buddy == my_buddy));
+}
+
 static bool is_light_task(struct task_struct *p)
 {
 	/* A light task runs less than 20% in average */
@@ -4708,8 +4715,8 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 
 		/* Bias balancing toward cpus of our domain */
 		if (local_group) {
-			if (idle_cpu(i) && !first_idle_cpu &&
-					cpumask_test_cpu(i, sched_group_mask(group))) {
+			if (is_my_buddy(i, i) && idle_cpu(i) && !first_idle_cpu
+			 && cpumask_test_cpu(i, sched_group_mask(group))) {
 				first_idle_cpu = 1;
 				balance_cpu = i;
 			}
@@ -4837,6 +4844,10 @@ static void update_plb_buddy(int cpu, int *balance, struct sd_lb_stats *sds,
 
 	/* Get my new buddy */
 	buddy = per_cpu(sd_pack_buddy, cpu);
+
+	/* This CPU doesn't act for agressive packing */
+	if (buddy != cpu)
+		sds->busiest = 0;
 }
 
 /**
