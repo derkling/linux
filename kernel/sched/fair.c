@@ -3487,7 +3487,22 @@ static int check_pack_buddy(int cpu, struct task_struct *p)
 		return true;
 
 	return false;
+}
 
+static int get_cpu_activity(int cpu)
+{
+	struct rq *rq = cpu_rq(cpu);
+	u32 sum = rq->avg.runnable_avg_sum;
+	u32 period = rq->avg.runnable_avg_period;
+
+	sum = min(sum, period);
+
+	if (sum == period) {
+		u32 overload = rq->nr_running > 1 ? 1 : 0;
+		return power_of(cpu) + overload;
+	}
+
+	return (sum * power_of(cpu)) / period;
 }
 
 /*
@@ -4375,6 +4390,7 @@ struct sd_lb_stats {
 	struct sched_group *busiest; /* Busiest group in this sd */
 	struct sched_group *this;  /* Local group in this sd */
 	unsigned long total_load;  /* Total load of all groups in sd */
+	unsigned long total_activity;  /* Total activity of all groups in sd */
 	unsigned long total_pwr;   /*	Total power of all groups in sd */
 	unsigned long avg_load;	   /* Average load across all groups in sd */
 
@@ -4403,6 +4419,7 @@ struct sd_lb_stats {
 struct sg_lb_stats {
 	unsigned long avg_load; /*Avg load across the CPUs of the group */
 	unsigned long group_load; /* Total load over the CPUs of the group */
+	unsigned long group_activity; /* Total activity of the group */
 	unsigned long sum_nr_running; /* Nr tasks running in the group */
 	unsigned long sum_weighted_load; /* Weighted load of group's tasks */
 	unsigned long group_capacity;
@@ -4649,6 +4666,7 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 		}
 
 		sgs->group_load += load;
+		sgs->group_activity += get_cpu_activity(i);
 		sgs->sum_nr_running += nr_running;
 		sgs->sum_weighted_load += weighted_cpuload(i);
 		if (idle_cpu(i))
@@ -4772,6 +4790,7 @@ static inline void update_sd_lb_stats(struct lb_env *env,
 			return;
 
 		sds->total_load += sgs.group_load;
+		sds->total_activity += sgs.group_activity;
 		sds->total_pwr += sg->sgp->power;
 
 		/*
