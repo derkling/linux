@@ -113,6 +113,18 @@ unsigned int __read_mostly sysctl_sched_shares_window = 10000000UL;
 unsigned int sysctl_sched_cfs_bandwidth_slice = 5000UL;
 #endif
 
+#ifdef CONFIG_SMP
+/*
+ * The packing policy of the scheduler
+ *
+ * Options are:
+ * SCHED_PACKING_NONE - No buddy is used for packing some tasks
+ * SCHED_PACKING_DEFAULT - The small tasks are packed on a not busy CPUs
+ * SCHED_PACKING_FULL - All Tasks are packed in a minimum number of CPUs
+ */
+enum sched_tunable_packing sysctl_sched_packing_mode = SCHED_PACKING_DEFAULT;
+
+#endif
 /*
  * Increase the granularity value when there are more CPUs,
  * because with more CPUs the 'effective latency' as visible
