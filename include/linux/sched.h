@@ -994,6 +994,7 @@ struct sched_entity {
 	/* rq "owned" by this entity/group: */
 	struct cfs_rq		*my_q;
 #endif
+
 #ifdef CONFIG_SMP
 	/* Per-entity load-tracking */
 	struct sched_avg	avg;
