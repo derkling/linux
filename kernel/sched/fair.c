@@ -113,6 +113,18 @@ unsigned int __read_mostly sysctl_sched_shares_window = 10000000UL;
 unsigned int sysctl_sched_cfs_bandwidth_slice = 5000UL;
 #endif
 
+#ifdef CONFIG_SMP
+/*
+ * The packing policy of the scheduler
+ *
+ * Options are:
+ * SCHED_PACKING_NONE - No buddy is used for packing some tasks
+ * SCHED_PACKING_DEFAULT - The small tasks are packed on a not busy CPUs
+ * SCHED_PACKING_FULL - All Tasks are packed in a minimum number of CPUs
+ */
+enum sched_tunable_packing sysctl_sched_packing_mode = SCHED_PACKING_DEFAULT;
+
+#endif
 /*
  * Increase the granularity value when there are more CPUs,
  * because with more CPUs the 'effective latency' as visible
@@ -159,6 +171,149 @@ void sched_init_granularity(void)
 {
 	update_sysctl();
 }
+
+
+#ifdef CONFIG_SMP
+static unsigned long power_of(int cpu)
+{
+	return cpu_rq(cpu)->cpu_power;
+}
+
+static unsigned long available_of(int cpu)
+{
+	return cpu_rq(cpu)->cpu_available;
+}
+
+/*
+ * Save the id of the optimal CPU that should be used to pack small tasks
+ * The value -1 is used when no buddy has been found
+ */
+DEFINE_PER_CPU(int, sd_pack_buddy);
+DEFINE_PER_CPU(struct sched_domain *, sd_pack_domain);
+
+/*
+ * Look for the best buddy CPU that can be used to pack small tasks
+ * We make the assumption that it doesn't wort to pack on CPU that share the
+ * same powerline. We look for the 1st sched_domain without the
+ * SD_SHARE_POWERDOMAIN flag. Then we look for the sched_group with the lowest
+ * power per core based on the assumption that their power efficiency is
+ * better
+ */
+void update_packing_domain(int cpu)
+{
+	struct sched_domain *sd;
+	int id = -1;
+
+	sd = highest_flag_domain(cpu, SD_SHARE_POWERDOMAIN);
+	if (!sd)
+		sd = rcu_dereference_check_sched_domain(cpu_rq(cpu)->sd);
+	else
+		sd = sd->parent;
+
+	while (sd && (sd->flags & SD_LOAD_BALANCE)
+		&& !(sd->flags & SD_SHARE_POWERDOMAIN)) {
+		struct sched_group *sg = sd->groups;
+		struct sched_group *pack = sg;
+		struct sched_group *tmp;
+
+		/*
+		 * The sched_domain of a CPU points on the local sched_group
+		 * and this CPU of this local group is a good candidate
+		 */
+		id = cpu;
+
+		/* loop the sched groups to find the best one */
+		for (tmp = sg->next; tmp != sg; tmp = tmp->next) {
+			if (tmp->sgp->power_available * pack->group_weight >
+				pack->sgp->power_available * tmp->group_weight)
+				continue;
+
+			if ((tmp->sgp->power_available * pack->group_weight ==
+				pack->sgp->power_available * tmp->group_weight)
+			 && (cpumask_first(sched_group_cpus(tmp)) >= id))
+				continue;
+
+			/* we have found a better group */
+			pack = tmp;
+
+			/* Take the 1st CPU of the new group */
+			id = cpumask_first(sched_group_cpus(pack));
+		}
+
+		/* Look for another CPU than itself */
+		if (id != cpu)
+			break;
+
+		sd = sd->parent;
+	}
+
+	pr_debug("CPU%d packing on CPU%d\n", cpu, id);
+	per_cpu(sd_pack_domain, cpu) = sd;
+	per_cpu(sd_pack_buddy, cpu) = id;
+}
+
+void update_packing_buddy(int cpu, int activity)
+{
+	struct sched_domain *sd = per_cpu(sd_pack_domain, cpu);
+	struct sched_group *sg, *pack, *tmp;
+	int id = cpu;
+
+	if (!sd)
+		return;
+
+	/*
+	 * The sched_domain of a CPU points on the local sched_group
+	 * and this CPU of this local group is a good candidate
+	 */
+	pack = sg = sd->groups;
+
+	/* loop the sched groups to find the best one */
+	for (tmp = sg->next; tmp != sg; tmp = tmp->next) {
+		if ((tmp->sgp->power_available * pack->group_weight) >
+			(pack->sgp->power_available * tmp->group_weight))
+			continue;
+
+		if (((tmp->sgp->power_available * pack->group_weight) ==
+			 (pack->sgp->power_available * tmp->group_weight))
+		 && (cpumask_first(sched_group_cpus(tmp)) >= id))
+			continue;
+
+		/* we have found a better group */
+		pack = tmp;
+
+		/* Take the 1st CPU of the new group */
+		id = cpumask_first(sched_group_cpus(pack));
+	}
+
+	if ((cpu == id) || (activity <= available_of(id))) {
+		per_cpu(sd_pack_buddy, cpu) = id;
+		return;
+	}
+
+	for (tmp = pack; activity > 0; tmp = tmp->next) {
+		if (tmp->sgp->power_available > activity) {
+			id = cpumask_first(sched_group_cpus(tmp));
+			activity -= available_of(id);
+			if (cpu == id)
+				activity = 0;
+			while ((activity > 0) && (id < nr_cpu_ids)) {
+				id = cpumask_next(id, sched_group_cpus(tmp));
+				activity -= available_of(id);
+				if (cpu == id)
+					activity = 0;
+			}
+		} else if (cpumask_test_cpu(cpu, sched_group_cpus(tmp))) {
+			id = cpu;
+			activity = 0;
+		} else {
+			activity -= tmp->sgp->power_available;
+		}
+	}
+
+	per_cpu(sd_pack_buddy, cpu) = id;
+}
+
+#endif /* CONFIG_SMP */
 
 #if BITS_PER_LONG == 32
 # define WMULT_CONST	(~0UL)
@@ -1110,8 +1265,7 @@ static inline void update_cfs_shares(struct cfs_rq *cfs_rq)
 }
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 
-/* Only depends on SMP, FAIR_GROUP_SCHED may be removed when useful in lb */
-#if defined(CONFIG_SMP) && defined(CONFIG_FAIR_GROUP_SCHED)
+#ifdef CONFIG_SMP
 /*
  * We choose a half-life close to 1 scheduling period.
  * Note: The tables below are dependent on this value.
@@ -2955,11 +3109,6 @@ static unsigned long target_load(int cpu, int type)
 	return max(rq->cpu_load[type-1], total);
 }
 
-static unsigned long power_of(int cpu)
-{
-	return cpu_rq(cpu)->cpu_power;
-}
-
 static unsigned long cpu_avg_load_per_task(int cpu)
 {
 	struct rq *rq = cpu_rq(cpu);
@@ -3200,13 +3349,16 @@ static struct sched_group *
 find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 		  int this_cpu, int load_idx)
 {
-	struct sched_group *idlest = NULL, *group = sd->groups;
+	struct sched_group *idlest = NULL, *group = sd->groups, *buddy = NULL;
 	unsigned long min_load = ULONG_MAX, this_load = 0;
 	int imbalance = 100 + (sd->imbalance_pct-100)/2;
+	int buddy_cpu = per_cpu(sd_pack_buddy, this_cpu);
+	int get_buddy = ((sysctl_sched_packing_mode == SCHED_PACKING_FULL) &&
+		!(sd->flags & SD_SHARE_POWERDOMAIN) && (buddy_cpu != -1));
 
 	do {
 		unsigned long load, avg_load;
-		int local_group;
+		int local_group, buddy_group = 0;
 		int i;
 
 		/* Skip over this group if it has no CPUs allowed */
@@ -3216,6 +3368,11 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 
 		local_group = cpumask_test_cpu(this_cpu,
 					       sched_group_cpus(group));
+
+		if (get_buddy) {
+			buddy_group = cpumask_test_cpu(buddy_cpu,
+						sched_group_cpus(group));
+		}
 
 		/* Tally up the load of all CPUs in the group */
 		avg_load = 0;
@@ -3228,10 +3385,14 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 				load = target_load(i, load_idx);
 
 			avg_load += load;
+
+			if ((buddy_group) && idle_cpu(i))
+				buddy = group;
 		}
 
 		/* Adjust by relative CPU power of the group */
-		avg_load = (avg_load * SCHED_POWER_SCALE) / group->sgp->power;
+		avg_load = (avg_load * SCHED_POWER_SCALE)
+				/ group->sgp->power_available;
 
 		if (local_group) {
 			this_load = avg_load;
@@ -3240,6 +3401,9 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 			idlest = group;
 		}
 	} while (group = group->next, group != sd->groups);
+
+	if (buddy)
+		return buddy;
 
 	if (!idlest || 100*this_load < imbalance*min_load)
 		return NULL;
@@ -3314,6 +3478,109 @@ done:
 	return target;
 }
 
+static bool is_buddy_busy(int cpu)
+{
+	struct rq *rq = cpu_rq(cpu);
+	u32 sum = rq->avg.runnable_avg_sum;
+	u32 period = rq->avg.runnable_avg_period;
+
+	/*
+	 * If a CPU accesses the runnable_avg_sum and runnable_avg_period
+	 * fields of its buddy CPU while the latter updates it, it can get the
+	 * new version of a field and the old version of the other one. This
+	 * can generate erroneous decisions. We don't want to use a lock
+	 * mechanism for ensuring the coherency because of the overhead in
+	 * this critical path.
+	 * The runnable_avg_period of a runqueue tends to the max value in
+	 * less than 345ms after plugging a CPU, which implies that we could
+	 * use the max value instead of reading runnable_avg_period after
+	 * 345ms. During the starting phase, we must ensure a minimum of
+	 * coherency between the fields. A simple rule is runnable_avg_sum <=
+	 * runnable_avg_period.
+	 */
+	sum = min(sum, period);
+
+	/*
+	 * A busy buddy is a CPU with a high load or a small load with a lot of
+	 * running tasks.
+	 */
+	return (sum > (period / (rq->nr_running + 2)));
+}
+
+static bool is_buddy_full(int cpu)
+{
+	struct rq *rq = cpu_rq(cpu);
+	u32 sum = rq->avg.runnable_avg_sum;
+	u32 period = rq->avg.runnable_avg_period;
+
+	sum = min(sum, period);
+
+	/*
+	 * A full buddy is a CPU with a sum greater or equal to period
+	 * We keep a margin of 2.4%
+	 */
+	return (sum * 1024 >= period * 1000);
+}
+
+static bool is_my_buddy(int cpu, int buddy)
+{
+	int my_buddy = per_cpu(sd_pack_buddy, cpu);
+	return ((sysctl_sched_packing_mode != SCHED_PACKING_FULL) ||
+		(my_buddy == -1) || (buddy == my_buddy));
+}
+
+static bool is_light_task(struct task_struct *p)
+{
+	/* A light task runs less than 20% in average */
+	return ((p->se.avg.runnable_avg_sum  * 5) <
+			(p->se.avg.runnable_avg_period));
+}
+
+static int check_pack_buddy(int cpu, struct task_struct *p)
+{
+	int buddy = per_cpu(sd_pack_buddy, cpu);
+
+	if (sysctl_sched_packing_mode == SCHED_PACKING_NONE)
+		return false;
+
+	/* No pack buddy for this CPU */
+	if (buddy == -1)
+		return false;
+
+	/* buddy is not an allowed CPU */
+	if (!cpumask_test_cpu(buddy, tsk_cpus_allowed(p)))
+		return false;
+
+	/* We agressively pack at wake up */
+	if ((sysctl_sched_packing_mode == SCHED_PACKING_FULL)
+	 && !is_buddy_full(buddy))
+		return true;
+	/*
+	 * If the task is a small one and the buddy is not overloaded,
+	 * we use buddy cpu
+	 */
+	if (is_light_task(p) && !is_buddy_busy(buddy))
+		return true;
+
+	return false;
+}
+
+static int get_cpu_activity(int cpu)
+{
+	struct rq *rq = cpu_rq(cpu);
+	u32 sum = rq->avg.runnable_avg_sum;
+	u32 period = rq->avg.runnable_avg_period;
+
+	sum = min(sum, period);
+
+	if (sum == period) {
+		u32 overload = rq->nr_running > 1 ? 1 : 0;
+		return available_of(cpu) + overload;
+	}
+
+	return (sum * available_of(cpu)) / period;
+}
+
 /*
  * sched_balance_self: balance the current task (running on cpu) in domains
  * that have the 'flag' flag set. In practice, this is SD_BALANCE_FORK and
@@ -3342,6 +3609,10 @@ select_task_rq_fair(struct task_struct *p, int sd_flag, int wake_flags)
 		if (cpumask_test_cpu(cpu, tsk_cpus_allowed(p)))
 			want_affine = 1;
 		new_cpu = prev_cpu;
+
+		/* We pack only at wake up and not new task */
+		if (check_pack_buddy(new_cpu, p))
+			return per_cpu(sd_pack_buddy, new_cpu);
 	}
 
 	rcu_read_lock();
@@ -3416,12 +3687,6 @@ unlock:
 }
 
 /*
- * Load-tracking only depends on SMP, FAIR_GROUP_SCHED dependency below may be
- * removed when useful for applications beyond shares distribution (e.g.
- * load-balance).
- */
-#ifdef CONFIG_FAIR_GROUP_SCHED
-/*
  * Called immediately before a task is migrated to a new cpu; task_cpu(p) and
  * cfs_rq_of(p) references at time of call are still valid and identify the
  * previous cpu.  However, the caller only guarantees p->pi_lock is held; no
@@ -3444,7 +3709,6 @@ migrate_task_rq_fair(struct task_struct *p, int next_cpu)
 		atomic64_add(se->avg.load_avg_contrib, &cfs_rq->removed_load);
 	}
 }
-#endif
 #endif /* CONFIG_SMP */
 
 static unsigned long
@@ -4202,6 +4466,7 @@ struct sd_lb_stats {
 	struct sched_group *busiest; /* Busiest group in this sd */
 	struct sched_group *this;  /* Local group in this sd */
 	unsigned long total_load;  /* Total load of all groups in sd */
+	unsigned long total_activity;  /* Total activity of all groups in sd */
 	unsigned long total_pwr;   /*	Total power of all groups in sd */
 	unsigned long avg_load;	   /* Average load across all groups in sd */
 
@@ -4230,6 +4495,7 @@ struct sd_lb_stats {
 struct sg_lb_stats {
 	unsigned long avg_load; /*Avg load across the CPUs of the group */
 	unsigned long group_load; /* Total load over the CPUs of the group */
+	unsigned long group_activity; /* Total activity of the group */
 	unsigned long sum_nr_running; /* Nr tasks running in the group */
 	unsigned long sum_weighted_load; /* Weighted load of group's tasks */
 	unsigned long group_capacity;
@@ -4349,15 +4615,22 @@ static void update_cpu_power(struct sched_domain *sd, int cpu)
 	if (!power)
 		power = 1;
 
+	cpu_rq(cpu)->cpu_available = power;
+	sdg->sgp->power_available = power;
+
+	if (!is_my_buddy(cpu, cpu))
+		power = 1;
+
 	cpu_rq(cpu)->cpu_power = power;
 	sdg->sgp->power = power;
+
 }
 
 void update_group_power(struct sched_domain *sd, int cpu)
 {
 	struct sched_domain *child = sd->child;
 	struct sched_group *group, *sdg = sd->groups;
-	unsigned long power;
+	unsigned long power, available;
 	unsigned long interval;
 
 	interval = msecs_to_jiffies(sd->balance_interval);
@@ -4369,7 +4642,7 @@ void update_group_power(struct sched_domain *sd, int cpu)
 		return;
 	}
 
-	power = 0;
+	power = available = 0;
 
 	if (child->flags & SD_OVERLAP) {
 		/*
@@ -4379,6 +4652,8 @@ void update_group_power(struct sched_domain *sd, int cpu)
 
 		for_each_cpu(cpu, sched_group_cpus(sdg))
 			power += power_of(cpu);
+			available += available_of(cpu);
+
 	} else  {
 		/*
 		 * !SD_OVERLAP domains can assume that child groups
@@ -4388,11 +4663,13 @@ void update_group_power(struct sched_domain *sd, int cpu)
 		group = child->groups;
 		do {
 			power += group->sgp->power;
+			available += group->sgp->power_available;
 			group = group->next;
 		} while (group != child->groups);
 	}
 
-	sdg->sgp->power_orig = sdg->sgp->power = power;
+	sdg->sgp->power_orig = sdg->sgp->power_available = available;
+	sdg->sgp->power = power;
 }
 
 /*
@@ -4455,8 +4732,8 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 
 		/* Bias balancing toward cpus of our domain */
 		if (local_group) {
-			if (idle_cpu(i) && !first_idle_cpu &&
-					cpumask_test_cpu(i, sched_group_mask(group))) {
+			if (is_my_buddy(i, i) && idle_cpu(i) && !first_idle_cpu
+			 && cpumask_test_cpu(i, sched_group_mask(group))) {
 				first_idle_cpu = 1;
 				balance_cpu = i;
 			}
@@ -4473,9 +4750,13 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 				max_nr_running = nr_running;
 			if (min_nr_running > nr_running)
 				min_nr_running = nr_running;
+
+			if (!is_my_buddy(i, i) && nr_running > 0)
+				sgs->group_imb = 1;
 		}
 
 		sgs->group_load += load;
+		sgs->group_activity += get_cpu_activity(i);
 		sgs->sum_nr_running += nr_running;
 		sgs->sum_weighted_load += weighted_cpuload(i);
 		if (idle_cpu(i))
@@ -4569,6 +4850,26 @@ static bool update_sd_pick_busiest(struct lb_env *env,
 	return false;
 }
 
+static void update_plb_buddy(int cpu, int *balance, struct sd_lb_stats *sds,
+		struct sched_domain *sd)
+{
+	int buddy;
+
+	if (sysctl_sched_packing_mode != SCHED_PACKING_FULL)
+		return;
+
+	/* Update my buddy */
+	if (sd == per_cpu(sd_pack_domain, cpu))
+		update_packing_buddy(cpu, sds->total_activity);
+
+	/* Get my new buddy */
+	buddy = per_cpu(sd_pack_buddy, cpu);
+
+	/* This CPU doesn't act for agressive packing */
+	if (buddy != cpu)
+		sds->busiest = 0;
+}
+
 /**
  * update_sd_lb_stats - Update sched_domain's statistics for load balancing.
  * @env: The load balancing environment.
@@ -4599,6 +4900,7 @@ static inline void update_sd_lb_stats(struct lb_env *env,
 			return;
 
 		sds->total_load += sgs.group_load;
+		sds->total_activity += sgs.group_activity;
 		sds->total_pwr += sg->sgp->power;
 
 		/*
@@ -4635,6 +4937,8 @@ static inline void update_sd_lb_stats(struct lb_env *env,
 
 		sg = sg->next;
 	} while (sg != env->sd->groups);
+
+	update_plb_buddy(env->dst_cpu, balance, sds, env->sd);
 }
 
 /**
@@ -5370,7 +5674,26 @@ static struct {
 
 static inline int find_new_ilb(int call_cpu)
 {
+	struct sched_domain *sd;
 	int ilb = cpumask_first(nohz.idle_cpus_mask);
+	int buddy = per_cpu(sd_pack_buddy, call_cpu);
+
+	/*
+	 * If we have a pack buddy CPU, we try to run load balance on a CPU
+	 * that is close to the buddy.
+	 */
+	if (buddy != -1) {
+		for_each_domain(buddy, sd) {
+			if (sd->flags & SD_SHARE_CPUPOWER)
+				continue;
+
+			ilb = cpumask_first_and(sched_domain_span(sd),
+					nohz.idle_cpus_mask);
+
+			if (ilb < nr_cpu_ids)
+				break;
+		}
+	}
 
 	if (ilb < nr_cpu_ids && idle_cpu(ilb))
 		return ilb;
@@ -5616,6 +5939,26 @@ end:
 	clear_bit(NOHZ_BALANCE_KICK, nohz_flags(this_cpu));
 }
 
+static int check_nohz_buddy(int cpu)
+{
+	int buddy = per_cpu(sd_pack_buddy, cpu);
+
+	if (sysctl_sched_packing_mode != SCHED_PACKING_FULL)
+		return false;
+
+	/* No pack buddy for this CPU */
+	if (buddy == -1)
+		return false;
+
+	if (is_buddy_full(buddy))
+		return false;
+
+	if (cpumask_test_cpu(buddy, nohz.idle_cpus_mask))
+		return true;
+
+	return false;
+}
+
 /*
  * Current heuristic for kicking the idle load balancer in the presence
  * of an idle cpu is the system.
@@ -5651,6 +5994,10 @@ static inline int nohz_kick_needed(struct rq *rq, int cpu)
 		return 0;
 
 	if (rq->nr_running >= 2)
+		goto need_kick;
+
+	/* the buddy is idle and not busy so we can pack */
+	if (check_nohz_buddy(cpu))
 		goto need_kick;
 
 	rcu_read_lock();
@@ -6146,9 +6493,8 @@ const struct sched_class fair_sched_class = {
 
 #ifdef CONFIG_SMP
 	.select_task_rq		= select_task_rq_fair,
-#ifdef CONFIG_FAIR_GROUP_SCHED
 	.migrate_task_rq	= migrate_task_rq_fair,
-#endif
+
 	.rq_online		= rq_online_fair,
 	.rq_offline		= rq_offline_fair,
 
