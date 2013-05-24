@@ -15,7 +15,7 @@
 	model = "V2P-CA15_CA7";
 	arm,hbi = <0x249>;
 	arm,vexpress,site = <0xf>;
-	compatible = "arm,vexpress,v2p-ca15_a7", "arm,vexpress", "arm,generic";
+	compatible = "arm,vexpress,v2p-ca15,tc2", "arm,vexpress,v2p-ca15", "arm,vexpress", "arm,generic";
 	interrupt-parent = <&gic>;
 	#address-cells = <2>;
 	#size-cells = <2>;
@@ -77,6 +77,26 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 
+		cpu0: cpu@0 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a15";
+			reg = <0>;
+			cluster = <&cluster0>;
+			core = <&core0>;
+			clock-frequency = <1000000000>;
+			cci-control-port = <&cci_control1>;
+		};
+
+		cpu1: cpu@1 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a15";
+			reg = <1>;
+			cluster = <&cluster0>;
+			core = <&core1>;
+			clock-frequency = <1000000000>;
+			cci-control-port = <&cci_control1>;
+		};
+
 		cpu2: cpu@2 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a7";
@@ -106,26 +126,6 @@
 			clock-frequency = <800000000>;
 			cci-control-port = <&cci_control2>;
 		};
-
-		cpu0: cpu@0 {
-			device_type = "cpu";
-			compatible = "arm,cortex-a15";
-			reg = <0>;
-			cluster = <&cluster0>;
-			core = <&core0>;
-			clock-frequency = <1000000000>;
-			cci-control-port = <&cci_control1>;
-		};
-
-		cpu1: cpu@1 {
-			device_type = "cpu";
-			compatible = "arm,cortex-a15";
-			reg = <1>;
-			cluster = <&cluster0>;
-			core = <&core1>;
-			clock-frequency = <1000000000>;
-			cci-control-port = <&cci_control1>;
-		};
 	};
 
 	memory@80000000 {
@@ -149,6 +149,12 @@
 		framebuffer = <0 0xff000000 0 0x01000000>;
 		clocks = <&oscclk5>;
 		clock-names = "pxlclk";
+	};
+
+	spc@7fff0000 {
+		compatible = "arm,spc";
+		reg = <0 0x7FFF0000 0 0x1000>;
+		interrupts = <0 95 4>;
 	};
 
 	memory-controller@2b0a0000 {
@@ -247,12 +253,6 @@
 		clock-names = "apb_pclk";
 	};
 
-	spc@7fff0000 {
-		compatible = "arm,spc";
-		reg = <0 0x7fff0000 0 0x1000>;
-		interrupts = <0 95 4>;
-	};
-
 	timer {
 		compatible = "arm,armv7-timer";
 		interrupts = <1 13 0xf08>,
@@ -285,12 +285,12 @@
 	};
 
 	psci {
-		compatible      = "arm,psci";
-		method          = "smc";
-		cpu_suspend     = <0x80100001>;
-		cpu_off         = <0x80100002>;
-		cpu_on          = <0x80100003>;
-		migrate         = <0x80100004>;
+		compatible	= "arm,psci";
+		method		= "smc";
+		cpu_suspend	= <0x80100001>;
+		cpu_off		= <0x80100002>;
+		cpu_on		= <0x80100003>;
+		migrate		= <0x80100004>;
 	};
 
 	arm_pvt@7fff0300 {

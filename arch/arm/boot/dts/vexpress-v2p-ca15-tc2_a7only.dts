@@ -15,7 +15,7 @@
 	model = "V2P-CA15_CA7";
 	arm,hbi = <0x249>;
 	arm,vexpress,site = <0xf>;
-	compatible = "arm,vexpress,v2p-ca15_a7", "arm,vexpress", "arm,generic";
+	compatible = "arm,vexpress,v2p-ca15,tc2", "arm,vexpress,v2p-ca15", "arm,vexpress", "arm,generic";
 	interrupt-parent = <&gic>;
 	#address-cells = <2>;
 	#size-cells = <2>;
@@ -106,26 +106,6 @@
 			clock-frequency = <800000000>;
 			cci-control-port = <&cci_control2>;
 		};
-
-		cpu0: cpu@0 {
-			device_type = "cpu";
-			compatible = "arm,cortex-a15";
-			reg = <0>;
-			cluster = <&cluster0>;
-			core = <&core0>;
-			clock-frequency = <1000000000>;
-			cci-control-port = <&cci_control1>;
-		};
-
-		cpu1: cpu@1 {
-			device_type = "cpu";
-			compatible = "arm,cortex-a15";
-			reg = <1>;
-			cluster = <&cluster0>;
-			core = <&core1>;
-			clock-frequency = <1000000000>;
-			cci-control-port = <&cci_control1>;
-		};
 	};
 
 	memory@80000000 {
@@ -151,51 +131,10 @@
 		clock-names = "pxlclk";
 	};
 
-	memory-controller@2b0a0000 {
-		compatible = "arm,pl341", "arm,primecell";
-		reg = <0 0x2b0a0000 0 0x1000>;
-		clocks = <&oscclk6a>;
-		clock-names = "apb_pclk";
-	};
-
-	gic: interrupt-controller@2c001000 {
-		compatible = "arm,cortex-a15-gic", "arm,cortex-a9-gic";
-		#interrupt-cells = <3>;
-		#address-cells = <0>;
-		interrupt-controller;
-		reg = <0 0x2c001000 0 0x1000>,
-		      <0 0x2c002000 0 0x1000>,
-		      <0 0x2c004000 0 0x2000>,
-		      <0 0x2c006000 0 0x2000>;
-		interrupts = <1 9 0xf04>;
-
-		gic-cpuif@0 {
-			compatible = "arm,gic-cpuif";
-			cpuif-id = <0>;
-			cpu = <&cpu0>;
-		};
-		gic-cpuif@1 {
-			compatible = "arm,gic-cpuif";
-			cpuif-id = <1>;
-			cpu = <&cpu1>;
-		};
-		gic-cpuif@2 {
-			compatible = "arm,gic-cpuif";
-			cpuif-id = <2>;
-			cpu = <&cpu2>;
-		};
-
-		gic-cpuif@3 {
-			compatible = "arm,gic-cpuif";
-			cpuif-id = <3>;
-			cpu = <&cpu3>;
-		};
-
-		gic-cpuif@4 {
-			compatible = "arm,gic-cpuif";
-			cpuif-id = <4>;
-			cpu = <&cpu4>;
-		};
+	spc@7fff0000 {
+		compatible = "arm,spc";
+		reg = <0 0x7FFF0000 0 0x1000>;
+		interrupts = <0 95 4>;
 	};
 
 	cci@2c090000 {
@@ -226,6 +165,43 @@
 			     <0 105 4>;
 	};
 
+	memory-controller@2b0a0000 {
+		compatible = "arm,pl341", "arm,primecell";
+		reg = <0 0x2b0a0000 0 0x1000>;
+		clocks = <&oscclk6a>;
+		clock-names = "apb_pclk";
+	};
+
+	gic: interrupt-controller@2c001000 {
+		compatible = "arm,cortex-a15-gic", "arm,cortex-a9-gic";
+		#interrupt-cells = <3>;
+		#address-cells = <0>;
+		interrupt-controller;
+		reg = <0 0x2c001000 0 0x1000>,
+		      <0 0x2c002000 0 0x1000>,
+		      <0 0x2c004000 0 0x2000>,
+		      <0 0x2c006000 0 0x2000>;
+		interrupts = <1 9 0xf04>;
+
+		gic-cpuif@2 {
+			compatible = "arm,gic-cpuif";
+			cpuif-id = <2>;
+			cpu = <&cpu2>;
+		};
+
+		gic-cpuif@3 {
+			compatible = "arm,gic-cpuif";
+			cpuif-id = <3>;
+			cpu = <&cpu3>;
+		};
+
+		gic-cpuif@4 {
+			compatible = "arm,gic-cpuif";
+			cpuif-id = <4>;
+			cpu = <&cpu4>;
+		};
+	};
+
 	memory-controller@7ffd0000 {
 		compatible = "arm,pl354", "arm,primecell";
 		reg = <0 0x7ffd0000 0 0x1000>;
@@ -245,12 +221,6 @@
 			     <0 91 4>;
 		clocks = <&oscclk6a>;
 		clock-names = "apb_pclk";
-	};
-
-	spc@7fff0000 {
-		compatible = "arm,spc";
-		reg = <0 0x7fff0000 0 0x1000>;
-		interrupts = <0 95 4>;
 	};
 
 	timer {
@@ -285,29 +255,12 @@
 	};
 
 	psci {
-		compatible      = "arm,psci";
-		method          = "smc";
-		cpu_suspend     = <0x80100001>;
-		cpu_off         = <0x80100002>;
-		cpu_on          = <0x80100003>;
-		migrate         = <0x80100004>;
-	};
-
-	arm_pvt@7fff0300 {
-		compatible = "arm,arm-pvt";
-		reg = <0 0x7fff0300 0 0x001c>;
-
-		trip-point0 {
-			temp = <60000>;
-			type = "active";
-			cdev0 {
-				cluster = <&cluster0>;
-			};
-		};
-		trip-point1 {
-			temp = <65000>;
-			type = "critical";
-		};
+		compatible	= "arm,psci";
+		method		= "smc";
+		cpu_suspend	= <0x80100001>;
+		cpu_off		= <0x80100002>;
+		cpu_on		= <0x80100003>;
+		migrate		= <0x80100004>;
 	};
 
 	dcc {
