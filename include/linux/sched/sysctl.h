@@ -44,6 +44,14 @@ enum sched_tunable_scaling {
 };
 extern enum sched_tunable_scaling sysctl_sched_tunable_scaling;
 
+enum sched_tunable_packing {
+	SCHED_PACKING_NONE,
+	SCHED_PACKING_DEFAULT,
+	SCHED_PACKING_FULL,
+};
+
+extern enum sched_tunable_packing __read_mostly sysctl_sched_packing_mode;
+
 extern unsigned int sysctl_numa_balancing_scan_delay;
 extern unsigned int sysctl_numa_balancing_scan_period_min;
 extern unsigned int sysctl_numa_balancing_scan_period_max;

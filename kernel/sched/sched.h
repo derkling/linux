@@ -260,13 +260,6 @@ struct cfs_rq {
 	unsigned int nr_spread_over;
 #endif
 
-#ifdef CONFIG_SMP
-/*
- * Load-tracking only depends on SMP, FAIR_GROUP_SCHED dependency below may be
- * removed when useful for applications beyond shares distribution (e.g.
- * load-balance).
- */
-#ifdef CONFIG_FAIR_GROUP_SCHED
 	/*
 	 * CFS Load tracking
 	 * Under CFS, load is tracked on a per-entity basis and aggregated up.
@@ -276,13 +269,13 @@ struct cfs_rq {
 	u64 runnable_load_avg, blocked_load_avg;
 	atomic64_t decay_counter, removed_load;
 	u64 last_decay;
-#endif /* CONFIG_FAIR_GROUP_SCHED */
-/* These always depend on CONFIG_FAIR_GROUP_SCHED */
+
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	u32 tg_runnable_contrib;
 	u64 tg_load_contrib;
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 
+#ifdef CONFIG_SMP
 	/*
 	 *   h_load = weight * f(tg)
 	 *
@@ -457,6 +450,7 @@ struct rq {
 	struct sched_domain *sd;
 
 	unsigned long cpu_power;
+	unsigned long cpu_available;
 
 	unsigned char idle_balance;
 	/* For active balancing */
@@ -590,7 +584,7 @@ struct sched_group_power {
 	 * CPU power of this group, SCHED_LOAD_SCALE being max power for a
 	 * single CPU.
 	 */
-	unsigned int power, power_orig;
+	unsigned int power, power_orig, power_available;
 	unsigned long next_update;
 	/*
 	 * Number of busy cpus in this group.
@@ -1027,6 +1021,7 @@ extern void update_group_power(struct sched_domain *sd, int cpu);
 
 extern void trigger_load_balance(struct rq *rq, int cpu);
 extern void idle_balance(int this_cpu, struct rq *this_rq);
+extern void update_packing_domain(int cpu);
 
 /*
  * Only depends on SMP, FAIR_GROUP_SCHED may be removed when runnable_avg
@@ -1043,6 +1038,10 @@ static inline void idle_exit_fair(struct rq *this_rq) {}
 #else	/* CONFIG_SMP */
 
 static inline void idle_balance(int cpu, struct rq *rq)
+{
+}
+
+static inline void update_packing_domain(int cpu)
 {
 }
 

@@ -265,6 +265,8 @@ static int max_wakeup_granularity_ns = NSEC_PER_SEC;	/* 1 second */
 #ifdef CONFIG_SMP
 static int min_sched_tunable_scaling = SCHED_TUNABLESCALING_NONE;
 static int max_sched_tunable_scaling = SCHED_TUNABLESCALING_END-1;
+static int min_sched_packing_mode = SCHED_PACKING_NONE;
+static int max_sched_packing_mode = SCHED_PACKING_FULL-1;
 #endif /* CONFIG_SMP */
 #endif /* CONFIG_SCHED_DEBUG */
 
@@ -281,6 +283,17 @@ static struct ctl_table kern_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
 	},
+#ifdef CONFIG_SMP
+	{
+		.procname	= "sched_packing_mode",
+		.data		= &sysctl_sched_packing_mode,
+		.maxlen		= sizeof(enum sched_tunable_packing),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+		.extra1		= &min_sched_packing_mode,
+		.extra2		= &max_sched_packing_mode,
+	},
+#endif
 #ifdef CONFIG_SCHED_DEBUG
 	{
 		.procname	= "sched_min_granularity_ns",
