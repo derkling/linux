@@ -113,6 +113,7 @@ unsigned int __read_mostly sysctl_sched_shares_window = 10000000UL;
 unsigned int sysctl_sched_cfs_bandwidth_slice = 5000UL;
 #endif
 
+
 /*
  * Increase the granularity value when there are more CPUs,
  * because with more CPUs the 'effective latency' as visible
@@ -168,6 +169,32 @@ void sched_init_granularity(void)
  * The value -1 is used when no buddy has been found
  */
 DEFINE_PER_CPU(int, sd_pack_buddy);
+
+/*
+ * The packing tlevel of the scheduler
+ *
+ * This level define the activity % above which we should add another CPU to
+ * participate to the packing effort of the tasks
+ */
+#define DEFAULT_PACKING_LEVEL 30
+int __read_mostly sysctl_sched_packing_level = DEFAULT_PACKING_LEVEL;
+
+unsigned int sd_pack_threshold = (100 * 1024) / DEFAULT_PACKING_LEVEL;
+
+
+int sched_proc_update_packing(struct ctl_table *table, int write,
+		void __user *buffer, size_t *lenp,
+		loff_t *ppos)
+{
+	int ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+	if (ret || !write)
+		return ret;
+
+	if (sysctl_sched_packing_level)
+		sd_pack_threshold = (100 * 1024) / sysctl_sched_packing_level;
+
+	return 0;
+}
 
 static inline bool is_packing_cpu(int cpu)
 {
