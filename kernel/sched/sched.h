@@ -1022,6 +1022,11 @@ extern void update_group_power(struct sched_domain *sd, int cpu);
 
 extern void trigger_load_balance(struct rq *rq, int cpu);
 extern void idle_balance(int this_cpu, struct rq *this_rq);
+#ifdef CONFIG_SCHED_PACKING_TASKS
+extern void update_packing_domain(int cpu);
+#else
+static inline void update_packing_domain(int cpu) {};
+#endif
 
 extern void idle_enter_fair(struct rq *this_rq);
 extern void idle_exit_fair(struct rq *this_rq);
