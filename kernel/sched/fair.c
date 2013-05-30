@@ -4138,11 +4138,11 @@ static int tg_load_down(struct task_group *tg, void *data)
 	long cpu = (long)data;
 
 	if (!tg->parent) {
-		load = cpu_rq(cpu)->load.weight;
+		load = cpu_rq(cpu)->avg.load_avg_contrib;
 	} else {
 		load = tg->parent->cfs_rq[cpu]->h_load;
-		load *= tg->se[cpu]->load.weight;
-		load /= tg->parent->cfs_rq[cpu]->load.weight + 1;
+		load *= tg->se[cpu]->avg.load_avg_contrib;
+		load /= tg->parent->cfs_rq[cpu]->runnable_load_avg + 1;
 	}
 
 	tg->cfs_rq[cpu]->h_load = load;
@@ -4170,8 +4170,8 @@ static unsigned long task_h_load(struct task_struct *p)
 	struct cfs_rq *cfs_rq = task_cfs_rq(p);
 	unsigned long load;
 
-	load = p->se.load.weight;
-	load = div_u64(load * cfs_rq->h_load, cfs_rq->load.weight + 1);
+	load = p->se.avg.load_avg_contrib;
+	load = div_u64(load * cfs_rq->h_load, cfs_rq->runnable_load_avg + 1);
 
 	return load;
 }
