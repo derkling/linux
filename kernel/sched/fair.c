@@ -179,6 +179,11 @@ void sched_init_granularity(void)
 }
 
 #ifdef CONFIG_SMP
+static unsigned long available_of(int cpu)
+{
+	return cpu_rq(cpu)->cpu_available;
+}
+
 #ifdef CONFIG_SCHED_PACKING_TASKS
 /*
  * Save the id of the optimal CPU that should be used to pack small tasks
@@ -3549,6 +3554,22 @@ done:
 	return target;
 }
 
+static int get_cpu_activity(int cpu)
+{
+	struct rq *rq = cpu_rq(cpu);
+	u32 sum = rq->avg.runnable_avg_sum;
+	u32 period = rq->avg.runnable_avg_period;
+
+	sum = min(sum, period);
+
+	if (sum == period) {
+		u32 overload = rq->nr_running > 1 ? 1 : 0;
+		return available_of(cpu) + overload;
+	}
+
+	return (sum * available_of(cpu)) / period;
+}
+
 /*
  * sched_balance_self: balance the current task (running on cpu) in domains
  * that have the 'flag' flag set. In practice, this is SD_BALANCE_FORK and
@@ -4430,6 +4451,7 @@ struct sg_lb_stats {
 	unsigned long sum_weighted_load; /* Weighted load of group's tasks */
 	unsigned long load_per_task;
 	unsigned long group_power;
+	unsigned long group_activity; /* Total activity of the group */
 	unsigned int sum_nr_running; /* Nr tasks running in the group */
 	unsigned int group_capacity;
 	unsigned int idle_cpus;
@@ -4446,6 +4468,7 @@ struct sd_lb_stats {
 	struct sched_group *busiest;	/* Busiest group in this sd */
 	struct sched_group *local;	/* Local group in this sd */
 	unsigned long total_load;	/* Total load of all groups in sd */
+	unsigned long total_activity;  /* Total activity of all groups in sd */
 	unsigned long total_pwr;	/* Total power of all groups in sd */
 	unsigned long avg_load;	/* Average load across all groups in sd */
 
@@ -4465,6 +4488,7 @@ static inline void init_sd_lb_stats(struct sd_lb_stats *sds)
 		.busiest = NULL,
 		.local = NULL,
 		.total_load = 0UL,
+		.total_activity = 0UL,
 		.total_pwr = 0UL,
 		.busiest_stat = {
 			.avg_load = 0UL,
@@ -4771,6 +4795,7 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 		}
 
 		sgs->group_load += load;
+		sgs->group_activity += get_cpu_activity(i);
 		sgs->sum_nr_running += nr_running;
 		sgs->sum_weighted_load += weighted_cpuload(i);
 		if (idle_cpu(i))
@@ -4894,6 +4919,7 @@ static inline void update_sd_lb_stats(struct lb_env *env,
 
 		/* Now, start updating sd_lb_stats */
 		sds->total_load += sgs->group_load;
+		sds->total_activity += sgs->group_activity;
 		sds->total_pwr += sgs->group_power;
 
 		if (!local_group && update_sd_pick_busiest(env, sds, sg, sgs)) {
