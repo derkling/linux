@@ -242,6 +242,8 @@ void update_packing_domain(int cpu)
 			goto end;
 	}
 
+
+
 	while (sd && (sd->flags & SD_LOAD_BALANCE)
 		&& !(sd->flags & SD_SHARE_POWERDOMAIN)) {
 		struct sched_group *sg = sd->groups;
@@ -3559,6 +3561,22 @@ static int get_cpu_activity(int cpu)
 	return (sum * available_of(cpu)) / period;
 }
 
+static int get_cpu_load(int cpu)
+{
+	struct rq *rq = cpu_rq(cpu);
+	u32 sum = rq->avg.runnable_avg_sum;
+	u32 period = rq->avg.runnable_avg_period;
+
+	sum = min(sum, period);
+
+	if (sum == period) {
+		u32 overload = rq->nr_running > 1 ? 1 : 0;
+		return SCHED_POWER_SCALE + overload;
+	}
+
+	return (sum * SCHED_POWER_SCALE) / period;
+}
+
 /*
  * sched_balance_self: balance the current task (running on cpu) in domains
  * that have the 'flag' flag set. In practice, this is SD_BALANCE_FORK and
@@ -4686,7 +4704,7 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 {
 	unsigned long nr_running, max_nr_running, min_nr_running;
 	unsigned long load, max_cpu_load, min_cpu_load;
-	unsigned int balance_cpu = -1, first_idle_cpu = 0;
+	unsigned int balance_cpu = -1, first_idle_cpu = 0, overloaded_cpu = 0;
 	unsigned long avg_load_per_task = 0;
 	int i;
 
@@ -4728,6 +4746,11 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 
 			if (!is_packing_cpu(i) && nr_running > 0)
 				sgs->group_imb = 1;
+
+			if (((available_of(i)*env->sd->imbalance_pct) < (available_of(env->dst_cpu)*100))
+			 && (get_cpu_load(i) > available_of(i))
+			 && (get_cpu_load(i) > get_cpu_load(env->dst_cpu)))
+				overloaded_cpu = 1;
 		}
 
 		sgs->group_load += load;
@@ -4772,6 +4795,13 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 
 	if ((max_cpu_load - min_cpu_load) >= avg_load_per_task &&
 	    (max_nr_running - min_nr_running) > 1)
+		sgs->group_imb = 1;
+
+	/*
+	 * The load contrib of a CPU exceeds its capacity, we should try to
+	 * find a better CPU with more capacity
+	 */
+	if (overloaded_cpu)
 		sgs->group_imb = 1;
 
 	sgs->group_capacity = DIV_ROUND_CLOSEST(group->sgp->power,
@@ -5212,6 +5242,7 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 				     struct sched_group *group)
 {
 	struct rq *busiest = NULL, *rq;
+	struct rq *overloaded = NULL;
 	unsigned long max_load = 0;
 	int i;
 
@@ -5229,6 +5260,17 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 
 		rq = cpu_rq(i);
 		wl = weighted_cpuload(i);
+
+		/*
+		 * If the task requires more power than the current CPU
+		 * capacity and the dst_cpu has more capacity, keep the
+		 * dst_cpu in mind
+		 */
+		if (((available_of(i)*env->sd->imbalance_pct) < (available_of(env->dst_cpu))*100)
+		 && (get_cpu_load(i) > available_of(i))
+		 && (get_cpu_activity(i) > get_cpu_activity(env->dst_cpu)))
+			overloaded = rq;
+
 
 		/*
 		 * When comparing with imbalance, use weighted_cpuload()
@@ -5250,6 +5292,9 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 			busiest = rq;
 		}
 	}
+
+	if (!busiest)
+		busiest = overloaded;
 
 	return busiest;
 }
@@ -5277,6 +5322,9 @@ static int need_active_balance(struct lb_env *env)
 		if ((sd->flags & SD_ASYM_PACKING) && env->src_cpu > env->dst_cpu)
 			return 1;
 	}
+
+	if ((power_of(env->src_cpu)*sd->imbalance_pct) < (power_of(env->dst_cpu)*100))
+		return 1;
 
 	return unlikely(sd->nr_balance_failed > sd->cache_nice_tries+2);
 }
@@ -5955,6 +6003,10 @@ static inline int nohz_kick_needed(struct rq *rq, int cpu)
 
 	/* This cpu doesn't contribute to packing effort or is overloaded */
 	if (check_nohz_packing(cpu))
+		goto need_kick;
+
+	/* load contrib is higher than cpu capacity */
+	if (get_cpu_load(cpu) > available_of(cpu))
 		goto need_kick;
 
 	rcu_read_lock();
