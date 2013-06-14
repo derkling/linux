@@ -103,6 +103,8 @@
 #define ATR_PCIE_WIN0		0x600
 #define ATR_AXI4_SLV0		0x800
 #define ATR_TBL_1		0x0
+#define ATR_TBL_2		0x20
+#define ATR_TBL_3		0x40
 #define ATR_TBL_SIZE		0x20
 #define ATR_SRC_ADDR_LWR	0x0
 #define ATR_SRC_ADDR_UPR	0x4

@@ -51,7 +51,7 @@ static int __init pcibios_init(void)
 	return 0;
 }
 
-subsys_initcall(pcibios_init);
+subsys_initcall_sync(pcibios_init);
 
 static int pcibios_map_phb_io_space(struct pci_controller *hose)
 {
@@ -80,6 +80,7 @@ static int pcibios_map_phb_io_space(struct pci_controller *hose)
 	area = __get_vm_area(size_page, 0, _IO_BASE, _IO_END);
 	if (area == NULL)
 		return -ENOMEM;
+
 	hose->io_base_alloc = area->addr;
 	hose->io_base_virt = (void __iomem *)(area->addr +
 					      hose->io_base_phys - phys_page);
@@ -91,8 +92,8 @@ static int pcibios_map_phb_io_space(struct pci_controller *hose)
 		 hose->pci_io_size, size_page);
 
 	/* Establish the mapping */
-	if (ioremap_page_range(area->addr, (area->addr + size_page), phys_page,
-			 __pgprot(PROT_DEVICE_nGnRE)) == NULL)
+	if (ioremap_page_range((unsigned long)area->addr, area->addr + size_page, phys_page,
+			 __pgprot(PROT_DEVICE_nGnRE)) != 0)
 		return -ENOMEM;
 
 	/* Fixup hose IO resource */

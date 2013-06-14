@@ -53,6 +53,7 @@ struct pci_controller *pcibios_alloc_controller(struct device_node *dev)
 	phb = kzalloc(sizeof(struct pci_controller), GFP_KERNEL | __GFP_ZERO);
 	if (phb == NULL)
 		return NULL;
+
 	spin_lock(&hose_spinlock);
 	phb->global_number = global_phb_number++;
 	list_add_tail(&phb->list_node, &hose_list);
@@ -362,9 +363,6 @@ void pcibios_setup_bus_devices(struct pci_bus *bus)
 		 */
 		set_dev_node(&dev->dev, pcibus_to_node(dev->bus));
 	
-		/* Hook up default DMA ops */
-		set_dma_ops(&dev->dev, &noncoherent_swiotlb_dma_ops);	
-
 		/* Read default IRQs and fixup if necessary */
 		pci_read_irq_line(dev);
 	}

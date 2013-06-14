@@ -116,7 +116,11 @@ static void xr3pci_update_ats_entry(void __iomem *base, int entry,
 			resource_size_t src_addr, resource_size_t trsl_addr,
 			int trsl_param, int exp)
 {
+	pr_info(" 0x%x.%d: 0x%016llx -> 0x%016llx (2^%d bytes)\n", base, entry,
+		src_addr, trsl_addr, exp+1);
+
 	writel(src_addr | (exp << 1) | 0x1, base + (entry * ATR_TBL_SIZE) + ATR_SRC_ADDR_LWR);
+
 	writel(trsl_addr, base + (entry * ATR_TBL_SIZE) + ATR_TRSL_ADDR_LWR);
 	writel(trsl_param, base + (entry * ATR_TBL_SIZE) + ATR_TRSL_PARAM);
 
@@ -126,47 +130,53 @@ static void xr3pci_update_ats_entry(void __iomem *base, int entry,
 #endif
 }
 
+static void xr3pci_update_ats_for_resource(struct xr3pci_port *pp,
+		struct resource *res, struct pci_controller *hose, int *ats_x)
+{
+	int exp;
+	resource_size_t size;
+
+	if (!(res->flags & IORESOURCE_MEM || res->flags & IORESOURCE_IO)) 
+		return;
+
+	size = resource_size(res);
+	exp = ilog2(size) - 1;
+
+	if (res->flags & IORESOURCE_MEM)
+		xr3pci_update_ats_entry(pp->base + ATR_AXI4_SLV0, *ats_x,
+			res->start, 
+			res->start - hose->pci_mem_offset,
+			0, exp);
+	else if (res->flags & IORESOURCE_IO)
+		xr3pci_update_ats_entry(pp->base + ATR_AXI4_SLV0, *ats_x,
+			hose->io_base_phys,
+			res->start, 
+			0x20000, res);
+
+	(*ats_x)++;
+}
+
 static int xr3pci_setup_ats(struct xr3pci_port *pp, struct pci_controller *hose)
 {
-	int x, exp, ats_x = 1;
-	resource_size_t size;
+	int x, ats_x = 1;
 
 	/* 1:1 mapping for inbound PCIe transactions to AXI slave 0 */
 	xr3pci_update_ats_entry(pp->base + ATR_PCIE_WIN0, ATR_TBL_1,
-						0x0, 0x0, 0x4, 0x3f);
+						0x0, 0x0, 0x30004, 0x3f);
 
-	pr_info(DEVICE_NAME " ATR:\n");
-	pr_info(" PCIE_WIN0.1: 0x%016x -> 0x%016x (16 EB)\n", 0, 0);
+	pr_info("ATR:\n");
 
+	/* mappings for memory space */
 	for (x=0;x<3;x++) {
-		if (!(hose->mem_resources[x].flags & IORESOURCE_MEM))
-			continue;
-
-		size = resource_size(&hose->mem_resources[x]);
-		exp = find_first_bit(&size, sizeof(resource_size_t)) - 1;
-
-		pr_info(" AXI4_SLV0.%d: 0x%016llx -> 0x%016llx (%d bytes)\n", ats_x,
-				hose->mem_resources[x].start, hose->mem_resources[x].start,
-				2 << exp);
-		
-		xr3pci_update_ats_entry(pp->base + ATR_AXI4_SLV0, ats_x,
-			hose->mem_resources[x].start,
-			hose->mem_resources[x].start, 0x0, exp);
-
-		ats_x++;
+		xr3pci_update_ats_for_resource(pp, &hose->mem_resources[x], hose, &ats_x);
 	}
 
+	/* mapping for I/O space */
+	xr3pci_update_ats_for_resource(pp, &hose->io_resource, hose, &ats_x);
 
 	return 0;
 }
 
-static int xr3pci_setup_int(struct xr3pci_port *pp)
-{
-	/* Enable IRQs for MSIs and legacy interrupts */
-	writel(INT_MSI | INT_INTX, pp->base + IMASK_LOCAL);
-
-	return 0;
-}
 
 static int xr3pci_get_resources(struct xr3pci_port *pp, struct device_node *np)
 {
@@ -271,13 +281,10 @@ int __init xr3pci_setup(struct pci_controller *hose)
 	if (xr3pci_get_resources(pp, np))
 		goto err;
 
-	if (xr3pci_check_device(pp))
-		goto err;
-
-	if (xr3pci_setup_int(pp))
-		goto err;
-
 	if (xr3pci_setup_ats(pp, hose))
+		goto err;
+
+	if (xr3pci_check_device(pp))
 		goto err;
 
 	return 0;
@@ -301,7 +308,7 @@ static int __init xr3pci_probe(struct platform_device *pdev)
 	int len;
 	struct device_node *dev;
 	struct pci_controller *hose;
-	const int *bus_range;
+	const u32 *bus_range;
 
 	dev = pdev->dev.of_node;
 
@@ -311,7 +318,7 @@ static int __init xr3pci_probe(struct platform_device *pdev)
 	}
 
 	bus_range = of_get_property(dev, "bus-range", &len);
-	if (bus_range == NULL || len < 2 * sizeof(int))
+	if (bus_range == NULL || len != 8)
 		pr_warn("Can't get bus-range for %s, assume bus 0\n",
 				dev->full_name);
 
@@ -319,15 +326,20 @@ static int __init xr3pci_probe(struct platform_device *pdev)
 	if (!hose)
 		return -ENOMEM;
 
-	hose->first_busno = bus_range ? bus_range[0] : 0;
-	hose->last_busno = bus_range ? bus_range[1] : 0xff;
+	hose->first_busno = bus_range ? be32_to_cpup(&bus_range[0]) : 0;
+	hose->last_busno = bus_range ? be32_to_cpup(&bus_range[1]) : 0xff;
 
 	hose->ops = &xr3pci_ops;
 	hose->parent = &pdev->dev;
 
 	pci_process_bridge_OF_ranges(hose, dev, 1);
 
-	return xr3pci_setup(hose);
+	if (xr3pci_setup(hose)) {
+		pcibios_free_controller(hose);
+		return 1;
+	}
+
+	return 0;
 }
 
 static const struct __initconst of_device_id xr3pci_device_id[] = {
@@ -349,7 +361,7 @@ static int __init xr3pci_init(void)
 	return platform_driver_register(&xr3pci_driver);
 }
 
-arch_initcall(xr3pci_init);
+subsys_initcall(xr3pci_init);
 
 MODULE_AUTHOR("Andrew Murray <Andrew.Murray@arm.com>");
 MODULE_DESCRIPTION("XpressRICH3-AXI PCIe Host Bridge");

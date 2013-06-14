@@ -116,7 +116,7 @@ static inline u64 __raw_readq(const volatile void __iomem *addr)
 #define IO_SPACE_LIMIT		0xffff
 #define PCI_IOBASE		((void __iomem *)(PCI_IO_VADDR))
 #define _IO_BASE		PCI_IO_VADDR
-#define _IO_END			(PCI_IO_VADDR + SZ_64K)
+#define _IO_END			(PCI_IO_VADDR + SZ_128K)
 
 static inline u8 inb(unsigned long addr)
 {

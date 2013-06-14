@@ -62,16 +62,16 @@ again:
 		if (test_and_set_bit(vector, frame->msi_irq_in_use))
 			goto again;
 
-		virt = vector + frame->start_spi + gd->virt_offset;
+		virt = vector + frame->start_spi;
 
 		irq_set_msi_desc(virt, desc);
 		irq_set_irq_type(virt, IRQ_TYPE_EDGE_RISING);
 
 #ifdef CONFIG_64BIT
-		msg.address_hi = (phys_addr_t)frame->base >> 32;
+		msg.address_hi = (phys_addr_t)frame->base_p >> 32;
 #endif
-		msg.address_lo = (phys_addr_t)frame->base + GIC_MSI_SETSPI_NSR;
-		msg.data = vector + frame->start_spi;
+		msg.address_lo = (phys_addr_t)frame->base_p + GIC_MSI_SETSPI_NSR;
+		msg.data = virt;
 
 		write_msi_msg(virt, &msg);
 
@@ -92,14 +92,13 @@ void arch_teardown_msi_irq(unsigned int irq)
 		return;
 
 	list_for_each_entry(frame, &gd->frames, list) {
-		hwirq = irq - gd->virt_offset - frame->start_spi;
+		hwirq = irq - frame->start_spi;
 		if (hwirq < frame->nr_msi) {
 			clear_bit(hwirq, frame->msi_irq_in_use);
 			return;
 		}
 	}
 }
-
 static int gic_msi_init_frame(struct resource *res)
 {
 	struct gic_msi_frame *frame;
@@ -116,6 +115,8 @@ static int gic_msi_init_frame(struct resource *res)
 		goto err_request_mem;
 	}
 
+	frame->base_p= res->start;
+	frame->base_sz= resource_size(res);
 	frame->base = ioremap(res->start, resource_size(res));
 	if (!frame->base) {
 		pr_err(DEVICE_NAME
@@ -155,46 +156,6 @@ static int gic_msi_remove_frames(void)
 	return 0;
 }
 
-static int gic_msi_get_virt_offset(struct device_node *np, int *virt_offset)
-{
-	struct device_node *p;
-	struct irq_domain *domain;
-	unsigned int type, spec[3] = { 0, 0, 0 };
-	irq_hw_number_t hwirq;
-	int err;
-
-	p = of_irq_find_parent(np);
-	if (WARN(!p, DEVICE_NAME ": Unable to find interrupt parent"))
-		return -EINVAL;
-
-	domain = irq_find_host(p);
-	if (WARN(!domain, DEVICE_NAME
-			": Unable to find interrupt parent domain"))
-		goto err;
-
-	if (WARN(!domain->ops->xlate, DEVICE_NAME
-		": Unable to translate interrupt parent domain"))
-		goto err;
-
-	err = domain->ops->xlate(domain, p, spec, sizeof(spec) / sizeof(int),
-					&hwirq, &type);
-	if (err) {
-		pr_err(DEVICE_NAME
-			": Unable to translate interrupt parent domain\n");
-		goto err;
-
-	}
-
-	*virt_offset = irq_create_mapping(domain, hwirq);
-
-	of_node_put(p);
-	return 0;
-
-err:
-	of_node_put(p);
-	return -EINVAL;
-}
-
 static int gic_msi_probe(struct platform_device *pdev)
 {
 	int err, x = 0;
@@ -215,22 +176,16 @@ static int gic_msi_probe(struct platform_device *pdev)
 
 	INIT_LIST_HEAD(&gd->frames);
 
-	err = gic_msi_get_virt_offset(np, &gd->virt_offset);
-	if (err) {
-		pr_err(DEVICE_NAME
-			": Unable to get virtual offset\n");
-		goto err_init_frame;
-	}
-
 	/* Iterate through each frame identified in the DT */
 	while (!(err = of_address_to_resource(np, x++, &res))) {
 		err = gic_msi_init_frame(&res);
 		if (err)
 			goto err_init_frame;
+
+		break;
 	}
 
 	return 0;
-
 err_init_frame:
 	gic_msi_remove_frames();
 
@@ -251,6 +206,7 @@ static int gic_msi_remove(struct platform_device *pdev)
 
 	kfree(gd);
 	gd = NULL;
+
 	return 0;
 }
 
