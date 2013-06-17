@@ -26,8 +26,6 @@
 #define ARCH_HAS_DMA_GET_REQUIRED_MASK
 
 extern struct dma_map_ops *dma_ops;
-extern struct dma_map_ops coherent_swiotlb_dma_ops;
-extern struct dma_map_ops noncoherent_swiotlb_dma_ops;
 
 static inline struct dma_map_ops *get_dma_ops(struct device *dev)
 {
@@ -35,11 +33,6 @@ static inline struct dma_map_ops *get_dma_ops(struct device *dev)
 		return dma_ops;
 	else
 		return dev->archdata.dma_ops;
-}
-
-static inline void set_dma_ops(struct device *dev, struct dma_map_ops *ops)
-{
-       dev->archdata.dma_ops = ops;
 }
 
 #include <asm-generic/dma-mapping-common.h>
