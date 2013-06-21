@@ -163,12 +163,20 @@ void sched_init_granularity(void)
 
 
 #ifdef CONFIG_SMP
+static unsigned long available_of(int cpu)
+{
+	return cpu_rq(cpu)->cpu_available;
+}
+
 #ifdef CONFIG_SCHED_PACKING_TASKS
 /*
  * Save the id of the optimal CPU that should be used to pack small tasks
  * The value -1 is used when no buddy has been found
  */
 DEFINE_PER_CPU(int, sd_pack_buddy);
+DEFINE_PER_CPU(struct sched_domain *, sd_pack_domain);
+DEFINE_PER_CPU(struct sched_group *, sd_pack_group);
+DEFINE_PER_CPU(int, sd_power_leader);
 
 /*
  * The packing tlevel of the scheduler
@@ -218,13 +226,21 @@ static inline int get_buddy(int cpu)
 void update_packing_domain(int cpu)
 {
 	struct sched_domain *sd;
-	int id = -1;
+	struct sched_group *target = NULL, *power = NULL;
+	int id = cpu, pcpu = cpu;
 
 	sd = highest_flag_domain(cpu, SD_SHARE_POWERDOMAIN);
 	if (!sd)
 		sd = rcu_dereference_check_sched_domain(cpu_rq(cpu)->sd);
 	else
 		sd = sd->parent;
+
+	if (sd) {
+		power = sd->groups;
+		pcpu = cpumask_first(sched_group_cpus(power));
+		if (pcpu != cpu)
+			goto end;
+	}
 
 	while (sd && (sd->flags & SD_LOAD_BALANCE)
 		&& !(sd->flags & SD_SHARE_POWERDOMAIN)) {
@@ -237,15 +253,16 @@ void update_packing_domain(int cpu)
 		 * and this CPU of this local group is a good candidate
 		 */
 		id = cpu;
+		target = pack;
 
 		/* loop the sched groups to find the best one */
 		for (tmp = sg->next; tmp != sg; tmp = tmp->next) {
-			if (tmp->sgp->power * pack->group_weight >
-					pack->sgp->power * tmp->group_weight)
+			if (tmp->sgp->power_available * pack->group_weight >
+				pack->sgp->power_available * tmp->group_weight)
 				continue;
 
-			if ((tmp->sgp->power * pack->group_weight ==
-					pack->sgp->power * tmp->group_weight)
+			if ((tmp->sgp->power_available * pack->group_weight ==
+				pack->sgp->power_available * tmp->group_weight)
 			 && (cpumask_first(sched_group_cpus(tmp)) >= id))
 				continue;
 
@@ -254,6 +271,7 @@ void update_packing_domain(int cpu)
 
 			/* Take the 1st CPU of the new group */
 			id = cpumask_first(sched_group_cpus(pack));
+			target = pack;
 		}
 
 		/* Look for another CPU than itself */
@@ -263,9 +281,81 @@ void update_packing_domain(int cpu)
 		sd = sd->parent;
 	}
 
+end:
 	pr_debug("CPU%d packing on CPU%d\n", cpu, id);
+
+	per_cpu(sd_power_leader, cpu) = pcpu;
+	per_cpu(sd_pack_buddy, cpu) = id;
+	per_cpu(sd_pack_domain, cpu) = sd;
+	per_cpu(sd_pack_group, cpu) = target;
+}
+
+
+void update_packing_buddy(int cpu, int activity)
+{
+	struct sched_group *tmp;
+	int id = cpu, pcpu = per_cpu(sd_power_leader, cpu);
+
+	/* Get 1st CPU of the power group */
+	if (!is_packing_cpu(pcpu))
+		id = get_buddy(pcpu);
+
+	if (cpu != pcpu)
+		goto end;
+
+	/* Set the activity level */
+	if (sysctl_sched_packing_level == 0)
+		activity = INT_MAX;
+	else
+		activity = (activity * sd_pack_threshold) / 1024;
+
+	tmp = per_cpu(sd_pack_group, cpu);
+	id = cpumask_first(sched_group_cpus(tmp));
+
+	/* Take the best group at this sd level to pack activity */
+	for (; activity > 0; tmp = tmp->next) {
+		int next;
+		if (tmp->sgp->power_available > activity) {
+			next = cpumask_first(sched_group_cpus(tmp));
+			while ((activity > 0) && (id < nr_cpu_ids)) {
+				activity -= available_of(id);
+				id = next;
+				if (pcpu == id) {
+					activity = 0;
+					id = cpu;
+				} else
+					next = cpumask_next(id, sched_group_cpus(tmp));
+			}
+		} else if (cpumask_test_cpu(cpu, sched_group_cpus(tmp))) {
+			id = cpu;
+			activity = 0;
+		} else {
+			activity -= tmp->sgp->power_available;
+		}
+	}
+
+end:
 	per_cpu(sd_pack_buddy, cpu) = id;
 }
+
+static int get_cpu_activity(int cpu);
+static int get_cpu_load(int cpu);
+
+static int check_nohz_packing(int cpu)
+{
+	if (!is_packing_cpu(cpu))
+		return true;
+
+	if ((get_cpu_activity(cpu) * 100) >=
+			(available_of(cpu) * sysctl_sched_packing_level))
+		return true;
+
+	if (get_cpu_load(cpu) >= available_of(cpu))
+		return true;
+
+	return false;
+}
+
 #else /* CONFIG_SCHED_PACKING_TASKS */
 
 static inline bool is_packing_cpu(int cpu)
@@ -277,6 +367,8 @@ static inline int get_buddy(int cpu)
 {
 	return -1;
 }
+
+static int check_nohz_packing(int cpu) {};
 #endif /* CONFIG_SCHED_PACKING_TASKS */
 #endif /* CONFIG_SMP */
 
@@ -3326,6 +3418,7 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 	do {
 		unsigned long load, avg_load;
 		int local_group, packing_cpus = 0;
+		unsigned int power;
 		int i;
 
 		/* Skip over this group if it has no CPUs allowed */
@@ -3355,8 +3448,13 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 		if (!packing_cpus)
 			continue;
 
+		if (sd_flag & SD_BALANCE_WAKE)
+			power = group->sgp->power;
+		else
+			power = group->sgp->power_available;
+
 		/* Adjust by relative CPU power of the group */
-		avg_load = (avg_load * SCHED_POWER_SCALE) / group->sgp->power;
+		avg_load = (avg_load * SCHED_POWER_SCALE) / power;
 
 		if (local_group) {
 			this_load = avg_load;
@@ -4494,6 +4592,9 @@ static void update_cpu_power(struct sched_domain *sd, int cpu)
 	cpu_rq(cpu)->cpu_available = power;
 	sdg->sgp->power_available = power;
 
+	if (!is_packing_cpu(cpu))
+		power = 1;
+
 	cpu_rq(cpu)->cpu_power = power;
 	sdg->sgp->power = power;
 
@@ -4793,6 +4894,25 @@ static inline void update_sd_lb_stats(struct lb_env *env,
 	} while (sg != env->sd->groups);
 }
 
+#ifdef CONFIG_SCHED_PACKING_TASKS
+static void update_sd_lb_packing(int cpu, int *balance, struct sd_lb_stats *sds,
+		struct sched_domain *sd)
+{
+	/* Update the list of packing CPU */
+	if (sd == per_cpu(sd_pack_domain, cpu))
+		update_packing_buddy(cpu, sds->total_activity);
+
+	/* This CPU doesn't act for agressive packing */
+	if (!is_packing_cpu(cpu))
+		sds->busiest = NULL;
+}
+
+#else /* CONFIG_SCHED_PACKING_TASKS */
+static void update_sd_lb_packing(int cpu, int *balance, struct sd_lb_stats *sds,
+		struct sched_domain *sd) {}
+
+#endif /* CONFIG_SCHED_PACKING_TASKS */
+
 /**
  * check_asym_packing - Check to see if the group is packed into the
  *			sched doman.
@@ -5005,6 +5125,11 @@ find_busiest_group(struct lb_env *env, int *balance)
 	 * this level.
 	 */
 	update_sd_lb_stats(env, balance, &sds);
+
+	/*
+	 * Update the involvement of the CPU in the packing effort
+	 */
+	update_sd_lb_packing(env->dst_cpu, balance, &sds, env->sd);
 
 	/*
 	 * this_cpu is not the appropriate cpu to perform load balancing at
@@ -5789,14 +5914,6 @@ static void nohz_idle_balance(int this_cpu, enum cpu_idle_type idle)
 	nohz.next_balance = this_rq->next_balance;
 end:
 	clear_bit(NOHZ_BALANCE_KICK, nohz_flags(this_cpu));
-}
-
-static int check_nohz_packing(int cpu)
-{
-	if (!is_packing_cpu(cpu))
-		return true;
-
-	return false;
 }
 
 /*
