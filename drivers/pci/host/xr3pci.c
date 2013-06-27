@@ -90,6 +90,13 @@ static int xr3pci_check_device(struct xr3pci_port *pp)
 	u32 val;
 	int timeout = 1000;
 
+	/* credits */
+	writel(0x00f0B818, pp->base + 0x90);
+	writel(0x1, pp->base + 0x94);
+
+	/* allow ECRC */ 
+	writel(0x6006, pp->base + 0xd8);
+
 	writel(RST_CTRL_PHY_REL | RST_CTRL_RC_REL, pp->reset + RST_CTRL);
 	do { 
 		msleep(1);

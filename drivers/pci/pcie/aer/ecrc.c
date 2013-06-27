@@ -32,7 +32,7 @@
 #define ECRC_POLICY_OFF     1		/* ECRC off for performance */
 #define ECRC_POLICY_ON      2		/* ECRC on for data integrity */
 
-static int ecrc_policy = ECRC_POLICY_DEFAULT;
+static int ecrc_policy = 2;// ECRC_POLICY_DEFAULT;
 
 static const char *ecrc_policy_str[] = {
 	[ECRC_POLICY_DEFAULT] = "bios",
