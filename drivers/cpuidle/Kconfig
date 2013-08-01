@@ -4,7 +4,7 @@ config CPU_IDLE
 	bool "CPU idle PM support"
 	default y if ACPI || PPC_PSERIES
 	select CPU_IDLE_GOV_LADDER if (!NO_HZ && !NO_HZ_IDLE)
-	select CPU_IDLE_GOV_MENU if (NO_HZ || NO_HZ_IDLE)
+	select CPU_IDLE_GOV_MENU if ((NO_HZ || NO_HZ_IDLE) && !CPU_IDLE_GOV_SCHEDULED)
 	help
 	  CPU idle is a generic framework for supporting software-controlled
 	  idle processor power management.  It includes modular cross-platform
@@ -31,6 +31,19 @@ config CPU_IDLE_GOV_MENU
 	select CPU_IDLE_GOV_SHARED_PREDICTOR
 	select CPU_IDLE_GOV_SHARED_CSTATE_LOOKUP
 	default y
+
+if SMP
+config CPU_IDLE_GOV_SCHEDULED
+	bool "Scheduled governor"
+	select CPU_IDLE_GOV_SHARED_PREDICTOR
+	select CPU_IDLE_GOV_SHARED_CSTATE_LOOKUP
+	default n
+	help
+	 A governor that selects an idle state based on timing constraints
+	 set by another part of kernel. The state selection is recorded
+	 in a variable visible to other parts of the kernel so all cores
+	 may be considered when making scheduling decisions.
+endif
 
 config CPU_IDLE_GOV_SHARED_PREDICTOR
 	def_bool n

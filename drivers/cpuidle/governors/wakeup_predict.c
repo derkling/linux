@@ -256,6 +256,13 @@ void wakeup_predictor_update(struct wakeup_predictor *pred,
 
 	pred->correction_factor[bucket] = new_factor;
 
+/*
+ * Hack for testing: don't update pattern data if no I/O
+ * This needs a more proper fix if this turns out to be good.
+ */
+#ifdef CONFIG_CPU_IDLE_GOV_SCHEDULED
+	if (unlikely(io_pending))
+#endif
 	/* update the repeating-pattern data */
 	pred->intervals[pred->interval_index++] = actual_us;
 	if (pred->interval_index >= INTERVALS) {

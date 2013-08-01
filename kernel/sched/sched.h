@@ -1032,6 +1032,12 @@ static inline void update_packing_domain(int cpu) {};
 extern void idle_enter_fair(struct rq *this_rq);
 extern void idle_exit_fair(struct rq *this_rq);
 
+#ifdef CONFIG_CPU_IDLE_GOV_SCHEDULED
+extern void setup_scheduled_cpuidle(struct rq *rq);
+#else
+#define setup_scheduled_cpuidle(notused) { do { } while (0); }
+#endif
+
 #else	/* CONFIG_SMP */
 
 static inline void idle_balance(int cpu, struct rq *rq)

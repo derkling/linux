@@ -63,12 +63,16 @@ struct fs_struct;
 struct perf_event_context;
 struct blk_plug;
 
-/* This structure is used to share information and statistics with other
- * frameworks. It only shares wake up latency fro the moment but should be
- * extended with other usefull informations
+/*
+ * This structure is used to share information and statistics with other
+ * frameworks.
  */
 struct sched_pm {
-	atomic_t  wake_latency; /* time to wake up the cpu */
+	atomic_t	wake_latency; /* time to wake up the cpu */
+	int		idle_max_latency;
+	unsigned int	idle_time_until_timer;
+	unsigned int	idle_length_estimate;
+	struct cpuidle_state	*idle_current_state;
 };
 
 DECLARE_PER_CPU(struct sched_pm, sched_stat);

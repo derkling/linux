@@ -23,6 +23,7 @@ static void pre_schedule_idle(struct rq *rq, struct task_struct *prev)
 static void post_schedule_idle(struct rq *rq)
 {
 	idle_enter_fair(rq);
+	setup_scheduled_cpuidle(rq);
 }
 #endif /* CONFIG_SMP */
 /*
