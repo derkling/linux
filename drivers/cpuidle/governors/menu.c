@@ -160,9 +160,9 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 {
 	struct menu_device *data = &__get_cpu_var(menu_devices);
 	int latency_req = pm_qos_request(PM_QOS_CPU_DMA_LATENCY);
-	int i;
-	int multiplier;
+	unsigned int interactivity_req;
 	struct timespec t;
+	struct cpuidle_cstate_sel_aux state_selection_info;
 
 	if (data->needs_update) {
 		menu_update(drv, dev);
@@ -185,7 +185,10 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 	/* Determine amount of pending IO */
 	data->num_io = nr_iowait_cpu(smp_processor_id());
 
-	multiplier = performance_multiplier();
+	/* Adjust latency requirement based on performance multiplier */
+	interactivity_req = data->predicted_us / performance_multiplier();
+	if (latency_req > interactivity_req)
+		latency_req = interactivity_req;
 
 	/*
 	 * Obtain prediction(s). Repeating interval prediction has
@@ -197,34 +200,13 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 				data->next_timer_us, data->num_io);
 
 	/*
-	 * We want to default to C1 (hlt), not to busy polling
-	 * unless the timer is happening really really soon.
-	 */
-	if (data->next_timer_us > 5 &&
-	    !drv->states[CPUIDLE_DRIVER_STATE_START].disabled &&
-		dev->states_usage[CPUIDLE_DRIVER_STATE_START].disable == 0)
-		data->last_state_idx = CPUIDLE_DRIVER_STATE_START;
-
-	/*
 	 * Find the idle state with the lowest power while satisfying
 	 * our constraints.
 	 */
-	for (i = CPUIDLE_DRIVER_STATE_START; i < drv->state_count; i++) {
-		struct cpuidle_state *s = &drv->states[i];
-		struct cpuidle_state_usage *su = &dev->states_usage[i];
-
-		if (s->disabled || su->disable)
-			continue;
-		if (s->target_residency > data->predicted_us)
-			continue;
-		if (s->exit_latency > latency_req)
-			continue;
-		if (s->exit_latency * multiplier > data->predicted_us)
-			continue;
-
-		data->last_state_idx = i;
-		data->exit_us = s->exit_latency;
-	}
+	data->last_state_idx = cpuidle_cstate_lookup(drv, dev,
+				data->predicted_us, data->next_timer_us,
+				latency_req, &state_selection_info);
+	data->exit_us = state_selection_info.exit_us;
 
 	return data->last_state_idx;
 }

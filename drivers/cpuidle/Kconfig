@@ -29,9 +29,13 @@ config CPU_IDLE_GOV_LADDER
 config CPU_IDLE_GOV_MENU
 	bool "Menu governor (for tickless system)"
 	select CPU_IDLE_GOV_SHARED_PREDICTOR
+	select CPU_IDLE_GOV_SHARED_CSTATE_LOOKUP
 	default y
 
 config CPU_IDLE_GOV_SHARED_PREDICTOR
+	def_bool n
+
+config CPU_IDLE_GOV_SHARED_CSTATE_LOOKUP
 	def_bool n
 
 menu "ARM CPU Idle Drivers"

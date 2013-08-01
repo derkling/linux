@@ -232,4 +232,15 @@ void share_wakeup_predictor(struct wakeup_predictor *pred);
 void put_wakeup_predictor(struct wakeup_predictor *pred);
 #endif
 
+#ifdef CONFIG_CPU_IDLE_GOV_SHARED_CSTATE_LOOKUP
+struct cpuidle_cstate_sel_aux {
+	unsigned int exit_us;
+};
+
+int cpuidle_cstate_lookup(struct cpuidle_driver *drv,
+		struct cpuidle_device *dev, unsigned int next_timer_us,
+		unsigned int predicted_us, unsigned int latency_req,
+		struct cpuidle_cstate_sel_aux *aux_data);
+#endif
+
 #endif /* _LINUX_CPUIDLE_H */
