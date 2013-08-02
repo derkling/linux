@@ -73,6 +73,36 @@ static void s5p_setup_vbus_gpio(struct platform_device *pdev)
 		dev_err(dev, "can't request ehci vbus gpio %d", gpio);
 }
 
+static void __init usb_hub_reset_connect(struct platform_device *pdev)
+{
+	struct device *dev = &pdev->dev;
+	int err;
+	int gpio;
+
+	if (!dev->of_node)
+		return;
+	/* USB Hub Reset & Connect*/
+
+	gpio = of_get_named_gpio(dev->of_node, "samsung,hub-reset", 0);
+	if (!gpio_is_valid(gpio))
+		return;
+
+	err = devm_gpio_request_one(dev, gpio, GPIOF_OUT_INIT_LOW,
+				    "ehci_hub_reset");
+	if (err)
+		dev_err(dev, "can't request ehci hub reset gpio %d", gpio);
+	gpio_set_value(gpio, 1);
+
+	gpio = of_get_named_gpio(dev->of_node, "samsung,hub-connect", 0);
+	if (!gpio_is_valid(gpio))
+		return;
+
+	err = devm_gpio_request_one(dev, gpio, GPIOF_OUT_INIT_HIGH,
+				    "ehci_hub_reset");
+	if (err)
+		dev_err(dev, "can't request ehci hub connect gpio %d", gpio);
+}
+
 static int s5p_ehci_probe(struct platform_device *pdev)
 {
 	struct s5p_ehci_platdata *pdata = pdev->dev.platform_data;
@@ -93,6 +123,8 @@ static int s5p_ehci_probe(struct platform_device *pdev)
 		pdev->dev.dma_mask = &pdev->dev.coherent_dma_mask;
 	if (!pdev->dev.coherent_dma_mask)
 		pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
+	
+//	usb_hub_reset_connect(pdev);
 
 	s5p_setup_vbus_gpio(pdev);
 
@@ -125,6 +157,8 @@ static int s5p_ehci_probe(struct platform_device *pdev)
 		s5p_ehci->otg = phy->otg;
 	}
 
+	usb_hub_reset_connect(pdev);
+	
 skip_phy:
 
 	s5p_ehci->clk = devm_clk_get(&pdev->dev, "usbhost");
