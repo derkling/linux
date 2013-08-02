@@ -1181,7 +1181,7 @@ config SCHED_AUTOGROUP
 config SCHED_PACKING_TASKS
 	bool "Automatic tasks packing"
 	depends on SMP && SCHED_MC
-	default n
+	default y
 	help
 	  This option enable the packing mode of the scheduler.
 	  This mode ensures that the minimal number of CPUs will

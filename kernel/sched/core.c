@@ -5463,7 +5463,11 @@ int __weak arch_sd_sibling_asym_packing(void)
 
 int __weak arch_sd_local_flags(int level, int cpu)
 {
-	return 1*SD_SHARE_POWERDOMAIN;
+	/* Powergate at threading level doesn't make sense */
+	if (level & SD_SHARE_CPUPOWER)
+		return 1*SD_SHARE_POWERDOMAIN;
+
+	return 0*SD_SHARE_POWERDOMAIN;
 }
 
 /*
