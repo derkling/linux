@@ -15,10 +15,8 @@
 #include <linux/pm_qos.h>
 #include <linux/time.h>
 #include <linux/ktime.h>
-#include <linux/hrtimer.h>
 #include <linux/tick.h>
 #include <linux/sched.h>
-#include <linux/math64.h>
 #include <linux/module.h>
 
 /*
