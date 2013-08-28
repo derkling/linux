@@ -49,6 +49,28 @@ static struct kobject *dev_kobj;
 struct kobject *sysfs_dev_char_kobj;
 struct kobject *sysfs_dev_block_kobj;
 
+static DEFINE_MUTEX(device_hotplug_lock);
+
+void lock_device_hotplug(void)
+{
+	mutex_lock(&device_hotplug_lock);
+}
+
+void unlock_device_hotplug(void)
+{
+	mutex_unlock(&device_hotplug_lock);
+}
+
+int lock_device_hotplug_sysfs(void)
+{
+	if (mutex_trylock(&device_hotplug_lock))
+		return 0;
+
+	/* Avoid busy looping (5 ms of sleep should do). */
+	msleep(5);
+	return restart_syscall();
+}
+
 #ifdef CONFIG_BLOCK
 static inline int device_is_not_partition(struct device *dev)
 {
