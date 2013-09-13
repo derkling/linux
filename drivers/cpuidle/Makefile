@@ -13,3 +13,4 @@ obj-$(CONFIG_ARCH_KIRKWOOD) += cpuidle-kirkwood.o
 ###############################################################################
 # ARM64 drivers
 obj-$(CONFIG_ARM64_CPUIDLE)		+= cpuidle-arm64.o
+obj-$(CONFIG_ARM_BIG_LITTLE_CPUIDLE)	+= cpuidle-big_little.o
