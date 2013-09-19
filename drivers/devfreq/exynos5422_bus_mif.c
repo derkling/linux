@@ -115,7 +115,7 @@ unsigned int timeout_fullhd[][2] = {
 struct busfreq_data_mif {
 	struct device *dev;
 	struct devfreq *devfreq;
-	struct opp *curr_opp;
+	struct dev_pm_opp *curr_opp;
 	struct mutex lock;
 
 	struct clk *mclk_cdrex;
@@ -684,7 +684,7 @@ static int exynos5_mif_busfreq_target(struct device *dev,
 	int err = 0;
 	struct platform_device *pdev = container_of(dev, struct platform_device, dev);
 	struct busfreq_data_mif *data = platform_get_drvdata(pdev);
-	struct opp *opp;
+	struct dev_pm_opp *opp;
 	struct devfreq_info info;
 	unsigned long freq;
 	unsigned long old_freq;
@@ -952,7 +952,7 @@ static struct attribute_group devfreq_attr_group = {
 static ssize_t show_freq_table(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	int i, count = 0;
-	struct opp *opp;
+	struct dev_pm_opp *opp;
 	ssize_t write_cnt = (ssize_t)((PAGE_SIZE / ARRAY_SIZE(mif_bus_opp_list)) - 2);
 	struct device *mif_dev = dev->parent;
 
@@ -1098,7 +1098,7 @@ static int exynos5_bus_mif_tmu_notifier(struct notifier_block *notifier,
 static int exynos5_devfreq_probe(struct platform_device *pdev)
 {
 	struct busfreq_data_mif *data;
-	struct opp *opp, *mspll_opp;
+	struct dev_pm_opp *opp, *mspll_opp;
 	struct device *dev = &pdev->dev;
 	unsigned int tmp;
 	unsigned long tmpfreq;

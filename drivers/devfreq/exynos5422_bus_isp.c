@@ -395,7 +395,7 @@ static int exynos5_devfreq_isp_target(struct device *dev,
 	struct platform_device *pdev = container_of(dev, struct platform_device, dev);
 	struct devfreq_data_isp *isp_data = platform_get_drvdata(pdev);
 	struct devfreq *devfreq_isp = isp_data->devfreq;
-	struct opp *target_opp;
+	struct dev_pm_opp *target_opp;
 	int target_idx, old_idx;
 	unsigned long target_volt;
 	unsigned long old_freq;
@@ -581,7 +581,7 @@ static int exynos5_devfreq_isp_probe(struct platform_device *pdev)
 	int ret = 0;
 	struct devfreq_data_isp *data;
 	struct exynos_devfreq_platdata *plat_data;
-	struct opp *target_opp;
+	struct dev_pm_opp *target_opp;
 	unsigned long target_volt;
 
 	if (exynos5_devfreq_isp_init_clock()) {

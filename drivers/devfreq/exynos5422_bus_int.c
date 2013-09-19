@@ -146,7 +146,7 @@ struct busfreq_data_int {
 	struct list_head list;
 	struct device *dev;
 	struct devfreq *devfreq;
-	struct opp *curr_opp;
+	struct dev_pm_opp *curr_opp;
 	struct mutex lock;
 
 	struct clk *mout_mpll; /* mout_mpll_ctrl */
@@ -951,7 +951,7 @@ static int exynos5_int_busfreq_target(struct device *dev,
 	int err = 0;
 	struct platform_device *pdev = container_of(dev, struct platform_device, dev);
 	struct busfreq_data_int *data = platform_get_drvdata(pdev);
-	struct opp *opp;
+	struct dev_pm_opp *opp;
 	unsigned long freq;
 	unsigned long old_freq;
 	unsigned long target_volt;
@@ -1157,7 +1157,7 @@ static struct attribute_group devfreq_int_attr_group = {
 static ssize_t show_freq_table(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	int i, count = 0;
-	struct opp *opp;
+	struct dev_pm_opp *opp;
 	ssize_t write_cnt = (ssize_t)((PAGE_SIZE / ARRAY_SIZE(int_bus_opp_list)) - 2);
 	struct device *int_dev = dev->parent;
 
@@ -1248,7 +1248,7 @@ static int exynos5_int_devfreq_tmu_notifier(struct notifier_block *notifier,
 static int exynos5_devfreq_int_probe(struct platform_device *pdev)
 {
 	struct busfreq_data_int *data;
-	struct opp *opp;
+	struct dev_pm_opp *opp;
 	struct device *dev = &pdev->dev;
 	struct exynos_devfreq_platdata *pdata;
 	int err = 0;
