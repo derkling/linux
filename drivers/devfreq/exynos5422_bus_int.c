@@ -970,13 +970,13 @@ static int exynos5_int_busfreq_target(struct device *dev,
 		return PTR_ERR(opp);
 	}
 
-	freq = opp_get_freq(opp);
-	target_volt = opp_get_voltage(opp);
+	freq = dev_pm_opp_get_freq(opp);
+	target_volt = dev_pm_opp_get_voltage(opp);
 	rcu_read_unlock();
 
 	/* get olg opp information */
 	rcu_read_lock();
-	old_freq = opp_get_freq(data->curr_opp);
+	old_freq = dev_pm_opp_get_freq(data->curr_opp);
 	rcu_read_unlock();
 
 	exynos5_int_update_state(old_freq);
@@ -1032,7 +1032,7 @@ static int exynos5_int_bus_get_dev_status(struct device *dev,
 	nocp_get_aver_cnt(&int_noc_list, &tmp_nocp_cnt);
 
 	rcu_read_lock();
-	stat->current_frequency = opp_get_freq(data->curr_opp);
+	stat->current_frequency = dev_pm_opp_get_freq(data->curr_opp);
 	rcu_read_unlock();
 
 	/*
@@ -1114,7 +1114,7 @@ static int exynos5422_init_int_table(struct busfreq_data_int *data)
 
 		exynos5_int_devfreq_profile.freq_table[i] = int_bus_opp_list[i].freq;
 
-		ret = opp_add(data->dev, int_bus_opp_list[i].freq, asv_volt);
+		ret = dev_pm_opp_add(data->dev, int_bus_opp_list[i].freq, asv_volt);
 
 		if (ret) {
 			dev_err(data->dev, "Fail to add opp entries.\n");
@@ -1168,9 +1168,9 @@ static ssize_t show_freq_table(struct device *dev, struct device_attribute *attr
 
 	rcu_read_lock();
 	for (i = 0; i < ARRAY_SIZE(int_bus_opp_list); i++) {
-		opp = opp_find_freq_exact(int_dev, int_bus_opp_list[i].freq, true);
+		opp = dev_pm_opp_find_freq_exact(int_dev, int_bus_opp_list[i].freq, true);
 		if (!IS_ERR_OR_NULL(opp))
-			count += snprintf(&buf[count], write_cnt, "%lu ", opp_get_freq(opp));
+			count += snprintf(&buf[count], write_cnt, "%lu ", dev_pm_opp_get_freq(opp));
 	}
 	rcu_read_unlock();
 
@@ -1389,7 +1389,7 @@ static int exynos5_devfreq_int_probe(struct platform_device *pdev)
 			ARRAY_SIZE(exynos5_int_nocp_list), NOCP_USAGE_INT);
 	rcu_read_lock();
 
-	opp = opp_find_freq_floor(dev, &exynos5_int_devfreq_profile.initial_freq);
+	opp = dev_pm_opp_find_freq_floor(dev, &exynos5_int_devfreq_profile.initial_freq);
 	if (IS_ERR(opp)) {
 		rcu_read_unlock();
 		dev_err(dev, "Invalid initial frequency %lu kHz.\n",
@@ -1397,7 +1397,7 @@ static int exynos5_devfreq_int_probe(struct platform_device *pdev)
 		err = PTR_ERR(opp);
 		goto err_opp_add;
 	}
-	volt = opp_get_voltage(opp);
+	volt = dev_pm_opp_get_voltage(opp);
 	rcu_read_unlock();
 	regulator_set_voltage(data->vdd_int, volt, volt + VOLT_STEP);
 	for (i = LV_0; i < LV_END; i++) {
