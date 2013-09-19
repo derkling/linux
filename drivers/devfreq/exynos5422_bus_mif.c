@@ -12,7 +12,7 @@
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/suspend.h>
-#include <linux/opp.h>
+#include <linux/pm_opp.h>
 #include <linux/list.h>
 #include <linux/device.h>
 #include <linux/devfreq.h>
