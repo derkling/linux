@@ -180,6 +180,56 @@ round_restart:
 	return cbs_se;
 }
 
+static void
+put_prev_cbs_entity(struct cbs_rq *cbs_rq, struct sched_cbs_entity *prev)
+{
+	BUG_ON(!cbs_rq->curr);
+
+	cbs_rq->prev = cbs_rq->curr;
+	cbs_rq->curr = NULL;
+}
+
+static void
+update_execution_stats(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
+		unsigned long exec_time)
+{
+	schedstat_set(cbs_se->statistics.exec_max,
+		      max((u64)exec_time, cbs_se->statistics.exec_max));
+
+	cbs_se->burst_time_old = cbs_se->burst_time;
+	cbs_se->burst_time = exec_time;
+
+	cbs_se->exec_runtime += exec_time;
+	cbs_rq->exec_runtime += exec_time;
+
+}
+
+static void
+run_cbs_entity_stop(struct rq *rq, struct sched_cbs_entity *cbs_se)
+{
+	u64 now = rq_clock_task(rq);
+	unsigned long exec_time;
+
+	/* Check a start time has been set */
+	BUG_ON(cbs_se->burst_start == 0);
+
+	/*
+	 * Get the amount of time the current task was running
+	 * since the time we scheduled it (this cannot oeverflow on 32 bits)
+	 */
+	exec_time = (unsigned long)(now - cbs_se->burst_start);
+	if (!exec_time)
+		goto exit_reset;
+
+	/* Keep track of last burst execution time */
+	update_execution_stats(&rq->cbs, cbs_se, exec_time);
+
+exit_reset:
+	/* Reset SE start timestamp */
+	cbs_se->burst_start = 0;
+
+}
+
 /*******************************************************************************
  * CBS Policy API
  ******************************************************************************/
@@ -276,6 +326,14 @@ pick_next_task_cbs(struct rq *rq)
 static void
 put_prev_task_cbs(struct rq *rq, struct task_struct *prev)
 {
+	struct sched_cbs_entity *cbs_se = &prev->cbs;
+	struct cbs_rq *cbs_rq = cbs_rq_of(cbs_se);
+
+	/* Keep track of SE burst end */
+	if (cbs_rq->curr && (cbs_rq->curr == cbs_se))
+		run_cbs_entity_stop(rq, cbs_se);
+
+	put_prev_cbs_entity(cbs_rq, cbs_se);
 
 }
 
