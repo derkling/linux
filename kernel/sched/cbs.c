@@ -4,6 +4,11 @@
 
 #include "sched.h"
 
+
+#ifndef CONFIG_SCHED_HRTICK
+# error The CBS scheduler requires HRTimers support
+#endif
+
 /*******************************************************************************
  * CBS Data Structures Management Utilities
  ******************************************************************************/
