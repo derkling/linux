@@ -4,6 +4,10 @@
 
 #include "sched.h"
 
+/*******************************************************************************
+ * CBS Policy API
+ ******************************************************************************/
+
 /*
  * Adding a task to the CBS ranqueue
  */
@@ -34,10 +38,11 @@ yield_task_cbs(struct rq *rq)
 /*
  * Yield the
  */
-static void
+static bool
 yield_to_task_cbs(struct rq *rq, struct task_struct *p, bool preempt)
 {
-
+	// The CBS scheduler process tasks by Round, nothing special...
+	return true;
 }
 
 /*
@@ -62,7 +67,7 @@ pick_next_task_cbs(struct rq *rq)
  * Remove a CBS managed task from the runqueue
  */
 static void
-put_prev_task_cbs(struct rq *rq, struct task_struct *p)
+put_prev_task_cbs(struct rq *rq, struct task_struct *prev)
 {
 
 }
@@ -70,7 +75,7 @@ put_prev_task_cbs(struct rq *rq, struct task_struct *p)
 #ifdef CONFIG_SMP
 
 /*
- * Select the runqueue for a CBS managed task
+ * Select the runqueue for a CBS managed task.
  */
 static int
 select_task_rq_cbs(struct task_struct *p, int sd_flag, int flags)
@@ -89,7 +94,7 @@ out:
 /*
  * Migrate a CBS managed task to the specified CPU
  */
-static int
+static void
 migrate_task_rq_cbs(struct task_struct *p, int next_cpu)
 {
 
@@ -197,7 +202,7 @@ switched_from_cbs(struct rq *rq, struct task_struct *p)
 }
 
 /*
- * Switching a task to CBS
+ * Task switched to the CBS class
  */
 static void
 switched_to_cbs(struct rq *rq, struct task_struct *p)
