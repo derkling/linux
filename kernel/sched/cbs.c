@@ -266,3 +266,37 @@ const struct sched_class cbs_sched_class = {
         .get_rr_interval        = get_rr_interval_cbs,
 };
 
+
+/*******************************************************************************
+ * CBS Policy Initialization
+ ******************************************************************************/
+
+#define CONFIG_CBS_PARAM_KPI 0.50f
+#define CONFIG_CBS_PARAM_KRR 0.90f
+#define CONFIG_CBS_PARAM_ZRR 0.88f
+
+#define SCALE_PARAM_FACTOR 1024 // 10 bits
+#define scale_param_up(W)   ( (u32) ((W) * SCALE_PARAM_FACTOR) )
+#define scale_param_down(W) ( (u32) ((W) / SCALE_PARAM_FACTOR) )
+#define int_param(W)        ( (u32)  (W) )
+
+void init_cbs_rq(struct cbs_rq *cbs_rq)
+{
+	// Setup list of CBS task
+	INIT_LIST_HEAD(&cbs_rq->run_list);
+
+	// Setup CBS Controller params
+	cbs_rq->params.mult_factor = int_param(1.0f / CONFIG_CBS_PARAM_KPI);
+	cbs_rq->params.krr = scale_param_up(CONFIG_CBS_PARAM_KRR);
+	cbs_rq->params.kzr = scale_param_up(CONFIG_CBS_PARAM_KRR * CONFIG_CBS_PARAM_ZRR);
+
+	// Setup scheduler latency constraints
+	cbs_rq->params.round_latency_ns = 6000000ULL;
+	cbs_rq->params.round_latency_nr_max = 8; // Keep latency / burst_min
+
+	cbs_rq->params.burst_nominal_ns =  4    * 1000000ULL;
+	cbs_rq->params.burst_min_ns     =  0.75 * 1000000ULL;
+	cbs_rq->params.burst_max_ns     = 20    * 1000000ULL;
+
+}
+
