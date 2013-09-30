@@ -5,6 +5,43 @@
 #include "sched.h"
 
 /*******************************************************************************
+ * CBS Data Structures Management Utilities
+ ******************************************************************************/
+
+static inline struct task_struct *
+cbs_task_of(struct sched_cbs_entity *cbs_se)
+{
+	return container_of(cbs_se, struct task_struct, cbs);
+}
+
+static inline struct rq *
+rq_of(struct cbs_rq *cbs_rq)
+{
+	return container_of(cbs_rq, struct rq, cbs);
+}
+
+static inline struct cbs_rq *
+cbs_rq_of(struct sched_cbs_entity *cbs_se)
+{
+	struct task_struct *p = cbs_task_of(cbs_se);
+	struct rq *rq = task_rq(p);
+
+	return &rq->cbs;
+}
+
+static inline void
+inc_cbs_tasks(struct cbs_rq *cbs_rq)
+{
+	cbs_rq->nr_running++;
+}
+
+static inline void
+dec_cbs_tasks(struct cbs_rq *cbs_rq)
+{
+	cbs_rq->nr_running--;
+}
+
+/*******************************************************************************
  * CBS Policy API
  ******************************************************************************/
 
