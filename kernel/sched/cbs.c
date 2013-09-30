@@ -76,6 +76,8 @@ put_prev_task_cbs(struct rq *rq, struct task_struct *prev)
 
 /*
  * Select the runqueue for a CBS managed task.
+ * Trigger: each time a task WAKE-UP, FORK or EXEC.
+ * Goal: identify the optimal RQ on wich a task should be placed
  */
 static int
 select_task_rq_cbs(struct task_struct *p, int sd_flag, int flags)
@@ -87,12 +89,21 @@ select_task_rq_cbs(struct task_struct *p, int sd_flag, int flags)
 	if (p->nr_cpus_allowed == 1)
 		goto out;
 
+	/* Possible actions:
+	 * - current RQ not overloaded => run on this RQ
+	 * - current RQ overloaded => trigger migration on affine CPU domain
+	 */
 out:
 	return cpu;
 }
 
 /*
  * Migrate a CBS managed task to the specified CPU
+ *
+ * Called immediately before a task is migrated to a new cpu; task_cpu(p) and
+ * cfs_rq_of(p) references at time of call are still valid and identify the
+ * previous cpu.  However, the caller only guarantees p->pi_lock is held; no
+ * other assumptions, including the state of rq->lock, should be made.
  */
 static void
 migrate_task_rq_cbs(struct task_struct *p, int next_cpu)
@@ -208,6 +219,16 @@ static void
 switched_to_cbs(struct rq *rq, struct task_struct *p)
 {
 
+	/* If the task is *not* RUNNING, nothing has to be done */
+	if (!p->se.on_rq)
+		return;
+
+	/* Possible actions:
+	 * - switch from RT => p is current => reschedule current RQ
+	 * - p is not current => check for preemption
+	 * - RQ overloaded => trigger migration... but that's just an heuristic :-(
+	 */
+
 }
 
 /*
@@ -216,6 +237,17 @@ switched_to_cbs(struct rq *rq, struct task_struct *p)
 static void
 prio_changed_cbs(struct rq *rq, struct task_struct *p, int oldprio)
 {
+
+	/* If the task is *not* RUNNING, nothing has to be done */
+	if (!p->se.on_rq)
+		return;
+
+	/* Possible actions:
+	 * - prio decrease => reschedule
+	 *                 => pull tasks from other RQs
+	 * - prio increase => check for preemption
+	 * - just tune alpha values for the next run
+	 */
 
 }
 
