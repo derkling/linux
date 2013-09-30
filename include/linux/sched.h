@@ -990,6 +990,33 @@ struct sched_entity {
 #endif
 };
 
+struct sched_cbs_entity {
+
+	/* Entry into the Tasks list */
+	struct list_head run_node;
+
+	/* SE status flags */
+	u8 on_rq:1;
+
+	/* Round-time share (up to 4[s]) */
+	u32 round_time_share_ns;
+	/* Burst time set-point */
+	u32 burst_time_sp;
+	/* Burst time (actual) */
+	u32 burst_time;
+	/* Burst time (cache) */
+	u32 burst_time_old;
+
+	/* Last burst startup time */
+	u64 burst_start;
+	/* Overall execution time */
+	u64 exec_runtime;
+
+#ifdef CONFIG_SCHEDSTATS
+	struct sched_statistics statistics;
+#endif
+};
+
 struct sched_rt_entity {
 	struct list_head run_list;
 	unsigned long timeout;
@@ -1036,6 +1063,7 @@ struct task_struct {
 	unsigned int rt_priority;
 	const struct sched_class *sched_class;
 	struct sched_entity se;
+	struct sched_cbs_entity cbs;
 	struct sched_rt_entity rt;
 #ifdef CONFIG_CGROUP_SCHED
 	struct task_group *sched_task_group;
