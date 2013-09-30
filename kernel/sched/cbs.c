@@ -61,6 +61,21 @@ enqueue_cbs_entity(struct sched_cbs_entity *cbs_se, bool head)
 	// NOTE: SE burst time are assigned at the beginning of the next round
 }
 
+static void
+dequeue_cbs_entity(struct sched_cbs_entity *cbs_se)
+{
+	struct cbs_rq *cbs_rq = cbs_rq_of(cbs_se);
+
+	list_del_init(&cbs_se->run_node);
+
+	cbs_se->on_rq = 0;
+
+	dec_cbs_tasks(cbs_rq);
+
+	// NOTE: Round time is defined at the beginning of the next round
+	// NOTE: SE burst time are assigned at the beginning of the next round
+}
+
 /*******************************************************************************
  * CBS Policy API
  ******************************************************************************/
@@ -83,11 +98,18 @@ enqueue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 
 /*
  * Removing a task from the CBS ranqueue
+ * Trigger: on task deactivation (always)
+ *          normalization, cgroup/prio/scheduler change and PI (if on RQ)
+ * Goal: remove the task from the specified RQ
  */
 static void
 dequeue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 {
+	struct sched_cbs_entity *cbs_se = &p->cbs;
 
+	dequeue_cbs_entity(cbs_se);
+
+	dec_nr_running(rq);
 }
 
 /*
