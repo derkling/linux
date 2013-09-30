@@ -41,17 +41,44 @@ dec_cbs_tasks(struct cbs_rq *cbs_rq)
 	cbs_rq->nr_running--;
 }
 
+static void
+enqueue_cbs_entity(struct sched_cbs_entity *cbs_se, bool head)
+{
+	struct cbs_rq *cbs_rq = cbs_rq_of(cbs_se);
+
+	//FIXME Should we ensure an SE burst_time == 0 till the next round?
+
+	if (head)
+		list_add(&cbs_se->run_node, &cbs_rq->run_list);
+	else
+		list_add_tail(&cbs_se->run_node, &cbs_rq->run_list);
+
+	cbs_se->on_rq = 1;
+
+	inc_cbs_tasks(cbs_rq);
+
+	// NOTE: Round time is defined at the beginning of the next round
+	// NOTE: SE burst time are assigned at the beginning of the next round
+}
+
 /*******************************************************************************
  * CBS Policy API
  ******************************************************************************/
 
 /*
  * Adding a task to the CBS ranqueue
+ * Trigger: on task activation (always),
+ *          normalization, cgroup/prio/scheduler change and PI (if on RQ)
+ * Goal: add the task on the specified RQ
  */
 static void
 enqueue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 {
+	struct sched_cbs_entity *cbs_se = &p->cbs;
 
+	enqueue_cbs_entity(cbs_se, flags & ENQUEUE_HEAD);
+
+	inc_nr_running(rq);
 }
 
 /*
