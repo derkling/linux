@@ -326,6 +326,64 @@ struct cfs_rq {
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 };
 
+
+/* CBS-related tuning params */
+struct cbs_params {
+
+	/* KRR */
+	u32 krr;
+	/* KZR = KRR * ZRR */
+	u32 kzr;
+
+	/* Multiply factor */
+	u32 mult_factor;
+
+	/* Target latency for CPU-bound tasks */
+	u32 round_latency_ns;
+	/* Maximum tasks for granted latency */
+	u32 round_latency_nr_max;
+
+	/* Nominal burst */
+	u32 burst_nominal_ns;
+	/* Min burst */
+	u32 burst_min_ns;
+	/* Max burst */
+	u32 burst_max_ns;
+	/* Idle burst */
+	u32 burst_idle_ns;
+};
+
+/* CBS-related fields in a runqueue */
+struct cbs_rq {
+	/* Number of running tasks */
+	unsigned int nr_running;
+	/* List of running tasks */
+	struct list_head run_list;
+	/* Currently running SE, NULL if none */
+	struct sched_cbs_entity *curr;
+	/* Previously executed SE, NULL if RQ was empty */
+	struct sched_cbs_entity *prev;
+
+	/* Round Time set-point*/
+	u64 round_time_sp;
+	/* Round Time (measured) */
+	u64 round_time;
+
+	/* Burst correction (cached) */
+	u64 burst_correction_old;
+	/* Round time error (cached) */
+	u64 round_time_error_old;
+
+	/* Regulator Status Flags */
+	u8 reinint:1;
+
+	/* Controller Tuning Parameters */
+	struct cbs_params params;
+
+	/* Overall RQ execution time */
+	u64 exec_runtime;
+};
+
 static inline int rt_bandwidth_enabled(void)
 {
 	return sysctl_sched_rt_runtime >= 0;
@@ -426,6 +484,7 @@ struct rq {
 	u64 nr_switches;
 
 	struct cfs_rq cfs;
+	struct cbs_rq cbs;
 	struct rt_rq rt;
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
