@@ -76,6 +76,110 @@ dequeue_cbs_entity(struct sched_cbs_entity *cbs_se)
 	// NOTE: SE burst time are assigned at the beginning of the next round
 }
 
+static void
+hrtick_start_cbs(struct rq *rq, struct task_struct *p)
+{
+	struct sched_cbs_entity *cbs_se = &p->cbs;
+	u64 delta;
+
+	WARN_ON(task_rq(p) != rq);
+
+	// FIXME could we avoid to setup burst time if there is just one task?
+
+	delta = cbs_se->burst_time_sp;
+
+	hrtick_start(rq, delta);
+}
+
+static void
+run_cbs_entity_start(struct rq *rq, struct sched_cbs_entity *cbs_se)
+{
+	u64 now = rq_clock_task(rq);
+
+	/* Check a start time has not yet been set */
+	BUG_ON(cbs_se->burst_start != 0);
+
+	// Setup scheduling start time
+	// FIXME here we disregard IRQ and ParaVirtualization (PV) STEAL time.
+	//       This allows to account just for pure burst processing time...
+	//       ... but, we cannot grant anything on round latency.
+	// FIXME this is a FAIR policy but we should try to compensate "eRt"
+	//       considering IRQ and STEAL timings
+	// ???
+	// Another possibility is to feed-back an error which is the
+	// difference between the assigned burst and the not consumed time due
+	// to IRQ/STEAL
+	// ???
+	cbs_se->burst_start = now;
+
+}
+
+/*
+ * The idea is to set a period in which each task runs once.
+ *
+ * When there are too many tasks (sched_nr_latency) we have to stretch
+ * this period because otherwise the slices get too small.
+ *
+ * p = (nr <= nl) ? l : l*nr/nl
+ */
+static void
+update_round_time(struct cbs_rq *cbs_rq)
+{
+	u64 period = cbs_rq->params.round_latency_ns;
+	unsigned long nr_latency = cbs_rq->params.round_latency_nr_max;
+
+	if (unlikely(cbs_rq->nr_running > nr_latency)) {
+		period  = cbs_rq->params.burst_min_ns;
+		period *= cbs_rq->nr_running;
+	}
+
+	// NOTE: an update of the round time set-point will be absorbed as
+	// an error at the end of the current run
+	cbs_rq->round_time_sp += period;
+}
+
+static void
+setup_next_round(struct cbs_rq *cbs_rq)
+{
+
+	update_round_time(cbs_rq);
+
+}
+
+static struct sched_cbs_entity *
+pick_next_cbs_entity(struct cbs_rq *cbs_rq)
+{
+	struct sched_cbs_entity *cbs_se = cbs_rq->prev;
+
+	/* No previous task or previous task was also the last on the RQ */
+	if (!cbs_se || list_is_last(&cbs_se->run_node, &cbs_rq->run_list)) {
+
+		/* Bursts allocation to running SEs */
+		setup_next_round(cbs_rq);
+
+		/* Restart from first SE in this RQ */
+		cbs_se = list_first_entry_or_null(
+				&cbs_rq->run_list,
+				struct sched_cbs_entity,
+				run_node);
+
+		goto round_restart;
+	}
+
+	/* Go on with next task in RQ */
+	list_for_each_entry_continue(cbs_se, &cbs_rq->run_list, run_node) {
+		break;
+	}
+
+round_restart:
+
+	/* If we enter this method there is at least one task */
+	BUG_ON(!cbs_se);
+	cbs_rq->curr = cbs_se;
+
+	return cbs_se;
+}
+
 /*******************************************************************************
  * CBS Policy API
  ******************************************************************************/
@@ -146,7 +250,24 @@ check_preempt_curr_cbs(struct rq *rq, struct task_struct *p, int flags)
 static struct task_struct *
 pick_next_task_cbs(struct rq *rq)
 {
-	return NULL;
+	struct cbs_rq *cbs_rq = &rq->cbs;
+	struct sched_cbs_entity *cbs_se;
+	struct task_struct *p;
+
+	if (!cbs_rq->nr_running)
+		return NULL;
+
+	cbs_se = pick_next_cbs_entity(cbs_rq);
+	p = cbs_task_of(cbs_se);
+
+	/* Keep track of SE burst start */
+	run_cbs_entity_start(rq, cbs_se);
+
+	/* Setup HRTimer (if enabled) */
+	if (hrtick_enabled(rq))
+		hrtick_start_cbs(rq, p);
+
+	return p;
 }
 
 /*
