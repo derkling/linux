@@ -213,4 +213,23 @@ static inline void cpuidle_unregister_governor(struct cpuidle_governor *gov) { }
 #define CPUIDLE_DRIVER_STATE_START	0
 #endif
 
+#ifdef CONFIG_CPU_IDLE_GOV_SHARED_PREDICTOR
+struct wakeup_predictor;
+
+unsigned int predict_repeating_wakeup(struct wakeup_predictor *pred);
+unsigned int predict_scaled_wakeup(struct wakeup_predictor *pred,
+				unsigned int timer_us,
+				int io_pending);
+void wakeup_predictor_reset(struct wakeup_predictor *pred,
+				unsigned int timer_us,
+				int io_pending);
+void wakeup_predictor_update(struct wakeup_predictor *pred,
+				unsigned int timer_us,
+				int io_pending,
+				unsigned int actual_us);
+struct wakeup_predictor *create_wakeup_predictor(void);
+void share_wakeup_predictor(struct wakeup_predictor *pred);
+void put_wakeup_predictor(struct wakeup_predictor *pred);
+#endif
+
 #endif /* _LINUX_CPUIDLE_H */
