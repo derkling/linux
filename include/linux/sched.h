@@ -998,6 +998,9 @@ struct sched_cbs_entity {
 	/* SE status flags */
 	u8 on_rq:1;
 
+	/* Load quota */
+	struct load_weight load;
+
 	/* Round-time share (up to 4[s]) */
 	u32 round_time_share_ns;
 	/* Burst time set-point */

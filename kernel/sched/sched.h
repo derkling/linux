@@ -364,6 +364,11 @@ struct cbs_rq {
 	/* Previously executed SE, NULL if RQ was empty */
 	struct sched_cbs_entity *prev;
 
+	/* Overall RQ load (current round) */
+	struct load_weight load;
+	/* Overall RQ load (next round) */
+	struct load_weight load_next;
+
 	/* Round Time set-point*/
 	u64 round_time_sp;
 	/* Round Time (measured) */
