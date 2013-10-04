@@ -1009,6 +1009,8 @@ struct sched_cbs_entity {
 
 	/* Last burst startup time */
 	u64 burst_start_ns;
+	/* Last burst assigned interval */
+	u64 burst_interval_ns;
 	/* Overall execution time */
 	u64 exec_runtime;
 
