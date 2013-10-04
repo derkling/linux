@@ -110,6 +110,12 @@ static void
 monitor_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
 		unsigned long exec_time)
 {
+
+	/* Tt */
+	cbs_se->burst_time  = exec_time;
+
+	/* Tr += Tt */
+	cbs_rq->round_time += exec_time;
 }
 
 static void
