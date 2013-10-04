@@ -30,6 +30,7 @@
  */
 
 #define MAX_RUNNING ((u32) 64)
+#define MAX_ROUND_TIME ( (u32) ((1<<19) - 1) )
 #define KRR_SCALE 2048 // 11 bits
 #define KZR_SCALE 1024 // 10 bits
 #define RNQ_SCALE 4094 // 12 bits
@@ -190,6 +191,11 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 {
 	struct cbs_params *p = &cbs_rq->params;
 	u64 rco1, rco2;
+
+	/* Round time clamping for fixed point arithmetics */
+	/* Tr = min(Tr, 524287) */
+	if (cbs_rq->round_time > MAX_ROUND_TIME)
+		cbs_rq->round_time = MAX_ROUND_TIME;
 
 	if (cbs_rq->needs_reinit) {
 
