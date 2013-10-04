@@ -88,25 +88,32 @@ enqueue_cbs_entity(struct sched_cbs_entity *cbs_se, bool head)
 
 	cbs_se->on_rq = 1;
 
+	// NOTE: Round time is defined at the beginning of the next round
+	// NOTE: SE burst time are assigned at the beginning of the next round
+}
+
+static void
+account_entity_enqueue(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
+{
 	inc_cbs_tasks(cbs_rq);
+}
+
+static void
+dequeue_cbs_entity(struct sched_cbs_entity *cbs_se)
+{
+
+	list_del_init(&cbs_se->run_node);
+
+	cbs_se->on_rq = 0;
 
 	// NOTE: Round time is defined at the beginning of the next round
 	// NOTE: SE burst time are assigned at the beginning of the next round
 }
 
 static void
-dequeue_cbs_entity(struct sched_cbs_entity *cbs_se)
+account_entity_dequeue(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 {
-	struct cbs_rq *cbs_rq = cbs_rq_of(cbs_se);
-
-	list_del_init(&cbs_se->run_node);
-
-	cbs_se->on_rq = 0;
-
 	dec_cbs_tasks(cbs_rq);
-
-	// NOTE: Round time is defined at the beginning of the next round
-	// NOTE: SE burst time are assigned at the beginning of the next round
 }
 
 static void
@@ -119,7 +126,7 @@ hrtick_start_cbs(struct rq *rq, struct task_struct *p)
 
 	// FIXME could we avoid to setup burst time if there is just one task?
 
-	delta = cbs_se->burst_time_sp;
+	delta = cbs_se->burst_interval_ns;
 
 	hrtick_start(rq, delta);
 }
@@ -144,6 +151,10 @@ run_cbs_entity_start(struct rq *rq, struct sched_cbs_entity *cbs_se)
 	// to IRQ/STEAL
 	// ???
 	cbs_se->burst_start_ns = now;
+
+	/* Setup HRTimer (if enabled) */
+	if (hrtick_enabled(rq))
+		hrtick_start_cbs(rq, task_of(cbs_se));
 
 }
 
@@ -175,6 +186,7 @@ static void
 setup_next_round(struct cbs_rq *cbs_rq)
 {
 
+	/* Update the Round Time set-point */
 	update_round_time(cbs_rq);
 
 }
@@ -229,9 +241,7 @@ update_execution_stats(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
 	schedstat_set(cbs_se->statistics.exec_max,
 		      max((u64)exec_time, cbs_se->statistics.exec_max));
 
-	cbs_se->burst_time_old = cbs_se->burst_time;
-	cbs_se->burst_time = exec_time;
-
+	/* Overall SE and RQ execution times */
 	cbs_se->exec_runtime += exec_time;
 	cbs_rq->exec_runtime += exec_time;
 
@@ -240,9 +250,15 @@ update_execution_stats(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
 static void
 run_cbs_entity_stop(struct rq *rq, struct sched_cbs_entity *cbs_se)
 {
+	struct cbs_rq *cbs_rq = cbs_rq_of(cbs_se);
 	u64 now = rq_clock_task(rq);
 	unsigned long exec_time;
 
+	if (cbs_rq->curr && (cbs_rq->curr == cbs_se))
+		return;
+
+	/* Check RQ consistency*/
+	BUG_ON(&rq->cbs != cbs_rq);
 	/* Check a start time has been set */
 	BUG_ON(cbs_se->burst_start_ns == 0);
 
@@ -279,6 +295,7 @@ enqueue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 	struct sched_cbs_entity *cbs_se = &p->cbs;
 
 	enqueue_cbs_entity(cbs_se, flags & ENQUEUE_HEAD);
+	account_entity_enqueue(&rq->cbs, cbs_se);
 
 	inc_nr_running(rq);
 }
@@ -295,6 +312,7 @@ dequeue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 	struct sched_cbs_entity *cbs_se = &p->cbs;
 
 	dequeue_cbs_entity(cbs_se);
+	account_entity_dequeue(&rq->cbs, cbs_se);
 
 	dec_nr_running(rq);
 }
@@ -346,10 +364,6 @@ pick_next_task_cbs(struct rq *rq)
 	/* Keep track of SE burst start */
 	run_cbs_entity_start(rq, cbs_se);
 
-	/* Setup HRTimer (if enabled) */
-	if (hrtick_enabled(rq))
-		hrtick_start_cbs(rq, p);
-
 	return p;
 }
 
@@ -363,8 +377,7 @@ put_prev_task_cbs(struct rq *rq, struct task_struct *prev)
 	struct cbs_rq *cbs_rq = cbs_rq_of(cbs_se);
 
 	/* Keep track of SE burst end */
-	if (cbs_rq->curr && (cbs_rq->curr == cbs_se))
-		run_cbs_entity_stop(rq, cbs_se);
+	run_cbs_entity_stop(rq, cbs_se);
 
 	put_prev_cbs_entity(cbs_rq, cbs_se);
 
