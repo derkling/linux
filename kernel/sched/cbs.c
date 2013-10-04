@@ -110,12 +110,18 @@ static void
 monitor_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
 		unsigned long exec_time)
 {
+	struct cbs_params *p = &cbs_rq->params;
 
 	/* Tt */
 	cbs_se->burst_time  = exec_time;
 
 	/* Tr += Tt */
 	cbs_rq->round_time += exec_time;
+
+	/* Saturation check */
+	if (cbs_se->burst_time_old < p->burst_upper_bound)
+		cbs_rq->all_saturated = 0;
+
 }
 
 static void
@@ -123,6 +129,9 @@ tune_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 {
 	struct cbs_params *p = &cbs_rq->params;
 	u32 burst_error;
+	u64 bo1, bo2;
+
+	/* First: complete external controller tuning */
 
 	/* Update SE round quota (if required) */
 	if (cbs_rq->doing_requote) {
@@ -140,6 +149,18 @@ tune_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 
 	/* b = bo + eTp */
 	cbs_se->burst_time = cbs_se->burst_time_old * burst_error;
+	/* Second: setup saturation */
+
+	/* bo = min(MAX(b, bMin*multFactor), bMax*multFactor) */
+	bo1 = (cbs_se->burst_time > p->burst_lower_bound)
+		? cbs_se->burst_time
+		: p->burst_lower_bound;
+	bo2 = p->burst_upper_bound;
+	cbs_se->burst_time_old = (bo1 < bo2) ? bo1 : bo2;
+
+
+	/* Third: internal controller tuning */
+
 	cbs_se->burst_interval_ns = cbs_se->burst_time / p->mult_factor;
 
 }
@@ -157,8 +178,16 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 		+ scale_down(p->krr * cbs_rq->round_error, KRR_SCALE)
 		- scale_down(p->kzr * cbs_rq->round_error_old, KZR_SCALE);
 
-	/* bc0 = bo */
-	cbs_rq->round_correction_old = cbs_rq->round_correction;
+	/* Setup burst correction for next round.  If all inner regulators are
+	 * up-saturated, allows only decreasing round correction */
+	if (cbs_rq->all_saturated) {
+		if (cbs_rq->round_correction < cbs_rq->round_correction_old)
+			/* bc0 = bo */
+			cbs_rq->round_correction_old = cbs_rq->round_correction;
+	} else {
+		/* bc0 = bo */
+		cbs_rq->round_correction_old = cbs_rq->round_correction;
+	}
 
 	/* bco = min(MAX(bco, -Tr), bMax*threadListSize */
 	rco1 = (cbs_rq->round_correction_old > -cbs_rq->round_time)
@@ -188,6 +217,9 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 	cbs_rq->doing_requote = cbs_rq->needs_requote;
 	/* Reset round requoting request flag */
 	cbs_rq->needs_requote = 0;
+	/* Assuming all SE will be saturated on next round */
+	cbs_rq->all_saturated = 1;
+
 }
 
 /*******************************************************************************
@@ -771,6 +803,9 @@ void init_cbs_rq(struct cbs_rq *cbs_rq)
 	p->burst_nominal_ns =  4    * 1000000ULL;
 	p->burst_min_ns     =  0.75 * 1000000ULL;
 	p->burst_max_ns     = 20    * 1000000ULL;
+
+	p->burst_upper_bound = p->burst_max_ns * p->mult_factor;
+	p->burst_lower_bound = p->burst_min_ns * p->mult_factor;
 
 }
 
