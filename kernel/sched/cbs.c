@@ -95,6 +95,31 @@ update_load_set(struct load_weight *lw, unsigned long w)
 	lw->inv_weight = 0;
 }
 
+
+/*******************************************************************************
+ * CBS Controller Management
+ ******************************************************************************/
+
+static void
+monitor_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
+		unsigned long exec_time)
+{
+}
+
+static void
+tune_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
+{
+}
+
+static void
+tune_cbs_round(struct cbs_rq *cbs_rq)
+{
+}
+
+/*******************************************************************************
+ * CBS Policy Internals
+ ******************************************************************************/
+
 static void
 enqueue_cbs_entity(struct sched_cbs_entity *cbs_se, bool head)
 {
@@ -162,6 +187,9 @@ run_cbs_entity_start(struct rq *rq, struct sched_cbs_entity *cbs_se)
 	/* Check a start time has not yet been set */
 	BUG_ON(cbs_se->burst_start_ns != 0);
 
+	/* Controller: Burst Tuning */
+	tune_cbs_burst(&rq->cbs, cbs_se);
+
 	// Setup scheduling start time
 	// FIXME here we disregard IRQ and ParaVirtualization (PV) STEAL time.
 	//       This allows to account just for pure burst processing time...
@@ -211,6 +239,9 @@ setup_next_round(struct cbs_rq *cbs_rq)
 
 	/* Update the Round Time set-point */
 	update_round_time(cbs_rq);
+
+	/* Controller: Round Tuning */
+	tune_cbs_round(cbs_rq);
 
 }
 
@@ -292,6 +323,9 @@ run_cbs_entity_stop(struct rq *rq, struct sched_cbs_entity *cbs_se)
 	exec_time = (unsigned long)(now - cbs_se->burst_start_ns);
 	if (!exec_time)
 		goto exit_reset;
+
+	/* Controller: Burst Monitoring */
+	monitor_cbs_burst(&rq->cbs, cbs_se, exec_time);
 
 	/* Keep track of last burst execution time */
 	update_execution_stats(&rq->cbs, cbs_se, exec_time);
