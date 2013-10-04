@@ -351,6 +351,11 @@ struct cbs_params {
 	u32 burst_max_ns;
 	/* Idle burst */
 	u32 burst_idle_ns;
+
+	/* Burst lower-bound, i.e. burst_min_ns * mult_factor */
+	u32 burst_lower_bound;
+	/* Burst upper-bound, i.e. burst_max_ns * mult_factor */
+	u32 burst_upper_bound;
 };
 
 /* CBS-related fields in a runqueue */
@@ -386,6 +391,7 @@ struct cbs_rq {
 	u64 round_error_old;
 
 	/* Regulator Status Flags */
+	u8 all_saturated:1;	// 1: all SE saturated
 	u8 needs_reinit:1;	// 1: external controller needs re-initialization
 	u8 doing_reinit:1;	// 1: external controller doing re-initialization
 	u8 needs_requote:1;	// 1: SE requoting requested for next round
