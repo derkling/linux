@@ -115,6 +115,8 @@ monitor_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
 static void
 tune_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 {
+	struct cbs_params *p = &cbs_rq->params;
+	u32 burst_error;
 
 	/* Update SE round quota (if required) */
 	if (cbs_rq->doing_requote) {
@@ -122,6 +124,18 @@ tune_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 		cbs_se->round_quota =
 			cbs_rq->load.inv_weight * cbs_se->load.weight;
 	}
+
+	/* SP_Tp = alfa * nextRoundTime */
+	cbs_se->burst_time_sp =
+		scale_down(cbs_se->round_quota * cbs_rq->round_time_next, RNQ_SCALE);
+
+	/* eTp = SP_Tp - Tp */
+	burst_error = cbs_se->burst_time_sp - cbs_se->burst_time;
+
+	/* b = bo + eTp */
+	cbs_se->burst_time = cbs_se->burst_time_old * burst_error;
+	cbs_se->burst_interval_ns = cbs_se->burst_time / p->mult_factor;
+
 }
 
 static void
