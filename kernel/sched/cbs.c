@@ -75,6 +75,12 @@ dec_cbs_tasks(struct cbs_rq *cbs_rq)
 }
 
 static inline void
+set_requoting(struct cbs_rq *cbs_rq)
+{
+	cbs_rq->needs_requote = 1;
+}
+
+static inline void
 update_load_add(struct load_weight *lw, unsigned long inc)
 {
 	lw->weight += inc;
@@ -109,11 +115,30 @@ monitor_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
 static void
 tune_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 {
+
+	/* Update SE round quota (if required) */
+	if (cbs_rq->doing_requote) {
+		/* alfa = base * priority */
+		cbs_se->round_quota =
+			cbs_rq->load.inv_weight * cbs_se->load.weight;
+	}
 }
 
 static void
 tune_cbs_round(struct cbs_rq *cbs_rq)
 {
+
+	/* Update RQ load to support SE round quota computation */
+	if (cbs_rq->load.weight != cbs_rq->load_next.weight) {
+		BUG_ON(cbs_rq->needs_requote == 0);
+		cbs_rq->load.weight     = cbs_rq->load_next.weight;
+		cbs_rq->load.inv_weight =
+			scale_up(1, RNQ_SCALE) / cbs_rq->load.weight;
+	}
+	/* Enable SE requoting on next round (if required) */
+	cbs_rq->doing_requote = cbs_rq->needs_requote;
+	/* Reset round requoting request flag */
+	cbs_rq->needs_requote = 0;
 }
 
 /*******************************************************************************
@@ -142,6 +167,7 @@ static void
 account_entity_enqueue(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 {
 	update_load_add(&cbs_rq->load_next, cbs_se->load.weight);
+	set_requoting(cbs_rq);
 	inc_cbs_tasks(cbs_rq);
 }
 
@@ -161,6 +187,7 @@ static void
 account_entity_dequeue(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 {
 	update_load_sub(&cbs_rq->load_next, cbs_se->load.weight);
+	set_requoting(cbs_rq);
 	dec_cbs_tasks(cbs_rq);
 }
 

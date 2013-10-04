@@ -381,6 +381,8 @@ struct cbs_rq {
 
 	/* Regulator Status Flags */
 	u8 reinint:1;
+	u8 needs_requote:1;	// 1: SE requoting requested for next round
+	u8 doing_requote:1;	// 1: Requoting SE on current round
 
 	/* Controller Tuning Parameters */
 	struct cbs_params params;
