@@ -373,14 +373,21 @@ struct cbs_rq {
 	u64 round_time_sp;
 	/* Round Time (measured) */
 	u64 round_time;
+	/* Round Time (next) */
+	u64 round_time_next;
 
-	/* Burst correction (cached) */
-	u64 burst_correction_old;
+	/* Round correction */
+	u64 round_correction;
+	/* Round correction (cached) */
+	u64 round_correction_old;
+	/* Round time error */
+	u64 round_error;
 	/* Round time error (cached) */
-	u64 round_time_error_old;
+	u64 round_error_old;
 
 	/* Regulator Status Flags */
-	u8 reinint:1;
+	u8 needs_reinit:1;	// 1: external controller needs re-initialization
+	u8 doing_reinit:1;	// 1: external controller doing re-initialization
 	u8 needs_requote:1;	// 1: SE requoting requested for next round
 	u8 doing_requote:1;	// 1: Requoting SE on current round
 

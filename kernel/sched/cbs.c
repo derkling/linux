@@ -127,6 +127,35 @@ tune_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 static void
 tune_cbs_round(struct cbs_rq *cbs_rq)
 {
+	struct cbs_params *p = &cbs_rq->params;
+	u64 rco1, rco2;
+
+	/* eTr = SP_Tr - Tr */
+	cbs_rq->round_error = p->round_latency_ns - cbs_rq->round_time;
+	/* bc = bco + (krr*eTr - krr*zrr*eTro) */
+	cbs_rq->round_correction = cbs_rq->round_correction_old
+		+ scale_down(p->krr * cbs_rq->round_error, KRR_SCALE)
+		- scale_down(p->kzr * cbs_rq->round_error_old, KZR_SCALE);
+
+	/* bc0 = bo */
+	cbs_rq->round_correction_old = cbs_rq->round_correction;
+
+	/* bco = min(MAX(bco, -Tr), bMax*threadListSize */
+	rco1 = (cbs_rq->round_correction_old > -cbs_rq->round_time)
+		?  cbs_rq->round_correction_old
+		: -cbs_rq->round_time;
+	rco2 = p->burst_max_ns * cbs_rq->nr_running;
+	cbs_rq->round_correction_old = (rco1 < rco2) ? rco1 : rco2;
+
+	/* nextRoundTime = Tr + bco */
+	cbs_rq->round_time_next =
+		cbs_rq->round_time + cbs_rq->round_correction_old;
+
+	/* eTro = eTr */
+	cbs_rq->round_error_old = cbs_rq->round_error;
+
+	/* Tr = 0 */
+	cbs_rq->round_time = 0;
 
 	/* Update RQ load to support SE round quota computation */
 	if (cbs_rq->load.weight != cbs_rq->load_next.weight) {
