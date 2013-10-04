@@ -29,6 +29,7 @@
  * - signed int: 31 bits => up to (31-19) = 12 bits for KRR and KZR
  */
 
+#define MAX_RUNNING ((u32) 64)
 #define KRR_SCALE 2048 // 11 bits
 #define KZR_SCALE 1024 // 10 bits
 #define RNQ_SCALE 4094 // 12 bits
@@ -500,6 +501,8 @@ static void
 enqueue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct sched_cbs_entity *cbs_se = &p->cbs;
+
+	BUG_ON(rq->cbs.nr_running == MAX_RUNNING);
 
 	enqueue_cbs_entity(cbs_se, flags & ENQUEUE_HEAD);
 	account_entity_enqueue(&rq->cbs, cbs_se);
