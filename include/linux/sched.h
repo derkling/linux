@@ -1008,7 +1008,7 @@ struct sched_cbs_entity {
 	u32 burst_time_old;
 
 	/* Last burst startup time */
-	u64 burst_start;
+	u64 burst_start_ns;
 	/* Overall execution time */
 	u64 exec_runtime;
 
