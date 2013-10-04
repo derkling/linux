@@ -102,7 +102,7 @@ run_cbs_entity_start(struct rq *rq, struct sched_cbs_entity *cbs_se)
 	u64 now = rq_clock_task(rq);
 
 	/* Check a start time has not yet been set */
-	BUG_ON(cbs_se->burst_start != 0);
+	BUG_ON(cbs_se->burst_start_ns != 0);
 
 	// Setup scheduling start time
 	// FIXME here we disregard IRQ and ParaVirtualization (PV) STEAL time.
@@ -115,7 +115,7 @@ run_cbs_entity_start(struct rq *rq, struct sched_cbs_entity *cbs_se)
 	// difference between the assigned burst and the not consumed time due
 	// to IRQ/STEAL
 	// ???
-	cbs_se->burst_start = now;
+	cbs_se->burst_start_ns = now;
 
 }
 
@@ -216,13 +216,13 @@ run_cbs_entity_stop(struct rq *rq, struct sched_cbs_entity *cbs_se)
 	unsigned long exec_time;
 
 	/* Check a start time has been set */
-	BUG_ON(cbs_se->burst_start == 0);
+	BUG_ON(cbs_se->burst_start_ns == 0);
 
 	/*
 	 * Get the amount of time the current task was running
 	 * since the time we scheduled it (this cannot oeverflow on 32 bits)
 	 */
-	exec_time = (unsigned long)(now - cbs_se->burst_start);
+	exec_time = (unsigned long)(now - cbs_se->burst_start_ns);
 	if (!exec_time)
 		goto exit_reset;
 
@@ -231,7 +231,7 @@ run_cbs_entity_stop(struct rq *rq, struct sched_cbs_entity *cbs_se)
 
 exit_reset:
 	/* Reset SE start timestamp */
-	cbs_se->burst_start = 0;
+	cbs_se->burst_start_ns = 0;
 
 }
 
