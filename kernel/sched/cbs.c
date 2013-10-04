@@ -10,6 +10,34 @@
 #endif
 
 /*******************************************************************************
+ * CBS Constants and Utility Macros
+ ******************************************************************************/
+
+#define CONFIG_CBS_PARAM_KPI 0.50f
+#define CONFIG_CBS_PARAM_KRR 0.90f
+#define CONFIG_CBS_PARAM_ZRR 0.88f
+
+/* Fixed Point Arithmetics
+ * ------------------------
+ *
+ * .:: SP_Tr = Tr * alfa
+ * - Round Time (Tr)    20 bits => up to 524287 [us?!?]
+ * - Round Quota (alfa) 12 bits
+ *
+ * .:: bc = bco + (fixedKrr * eTr) - (fixedKrrZrr * eTro)
+ * - Round Time (Tr) clamped to 524287 => 19bits
+ * - signed int: 31 bits => up to (31-19) = 12 bits for KRR and KZR
+ */
+
+#define KRR_SCALE 2048 // 11 bits
+#define KZR_SCALE 1024 // 10 bits
+#define RNQ_SCALE 4094 // 12 bits
+#define scale_up(W, S)   ( (u32) ((W) * S) )
+#define scale_down(W, S) ( (u32) ((W) / S) )
+#define int_param(W)     ( (u32)  (W) )
+
+
+/*******************************************************************************
  * CBS Data Structures Management Utilities
  ******************************************************************************/
 
@@ -578,32 +606,25 @@ const struct sched_class cbs_sched_class = {
  * CBS Policy Initialization
  ******************************************************************************/
 
-#define CONFIG_CBS_PARAM_KPI 0.50f
-#define CONFIG_CBS_PARAM_KRR 0.90f
-#define CONFIG_CBS_PARAM_ZRR 0.88f
-
-#define SCALE_PARAM_FACTOR 1024 // 10 bits
-#define scale_param_up(W)   ( (u32) ((W) * SCALE_PARAM_FACTOR) )
-#define scale_param_down(W) ( (u32) ((W) / SCALE_PARAM_FACTOR) )
-#define int_param(W)        ( (u32)  (W) )
-
 void init_cbs_rq(struct cbs_rq *cbs_rq)
 {
+	struct cbs_params *p = &cbs_rq->params;
+
 	// Setup list of CBS task
 	INIT_LIST_HEAD(&cbs_rq->run_list);
 
 	// Setup CBS Controller params
-	cbs_rq->params.mult_factor = int_param(1.0f / CONFIG_CBS_PARAM_KPI);
-	cbs_rq->params.krr = scale_param_up(CONFIG_CBS_PARAM_KRR);
-	cbs_rq->params.kzr = scale_param_up(CONFIG_CBS_PARAM_KRR * CONFIG_CBS_PARAM_ZRR);
+	p->mult_factor = int_param(1.0f / CONFIG_CBS_PARAM_KPI);
+	p->krr = scale_up(CONFIG_CBS_PARAM_KRR, KRR_SCALE);
+	p->kzr = scale_up(CONFIG_CBS_PARAM_KRR * CONFIG_CBS_PARAM_ZRR, KZR_SCALE);
 
 	// Setup scheduler latency constraints
-	cbs_rq->params.round_latency_ns = 6000000ULL;
-	cbs_rq->params.round_latency_nr_max = 8; // Keep latency / burst_min
+	p->round_latency_ns = 6000000ULL;
+	p->round_latency_nr_max = 8; // Keep latency / burst_min
 
-	cbs_rq->params.burst_nominal_ns =  4    * 1000000ULL;
-	cbs_rq->params.burst_min_ns     =  0.75 * 1000000ULL;
-	cbs_rq->params.burst_max_ns     = 20    * 1000000ULL;
+	p->burst_nominal_ns =  4    * 1000000ULL;
+	p->burst_min_ns     =  0.75 * 1000000ULL;
+	p->burst_max_ns     = 20    * 1000000ULL;
 
 }
 
