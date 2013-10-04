@@ -1008,6 +1008,8 @@ struct sched_cbs_entity {
 
 	/* Load quota */
 	struct load_weight load;
+	/* Round quota */
+	u32 round_quota;
 
 	/* Burst time set-point */
 	u32 burst_time_sp;
