@@ -78,6 +78,7 @@ static inline void
 set_requoting(struct cbs_rq *cbs_rq)
 {
 	cbs_rq->needs_requote = 1;
+	cbs_rq->needs_reinit = 1;
 }
 
 static inline void
@@ -140,6 +141,10 @@ tune_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 			cbs_rq->load.inv_weight * cbs_se->load.weight;
 	}
 
+	// FIXME is re_initialization required only on re-quoting?!?
+	if (cbs_rq->doing_reinit)
+		goto reinit;
+
 	/* SP_Tp = alfa * nextRoundTime */
 	cbs_se->burst_time_sp =
 		scale_down(cbs_se->round_quota * cbs_rq->round_time_next, RNQ_SCALE);
@@ -149,6 +154,20 @@ tune_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 
 	/* b = bo + eTp */
 	cbs_se->burst_time = cbs_se->burst_time_old * burst_error;
+
+	goto common;
+
+reinit:
+
+	/* SP_Tp = alfa * SP_Tr */
+	cbs_se->burst_time_sp =
+		scale_down(cbs_se->round_quota * cbs_rq->round_time_sp, RNQ_SCALE);
+
+	/* b = SP_Tp * multFactor */
+	cbs_se->burst_time = cbs_se->burst_time_sp * p->mult_factor;
+
+common:
+
 	/* Second: setup saturation */
 
 	/* bo = min(MAX(b, bMin*multFactor), bMax*multFactor) */
@@ -170,6 +189,19 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 {
 	struct cbs_params *p = &cbs_rq->params;
 	u64 rco1, rco2;
+
+	if (cbs_rq->needs_reinit) {
+
+		/* eTro = 0 */
+		cbs_rq->round_error_old = 0;
+		/* bco = 0 */
+		cbs_rq->round_correction_old = 0;
+
+		/* Keep track of ReInitialization for SE tuning steps */
+		cbs_rq->doing_reinit = 1;
+
+		goto exit_done;
+	}
 
 	/* eTr = SP_Tr - Tr */
 	cbs_rq->round_error = p->round_latency_ns - cbs_rq->round_time;
@@ -203,6 +235,11 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 	/* eTro = eTr */
 	cbs_rq->round_error_old = cbs_rq->round_error;
 
+	/* Keep track of NOT ReInitialization for SE tuning steps */
+	cbs_rq->doing_reinit = 0;
+
+exit_done:
+
 	/* Tr = 0 */
 	cbs_rq->round_time = 0;
 
@@ -213,12 +250,17 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 		cbs_rq->load.inv_weight =
 			scale_up(1, RNQ_SCALE) / cbs_rq->load.weight;
 	}
+
+	/* Reset re-initialization flag */
+	cbs_rq->needs_reinit = 0;
 	/* Enable SE requoting on next round (if required) */
 	cbs_rq->doing_requote = cbs_rq->needs_requote;
 	/* Reset round requoting request flag */
 	cbs_rq->needs_requote = 0;
 	/* Assuming all SE will be saturated on next round */
 	cbs_rq->all_saturated = 1;
+
+	/* NOTE: SE reinit is post-poned into tune_cbs_burst */
 
 }
 
