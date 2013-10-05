@@ -1651,6 +1651,24 @@ void set_numabalancing_state(bool enabled)
 #endif /* CONFIG_SCHED_DEBUG */
 #endif /* CONFIG_NUMA_BALANCING */
 
+/* Set the scheduling class based on task priority and policy */
+static void
+set_sched_class(struct task_struct *p)
+{
+
+	if (rt_prio(p->prio)) {
+		p->sched_class = &rt_sched_class;
+		return;
+	}
+
+	if (p->policy == SCHED_CBS) {
+		p->sched_class = &cbs_sched_class;
+		return;
+	}
+
+	p->sched_class = &fair_sched_class;
+}
+
 /*
  * fork()/clone()-time setup:
  */
@@ -1693,8 +1711,7 @@ void sched_fork(struct task_struct *p)
 		p->sched_reset_on_fork = 0;
 	}
 
-	if (!rt_prio(p->prio))
-		p->sched_class = &fair_sched_class;
+	set_sched_class(p);
 
 	if (p->sched_class->task_fork)
 		p->sched_class->task_fork(p);
@@ -3058,10 +3075,7 @@ void rt_mutex_setprio(struct task_struct *p, int prio)
 	if (running)
 		p->sched_class->put_prev_task(rq, p);
 
-	if (rt_prio(prio))
-		p->sched_class = &rt_sched_class;
-	else
-		p->sched_class = &fair_sched_class;
+	set_sched_class(p);
 
 	p->prio = prio;
 
@@ -3258,10 +3272,8 @@ __setscheduler(struct rq *rq, struct task_struct *p, int policy, int prio)
 	p->normal_prio = normal_prio(p);
 	/* we are holding p->pi_lock already */
 	p->prio = rt_mutex_getprio(p);
-	if (rt_prio(p->prio))
-		p->sched_class = &rt_sched_class;
-	else
-		p->sched_class = &fair_sched_class;
+
+	set_sched_class(p);
 	set_load_weight(p);
 }
 
