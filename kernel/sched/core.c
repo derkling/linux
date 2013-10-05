@@ -750,6 +750,7 @@ static void set_load_weight(struct task_struct *p)
 {
 	int prio = p->static_prio - MAX_RT_PRIO;
 	struct load_weight *load = &p->se.load;
+	struct load_weight *cbs_load = &p->cbs_se.load;
 
 	/*
 	 * SCHED_IDLE tasks get minimal weight:
@@ -757,6 +758,15 @@ static void set_load_weight(struct task_struct *p)
 	if (p->policy == SCHED_IDLE) {
 		load->weight = scale_load(WEIGHT_IDLEPRIO);
 		load->inv_weight = WMULT_IDLEPRIO;
+		return;
+	}
+
+	/*
+	 * SCHED_CBS tasks get the same weight as SCHED_NORMAL
+	 */
+	if (p->policy == SCHED_CBS) {
+		cbs_load->weight = scale_load(prio_to_weight[prio]);
+		cbs_load->inv_weight = prio_to_wmult[prio];
 		return;
 	}
 
