@@ -64,6 +64,22 @@ cbs_rq_of(struct sched_cbs_entity *cbs_se)
 	return &rq->cbs;
 }
 
+static int
+cbs_is_current(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
+{
+	/* SE moved to CBS while running */
+	if (!cbs_rq->curr)
+		return 0;
+
+	if (cbs_rq->curr != cbs_se)
+		return 0;
+
+	/* A current CBS task MUST have a burst start assigned */
+	BUG_ON(cbs_se->burst_start_ns == 0);
+
+	return 1;
+}
+
 static inline void
 inc_cbs_tasks(struct cbs_rq *cbs_rq)
 {
@@ -465,9 +481,6 @@ run_cbs_entity_stop(struct rq *rq, struct sched_cbs_entity *cbs_se)
 	u64 now = rq_clock_task(rq);
 	unsigned long exec_time;
 
-	if (cbs_rq->curr && (cbs_rq->curr == cbs_se))
-		return;
-
 	/* Check RQ consistency*/
 	BUG_ON(&rq->cbs != cbs_rq);
 	/* Check a start time has been set */
@@ -562,7 +575,7 @@ check_preempt_curr_cbs(struct rq *rq, struct task_struct *p, int flags)
 }
 
 /*
- * Add a CBS managed task into the runqueue
+ * Get a CBS managed task from the runqueue
  */
 static struct task_struct *
 pick_next_task_cbs(struct rq *rq)
@@ -584,7 +597,7 @@ pick_next_task_cbs(struct rq *rq)
 }
 
 /*
- * Remove a CBS managed task from the runqueue
+ * Put back a CBS managed task to the runqueue
  */
 static void
 put_prev_task_cbs(struct rq *rq, struct task_struct *prev)
@@ -592,9 +605,18 @@ put_prev_task_cbs(struct rq *rq, struct task_struct *prev)
 	struct sched_cbs_entity *cbs_se = &prev->cbs;
 	struct cbs_rq *cbs_rq = cbs_rq_of(cbs_se);
 
+	/* The task has been moved to CBS while already running */
+	if (!cbs_is_current(cbs_rq, cbs_se))
+		return;
+
+	BUG_ON(!cbs_se);
+	BUG_ON(!cbs_rq);
+	BUG_ON( cbs_rq != &rq->cbs);
+
 	/* Keep track of SE burst end */
 	run_cbs_entity_stop(rq, cbs_se);
 
+	/* Keep track of prev and curr SE */
 	put_prev_cbs_entity(cbs_rq, cbs_se);
 
 }
@@ -704,12 +726,29 @@ rq_offline_cbs(struct rq *rq)
 #endif /* CONFIG_SMP */
 
 /*
- *
+ * Running task moved into CBS RQ
+ * Trigger: each time an already running task is moved into this scheduling
+ *          policy, i.e. core::rt_mutex_setptio, core::__sched_setscheduler
+ *          core::sched_move_task
+ * Gola: keep track of a new CBS task by triggering the scheduler in order
+ *       to handle its management to the CBS policy as soon as possible.
+ *       The current task will be preempted to get back control to the CBS
+ *       policy.
  */
 static void
 set_curr_task_cbs(struct rq *rq)
 {
+	struct cbs_rq *cbs_rq = &rq->cbs;
 
+	// FIXME this is expected to be valid just for rt_mutex_setprio and
+	// __sched_setscheduler. While, using GROUPS, this could happens also
+	// because of a movement among different groups of the same CBS
+	// policy, thus with a !NULL current for the destination group RQ.
+	/* The CBS current is expected to be NULL */
+	BUG_ON(cbs_rq->curr);
+
+	/* Trigger rescheduling to allows CBS to kick into */
+	resched_task(rq->curr);
 }
 
 /*
