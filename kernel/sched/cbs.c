@@ -747,7 +747,7 @@ switched_to_cbs(struct rq *rq, struct task_struct *p)
 {
 
 	/* If the task is *not* RUNNING, nothing has to be done */
-	if (!p->se.on_rq)
+	if (!p->cbs.on_rq)
 		return;
 
 	/* Possible actions:
@@ -766,7 +766,7 @@ prio_changed_cbs(struct rq *rq, struct task_struct *p, int oldprio)
 {
 
 	/* If the task is *not* RUNNING, nothing has to be done */
-	if (!p->se.on_rq)
+	if (!p->cbs.on_rq)
 		return;
 
 	/* Possible actions:
