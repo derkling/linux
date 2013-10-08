@@ -521,7 +521,7 @@ enqueue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct sched_cbs_entity *cbs_se = &p->cbs;
 
-	BUG_ON(rq->cbs.nr_running == MAX_RUNNING);
+	BUG_ON(rq->cbs.nr_running >= MAX_RUNNING);
 
 	enqueue_cbs_entity(cbs_se, ENQUEUE_HEAD);
 	account_entity_enqueue(&rq->cbs, cbs_se);
