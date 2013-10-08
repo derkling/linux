@@ -423,6 +423,8 @@ pick_next_cbs_entity(struct cbs_rq *cbs_rq)
 {
 	struct sched_cbs_entity *cbs_se = cbs_rq->prev;
 
+	BUG_ON(cbs_rq->curr);
+
 	/* No previous task or previous task was also the last on the RQ */
 	if (!cbs_se || list_is_last(&cbs_se->run_node, &cbs_rq->run_list)) {
 
@@ -455,6 +457,7 @@ round_restart:
 static void
 put_prev_cbs_entity(struct cbs_rq *cbs_rq, struct sched_cbs_entity *prev)
 {
+	/* Check put of a current CBS entity */
 	BUG_ON(!cbs_rq->curr);
 
 	cbs_rq->prev = cbs_rq->curr;
@@ -483,8 +486,12 @@ run_cbs_entity_stop(struct rq *rq, struct sched_cbs_entity *cbs_se)
 
 	/* Check RQ consistency*/
 	BUG_ON(&rq->cbs != cbs_rq);
+	/* Check dequeuing of a CBS current */
+	BUG_ON(!cbs_rq->curr);
 	/* Check a start time has been set */
 	BUG_ON(cbs_se->burst_start_ns == 0);
+	/* Account just for de-scheduling of current task */
+	BUG_ON(cbs_rq->curr != cbs_se);
 
 	/*
 	 * Get the amount of time the current task was running
@@ -527,6 +534,8 @@ enqueue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 	account_entity_enqueue(&rq->cbs, cbs_se);
 
 	inc_nr_running(rq);
+
+	BUG_ON(!cbs_se->on_rq);
 }
 
 /*
@@ -544,6 +553,8 @@ dequeue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 	account_entity_dequeue(&rq->cbs, cbs_se);
 
 	dec_nr_running(rq);
+
+	BUG_ON(cbs_se->on_rq);
 }
 
 /*
@@ -588,7 +599,9 @@ pick_next_task_cbs(struct rq *rq)
 		return NULL;
 
 	cbs_se = pick_next_cbs_entity(cbs_rq);
+	BUG_ON(!cbs_rq->curr);
 	p = task_of(cbs_se);
+	BUG_ON(!p);
 
 	/* Keep track of SE burst start */
 	run_cbs_entity_start(rq, cbs_se);
