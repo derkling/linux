@@ -349,8 +349,6 @@ struct cbs_params {
 	u32 burst_min_ns;
 	/* Max burst */
 	u32 burst_max_ns;
-	/* Idle burst */
-	u32 burst_idle_ns;
 
 	/* Burst lower-bound, i.e. burst_min_ns * mult_factor */
 	u32 burst_lower_bound;
