@@ -120,6 +120,10 @@ update_load_set(struct load_weight *lw, unsigned long w)
 	lw->inv_weight = 0;
 }
 
+typedef struct cbs_rq *cbs_rq_iter_t;
+
+#define for_each_cbs_rq(cbs_rq, iter, rq) \
+	for ((void) iter, cbs_rq = &rq->cbs; cbs_rq; cbs_rq = NULL)
 
 /*******************************************************************************
  * CBS Controller Management
@@ -887,6 +891,21 @@ const struct sched_class cbs_sched_class = {
 
         .get_rr_interval        = get_rr_interval_cbs,
 };
+
+#ifdef CONFIG_SCHED_DEBUG
+extern void print_cbs_rq(struct seq_file *m, int cpu, struct cbs_rq *cbs_rq);
+
+void print_cbs_stats(struct seq_file *m, int cpu)
+{
+	cbs_rq_iter_t iter;
+	struct cbs_rq *cbs_rq;
+
+	rcu_read_lock();
+	for_each_cbs_rq(cbs_rq, iter, cpu_rq(cpu))
+		print_cbs_rq(m, cpu, cbs_rq);
+	rcu_read_unlock();
+}
+#endif /* CONFIG_SCHED_DEBUG */
 
 
 /*******************************************************************************
