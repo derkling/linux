@@ -402,6 +402,10 @@ struct cbs_rq {
 
 	/* Overall RQ execution time */
 	u64 exec_runtime;
+	/* Total number of rounds */
+	u64 count_rounds;
+	/* Total number of re-initializations */
+	u64 count_reinit;
 };
 
 static inline int rt_bandwidth_enabled(void)
