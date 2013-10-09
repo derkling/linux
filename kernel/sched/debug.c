@@ -253,6 +253,48 @@ void print_rt_rq(struct seq_file *m, int cpu, struct rt_rq *rt_rq)
 #undef P
 }
 
+void print_cbs_rq(struct seq_file *m, int cpu, struct cbs_rq *cbs_rq)
+{
+	SEQ_printf(m, "\ncbs_rq[%d]:\n", cpu);
+
+#define P(x) \
+	SEQ_printf(m, "  .%-30s: %Ld\n", #x, (long long)(cbs_rq->x))
+#define PN(x) \
+	SEQ_printf(m, "  .%-30s: %Ld.%06ld\n", #x, SPLIT_NS(cbs_rq->x))
+
+	P(nr_running);
+	PN(exec_runtime);
+
+	P(count_rounds);
+	P(count_reinit);
+
+	P(load.weight);
+	P(load_next.weight);
+
+	PN(round_time_sp);
+	PN(round_time);
+	PN(round_time_next);
+	PN(round_error);
+
+	P(params.mult_factor);
+	P(params.krr);
+	P(params.kzr);
+
+	PN(params.round_latency_ns);
+	P(params.round_latency_nr_max);
+
+	PN(params.burst_nominal_ns);
+	PN(params.burst_min_ns);
+	PN(params.burst_max_ns);
+
+	P(params.burst_lower_bound);
+	P(params.burst_upper_bound);
+
+#undef PN
+#undef P
+}
+
+
 extern __read_mostly int sched_clock_running;
 
 static void print_cpu(struct seq_file *m, int cpu)
@@ -319,6 +361,7 @@ do {									\
 #endif
 	spin_lock_irqsave(&sched_debug_lock, flags);
 	print_cfs_stats(m, cpu);
+	print_cbs_stats(m, cpu);
 	print_rt_stats(m, cpu);
 
 	rcu_read_lock();
