@@ -906,12 +906,12 @@ void init_cbs_rq(struct cbs_rq *cbs_rq)
 	p->kzr = scale_up(CONFIG_CBS_PARAM_KRR * CONFIG_CBS_PARAM_ZRR, KZR_SCALE);
 
 	// Setup scheduler latency constraints
-	p->round_latency_ns = 6000000ULL;
+	p->round_latency_ns = 6000000UL;
 	p->round_latency_nr_max = 8; // Keep latency / burst_min
 
-	p->burst_nominal_ns =  4    * 1000000ULL;
-	p->burst_min_ns     =  0.75 * 1000000ULL;
-	p->burst_max_ns     = 20    * 1000000ULL;
+	p->burst_nominal_ns =  4    * 1000000UL;
+	p->burst_min_ns     =  0.75 * 1000000UL;
+	p->burst_max_ns     = 20    * 1000000UL;
 
 	p->burst_upper_bound = p->burst_max_ns * p->mult_factor;
 	p->burst_lower_bound = p->burst_min_ns * p->mult_factor;
