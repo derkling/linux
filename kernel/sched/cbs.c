@@ -39,6 +39,10 @@
 #define int_param(W)     ( (u32)  (W) )
 
 
+//#define DB(x) x
+#define DB(x)
+
+
 /*******************************************************************************
  * CBS Data Structures Management Utilities
  ******************************************************************************/
@@ -75,7 +79,7 @@ cbs_is_current(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 		return 0;
 
 	/* A current CBS task MUST have a burst start assigned */
-	BUG_ON(cbs_se->burst_start_ns == 0);
+	DB(BUG_ON(cbs_se->burst_start_ns == 0));
 
 	return 1;
 }
@@ -284,8 +288,9 @@ exit_done:
 
 	/* Update RQ load to support SE round quota computation */
 	if (cbs_rq->load.weight != cbs_rq->load_next.weight) {
-		BUG_ON(cbs_rq->needs_requote == 0);
+		DB(BUG_ON(cbs_rq->needs_requote == 0));
 		cbs_rq->load.weight     = cbs_rq->load_next.weight;
+		DB(BUG_ON(cbs_rq->load.weight == 0));
 		cbs_rq->load.inv_weight =
 			scale_up(1, RNQ_SCALE) / cbs_rq->load.weight;
 	}
@@ -374,7 +379,7 @@ run_cbs_entity_start(struct rq *rq, struct sched_cbs_entity *cbs_se)
 	u64 now = rq_clock_task(rq);
 
 	/* Check a start time has not yet been set */
-	BUG_ON(cbs_se->burst_start_ns != 0);
+	DB(BUG_ON(cbs_se->burst_start_ns != 0));
 
 	/* Controller: Burst Tuning */
 	tune_cbs_burst(&rq->cbs, cbs_se);
@@ -439,8 +444,8 @@ pick_next_cbs_entity(struct cbs_rq *cbs_rq)
 {
 	struct sched_cbs_entity *cbs_se = cbs_rq->prev;
 
-	BUG_ON(cbs_rq->curr);
 
+	DB(BUG_ON(cbs_rq->curr));
 	/* No previous task or previous task was also the last on the RQ */
 	if (!cbs_se || list_is_last(&cbs_se->run_node, &cbs_rq->run_list)) {
 
@@ -466,7 +471,8 @@ pick_next_cbs_entity(struct cbs_rq *cbs_rq)
 round_restart:
 
 	/* If we enter this method there is at least one task */
-	BUG_ON(!cbs_se);
+	DB(BUG_ON(!cbs_se));
+	DB(BUG_ON(cbs_se->burst_start_ns != 0));
 	cbs_rq->curr = cbs_se;
 
 	return cbs_se;
@@ -476,7 +482,7 @@ static void
 put_prev_cbs_entity(struct cbs_rq *cbs_rq, struct sched_cbs_entity *prev)
 {
 	/* Check put of a current CBS entity */
-	BUG_ON(!cbs_rq->curr);
+	DB(BUG_ON(!cbs_rq->curr));
 
 	cbs_rq->prev = cbs_rq->curr;
 	cbs_rq->curr = NULL;
@@ -503,13 +509,13 @@ run_cbs_entity_stop(struct rq *rq, struct sched_cbs_entity *cbs_se)
 	unsigned long exec_time;
 
 	/* Check RQ consistency*/
-	BUG_ON(&rq->cbs != cbs_rq);
+	DB(BUG_ON(&rq->cbs != cbs_rq));
 	/* Check dequeuing of a CBS current */
-	BUG_ON(!cbs_rq->curr);
+	DB(BUG_ON(!cbs_rq->curr));
 	/* Check a start time has been set */
-	BUG_ON(cbs_se->burst_start_ns == 0);
+	DB(BUG_ON(cbs_se->burst_start_ns == 0));
 	/* Account just for de-scheduling of current task */
-	BUG_ON(cbs_rq->curr != cbs_se);
+	DB(BUG_ON(cbs_rq->curr != cbs_se));
 
 	/*
 	 * Get the amount of time the current task was running
@@ -546,14 +552,14 @@ enqueue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct sched_cbs_entity *cbs_se = &p->cbs;
 
-	BUG_ON(rq->cbs.nr_running >= MAX_RUNNING);
+	DB(BUG_ON(rq->cbs.nr_running >= MAX_RUNNING));
 
 	enqueue_cbs_entity(cbs_se, ENQUEUE_HEAD);
 	account_entity_enqueue(&rq->cbs, cbs_se);
 
 	inc_nr_running(rq);
 
-	BUG_ON(!cbs_se->on_rq);
+	DB(BUG_ON(!cbs_se->on_rq));
 }
 
 /*
@@ -572,7 +578,7 @@ dequeue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 
 	dec_nr_running(rq);
 
-	BUG_ON(cbs_se->on_rq);
+	DB(BUG_ON(cbs_se->on_rq));
 }
 
 /*
@@ -617,9 +623,9 @@ pick_next_task_cbs(struct rq *rq)
 		return NULL;
 
 	cbs_se = pick_next_cbs_entity(cbs_rq);
-	BUG_ON(!cbs_rq->curr);
+	DB(BUG_ON(!cbs_rq->curr));
 	p = task_of(cbs_se);
-	BUG_ON(!p);
+	DB(BUG_ON(!p));
 
 	/* Keep track of SE burst start */
 	run_cbs_entity_start(rq, cbs_se);
@@ -640,9 +646,9 @@ put_prev_task_cbs(struct rq *rq, struct task_struct *prev)
 	if (!cbs_is_current(cbs_rq, cbs_se))
 		return;
 
-	BUG_ON(!cbs_se);
-	BUG_ON(!cbs_rq);
-	BUG_ON( cbs_rq != &rq->cbs);
+	DB(BUG_ON(!cbs_se));
+	DB(BUG_ON(!cbs_rq));
+	DB(BUG_ON( cbs_rq != &rq->cbs));
 
 	/* Keep track of SE burst end */
 	run_cbs_entity_stop(rq, cbs_se);
@@ -776,7 +782,7 @@ set_curr_task_cbs(struct rq *rq)
 	// because of a movement among different groups of the same CBS
 	// policy, thus with a !NULL current for the destination group RQ.
 	/* The CBS current is expected to be NULL */
-	BUG_ON(cbs_rq->curr);
+	DB(BUG_ON(cbs_rq->curr));
 
 	/* Trigger rescheduling to allows CBS to kick into */
 	resched_task(rq->curr);
