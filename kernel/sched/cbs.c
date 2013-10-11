@@ -80,6 +80,12 @@ cbs_is_current(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 	return 1;
 }
 
+static int
+cbs_round_end(struct cbs_rq *cbs_rq)
+{
+	return (!cbs_rq->next);
+}
+
 static inline void
 inc_cbs_tasks(struct cbs_rq *cbs_rq)
 {
@@ -438,6 +444,8 @@ pick_next_cbs_entity(struct cbs_rq *cbs_rq)
 	/* No previous task or previous task was also the last on the RQ */
 	if (!cbs_se || list_is_last(&cbs_se->run_node, &cbs_rq->run_list)) {
 
+	/* If there is not a next we are at the start of a new round */
+	if (cbs_round_end(cbs_rq)) {
 		/* Bursts allocation to running SEs */
 		setup_next_round(cbs_rq);
 
