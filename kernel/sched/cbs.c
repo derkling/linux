@@ -598,11 +598,12 @@ static void
 enqueue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct sched_cbs_entity *cbs_se = &p->cbs;
+	struct cbs_rq *cbs_rq = &rq->cbs;
 
 	DB(BUG_ON(rq->cbs.nr_running >= MAX_RUNNING));
 
 	enqueue_cbs_entity(cbs_se, ENQUEUE_HEAD);
-	account_entity_enqueue(&rq->cbs, cbs_se);
+	account_entity_enqueue(cbs_rq, cbs_se);
 
 	inc_nr_running(rq);
 
@@ -619,9 +620,10 @@ static void
 dequeue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct sched_cbs_entity *cbs_se = &p->cbs;
+	struct cbs_rq *cbs_rq = &rq->cbs;
 
-	account_entity_dequeue(&rq->cbs, cbs_se);
 	dequeue_cbs_entity(cbs_rq, cbs_se);
+	account_entity_dequeue(cbs_rq, cbs_se);
 
 	dec_nr_running(rq);
 
