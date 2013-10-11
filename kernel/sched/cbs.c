@@ -611,7 +611,7 @@ enqueue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 }
 
 /*
- * Removing a task from the CBS ranqueue
+ * Removing a task from the CBS runqueue
  * Trigger: on task deactivation (always)
  *          normalization, cgroup/prio/scheduler change and PI (if on RQ)
  * Goal: remove the task from the specified RQ
