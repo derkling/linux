@@ -238,7 +238,7 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 		cbs_rq->doing_reinit = 1;
 
 		/* Acccount for a new reinitialization */
-		cbs_rq->count_reinit += 1;
+		cbs_rq->stats.count_reinit += 1;
 
 		goto exit_done;
 	}
@@ -281,7 +281,7 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 exit_done:
 
 	/* Acccount for a new round to start */
-	cbs_rq->count_rounds += 1;
+	cbs_rq->stats.count_rounds += 1;
 
 	/* Tr = 0 */
 	cbs_rq->round_time = 0;
