@@ -526,6 +526,24 @@ update_cbs_stats(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
 	cbs_se->exec_runtime += exec_time;
 	cbs_rq->exec_runtime += exec_time;
 
+	/* Update bursts statistics */
+	if (cbs_rq->stats.max_burst < exec_time)
+		cbs_rq->stats.max_burst = exec_time;
+	if (cbs_rq->stats.min_burst > exec_time
+			|| !cbs_rq->stats.min_burst)
+		cbs_rq->stats.min_burst = exec_time;
+
+
+	if (!cbs_round_end(cbs_rq))
+		return;
+
+	/* Update round statistics */
+	if (cbs_rq->stats.max_round < cbs_rq->round_time)
+		cbs_rq->stats.max_round = cbs_rq->round_time;
+	if (cbs_rq->stats.min_round > cbs_rq->round_time ||
+			!cbs_rq->stats.min_round)
+		cbs_rq->stats.min_round = cbs_rq->round_time;
+
 }
 
 static void
@@ -561,6 +579,8 @@ run_cbs_entity_stop(struct rq *rq, struct sched_cbs_entity *cbs_se)
 exit_reset:
 	/* Reset SE start timestamp */
 	cbs_se->burst_start_ns = 0;
+	/* Account for total number of bursts */
+	cbs_rq->stats.count_bursts += 1;
 
 }
 
