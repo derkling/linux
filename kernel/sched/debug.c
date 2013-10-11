@@ -265,9 +265,6 @@ void print_cbs_rq(struct seq_file *m, int cpu, struct cbs_rq *cbs_rq)
 	P(nr_running);
 	PN(exec_runtime);
 
-	P(count_rounds);
-	P(count_reinit);
-
 	P(load.weight);
 	P(load_next.weight);
 
@@ -290,6 +287,8 @@ void print_cbs_rq(struct seq_file *m, int cpu, struct cbs_rq *cbs_rq)
 	P(params.burst_lower_bound);
 	P(params.burst_upper_bound);
 
+	P(stats.count_rounds);
+	P(stats.count_reinit);
 #undef PN
 #undef P
 }
