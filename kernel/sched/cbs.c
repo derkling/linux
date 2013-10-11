@@ -646,7 +646,7 @@ static bool
 yield_to_task_cbs(struct rq *rq, struct task_struct *p, bool preempt)
 {
 	// The CBS scheduler process tasks by Round, nothing special...
-	return true;
+	return false;
 }
 
 /*
