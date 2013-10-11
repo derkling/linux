@@ -389,7 +389,7 @@ struct cbs_rq {
 	/* Overall RQ load (next round) */
 	struct load_weight load_next;
 
-	/* Round Time set-point*/
+	/* Round Time set-point */
 	u64 round_time_sp;
 	/* Round Time (measured) */
 	u64 round_time;
