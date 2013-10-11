@@ -789,7 +789,13 @@ task_tick_cbs(struct rq *rq, struct task_struct *p, int queued)
 static void
 task_fork_cbs(struct task_struct *p)
 {
+	struct sched_cbs_entity *cbs_se = &p->cbs;
+	struct load_weight parent_load;
 
+	/* Resetting entity params */
+	parent_load = cbs_se->load;
+	memset(cbs_se, 0, sizeof(struct sched_cbs_entity));
+	cbs_se->load = parent_load;
 }
 
 /*
