@@ -339,8 +339,37 @@ account_entity_enqueue(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 }
 
 static void
-dequeue_cbs_entity(struct sched_cbs_entity *cbs_se)
+setup_next_cbs_entity(struct cbs_rq *cbs_rq)
 {
+	struct sched_cbs_entity *cbs_se = cbs_rq->next;
+
+	/*
+	 * Once this method is entered cbs_rq::next must be granted
+	 * to be always a valid pointer to a (still) active entity
+	 */
+	DB(BUG_ON(!cbs_se));
+
+	/* Next task was the last on the RQ */
+	if (list_is_last(&cbs_se->run_node, &cbs_rq->run_list)) {
+		cbs_rq->next = NULL;
+		return;
+	}
+
+	/* Go on with next task in RQ */
+	list_for_each_entry_continue(cbs_se, &cbs_rq->run_list, run_node) {
+		break;
+	}
+
+	cbs_rq->next = cbs_se;
+}
+
+static void
+dequeue_cbs_entity(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
+{
+
+	/* This happens on deactivation of a sleeping task */
+	if (cbs_rq->next == cbs_se)
+		setup_next_cbs_entity(cbs_rq);
 
 	list_del_init(&cbs_se->run_node);
 
@@ -442,12 +471,9 @@ setup_next_round(struct cbs_rq *cbs_rq)
 static struct sched_cbs_entity *
 pick_next_cbs_entity(struct cbs_rq *cbs_rq)
 {
-	struct sched_cbs_entity *cbs_se = cbs_rq->prev;
-
+	struct sched_cbs_entity *cbs_se;
 
 	DB(BUG_ON(cbs_rq->curr));
-	/* No previous task or previous task was also the last on the RQ */
-	if (!cbs_se || list_is_last(&cbs_se->run_node, &cbs_rq->run_list)) {
 
 	/* If there is not a next we are at the start of a new round */
 	if (cbs_round_end(cbs_rq)) {
@@ -460,20 +486,22 @@ pick_next_cbs_entity(struct cbs_rq *cbs_rq)
 				struct sched_cbs_entity,
 				run_node);
 
+		cbs_rq->next = cbs_se;
+
 		goto round_restart;
 	}
 
-	/* Go on with next task in RQ */
-	list_for_each_entry_continue(cbs_se, &cbs_rq->run_list, run_node) {
-		break;
-	}
+	cbs_se = cbs_rq->next;
 
 round_restart:
 
 	/* If we enter this method there is at least one task */
 	DB(BUG_ON(!cbs_se));
 	DB(BUG_ON(cbs_se->burst_start_ns != 0));
+
+	/* Setup current and next task */
 	cbs_rq->curr = cbs_se;
+	setup_next_cbs_entity(cbs_rq);
 
 	return cbs_se;
 }
@@ -484,7 +512,6 @@ put_prev_cbs_entity(struct cbs_rq *cbs_rq, struct sched_cbs_entity *prev)
 	/* Check put of a current CBS entity */
 	DB(BUG_ON(!cbs_rq->curr));
 
-	cbs_rq->prev = cbs_rq->curr;
 	cbs_rq->curr = NULL;
 }
 
@@ -573,8 +600,8 @@ dequeue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct sched_cbs_entity *cbs_se = &p->cbs;
 
-	dequeue_cbs_entity(cbs_se);
 	account_entity_dequeue(&rq->cbs, cbs_se);
+	dequeue_cbs_entity(cbs_rq, cbs_se);
 
 	dec_nr_running(rq);
 

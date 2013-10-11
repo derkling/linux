@@ -371,8 +371,8 @@ struct cbs_rq {
 	struct list_head run_list;
 	/* Currently running SE, NULL if none */
 	struct sched_cbs_entity *curr;
-	/* Previously executed SE, NULL if RQ was empty */
-	struct sched_cbs_entity *prev;
+	/* Next SE to execute in current round, NULL if end of RQ */
+	struct sched_cbs_entity *next;
 
 	/* Overall RQ load (current round) */
 	struct load_weight load;
