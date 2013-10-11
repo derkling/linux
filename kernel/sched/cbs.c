@@ -453,7 +453,7 @@ update_round_time(struct cbs_rq *cbs_rq)
 
 	// NOTE: an update of the round time set-point will be absorbed as
 	// an error at the end of the current run
-	cbs_rq->round_time_sp += period;
+	cbs_rq->round_time_sp = period;
 }
 
 static void
