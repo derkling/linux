@@ -361,6 +361,16 @@ struct cbs_stats {
 	u64 count_rounds;
 	/* Total number of re-initializations */
 	u64 count_reinit;
+	/* Total number of bursts */
+	u64 count_bursts;
+	/* Maximum round time */
+	u64 max_round;
+	/* Minimum round time */
+	u64 min_round;
+	/* Maximum burst time */
+	u64 max_burst;
+	/* Maximum burst time */
+	u64 min_burst;
 };
 
 /* CBS-related fields in a runqueue */

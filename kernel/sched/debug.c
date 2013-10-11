@@ -289,6 +289,12 @@ void print_cbs_rq(struct seq_file *m, int cpu, struct cbs_rq *cbs_rq)
 
 	P(stats.count_rounds);
 	P(stats.count_reinit);
+	P(stats.count_bursts);
+	PN(stats.max_round);
+	PN(stats.min_round);
+	PN(stats.max_burst);
+	PN(stats.min_burst);
+
 #undef PN
 #undef P
 }
