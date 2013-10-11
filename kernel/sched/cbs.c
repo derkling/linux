@@ -516,7 +516,7 @@ put_prev_cbs_entity(struct cbs_rq *cbs_rq, struct sched_cbs_entity *prev)
 }
 
 static void
-update_execution_stats(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
+update_cbs_stats(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
 		unsigned long exec_time)
 {
 	schedstat_set(cbs_se->statistics.exec_max,
@@ -556,7 +556,7 @@ run_cbs_entity_stop(struct rq *rq, struct sched_cbs_entity *cbs_se)
 	monitor_cbs_burst(&rq->cbs, cbs_se, exec_time);
 
 	/* Keep track of last burst execution time */
-	update_execution_stats(&rq->cbs, cbs_se, exec_time);
+	update_cbs_stats(&rq->cbs, cbs_se, exec_time);
 
 exit_reset:
 	/* Reset SE start timestamp */
