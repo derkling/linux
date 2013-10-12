@@ -43,6 +43,8 @@
 
 //#define DB(x) x
 #define DB(x)
+//#define DB2(x) x
+#define DB2(x)
 
 
 /*******************************************************************************
@@ -231,6 +233,8 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 	cbs_rq->clamp_rt = 0;
 
 	if (cbs_rq->needs_reinit) {
+
+		DB2(printk("cbs, ri\n"));
 
 		/* eTr = 0 (just for event tracing) */
 		cbs_rq->round_error = 0;
@@ -443,6 +447,7 @@ run_cbs_entity_start(struct rq *rq, struct sched_cbs_entity *cbs_se)
 	// to IRQ/STEAL
 	// ???
 	cbs_se->burst_start_ns = now;
+	DB2(printk("%p, bs:N\n", cbs_se));
 
 	/* Setup HRTimer (if enabled) */
 	if (hrtick_enabled(rq))
@@ -506,15 +511,23 @@ pick_next_cbs_entity(struct cbs_rq *cbs_rq)
 
 		cbs_rq->next = cbs_se;
 
+		DB2(printk("%p, rs:%llu, qs:%d\n",
+				cbs_se, cbs_rq->round_time_sp,
+				cbs_rq->nr_running));
+
 		goto round_restart;
 	}
 
 	cbs_se = cbs_rq->next;
 
+	DB2(printk("%p, rc, qs:%d\n",
+			cbs_se, cbs_rq->nr_running));
+
 round_restart:
 
 	/* If we enter this method there is at least one task */
 	DB(BUG_ON(!cbs_se));
+	DB2(printk("%p, bs:?\n", cbs_se));
 	DB(BUG_ON(cbs_se->burst_start_ns != 0));
 
 	/* Setup current and next task */
@@ -597,6 +610,7 @@ run_cbs_entity_stop(struct rq *rq, struct sched_cbs_entity *cbs_se)
 exit_reset:
 	/* Reset SE start timestamp */
 	cbs_se->burst_start_ns = 0;
+	DB2(printk("%p, bs:0\n", cbs_se));
 	/* Account for total number of bursts */
 	cbs_rq->stats.count_bursts += 1;
 
@@ -625,6 +639,10 @@ enqueue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 
 	inc_nr_running(rq);
 
+	DB2(printk("%p, eq, qs:%02d, lc: %06lu, ln: %06lu\n",
+			cbs_se, rq->cbs.nr_running,
+			cbs_rq->load.weight,
+			cbs_rq->load_next.weight));
 	DB(BUG_ON(!cbs_se->on_rq));
 }
 
@@ -645,6 +663,10 @@ dequeue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 
 	dec_nr_running(rq);
 
+	DB2(printk("%p, dq, qs:%02d, lc: %06lu, ln: %06lu\n",
+			cbs_se, rq->cbs.nr_running,
+			cbs_rq->load.weight,
+			cbs_rq->load_next.weight));
 	DB(BUG_ON(cbs_se->on_rq));
 }
 
