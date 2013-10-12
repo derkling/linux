@@ -143,7 +143,7 @@ typedef struct cbs_rq *cbs_rq_iter_t;
  * CBS Controller Management
  ******************************************************************************/
 
-static void
+void
 monitor_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
 		unsigned long exec_time)
 {
@@ -164,7 +164,7 @@ monitor_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
 
 }
 
-static void
+void
 tune_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 {
 	struct cbs_params *p = &cbs_rq->params;
@@ -223,7 +223,7 @@ common:
 
 }
 
-static void
+void
 tune_cbs_round(struct cbs_rq *cbs_rq)
 {
 	struct cbs_params *p = &cbs_rq->params;
@@ -334,7 +334,7 @@ exit_done:
  * CBS Policy Internals
  ******************************************************************************/
 
-static void
+void
 enqueue_cbs_entity(struct sched_cbs_entity *cbs_se, bool head)
 {
 	struct cbs_rq *cbs_rq = cbs_rq_of(cbs_se);
@@ -352,7 +352,7 @@ enqueue_cbs_entity(struct sched_cbs_entity *cbs_se, bool head)
 	// NOTE: SE burst time are assigned at the beginning of the next round
 }
 
-static void
+void
 account_entity_enqueue(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 {
 	update_load_add(&cbs_rq->load_next, cbs_se->load.weight);
@@ -360,7 +360,7 @@ account_entity_enqueue(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 	inc_cbs_tasks(cbs_rq);
 }
 
-static void
+void
 setup_next_cbs_entity(struct cbs_rq *cbs_rq)
 {
 	struct sched_cbs_entity *cbs_se = cbs_rq->next;
@@ -385,7 +385,7 @@ setup_next_cbs_entity(struct cbs_rq *cbs_rq)
 	cbs_rq->next = cbs_se;
 }
 
-static void
+void
 dequeue_cbs_entity(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 {
 
@@ -401,7 +401,7 @@ dequeue_cbs_entity(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 	// NOTE: SE burst time are assigned at the beginning of the next round
 }
 
-static void
+void
 account_entity_dequeue(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 {
 	update_load_sub(&cbs_rq->load_next, cbs_se->load.weight);
@@ -409,7 +409,7 @@ account_entity_dequeue(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 	dec_cbs_tasks(cbs_rq);
 }
 
-static void
+void
 hrtick_start_cbs(struct rq *rq, struct task_struct *p)
 {
 	struct sched_cbs_entity *cbs_se = &p->cbs;
@@ -424,7 +424,7 @@ hrtick_start_cbs(struct rq *rq, struct task_struct *p)
 	hrtick_start(rq, delta);
 }
 
-static void
+void
 run_cbs_entity_start(struct rq *rq, struct sched_cbs_entity *cbs_se)
 {
 	u64 now = rq_clock_task(rq);
@@ -463,7 +463,7 @@ run_cbs_entity_start(struct rq *rq, struct sched_cbs_entity *cbs_se)
  *
  * p = (nr <= nl) ? l : l*nr/nl
  */
-static void
+void
 update_round_time(struct cbs_rq *cbs_rq)
 {
 	u64 period = cbs_rq->params.round_latency_ns;
@@ -479,7 +479,7 @@ update_round_time(struct cbs_rq *cbs_rq)
 	cbs_rq->round_time_sp = period;
 }
 
-static void
+void
 setup_next_round(struct cbs_rq *cbs_rq)
 {
 
@@ -491,7 +491,7 @@ setup_next_round(struct cbs_rq *cbs_rq)
 
 }
 
-static struct sched_cbs_entity *
+struct sched_cbs_entity *
 pick_next_cbs_entity(struct cbs_rq *cbs_rq)
 {
 	struct sched_cbs_entity *cbs_se;
@@ -537,7 +537,7 @@ round_restart:
 	return cbs_se;
 }
 
-static void
+void
 put_prev_cbs_entity(struct cbs_rq *cbs_rq, struct sched_cbs_entity *prev)
 {
 	/* Check put of a current CBS entity */
@@ -546,7 +546,7 @@ put_prev_cbs_entity(struct cbs_rq *cbs_rq, struct sched_cbs_entity *prev)
 	cbs_rq->curr = NULL;
 }
 
-static void
+void
 update_cbs_stats(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
 		unsigned long exec_time)
 {
@@ -577,7 +577,7 @@ update_cbs_stats(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
 
 }
 
-static void
+void
 run_cbs_entity_stop(struct rq *rq, struct sched_cbs_entity *cbs_se)
 {
 	struct cbs_rq *cbs_rq = cbs_rq_of(cbs_se);
