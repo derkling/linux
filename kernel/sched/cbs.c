@@ -692,8 +692,10 @@ put_prev_task_cbs(struct rq *rq, struct task_struct *prev)
 	struct cbs_rq *cbs_rq = cbs_rq_of(cbs_se);
 
 	/* The task has been moved to CBS while already running */
-	if (!cbs_is_current(cbs_rq, cbs_se))
+	if (!cbs_is_current(cbs_rq, cbs_se)) {
+		DB(BUG_ON(cbs_se->burst_start_ns != 0));
 		return;
+	}
 
 	DB(BUG_ON(!cbs_se));
 	DB(BUG_ON(!cbs_rq));
