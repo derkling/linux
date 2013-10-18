@@ -1666,13 +1666,14 @@ static void
 set_sched_class(struct task_struct *p)
 {
 
-	if (rt_prio(p->prio)) {
-		p->sched_class = &rt_sched_class;
+	// Class priority has precendence over priority
+	if (p->policy == SCHED_CBS) {
+		p->sched_class = &cbs_sched_class;
 		return;
 	}
 
-	if (p->policy == SCHED_CBS) {
-		p->sched_class = &cbs_sched_class;
+	if (rt_prio(p->prio)) {
+		p->sched_class = &rt_sched_class;
 		return;
 	}
 
