@@ -244,7 +244,7 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 	}
 
 	/* eTr = SP_Tr - Tr */
-	cbs_rq->round_error = p->round_latency_ns - cbs_rq->round_time;
+	cbs_rq->round_error = cbs_rq->round_time_sp - cbs_rq->round_time;
 	/* bc = bco + (krr*eTr - krr*zrr*eTro) */
 	cbs_rq->round_correction = cbs_rq->round_correction_old
 		+ scale_down(p->krr * cbs_rq->round_error, KRR_SCALE)
