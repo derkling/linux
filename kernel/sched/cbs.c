@@ -4,6 +4,8 @@
 
 #include "sched.h"
 
+#define CREATE_TRACE_POINTS
+#include "cbs_trace.h"
 
 #ifndef CONFIG_SCHED_HRTICK
 # error The CBS scheduler requires HRTimers support
@@ -155,6 +157,9 @@ monitor_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
 	if (cbs_se->burst_time_old < p->burst_upper_bound)
 		cbs_rq->all_saturated = 0;
 
+	/* FTrace report */
+	trace_cbs_burst(cbs_se);
+
 }
 
 static void
@@ -284,6 +289,10 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 	cbs_rq->doing_reinit = 0;
 
 exit_done:
+
+	/* FTrace report */
+	if (likely(cbs_rq->stats.count_rounds))
+		trace_cbs_round(cbs_rq);
 
 	/* Acccount for a new round to start */
 	cbs_rq->stats.count_rounds += 1;
