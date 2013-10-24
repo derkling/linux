@@ -59,6 +59,8 @@ TRACE_EVENT(cbs_round,
 
 	TP_STRUCT__entry(
 		__field( unsigned int,	nr_running	)
+		__field( unsigned long,	load		)
+		__field( unsigned long,	load_next	)
 		__field( u64,		round_time_sp	)
 		__field( u64,		round_time	)
 		__field( u64,		round_time_next	)
@@ -72,6 +74,8 @@ TRACE_EVENT(cbs_round,
 
 	TP_fast_assign(
 		__entry->nr_running		= cbs_rq->nr_running;
+		__entry->load			= cbs_rq->load.weight;
+		__entry->load_next		= cbs_rq->load_next.weight;
 		__entry->round_time_sp		= cbs_rq->round_time_sp;
 		__entry->round_time		= cbs_rq->round_time;
 		__entry->round_time_next	= cbs_rq->round_time_next;
@@ -84,12 +88,14 @@ TRACE_EVENT(cbs_round,
 	),
 
 
-	TP_printk("exec=%Lu | Rt=%Lu [%c] Re=%Lu ===> Nr=%u Rt_SP=%Lu [%c%c] Rt_corr=%Lu Rt_next=%Lu ",
+	TP_printk("exec=%Lu | Lw=%lu Rt=%Lu [%c] Re=%Lu ===> Nr=%u Lw=%lu Rt_SP=%Lu [%c%c] Rt_corr=%Lu Rt_next=%Lu ",
 		__entry->exec_runtime,
+		__entry->load,
 		__entry->round_time,
 		__entry->clamp_rt ? 'c' : '-',
 		__entry->round_error,
 		__entry->nr_running,
+		__entry->load_next,
 		__entry->round_time_sp,
 		__entry->needs_reinit ? 'r' : '-',
 		__entry->all_saturated ? 's' : '-',
