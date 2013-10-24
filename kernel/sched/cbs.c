@@ -291,8 +291,7 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 exit_done:
 
 	/* FTrace report */
-	if (likely(cbs_rq->stats.count_rounds))
-		trace_cbs_round(cbs_rq);
+	trace_cbs_round(cbs_rq);
 
 	/* Acccount for a new round to start */
 	cbs_rq->stats.count_rounds += 1;
