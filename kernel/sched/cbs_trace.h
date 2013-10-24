@@ -40,12 +40,12 @@ TRACE_EVENT(cbs_burst,
 	),
 
 
-	TP_printk("alfa=%u Tt_SP=%u b=%Lu Tt=%u exec=%Lu",
+	TP_printk("exec=%Lu | Rq=%u Tt_SP=%u Tb=%Lu Tt=%u",
+		__entry->exec_runtime,
 		__entry->round_quota,
 		__entry->burst_time_sp,
 		__entry->burst_interval,
-		__entry->burst_time,
-		__entry->exec_runtime)
+		__entry->burst_time)
 );
 
 /*
@@ -84,7 +84,7 @@ TRACE_EVENT(cbs_round,
 	),
 
 
-	TP_printk("exec=%Lu | Rtime=%Lu [%c] Rerr=%Lu ===> Nr=%u Rt_SP=%Lu [%c%c] Rt_corr=%Lu Rt_next=%Lu ",
+	TP_printk("exec=%Lu | Rt=%Lu [%c] Re=%Lu ===> Nr=%u Rt_SP=%Lu [%c%c] Rt_corr=%Lu Rt_next=%Lu ",
 		__entry->exec_runtime,
 		__entry->round_time,
 		__entry->clamp_rt ? 'c' : '-',
