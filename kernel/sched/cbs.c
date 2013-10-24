@@ -222,10 +222,6 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 	struct cbs_params *p = &cbs_rq->params;
 	u64 rco1, rco2;
 
-	/* Round time clamping for fixed point arithmetics */
-	/* Tr = min(Tr, 524287) */
-	if (cbs_rq->round_time > MAX_ROUND_TIME)
-		cbs_rq->round_time = MAX_ROUND_TIME;
 
 	if (cbs_rq->needs_reinit) {
 
@@ -241,6 +237,12 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 		cbs_rq->stats.count_reinit += 1;
 
 		goto exit_done;
+	}
+
+	/* Round time clamping for fixed point arithmetics */
+	/* Tr = min(Tr, 524287) */
+	if (cbs_rq->round_time > MAX_ROUND_TIME) {
+		cbs_rq->round_time = MAX_ROUND_TIME;
 	}
 
 	/* eTr = SP_Tr - Tr */
