@@ -232,6 +232,11 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 
 	if (cbs_rq->needs_reinit) {
 
+		/* eTr = 0 (for event tracing) */
+		cbs_rq->round_error = 0;
+		/* bc = 0  (for event tracing) */
+		cbs_rq->round_correction = 0;
+
 		/* eTro = 0 */
 		cbs_rq->round_error_old = 0;
 		/* bco = 0 */
