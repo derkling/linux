@@ -588,11 +588,11 @@ run_cbs_entity_stop(struct rq *rq, struct sched_cbs_entity *cbs_se)
 	if (!exec_time)
 		goto exit_reset;
 
-	/* Controller: Burst Monitoring */
-	monitor_cbs_burst(&rq->cbs, cbs_se, exec_time);
-
 	/* Keep track of last burst execution time */
 	update_cbs_stats(&rq->cbs, cbs_se, exec_time);
+
+	/* Controller: Burst Monitoring */
+	monitor_cbs_burst(&rq->cbs, cbs_se, exec_time);
 
 exit_reset:
 	/* Reset SE start timestamp */
