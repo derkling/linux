@@ -407,6 +407,7 @@ struct cbs_rq {
 
 	/* Regulator Status Flags */
 	u8 all_saturated:1;	// 1: all SE saturated
+	u8 clamp_rt:1;		// 1: round time clemped to MAX_ROUND_TIME
 	u8 needs_reinit:1;	// 1: external controller needs re-initialization
 	u8 doing_reinit:1;	// 1: external controller doing re-initialization
 	u8 needs_requote:1;	// 1: SE requoting requested for next round

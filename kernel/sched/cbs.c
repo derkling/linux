@@ -222,6 +222,8 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 	struct cbs_params *p = &cbs_rq->params;
 	u64 rco1, rco2;
 
+	/* Assuming Round-Time not clamped (for FTrace reporting) */
+	cbs_rq->clamp_rt = 0;
 
 	if (cbs_rq->needs_reinit) {
 
@@ -242,6 +244,7 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 	/* Round time clamping for fixed point arithmetics */
 	/* Tr = min(Tr, 524287) */
 	if (cbs_rq->round_time > MAX_ROUND_TIME) {
+		cbs_rq->clamp_rt = 1;
 		cbs_rq->round_time = MAX_ROUND_TIME;
 	}
 
