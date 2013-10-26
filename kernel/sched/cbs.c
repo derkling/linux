@@ -175,7 +175,7 @@ tune_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 	if (cbs_rq->doing_requote) {
 		/* alfa = base * priority */
 		cbs_se->round_quota =
-			cbs_rq->load.inv_weight * cbs_se->load.weight;
+			scale_up(cbs_se->load.weight, RNQ_SCALE) / cbs_rq->load.weight;
 	}
 
 	// FIXME is re_initialization required only on re-quoting?!?
@@ -309,8 +309,6 @@ exit_done:
 		DB(BUG_ON(cbs_rq->needs_requote == 0));
 		cbs_rq->load.weight     = cbs_rq->load_next.weight;
 		DB(BUG_ON(cbs_rq->load.weight == 0));
-		cbs_rq->load.inv_weight =
-			scale_up(1, RNQ_SCALE) / cbs_rq->load.weight;
 	}
 
 	/* Reset re-initialization flag */
