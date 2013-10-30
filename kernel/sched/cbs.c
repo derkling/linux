@@ -15,6 +15,8 @@
  * CBS Constants and Utility Macros
  ******************************************************************************/
 
+#define CONFIG_CBS_TQ_NS 1000
+
 #define CONFIG_CBS_PARAM_KPI 0.50f
 #define CONFIG_CBS_PARAM_KRR 0.90f
 #define CONFIG_CBS_PARAM_ZRR 0.88f
@@ -130,6 +132,18 @@ update_load_set(struct load_weight *lw, unsigned long w)
 {
 	lw->weight = w;
 	lw->inv_weight = 0;
+}
+
+static inline u32
+hrt2tq(u64 hr_time)
+{
+	return (hr_time / CONFIG_CBS_TQ_NS);
+}
+
+static inline u64
+tq2hrt(u32 tq_time)
+{
+	return ((u64)tq_time * CONFIG_CBS_TQ_NS);
 }
 
 typedef struct cbs_rq *cbs_rq_iter_t;
