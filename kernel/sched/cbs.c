@@ -190,7 +190,7 @@ tune_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 	burst_error = cbs_se->burst_time_sp - cbs_se->burst_time;
 
 	/* b = bo + eTp */
-	cbs_se->burst_time = cbs_se->burst_time_old * burst_error;
+	cbs_se->burst_time = cbs_se->burst_time_old + burst_error;
 
 	goto common;
 
