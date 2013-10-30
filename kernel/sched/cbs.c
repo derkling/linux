@@ -166,7 +166,7 @@ static void
 tune_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 {
 	struct cbs_params *p = &cbs_rq->params;
-	u32 burst_error;
+	s32 burst_error;
 	u64 bo1, bo2;
 
 	/* First: complete external controller tuning */
