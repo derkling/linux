@@ -33,15 +33,20 @@
  * - signed int: 31 bits => up to (31-19) = 12 bits for KRR and KZR
  */
 
-#define MAX_RUNNING ((u32) 64)
-#define MAX_ROUND_TIME ( (u32) ((1<<19) - 1) )
-#define KRR_SCALE 2048 // 11 bits
-#define KZR_SCALE 1024 // 10 bits
-#define RNQ_SCALE 4094 // 12 bits
 #define scale_up(W, S)   ( (u32) ((W) * S) )
 #define scale_down(W, S) ( (u32) ((W) / S) )
 #define int_param(W)     ( (u32)  (W) )
+#define CONFIG_CBS_SE_WEIGHT_MAX   88761
+#define CONFIG_CBS_SE_WEIGHT_MIN      15
+#define CONFIG_CBS_SE_COUNT_MAX ( (u32) (1UL << 10) )
+#define CONFIG_CBS_SE_BURST_MAX ( (u32) (1UL << 22) )
 
+#define RNQ_SCALE ( (u32) (1UL << 23) )
+#define KRR_SCALE ( (u32) (1UL << 11) )
+#define KZR_SCALE ( (u32) (1UL << 10) )
+
+#define RQ_WEIGHT_MAX ( (u32) (CONFIG_CBS_SE_COUNT_MAX * CONFIG_CBS_SE_WEIGHT_MAX) )
+#define ROUND_TQ_MAX  ( (u32) (CONFIG_CBS_SE_COUNT_MAX * CONFIG_CBS_SE_BURST_MAX)  )
 
 //#define DB(x) x
 #define DB(x)
@@ -268,9 +273,9 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 
 	/* Round time clamping for fixed point arithmetics */
 	/* Tr = min(Tr, 524287) */
-	if (cbs_rq->round_tq > MAX_ROUND_TIME) {
+	if (cbs_rq->round_tq > ROUND_TQ_MAX) {
 		cbs_rq->clamp_rt = 1;
-		cbs_rq->round_tq = MAX_ROUND_TIME;
+		cbs_rq->round_tq = ROUND_TQ_MAX;
 	}
 
 	/* eTr = SP_Tr - Tr */
@@ -631,7 +636,7 @@ enqueue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 	struct sched_cbs_entity *cbs_se = &p->cbs;
 	struct cbs_rq *cbs_rq = &rq->cbs;
 
-	DB(BUG_ON(rq->cbs.nr_running >= MAX_RUNNING));
+	DB(BUG_ON(rq->cbs.nr_running >= CONFIG_CBS_SE_COUNT_MAX));
 
 	enqueue_cbs_entity(cbs_se, ENQUEUE_HEAD);
 	account_entity_enqueue(cbs_rq, cbs_se);
