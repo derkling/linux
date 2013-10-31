@@ -268,10 +268,10 @@ void print_cbs_rq(struct seq_file *m, int cpu, struct cbs_rq *cbs_rq)
 	P(load.weight);
 	P(load_next.weight);
 
-	PN(round_time_sp);
-	PN(round_time);
-	PN(round_time_next);
-	PN(round_error);
+	PN(round_tq_sp);
+	PN(round_tq);
+	PN(round_tq_next);
+	PN(round_tq_error);
 
 	P(params.mult_factor);
 	P(params.krr);
@@ -290,10 +290,10 @@ void print_cbs_rq(struct seq_file *m, int cpu, struct cbs_rq *cbs_rq)
 	P(stats.count_rounds);
 	P(stats.count_reinit);
 	P(stats.count_bursts);
-	PN(stats.max_round);
-	PN(stats.min_round);
-	PN(stats.max_burst);
-	PN(stats.min_burst);
+	PN(stats.max_round_tq);
+	PN(stats.min_round_tq);
+	PN(stats.max_burst_tq);
+	PN(stats.min_burst_tq);
 
 #undef PN
 #undef P

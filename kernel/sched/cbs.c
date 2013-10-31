@@ -159,13 +159,14 @@ static void
 monitor_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
 		unsigned long exec_time)
 {
+	u32 exec_tq = hrt2tq(exec_time);
 	struct cbs_params *p = &cbs_rq->params;
 
 	/* Tt */
-	cbs_se->burst_time  = exec_time;
+	cbs_se->burst_tq  = exec_tq;
 
 	/* Tr += Tt */
-	cbs_rq->round_time += exec_time;
+	cbs_rq->round_tq += exec_tq;
 
 	/* Saturation check */
 	if (cbs_se->burst_time_old < p->burst_upper_bound)
@@ -174,14 +175,15 @@ monitor_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
 	/* FTrace report */
 	trace_cbs_burst(cbs_se);
 
+	/* Cache burst value for next round */
+	cbs_se->burst_tq_old = cbs_se->burst_tq_next;
+
 }
 
 static void
 tune_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 {
 	struct cbs_params *p = &cbs_rq->params;
-	s32 burst_error;
-	u64 bo1, bo2;
 
 	/* First: complete external controller tuning */
 
@@ -197,41 +199,40 @@ tune_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 		goto reinit;
 
 	/* SP_Tp = alfa * nextRoundTime */
-	cbs_se->burst_time_sp =
-		scale_down(cbs_se->round_quota * cbs_rq->round_time_next, RNQ_SCALE);
+	cbs_se->burst_tq_sp =
+		scale_down(cbs_se->round_quota * cbs_rq->round_tq_next, RNQ_SCALE);
 
 	/* eTp = SP_Tp - Tp */
-	burst_error = cbs_se->burst_time_sp - cbs_se->burst_time;
+	cbs_se->burst_tq_error = cbs_se->burst_tq_sp - cbs_se->burst_tq;
 
 	/* b = bo + eTp */
-	cbs_se->burst_time = cbs_se->burst_time_old + burst_error;
+	cbs_se->burst_tq_next = cbs_se->burst_tq_old + cbs_se->burst_tq_error;
 
 	goto common;
 
 reinit:
 
 	/* SP_Tp = alfa * SP_Tr */
-	cbs_se->burst_time_sp =
-		scale_down(cbs_se->round_quota * cbs_rq->round_time_sp, RNQ_SCALE);
+	cbs_se->burst_tq_sp =
+		scale_down(cbs_se->round_quota * cbs_rq->round_tq_sp, RNQ_SCALE);
 
 	/* b = SP_Tp * multFactor */
-	cbs_se->burst_time = cbs_se->burst_time_sp * p->mult_factor;
+	cbs_se->burst_tq_next = cbs_se->burst_tq_sp * p->mult_factor;
 
 common:
 
 	/* Second: setup saturation */
 
 	/* bo = min(MAX(b, bMin*multFactor), bMax*multFactor) */
-	bo1 = (cbs_se->burst_time > p->burst_lower_bound)
-		? cbs_se->burst_time
-		: p->burst_lower_bound;
-	bo2 = p->burst_upper_bound;
-	cbs_se->burst_time_old = (bo1 < bo2) ? bo1 : bo2;
+	if (cbs_se->burst_tq_next < p->burst_lower_bound)
+		cbs_se->burst_tq_next = p->burst_lower_bound;
+	else if (cbs_se->burst_tq_next > p->burst_upper_bound)
+		cbs_se->burst_tq_next = p->burst_upper_bound;
 
 
 	/* Third: internal controller tuning */
 
-	cbs_se->burst_interval_ns = cbs_se->burst_time / p->mult_factor;
+	cbs_se->burst_interval = tq2hrt(cbs_se->burst_tq_next / p->mult_factor);
 
 }
 
@@ -239,7 +240,7 @@ static void
 tune_cbs_round(struct cbs_rq *cbs_rq)
 {
 	struct cbs_params *p = &cbs_rq->params;
-	u64 rco1, rco2;
+	u64 burst_tq_upper_bound;
 
 	/* Assuming Round-Time not clamped (for FTrace reporting) */
 	cbs_rq->clamp_rt = 0;
@@ -247,16 +248,16 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 	if (cbs_rq->needs_reinit) {
 
 		/* eTr = 0 (just for event tracing) */
-		cbs_rq->round_error = 0;
+		cbs_rq->round_tq_error = 0;
 		/* bc = 0  (just for event tracing) */
-		cbs_rq->round_correction = 0;
+		cbs_rq->round_tq_correction = 0;
 		/* roundNext = Rt_SP (just for event tracing) */
-		cbs_rq->round_time_next = cbs_rq->round_time_sp;
+		cbs_rq->round_tq_next = cbs_rq->round_tq_sp;
 
 		/* eTro = 0 */
-		cbs_rq->round_error_old = 0;
+		cbs_rq->round_tq_error_old = 0;
 		/* bco = 0 */
-		cbs_rq->round_correction_old = 0;
+		cbs_rq->round_tq_correction_old = 0;
 
 		/* Keep track of ReInitialization for SE tuning steps */
 		cbs_rq->doing_reinit = 1;
@@ -269,42 +270,42 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 
 	/* Round time clamping for fixed point arithmetics */
 	/* Tr = min(Tr, 524287) */
-	if (cbs_rq->round_time > MAX_ROUND_TIME) {
+	if (cbs_rq->round_tq > MAX_ROUND_TIME) {
 		cbs_rq->clamp_rt = 1;
-		cbs_rq->round_time = MAX_ROUND_TIME;
+		cbs_rq->round_tq = MAX_ROUND_TIME;
 	}
 
 	/* eTr = SP_Tr - Tr */
-	cbs_rq->round_error = cbs_rq->round_time_sp - cbs_rq->round_time;
+	cbs_rq->round_tq_error = cbs_rq->round_tq_sp - cbs_rq->round_tq;
 	/* bc = bco + (krr*eTr - krr*zrr*eTro) */
-	cbs_rq->round_correction = cbs_rq->round_correction_old
-		+ scale_down(p->krr * cbs_rq->round_error, KRR_SCALE)
-		- scale_down(p->kzr * cbs_rq->round_error_old, KZR_SCALE);
+	cbs_rq->round_tq_correction = cbs_rq->round_tq_correction_old
+		+ scale_down(p->krr * cbs_rq->round_tq_error, KRR_SCALE)
+		- scale_down(p->kzr * cbs_rq->round_tq_error_old, KZR_SCALE);
 
 	/* Setup burst correction for next round.  If all inner regulators are
 	 * up-saturated, allows only decreasing round correction */
 	if (cbs_rq->all_saturated) {
-		if (cbs_rq->round_correction < cbs_rq->round_correction_old)
+		if (cbs_rq->round_tq_correction < cbs_rq->round_tq_correction_old)
 			/* bc0 = bo */
-			cbs_rq->round_correction_old = cbs_rq->round_correction;
+			cbs_rq->round_tq_correction_old = cbs_rq->round_tq_correction;
 	} else {
 		/* bc0 = bo */
-		cbs_rq->round_correction_old = cbs_rq->round_correction;
+		cbs_rq->round_tq_correction_old = cbs_rq->round_tq_correction;
 	}
 
 	/* bco = min(MAX(bco, -Tr), bMax*threadListSize */
-	rco1 = (cbs_rq->round_correction_old > -cbs_rq->round_time)
-		?  cbs_rq->round_correction_old
-		: -cbs_rq->round_time;
-	rco2 = p->burst_max_ns * cbs_rq->nr_running;
-	cbs_rq->round_correction_old = (rco1 < rco2) ? rco1 : rco2;
+	if (cbs_rq->round_tq_correction_old < -cbs_rq->round_tq)
+		cbs_rq->round_tq_correction_old = -cbs_rq->round_tq;
+	burst_tq_upper_bound = p->burst_max_ns * cbs_rq->nr_running;
+	if (cbs_rq->round_tq_correction_old > burst_tq_upper_bound)
+		cbs_rq->round_tq_correction_old = burst_tq_upper_bound;
 
 	/* nextRoundTime = Tr + bco */
-	cbs_rq->round_time_next =
-		cbs_rq->round_time + cbs_rq->round_correction_old;
+	cbs_rq->round_tq_next =
+		cbs_rq->round_tq + cbs_rq->round_tq_correction_old;
 
 	/* eTro = eTr */
-	cbs_rq->round_error_old = cbs_rq->round_error;
+	cbs_rq->round_tq_error_old = cbs_rq->round_tq_error;
 
 	/* Keep track of NOT ReInitialization for SE tuning steps */
 	cbs_rq->doing_reinit = 0;
@@ -318,7 +319,7 @@ exit_done:
 	cbs_rq->stats.count_rounds += 1;
 
 	/* Tr = 0 */
-	cbs_rq->round_time = 0;
+	cbs_rq->round_tq = 0;
 
 	/* Update RQ load to support SE round quota computation */
 	if (cbs_rq->load.weight != cbs_rq->load_next.weight) {
@@ -429,7 +430,7 @@ hrtick_start_cbs(struct rq *rq, struct task_struct *p)
 
 	// FIXME could we avoid to setup burst time if there is just one task?
 
-	delta = cbs_se->burst_interval_ns;
+	delta = cbs_se->burst_interval;
 
 	hrtick_start(rq, delta);
 }
@@ -456,7 +457,7 @@ run_cbs_entity_start(struct rq *rq, struct sched_cbs_entity *cbs_se)
 	// difference between the assigned burst and the not consumed time due
 	// to IRQ/STEAL
 	// ???
-	cbs_se->burst_start_ns = now;
+	cbs_se->burst_start = now;
 
 	/* Setup HRTimer (if enabled) */
 	if (hrtick_enabled(rq))
@@ -473,7 +474,7 @@ run_cbs_entity_start(struct rq *rq, struct sched_cbs_entity *cbs_se)
  * p = (nr <= nl) ? l : l*nr/nl
  */
 static void
-update_round_time(struct cbs_rq *cbs_rq)
+update_round_sp(struct cbs_rq *cbs_rq)
 {
 	u64 period = cbs_rq->params.round_latency_ns;
 	unsigned long nr_latency = cbs_rq->params.round_latency_nr_max;
@@ -485,7 +486,7 @@ update_round_time(struct cbs_rq *cbs_rq)
 
 	// NOTE: an update of the round time set-point will be absorbed as
 	// an error at the end of the current run
-	cbs_rq->round_time_sp = period;
+	cbs_rq->round_tq_sp = hrt2tq(period);
 }
 
 static void
@@ -493,7 +494,7 @@ setup_next_round(struct cbs_rq *cbs_rq)
 {
 
 	/* Update the Round Time set-point */
-	update_round_time(cbs_rq);
+	update_round_sp(cbs_rq);
 
 	/* Controller: Round Tuning */
 	tune_cbs_round(cbs_rq);
@@ -559,22 +560,22 @@ update_cbs_stats(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
 	cbs_rq->exec_runtime += exec_time;
 
 	/* Update bursts statistics */
-	if (cbs_rq->stats.max_burst < exec_time)
-		cbs_rq->stats.max_burst = exec_time;
-	if (cbs_rq->stats.min_burst > exec_time
-			|| !cbs_rq->stats.min_burst)
-		cbs_rq->stats.min_burst = exec_time;
+	if (cbs_rq->stats.max_burst_tq < exec_time)
+		cbs_rq->stats.max_burst_tq = exec_time;
+	if (cbs_rq->stats.min_burst_tq > exec_time
+			|| !cbs_rq->stats.min_burst_tq)
+		cbs_rq->stats.min_burst_tq = exec_time;
 
 
 	if (!cbs_round_end(cbs_rq))
 		return;
 
 	/* Update round statistics */
-	if (cbs_rq->stats.max_round < cbs_rq->round_time)
-		cbs_rq->stats.max_round = cbs_rq->round_time;
-	if (cbs_rq->stats.min_round > cbs_rq->round_time ||
-			!cbs_rq->stats.min_round)
-		cbs_rq->stats.min_round = cbs_rq->round_time;
+	if (cbs_rq->stats.max_round_tq < cbs_rq->round_tq)
+		cbs_rq->stats.max_round_tq = cbs_rq->round_tq;
+	if (cbs_rq->stats.min_round_tq > cbs_rq->round_tq ||
+			!cbs_rq->stats.min_round_tq)
+		cbs_rq->stats.min_round_tq = cbs_rq->round_tq;
 
 }
 
@@ -598,7 +599,7 @@ run_cbs_entity_stop(struct rq *rq, struct sched_cbs_entity *cbs_se)
 	 * Get the amount of time the current task was running
 	 * since the time we scheduled it (this cannot oeverflow on 32 bits)
 	 */
-	exec_time = (unsigned long)(now - cbs_se->burst_start_ns);
+	exec_time = (unsigned long)(now - cbs_se->burst_start);
 	if (!exec_time)
 		goto exit_reset;
 
@@ -610,7 +611,7 @@ run_cbs_entity_stop(struct rq *rq, struct sched_cbs_entity *cbs_se)
 
 exit_reset:
 	/* Reset SE start timestamp */
-	cbs_se->burst_start_ns = 0;
+	cbs_se->burst_start = 0;
 	/* Account for total number of bursts */
 	cbs_rq->stats.count_bursts += 1;
 
