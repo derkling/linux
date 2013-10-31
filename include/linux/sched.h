@@ -996,7 +996,12 @@ struct sched_cbs_entity {
 	struct list_head run_node;
 
 	/* SE status flags */
-	u8 on_rq:1;		// 1: SE on run-queue
+	union {
+		u8 all_flags;
+		struct {
+			u8 on_rq:1;	// 1: SE on run-queue
+		} f;
+	} status;
 
 	/* Load quota */
 	struct load_weight load;

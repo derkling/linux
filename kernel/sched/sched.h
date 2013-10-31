@@ -406,12 +406,17 @@ struct cbs_rq {
 	s64 round_tq_error_old;
 
 	/* Regulator Status Flags */
-	u8 all_saturated:1;	// 1: all SE saturated
-	u8 clamp_rt:1;		// 1: round time clemped to MAX_ROUND_TIME
-	u8 needs_reinit:1;	// 1: external controller needs re-initialization
-	u8 doing_reinit:1;	// 1: external controller doing re-initialization
-	u8 needs_requote:1;	// 1: SE requoting requested for next round
-	u8 doing_requote:1;	// 1: Requoting SE on current round
+	union {
+		u8 all_flags;
+		struct {
+			u8 all_saturated:1;	// 1: all SE saturated
+			u8 clamp_rt:1;		// 1: round time clemped to MAX_ROUND_TIME
+			u8 needs_reinit:1;	// 1: external controller needs re-initialization
+			u8 doing_reinit:1;	// 1: external controller doing re-initialization
+			u8 needs_requote:1;	// 1: SE requoting requested for next round
+			u8 doing_requote:1;	// 1: Requoting SE on current round
+		} f;
+	} status;
 
 	/* Controller Tuning Parameters */
 	struct cbs_params params;
