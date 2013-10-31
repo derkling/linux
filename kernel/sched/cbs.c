@@ -160,17 +160,12 @@ monitor_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
 		unsigned long exec_time)
 {
 	u32 exec_tq = hrt2tq(exec_time);
-	struct cbs_params *p = &cbs_rq->params;
 
 	/* Tt */
 	cbs_se->burst_tq  = exec_tq;
 
 	/* Tr += Tt */
 	cbs_rq->round_tq += exec_tq;
-
-	/* Saturation check */
-	if (cbs_se->burst_time_old < p->burst_upper_bound)
-		cbs_rq->all_saturated = 0;
 
 	/* FTrace report */
 	trace_cbs_burst(cbs_se);
@@ -229,6 +224,9 @@ common:
 	else if (cbs_se->burst_tq_next > p->burst_upper_bound)
 		cbs_se->burst_tq_next = p->burst_upper_bound;
 
+	/* Saturation check */
+	if (cbs_se->burst_tq_next < p->burst_upper_bound)
+		cbs_rq->all_saturated = 0;
 
 	/* Third: internal controller tuning */
 
