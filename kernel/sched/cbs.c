@@ -33,9 +33,6 @@
  * - signed int: 31 bits => up to (31-19) = 12 bits for KRR and KZR
  */
 
-#define scale_up(W, S)   ( (u32) ((W) * S) )
-#define scale_down(W, S) ( (u32) ((W) / S) )
-#define int_param(W)     ( (u32)  (W) )
 #define CONFIG_CBS_SE_WEIGHT_MAX   88761
 #define CONFIG_CBS_SE_WEIGHT_MIN      15
 #define CONFIG_CBS_SE_COUNT_MAX ( (u32) (1UL << 10) )
@@ -151,6 +148,22 @@ tq2hrt(u32 tq_time)
 	return ((u64)tq_time * CONFIG_CBS_TQ_NS);
 }
 
+static inline u32
+mul32_64(const u32 a, const u32 b, const u32 scale_down)
+{
+	u64 result = ((u64) a * b ) / scale_down;
+	BUG_ON(result >= (1UL << 32));
+	return result;
+}
+
+static inline u32
+div32_64(const u32 a, const u32 b, const u32 scale_up)
+{
+	u64 result = ((u64) a * scale_up) / b;
+	BUG_ON(result >= (1UL << 32));
+	return result;
+}
+
 typedef struct cbs_rq *cbs_rq_iter_t;
 
 #define for_each_cbs_rq(cbs_rq, iter, rq) \
@@ -191,7 +204,7 @@ tune_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 	if (cbs_rq->doing_requote) {
 		/* alfa = base * priority */
 		cbs_se->round_quota =
-			scale_up(cbs_se->load.weight, RNQ_SCALE) / cbs_rq->load.weight;
+			div32_64(cbs_se->load.weight, cbs_rq->load.weight, RNQ_SCALE);
 	}
 
 	// FIXME is re_initialization required only on re-quoting?!?
@@ -200,7 +213,7 @@ tune_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 
 	/* SP_Tp = alfa * nextRoundTime */
 	cbs_se->burst_tq_sp =
-		scale_down(cbs_se->round_quota * cbs_rq->round_tq_next, RNQ_SCALE);
+		mul32_64(cbs_se->round_quota, cbs_rq->round_tq_next, RNQ_SCALE);
 
 	/* eTp = SP_Tp - Tp */
 	cbs_se->burst_tq_error = cbs_se->burst_tq_sp - cbs_se->burst_tq;
@@ -214,7 +227,7 @@ reinit:
 
 	/* SP_Tp = alfa * SP_Tr */
 	cbs_se->burst_tq_sp =
-		scale_down(cbs_se->round_quota * cbs_rq->round_tq_sp, RNQ_SCALE);
+		mul32_64(cbs_se->round_quota, cbs_rq->round_tq_sp, RNQ_SCALE);
 
 	/* b = SP_Tp * multFactor */
 	cbs_se->burst_tq_next = cbs_se->burst_tq_sp * p->mult_factor;
@@ -282,8 +295,8 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 	cbs_rq->round_tq_error = cbs_rq->round_tq_sp - cbs_rq->round_tq;
 	/* bc = bco + (krr*eTr - krr*zrr*eTro) */
 	cbs_rq->round_tq_correction = cbs_rq->round_tq_correction_old
-		+ scale_down(p->krr * cbs_rq->round_tq_error, KRR_SCALE)
-		- scale_down(p->kzr * cbs_rq->round_tq_error_old, KZR_SCALE);
+		+ mul32_64(p->krr, cbs_rq->round_tq_error, KRR_SCALE)
+		- mul32_64(p->kzr, cbs_rq->round_tq_error_old, KZR_SCALE);
 
 	/* Setup burst correction for next round.  If all inner regulators are
 	 * up-saturated, allows only decreasing round correction */
@@ -1027,9 +1040,9 @@ void init_cbs_rq(struct cbs_rq *cbs_rq)
 	INIT_LIST_HEAD(&cbs_rq->run_list);
 
 	// Setup CBS Controller params
-	p->mult_factor = int_param(1.0f / CONFIG_CBS_PARAM_KPI);
-	p->krr = scale_up(CONFIG_CBS_PARAM_KRR, KRR_SCALE);
-	p->kzr = scale_up(CONFIG_CBS_PARAM_KRR * CONFIG_CBS_PARAM_ZRR, KZR_SCALE);
+	p->mult_factor = 1.0f / CONFIG_CBS_PARAM_KPI;
+	p->krr = CONFIG_CBS_PARAM_KRR * KRR_SCALE;
+	p->kzr = CONFIG_CBS_PARAM_KRR * CONFIG_CBS_PARAM_ZRR * KZR_SCALE;
 
 	// Setup scheduler latency constraints
 	p->round_latency_ns = 6000000UL;
