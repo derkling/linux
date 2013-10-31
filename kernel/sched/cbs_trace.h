@@ -29,6 +29,7 @@ TRACE_EVENT(cbs_burst,
 		__field(	u32,	burst_tq	)
 		__field(	u64,	burst_interval	)
 		__field(	u64,	exec_runtime	)
+		__field( 	u8,	status		)
 	),
 
 	TP_fast_assign(
@@ -37,12 +38,14 @@ TRACE_EVENT(cbs_burst,
 		__entry->burst_tq	= cbs_se->burst_tq;
 		__entry->burst_interval	= cbs_se->burst_interval;
 		__entry->exec_runtime	= cbs_se->exec_runtime;
+		__entry->status		= cbs_se->status.all_flags;
 	),
 
 
-	TP_printk("exec=%Lu | Rq=%u Tt_SP=%u Tb=%Lu Tt=%u",
+	TP_printk("exec=%Lu | Rq=%u [%c] Tt_SP=%u Tb=%Lu Tt=%u",
 		__entry->exec_runtime,
 		__entry->round_quota,
+		(__entry->status & 0x02) ? 'r' : '-', // reinit
 		__entry->burst_tq_sp,
 		__entry->burst_interval,
 		__entry->burst_tq)
@@ -84,7 +87,7 @@ TRACE_EVENT(cbs_round,
 	),
 
 
-	TP_printk("exec=%Lu | Lw=%lu Rt=%Lu [%c] Re=%Lu ===> Nr=%u Lw=%lu Rt_SP=%Lu [%c%c] Rt_corr=%Ld Rt_next=%Ld ",
+	TP_printk("exec=%Lu | Lw=%lu Rt=%Lu [%c] Re=%Lu ===> Nr=%u Lw=%lu Rt_SP=%Lu [%c] Rt_corr=%Ld Rt_next=%Ld ",
 		__entry->exec_runtime,
 		__entry->load,
 		__entry->round_tq,
@@ -93,7 +96,6 @@ TRACE_EVENT(cbs_round,
 		__entry->nr_running,
 		__entry->load_next,
 		__entry->round_tq_sp,
-		(__entry->status & 0x04) ? 'r' : '-', // needs_reinint
 		(__entry->status & 0x01) ? 's' : '-', // all_saturated
 		__entry->round_tq_correction,
 		__entry->round_tq_next)

@@ -1008,6 +1008,7 @@ struct sched_cbs_entity {
 		u8 all_flags;
 		struct {
 			u8 on_rq:1;	// 1: SE on run-queue
+			u8 reinit:1;	// 1: external controller needs re-initialization
 		} f;
 	} status;
 
