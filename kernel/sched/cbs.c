@@ -179,6 +179,8 @@ monitor_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
 {
 	u32 exec_tq = hrt2tq(exec_time);
 
+	BUG_ON(exec_tq > CONFIG_CBS_SE_BURST_MAX);
+
 	/* Tt */
 	cbs_se->burst_tq  = exec_tq;
 
@@ -1043,6 +1045,10 @@ void init_cbs_rq(struct cbs_rq *cbs_rq)
 	p->mult_factor = 1.0f / CONFIG_CBS_PARAM_KPI;
 	p->krr = CONFIG_CBS_PARAM_KRR * KRR_SCALE;
 	p->kzr = CONFIG_CBS_PARAM_KRR * CONFIG_CBS_PARAM_ZRR * KZR_SCALE;
+
+	// check for scale up overflows
+	BUG_ON(p->krr < CONFIG_CBS_PARAM_KRR);
+	BUG_ON(p->kzr < CONFIG_CBS_PARAM_KRR * CONFIG_CBS_PARAM_ZRR);
 
 	// Setup scheduler latency constraints
 	p->round_latency_ns = 6000000UL;
