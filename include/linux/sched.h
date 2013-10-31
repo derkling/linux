@@ -1003,18 +1003,23 @@ struct sched_cbs_entity {
 	/* Round quota */
 	u32 round_quota;
 
-	/* Burst time set-point */
-	u32 burst_time_sp;
-	/* Burst time (actual) */
-	u32 burst_time;
-	/* Burst time (cache) */
-	u32 burst_time_old;
+	/* Burst set-point [TQ] */
+	u32 burst_tq_sp;
+	/* Burst assigned [TQ] */
+	u32 burst_tq_next;
+	/* Burst measured (measured) [TQ] */
+	u32 burst_tq;
+	/* Burst measured (cache) [TQ] */
+	u32 burst_tq_old;
+	/* Burst error [TQ] */
+	s32 burst_tq_error;
 
-	/* Last burst startup time */
-	u64 burst_start_ns;
-	/* Last burst assigned interval */
-	u64 burst_interval_ns;
-	/* Overall execution time */
+
+	/* Burst assigned [ns] */
+	u64 burst_interval;
+	/* Burst startup time [ns] */
+	u64 burst_start;
+	/* Overall execution time [ns] */
 	u64 exec_runtime;
 
 #ifdef CONFIG_SCHEDSTATS

@@ -363,14 +363,14 @@ struct cbs_stats {
 	u64 count_reinit;
 	/* Total number of bursts */
 	u64 count_bursts;
-	/* Maximum round time */
-	u64 max_round;
-	/* Minimum round time */
-	u64 min_round;
-	/* Maximum burst time */
-	u64 max_burst;
-	/* Maximum burst time */
-	u64 min_burst;
+	/* Maximum round [TQ] */
+	u64 max_round_tq;
+	/* Minimum round [TQ] */
+	u64 min_round_tq;
+	/* Maximum burst [TQ] */
+	u64 max_burst_tq;
+	/* Maximum burst [TQ] */
+	u64 min_burst_tq;
 };
 
 /* CBS-related fields in a runqueue */
@@ -389,21 +389,21 @@ struct cbs_rq {
 	/* Overall RQ load (next round) */
 	struct load_weight load_next;
 
-	/* Round Time set-point */
-	u64 round_time_sp;
-	/* Round Time (measured) */
-	u64 round_time;
-	/* Round Time (next) */
-	u64 round_time_next;
+	/* Round set-point [TQ] */
+	u64 round_tq_sp;
+	/* Round assigned [TQ] */
+	u64 round_tq_next;
+	/* Round measured [TQ] */
+	u64 round_tq;
 
-	/* Round correction */
-	u64 round_correction;
-	/* Round correction (cached) */
-	u64 round_correction_old;
-	/* Round time error */
-	u64 round_error;
-	/* Round time error (cached) */
-	u64 round_error_old;
+	/* Round correction [TQ] */
+	s64 round_tq_correction;
+	/* Round correction (cached) [TQ] */
+	s64 round_tq_correction_old;
+	/* Round time error [TQ] */
+	s64 round_tq_error;
+	/* Round time error (cached) [TQ] */
+	s64 round_tq_error_old;
 
 	/* Regulator Status Flags */
 	u8 all_saturated:1;	// 1: all SE saturated
