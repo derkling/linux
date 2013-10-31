@@ -124,7 +124,6 @@ static inline void
 set_requoting(struct cbs_rq *cbs_rq)
 {
 	STATUS_SET(cbs_rq, needs_requote);
-	STATUS_SET(cbs_rq, needs_reinit);
 }
 
 static inline void
@@ -222,7 +221,7 @@ tune_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 	}
 
 	// FIXME is re_initialization required only on re-quoting?!?
-	if (STATUS_GET(cbs_rq, doing_reinit))
+	if (STATUS_GET(cbs_se, reinit))
 		goto reinit;
 
 	/* SP_Tp = alfa * nextRoundTime */
@@ -245,6 +244,9 @@ reinit:
 
 	/* b = SP_Tp * multFactor */
 	cbs_se->burst_tq_next = cbs_se->burst_tq_sp * p->mult_factor;
+
+	/* Reset re-initialization flag */
+	STATUS_CLEAR(cbs_se, reinit);
 
 common:
 
@@ -274,29 +276,6 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 
 	/* Assuming Round-Time not clamped (for FTrace reporting) */
 	STATUS_CLEAR(cbs_rq, clamp_rt);
-
-	if (STATUS_GET(cbs_rq, needs_reinit)) {
-
-		/* eTr = 0 (just for event tracing) */
-		cbs_rq->round_tq_error = 0;
-		/* bc = 0  (just for event tracing) */
-		cbs_rq->round_tq_correction = 0;
-		/* roundNext = Rt_SP (just for event tracing) */
-		cbs_rq->round_tq_next = cbs_rq->round_tq_sp;
-
-		/* eTro = 0 */
-		cbs_rq->round_tq_error_old = 0;
-		/* bco = 0 */
-		cbs_rq->round_tq_correction_old = 0;
-
-		/* Keep track of ReInitialization for SE tuning steps */
-		STATUS_SET(cbs_rq, doing_reinit);
-
-		/* Acccount for a new reinitialization */
-		cbs_rq->stats.count_reinit += 1;
-
-		goto exit_done;
-	}
 
 	/* Round time clamping for fixed point arithmetics */
 	/* Tr = min(Tr, 524287) */
@@ -337,11 +316,6 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 	/* eTro = eTr */
 	cbs_rq->round_tq_error_old = cbs_rq->round_tq_error;
 
-	/* Keep track of NOT ReInitialization for SE tuning steps */
-	STATUS_CLEAR(cbs_rq, doing_reinit);
-
-exit_done:
-
 	/* FTrace report */
 	trace_cbs_round(cbs_rq);
 
@@ -358,16 +332,12 @@ exit_done:
 		DB(BUG_ON(cbs_rq->load.weight == 0));
 	}
 
-	/* Reset re-initialization flag */
-	STATUS_CLEAR(cbs_rq, needs_reinit);
 	/* Enable SE requoting on next round (if required) */
 	STATUS_UPDATE(cbs_rq, doing_requote, needs_requote);
 	/* Reset round requoting request flag */
 	STATUS_CLEAR(cbs_rq, needs_requote);
 	/* Assuming all SE will be saturated on next round */
 	STATUS_SET(cbs_rq, all_saturated);
-
-	/* NOTE: SE reinit is post-poned into tune_cbs_burst */
 
 }
 
@@ -387,6 +357,7 @@ enqueue_cbs_entity(struct sched_cbs_entity *cbs_se, bool head)
 	else
 		list_add_tail(&cbs_se->run_node, &cbs_rq->run_list);
 
+	STATUS_SET(cbs_se, reinit);
 	STATUS_SET(cbs_se, on_rq);
 
 	// NOTE: Round time is defined at the beginning of the next round
