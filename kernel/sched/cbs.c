@@ -53,6 +53,18 @@
  * CBS Data Structures Management Utilities
  ******************************************************************************/
 
+#define STATUS_GET(C, F) (C->status.f.F)
+#define STATUS_SET(C, F)            \
+	do {                        \
+		C->status.f.F = 1;  \
+	} while(0);
+#define STATUS_CLEAR(C, F)         \
+	do {                       \
+		C->status.f.F = 0; \
+	} while(0);
+#define STATUS_UPDATE(C, D, S) (C->status.f.D = C->status.f.S)
+
+
 static inline struct task_struct *
 task_of(struct sched_cbs_entity *cbs_se)
 {
@@ -111,8 +123,8 @@ dec_cbs_tasks(struct cbs_rq *cbs_rq)
 static inline void
 set_requoting(struct cbs_rq *cbs_rq)
 {
-	cbs_rq->needs_requote = 1;
-	cbs_rq->needs_reinit = 1;
+	STATUS_SET(cbs_rq, needs_requote);
+	STATUS_SET(cbs_rq, needs_reinit);
 }
 
 static inline void
@@ -203,14 +215,14 @@ tune_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 	/* First: complete external controller tuning */
 
 	/* Update SE round quota (if required) */
-	if (cbs_rq->doing_requote) {
+	if (STATUS_GET(cbs_rq, doing_requote)) {
 		/* alfa = base * priority */
 		cbs_se->round_quota =
 			div32_64(cbs_se->load.weight, cbs_rq->load.weight, RNQ_SCALE);
 	}
 
 	// FIXME is re_initialization required only on re-quoting?!?
-	if (cbs_rq->doing_reinit)
+	if (STATUS_GET(cbs_rq, doing_reinit))
 		goto reinit;
 
 	/* SP_Tp = alfa * nextRoundTime */
@@ -246,7 +258,7 @@ common:
 
 	/* Saturation check */
 	if (cbs_se->burst_tq_next < p->burst_upper_bound)
-		cbs_rq->all_saturated = 0;
+		STATUS_CLEAR(cbs_rq, all_saturated);
 
 	/* Third: internal controller tuning */
 
@@ -261,9 +273,9 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 	u64 burst_tq_upper_bound;
 
 	/* Assuming Round-Time not clamped (for FTrace reporting) */
-	cbs_rq->clamp_rt = 0;
+	STATUS_CLEAR(cbs_rq, clamp_rt);
 
-	if (cbs_rq->needs_reinit) {
+	if (STATUS_GET(cbs_rq, needs_reinit)) {
 
 		/* eTr = 0 (just for event tracing) */
 		cbs_rq->round_tq_error = 0;
@@ -278,7 +290,7 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 		cbs_rq->round_tq_correction_old = 0;
 
 		/* Keep track of ReInitialization for SE tuning steps */
-		cbs_rq->doing_reinit = 1;
+		STATUS_SET(cbs_rq, doing_reinit);
 
 		/* Acccount for a new reinitialization */
 		cbs_rq->stats.count_reinit += 1;
@@ -289,7 +301,7 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 	/* Round time clamping for fixed point arithmetics */
 	/* Tr = min(Tr, 524287) */
 	if (cbs_rq->round_tq > ROUND_TQ_MAX) {
-		cbs_rq->clamp_rt = 1;
+		STATUS_SET(cbs_rq, clamp_rt);
 		cbs_rq->round_tq = ROUND_TQ_MAX;
 	}
 
@@ -302,7 +314,7 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 
 	/* Setup burst correction for next round.  If all inner regulators are
 	 * up-saturated, allows only decreasing round correction */
-	if (cbs_rq->all_saturated) {
+	if (STATUS_GET(cbs_rq, all_saturated)) {
 		if (cbs_rq->round_tq_correction < cbs_rq->round_tq_correction_old)
 			/* bc0 = bo */
 			cbs_rq->round_tq_correction_old = cbs_rq->round_tq_correction;
@@ -326,7 +338,7 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 	cbs_rq->round_tq_error_old = cbs_rq->round_tq_error;
 
 	/* Keep track of NOT ReInitialization for SE tuning steps */
-	cbs_rq->doing_reinit = 0;
+	STATUS_CLEAR(cbs_rq, doing_reinit);
 
 exit_done:
 
@@ -341,19 +353,19 @@ exit_done:
 
 	/* Update RQ load to support SE round quota computation */
 	if (cbs_rq->load.weight != cbs_rq->load_next.weight) {
-		DB(BUG_ON(cbs_rq->needs_requote == 0));
+		DB(BUG_ON(STATUS_GET(cbs_rq, needs_requote) == 0));
 		cbs_rq->load.weight     = cbs_rq->load_next.weight;
 		DB(BUG_ON(cbs_rq->load.weight == 0));
 	}
 
 	/* Reset re-initialization flag */
-	cbs_rq->needs_reinit = 0;
+	STATUS_CLEAR(cbs_rq, needs_reinit);
 	/* Enable SE requoting on next round (if required) */
-	cbs_rq->doing_requote = cbs_rq->needs_requote;
+	STATUS_UPDATE(cbs_rq, doing_requote, needs_requote);
 	/* Reset round requoting request flag */
-	cbs_rq->needs_requote = 0;
+	STATUS_CLEAR(cbs_rq, needs_requote);
 	/* Assuming all SE will be saturated on next round */
-	cbs_rq->all_saturated = 1;
+	STATUS_SET(cbs_rq, all_saturated);
 
 	/* NOTE: SE reinit is post-poned into tune_cbs_burst */
 
@@ -375,7 +387,7 @@ enqueue_cbs_entity(struct sched_cbs_entity *cbs_se, bool head)
 	else
 		list_add_tail(&cbs_se->run_node, &cbs_rq->run_list);
 
-	cbs_se->on_rq = 1;
+	STATUS_SET(cbs_se, on_rq);
 
 	// NOTE: Round time is defined at the beginning of the next round
 	// NOTE: SE burst time are assigned at the beginning of the next round
@@ -424,7 +436,7 @@ dequeue_cbs_entity(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 
 	list_del_init(&cbs_se->run_node);
 
-	cbs_se->on_rq = 0;
+	STATUS_CLEAR(cbs_se, on_rq);
 
 	// NOTE: Round time is defined at the beginning of the next round
 	// NOTE: SE burst time are assigned at the beginning of the next round
@@ -658,7 +670,7 @@ enqueue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 
 	inc_nr_running(rq);
 
-	DB(BUG_ON(!cbs_se->on_rq));
+	DB(BUG_ON(!STATUS_GET(cbs_se, on_rq)));
 }
 
 /*
@@ -678,7 +690,7 @@ dequeue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 
 	dec_nr_running(rq);
 
-	DB(BUG_ON(cbs_se->on_rq));
+	DB(BUG_ON(STATUS_GET(cbs_se, on_rq)));
 }
 
 /*
@@ -929,9 +941,10 @@ switched_from_cbs(struct rq *rq, struct task_struct *p)
 static void
 switched_to_cbs(struct rq *rq, struct task_struct *p)
 {
+	struct sched_cbs_entity *cbs_se = &p->cbs;
 
 	/* If the task is *not* RUNNING, nothing has to be done */
-	if (!p->cbs.on_rq)
+	if (!STATUS_GET(cbs_se, on_rq))
 		return;
 
 	/* Possible actions:
@@ -948,9 +961,10 @@ switched_to_cbs(struct rq *rq, struct task_struct *p)
 static void
 prio_changed_cbs(struct rq *rq, struct task_struct *p, int oldprio)
 {
+	struct sched_cbs_entity *cbs_se = &p->cbs;
 
 	/* If the task is *not* RUNNING, nothing has to be done */
-	if (!p->cbs.on_rq)
+	if (!STATUS_GET(cbs_se, on_rq))
 		return;
 
 	/* Possible actions:

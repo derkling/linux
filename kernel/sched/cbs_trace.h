@@ -67,9 +67,7 @@ TRACE_EVENT(cbs_round,
 		__field( s64,		round_tq_correction	)
 		__field( s64,		round_tq_error		)
 		__field( u64,		exec_runtime		)
-		__field( u8,		all_saturated		)
-		__field( u8,		clamp_rt		)
-		__field( u8,		needs_reinit 		)
+		__field( u8,		status			)
 	),
 
 	TP_fast_assign(
@@ -82,9 +80,7 @@ TRACE_EVENT(cbs_round,
 		__entry->round_tq_correction	= cbs_rq->round_tq_correction;
 		__entry->round_tq_error		= cbs_rq->round_tq_error;
 		__entry->exec_runtime		= cbs_rq->exec_runtime;
-		__entry->all_saturated		= cbs_rq->all_saturated;
-		__entry->clamp_rt		= cbs_rq->clamp_rt;
-		__entry->needs_reinit		= cbs_rq->needs_reinit;
+		__entry->status			= cbs_rq->status.all_flags;
 	),
 
 
@@ -92,13 +88,13 @@ TRACE_EVENT(cbs_round,
 		__entry->exec_runtime,
 		__entry->load,
 		__entry->round_tq,
-		__entry->clamp_rt ? 'c' : '-',
+		(__entry->status & 0x02) ? 'c' : '-', // clamp_rt
 		__entry->round_tq_error,
 		__entry->nr_running,
 		__entry->load_next,
 		__entry->round_tq_sp,
-		__entry->needs_reinit ? 'r' : '-',
-		__entry->all_saturated ? 's' : '-',
+		(__entry->status & 0x04) ? 'r' : '-', // needs_reinint
+		(__entry->status & 0x01) ? 's' : '-', // all_saturated
 		__entry->round_tq_correction,
 		__entry->round_tq_next)
 );
