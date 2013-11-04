@@ -33,6 +33,36 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 
+	       cpu-map {
+	               cluster0 {
+				power-gate = <1>;
+				core0 {
+	                               cpu = <&cpu0>;
+					power-gate = <0>;
+				};
+				core1 {
+				        cpu = <&cpu1>;
+					power-gate = <0>;
+				};
+			};
+
+			cluster1 {
+				power-gate = <1>;
+				core0 {
+					cpu = <&cpu2>;
+					power-gate = <0>;
+				};
+				core1 {
+					cpu = <&cpu3>;
+					power-gate = <0>;
+				};
+				core2 {
+					cpu = <&cpu4>;
+					power-gate = <0>;
+				};
+			};
+		};
+
 		cpu2: cpu@2 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a7";
