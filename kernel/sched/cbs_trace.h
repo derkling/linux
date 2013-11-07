@@ -42,10 +42,10 @@ TRACE_EVENT(cbs_burst,
 	),
 
 
-	TP_printk("exec=%Lu | Rq=%u [%c] Tt_SP=%u Tb=%Lu Tt=%u",
+	TP_printk("exec=%Lu | Rq=%u [%s] Tt_SP=%u Tb=%Lu Tt=%u",
 		__entry->exec_runtime,
 		__entry->round_quota,
-		(__entry->status & 0x02) ? 'r' : '-', // reinit
+		((__entry->status & 0x02) ? "r" : "-"), // reinit
 		__entry->burst_tq_sp,
 		__entry->burst_interval,
 		__entry->burst_tq)
@@ -87,16 +87,16 @@ TRACE_EVENT(cbs_round,
 	),
 
 
-	TP_printk("exec=%Lu | Lw=%lu Rt=%Lu [%c] Re=%Lu ===> Nr=%u Lw=%lu Rt_SP=%Lu [%c] Rt_corr=%Ld Rt_next=%Ld ",
+	TP_printk("exec=%Lu | Lw=%lu Rt=%Lu [%s] Re=%Lu ===> Nr=%u Lw=%lu Rt_SP=%Lu [%s] Rt_corr=%Ld Rt_next=%Ld ",
 		__entry->exec_runtime,
 		__entry->load,
 		__entry->round_tq,
-		(__entry->status & 0x02) ? 'c' : '-', // clamp_rt
+		((__entry->status & 0x02) ? "c" : "-"), // clamp_rt
 		__entry->round_tq_error,
 		__entry->nr_running,
 		__entry->load_next,
 		__entry->round_tq_sp,
-		(__entry->status & 0x01) ? 's' : '-', // all_saturated
+		((__entry->status & 0x01) ? "s" : "-"), // all_saturated
 		__entry->round_tq_correction,
 		__entry->round_tq_next)
 );
