@@ -1031,6 +1031,10 @@ void init_cbs_rq(struct cbs_rq *cbs_rq)
 	p->krr = CONFIG_CBS_PARAM_KRR * KRR_SCALE;
 	p->kzr = CONFIG_CBS_PARAM_KRR * CONFIG_CBS_PARAM_ZRR * KZR_SCALE;
 
+	// check for fixed point arithmetics error
+	BUG_ON(ROUND_TQ_MAX == 0);
+	BUG_ON(RQ_WEIGHT_MAX == 0);
+
 	// check for scale up overflows
 	BUG_ON(p->krr < CONFIG_CBS_PARAM_KRR);
 	BUG_ON(p->kzr < CONFIG_CBS_PARAM_KRR * CONFIG_CBS_PARAM_ZRR);
