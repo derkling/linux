@@ -33,10 +33,10 @@
  * - signed int: 31 bits => up to (31-19) = 12 bits for KRR and KZR
  */
 
-#define CONFIG_CBS_SE_WEIGHT_MAX   88761
-#define CONFIG_CBS_SE_WEIGHT_MIN      15
-#define CONFIG_CBS_SE_COUNT_MAX ( (u32) (1UL << 10) )
-#define CONFIG_CBS_SE_BURST_MAX ( (u32) (1UL << 18) )
+#define CONFIG_CBS_SE_WEIGHT_MAX ( (u32) 88761 )
+#define CONFIG_CBS_SE_WEIGHT_MIN ( (u32)    15 )
+#define CONFIG_CBS_SE_COUNT_MAX  ( (u32) (1UL << 10) )
+#define CONFIG_CBS_SE_BURST_MAX  ( (u32) (1UL << 18) )
 
 #define RNQ_SCALE ( (u32) (1UL << 23) )
 #define KRR_SCALE ( (u32) (1UL << 11) )
