@@ -87,7 +87,7 @@ TRACE_EVENT(cbs_round,
 	),
 
 
-	TP_printk("exec=%Lu | Lw=%lu Rt=%Lu [%s] Re=%Lu ===> Nr=%u Lw=%lu Rt_SP=%Lu [%s] Rt_corr=%Ld Rt_next=%Ld ",
+	TP_printk("exec=%Lu | Lw=%lu Rt=%Lu [%s] Re=%Ld ===> Nr=%u Lw=%lu Rt_SP=%Lu [%s] Rt_corr=%Ld Rt_next=%Ld ",
 		__entry->exec_runtime,
 		__entry->load,
 		__entry->round_tq,
