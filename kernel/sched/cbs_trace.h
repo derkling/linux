@@ -92,7 +92,7 @@ TRACE_EVENT(cbs_round,
 		__entry->load,
 		__entry->round_tq,
 		((__entry->status & 0x02) ? "c" : "-"), // clamp_rt
-		__entry->round_tq_error,
+		__entry->round_tq ? __entry->round_tq_error : 0,
 		__entry->nr_running,
 		__entry->load_next,
 		__entry->round_tq_sp,
