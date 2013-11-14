@@ -43,11 +43,11 @@ TRACE_EVENT(cbs_burst,
 
 
 	TP_printk("exec=%Lu | Rq=%u [%s] Tt_SP=%u Tb=%Lu Tt=%u",
-		__entry->exec_runtime,
+		__entry->exec_runtime / CONFIG_CBS_TQ2NS,
 		__entry->round_quota,
 		((__entry->status & 0x02) ? "r" : "-"), // reinit
 		__entry->burst_tq_sp,
-		__entry->burst_interval,
+		__entry->burst_interval / CONFIG_CBS_TQ2NS,
 		__entry->burst_tq)
 );
 
@@ -88,7 +88,7 @@ TRACE_EVENT(cbs_round,
 
 
 	TP_printk("exec=%Lu | Lw=%lu Rt=%Lu [%s] Re=%Ld ===> Nr=%u Lw=%lu Rt_SP=%Lu [%s] Rt_corr=%Ld Rt_next=%Ld ",
-		__entry->exec_runtime,
+		__entry->exec_runtime / CONFIG_CBS_TQ2NS,
 		__entry->load,
 		__entry->round_tq,
 		((__entry->status & 0x02) ? "c" : "-"), // clamp_rt
