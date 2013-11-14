@@ -990,6 +990,7 @@ struct sched_entity {
 #endif
 };
 
+#ifdef CONFIG_SCHED_CBS
 struct sched_cbs_entity {
 
 	/* Entry into the Tasks list */
@@ -1032,6 +1033,7 @@ struct sched_cbs_entity {
 	struct sched_statistics statistics;
 #endif
 };
+#endif /* CONFIG_SCHED_CBS */
 
 struct sched_rt_entity {
 	struct list_head run_list;
@@ -1079,7 +1081,9 @@ struct task_struct {
 	unsigned int rt_priority;
 	const struct sched_class *sched_class;
 	struct sched_entity se;
+#ifdef CONFIG_SCHED_CBS
 	struct sched_cbs_entity cbs;
+#endif
 	struct sched_rt_entity rt;
 #ifdef CONFIG_CGROUP_SCHED
 	struct task_group *sched_task_group;

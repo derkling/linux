@@ -327,6 +327,7 @@ struct cfs_rq {
 };
 
 
+#ifdef CONFIG_SCHED_CBS
 /* CBS-related tuning params */
 struct cbs_params {
 
@@ -425,6 +426,7 @@ struct cbs_rq {
 	/* Burst and Round Statistics */
 	struct cbs_stats stats;
 };
+#endif /* CONFIG_SCHED_CBS */
 
 static inline int rt_bandwidth_enabled(void)
 {
@@ -526,7 +528,9 @@ struct rq {
 	u64 nr_switches;
 
 	struct cfs_rq cfs;
+#ifdef CONFIG_SCHED_CBS
 	struct cbs_rq cbs;
+#endif /* CONFIG_SCHED_CBS */
 	struct rt_rq rt;
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
@@ -1406,7 +1410,9 @@ extern void print_cbs_stats(struct seq_file *m, int cpu);
 extern void print_rt_stats(struct seq_file *m, int cpu);
 
 extern void init_cfs_rq(struct cfs_rq *cfs_rq);
+#ifdef CONFIG_SCHED_CBS
 extern void init_cbs_rq(struct cbs_rq *cbs_rq);
+#endif /* CONFIG_SCHED_CBS */
 extern void init_rt_rq(struct rt_rq *rt_rq, struct rq *rq);
 
 extern void account_cfs_bandwidth_used(int enabled, int was_enabled);

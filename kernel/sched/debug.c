@@ -253,6 +253,7 @@ void print_rt_rq(struct seq_file *m, int cpu, struct rt_rq *rt_rq)
 #undef P
 }
 
+#ifdef CONFIG_SCHED_CBS
 void print_cbs_rq(struct seq_file *m, int cpu, struct cbs_rq *cbs_rq)
 {
 	SEQ_printf(m, "\ncbs_rq[%d]:\n", cpu);
@@ -298,6 +299,7 @@ void print_cbs_rq(struct seq_file *m, int cpu, struct cbs_rq *cbs_rq)
 #undef PN
 #undef P
 }
+#endif /* CONFIG_SCHED_CBS */
 
 
 extern __read_mostly int sched_clock_running;
@@ -366,7 +368,9 @@ do {									\
 #endif
 	spin_lock_irqsave(&sched_debug_lock, flags);
 	print_cfs_stats(m, cpu);
+#ifdef CONFIG_SCHED_CBS
 	print_cbs_stats(m, cpu);
+#endif /* CONFIG_SCHED_CBS */
 	print_rt_stats(m, cpu);
 
 	rcu_read_lock();

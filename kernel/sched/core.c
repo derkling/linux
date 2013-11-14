@@ -750,7 +750,9 @@ static void set_load_weight(struct task_struct *p)
 {
 	int prio = p->static_prio - MAX_RT_PRIO;
 	struct load_weight *load = &p->se.load;
+#ifdef CONFIG_SCHED_CBS
 	struct load_weight *cbs_load = &p->cbs.load;
+#endif
 
 	/*
 	 * SCHED_IDLE tasks get minimal weight:
@@ -761,6 +763,7 @@ static void set_load_weight(struct task_struct *p)
 		return;
 	}
 
+#ifdef CONFIG_SCHED_CBS
 	/*
 	 * SCHED_CBS tasks get the same weight as SCHED_NORMAL
 	 */
@@ -769,6 +772,7 @@ static void set_load_weight(struct task_struct *p)
 		cbs_load->inv_weight = prio_to_wmult[prio];
 		return;
 	}
+#endif
 
 	load->weight = scale_load(prio_to_weight[prio]);
 	load->inv_weight = prio_to_wmult[prio];
@@ -1666,11 +1670,13 @@ static void
 set_sched_class(struct task_struct *p)
 {
 
+#ifdef CONFIG_SCHED_CBS
 	// Class priority has precendence over priority
 	if (p->policy == SCHED_CBS) {
 		p->sched_class = &cbs_sched_class;
 		return;
 	}
+#endif
 
 	if (rt_prio(p->prio)) {
 		p->sched_class = &rt_sched_class;
@@ -3326,7 +3332,11 @@ recheck:
 
 		if (policy != SCHED_FIFO && policy != SCHED_RR &&
 				policy != SCHED_NORMAL && policy != SCHED_BATCH &&
+#ifdef CONFIG_SCHED_CBS
 				policy != SCHED_IDLE && policy != SCHED_CBS)
+#else
+				policy != SCHED_IDLE)
+#endif
 			return -EINVAL;
 	}
 
@@ -6478,7 +6488,9 @@ void __init sched_init(void)
 		rq->calc_load_active = 0;
 		rq->calc_load_update = jiffies + LOAD_FREQ;
 		init_cfs_rq(&rq->cfs);
+#ifdef CONFIG_SCHED_CBS
 		init_cbs_rq(&rq->cbs);
+#endif
 		init_rt_rq(&rq->rt, rq);
 #ifdef CONFIG_FAIR_GROUP_SCHED
 		root_task_group.shares = ROOT_TASK_GROUP_LOAD;
