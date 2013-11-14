@@ -494,15 +494,6 @@ run_cbs_entity_start(struct rq *rq, struct sched_cbs_entity *cbs_se)
 
 }
 
-static void
-setup_next_round(struct cbs_rq *cbs_rq)
-{
-
-	/* Controller: Round Tuning */
-	tune_cbs_round(cbs_rq);
-
-}
-
 static struct sched_cbs_entity *
 pick_next_cbs_entity(struct cbs_rq *cbs_rq)
 {
@@ -512,8 +503,8 @@ pick_next_cbs_entity(struct cbs_rq *cbs_rq)
 
 	/* If there is not a next we are at the start of a new round */
 	if (cbs_round_end(cbs_rq)) {
-		/* Bursts allocation to running SEs */
-		setup_next_round(cbs_rq);
+		/* Controller: Round Tuning */
+		tune_cbs_round(cbs_rq);
 
 		/* Restart from first SE in this RQ */
 		cbs_se = list_first_entry_or_null(
