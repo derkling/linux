@@ -1045,8 +1045,8 @@ void init_cbs_rq(struct cbs_rq *cbs_rq)
 	p->burst_min_ns     =  0.75 * 1000000UL;
 	p->burst_max_ns     = 20    * 1000000UL;
 
-	p->burst_upper_bound = p->burst_max_ns * p->mult_factor;
-	p->burst_lower_bound = p->burst_min_ns * p->mult_factor;
+	p->burst_upper_bound = hrt2tq(p->burst_max_ns) * p->mult_factor;
+	p->burst_lower_bound = hrt2tq(p->burst_min_ns) * p->mult_factor;
 
 }
 
