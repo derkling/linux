@@ -181,6 +181,29 @@ typedef struct cbs_rq *cbs_rq_iter_t;
 /*******************************************************************************
  * CBS Controller Management
  ******************************************************************************/
+/*
+ * The idea is to set a period in which each task runs once.
+ *
+ * When there are too many tasks (sched_nr_latency) we have to stretch
+ * this period because otherwise the slices get too small.
+ *
+ * p = (nr <= nl) ? l : l*nr/nl
+ */
+static void
+update_round_sp(struct cbs_rq *cbs_rq)
+{
+	u64 period = cbs_rq->params.round_latency_ns;
+	unsigned long nr_latency = cbs_rq->params.round_latency_nr_max;
+
+	if (unlikely(cbs_rq->nr_running > nr_latency)) {
+		period  = cbs_rq->params.burst_min_ns;
+		period *= cbs_rq->nr_running;
+	}
+
+	// NOTE: an update of the round time set-point will be absorbed as
+	// an error at the end of the current run
+	cbs_rq->round_tq_sp = hrt2tq(period);
+}
 
 static void
 monitor_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
@@ -313,6 +336,13 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 
 	/* eTro = eTr */
 	cbs_rq->round_tq_error_old = cbs_rq->round_tq_error;
+
+	/* Update the Round Time set-point
+	 * Ths SP value should be update:
+	 * _after_ the Error of the previous run has been computed
+	 * _before_ the SP for the next round is traced (via FTrace)
+	 */
+	update_round_sp(cbs_rq);
 
 	/* FTrace report */
 	trace_cbs_round(cbs_rq);
@@ -464,36 +494,9 @@ run_cbs_entity_start(struct rq *rq, struct sched_cbs_entity *cbs_se)
 
 }
 
-/*
- * The idea is to set a period in which each task runs once.
- *
- * When there are too many tasks (sched_nr_latency) we have to stretch
- * this period because otherwise the slices get too small.
- *
- * p = (nr <= nl) ? l : l*nr/nl
- */
-static void
-update_round_sp(struct cbs_rq *cbs_rq)
-{
-	u64 period = cbs_rq->params.round_latency_ns;
-	unsigned long nr_latency = cbs_rq->params.round_latency_nr_max;
-
-	if (unlikely(cbs_rq->nr_running > nr_latency)) {
-		period  = cbs_rq->params.burst_min_ns;
-		period *= cbs_rq->nr_running;
-	}
-
-	// NOTE: an update of the round time set-point will be absorbed as
-	// an error at the end of the current run
-	cbs_rq->round_tq_sp = hrt2tq(period);
-}
-
 static void
 setup_next_round(struct cbs_rq *cbs_rq)
 {
-
-	/* Update the Round Time set-point */
-	update_round_sp(cbs_rq);
 
 	/* Controller: Round Tuning */
 	tune_cbs_round(cbs_rq);
