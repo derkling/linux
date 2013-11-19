@@ -40,7 +40,8 @@ static inline void __iomem *cpu_boot_reg_base(void)
 {
 	if (soc_is_exynos4210() && samsung_rev() == EXYNOS4210_REV_1_1)
 		return S5P_INFORM5;
-	return S5P_VA_SYSRAM;
+//	return S5P_VA_SYSRAM;
+	return S5P_VA_SYSRAM_NS;
 }
 
 static inline void __iomem *cpu_boot_reg(int cpu)
@@ -51,7 +52,7 @@ static inline void __iomem *cpu_boot_reg(int cpu)
 	if (soc_is_exynos4412())
 		boot_reg += 4*cpu;
 	else if (soc_is_exynos5420())
-		boot_reg += 4;
+		boot_reg += 0x1c;
 	return boot_reg;
 }
 
@@ -111,14 +112,14 @@ static int exynos_boot_secondary(unsigned int cpu, struct task_struct *idle)
 	 */
 	write_pen_release(phys_cpu);
 
-	if (!(__raw_readl(S5P_ARM_CORE1_STATUS) & S5P_CORE_LOCAL_PWR_EN)) {
+	if (!(__raw_readl(S5P_ARM_CORE1_STATUS + cpu * 0x80 - 0x80) & S5P_CORE_LOCAL_PWR_EN)) {
 		__raw_writel(S5P_CORE_LOCAL_PWR_EN,
-			     S5P_ARM_CORE1_CONFIGURATION);
+			     S5P_ARM_CORE1_CONFIGURATION + cpu * 0x80 - 0x80);
 
 		timeout = 10;
 
 		/* wait max 10 ms until cpu1 is on */
-		while ((__raw_readl(S5P_ARM_CORE1_STATUS)
+		while ((__raw_readl(S5P_ARM_CORE1_STATUS + cpu * 0x80 - 0x80)
 			& S5P_CORE_LOCAL_PWR_EN) != S5P_CORE_LOCAL_PWR_EN) {
 			if (timeout-- == 0)
 				break;

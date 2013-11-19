@@ -261,7 +261,12 @@ static struct map_desc exynos5_iodesc[] __initdata = {
 		.pfn		= __phys_to_pfn(EXYNOS5_PA_PMU),
 		.length		= SZ_64K,
 		.type		= MT_DEVICE,
-	},
+	}, {
+                .virtual        = (unsigned long)S5P_VA_SYSRAM_NS,
+                .pfn            = __phys_to_pfn(0x2073000),
+                .length         = SZ_64K,
+                .type           = MT_DEVICE,
+        },
 };
 
 void exynos4_restart(enum reboot_mode mode, const char *cmd)
