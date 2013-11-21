@@ -1052,13 +1052,15 @@ void init_cbs_rq(struct cbs_rq *cbs_rq)
 	BUG_ON(p->krr < CONFIG_CBS_PARAM_KRR);
 	BUG_ON(p->kzr < CONFIG_CBS_PARAM_KRR * CONFIG_CBS_PARAM_ZRR);
 
-	// Setup scheduler latency constraints
-	p->round_latency_ns = 6000000UL;
-	p->round_latency_nr_max = 8; // Keep latency / burst_min
-
+	// Stup burst time constraints
 	p->burst_nominal_ns =  4    * 1000000UL;
 	p->burst_min_ns     =  0.75 * 1000000UL;
 	p->burst_max_ns     = 20    * 1000000UL;
+
+	// Setup scheduler latency constraints
+	p->round_latency_ns =  6    * 1000000UL;
+	p->round_latency_nr_max = // Keep latency / burst_min
+		p->round_latency_ns / p->burst_min_ns;
 
 	p->burst_upper_bound = hrt2tq(p->burst_max_ns) * p->mult_factor;
 	p->burst_lower_bound = hrt2tq(p->burst_min_ns) * p->mult_factor;
