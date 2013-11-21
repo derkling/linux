@@ -299,7 +299,7 @@ static void
 tune_cbs_round(struct cbs_rq *cbs_rq)
 {
 	struct cbs_params *p = &cbs_rq->params;
-	u64 burst_tq_upper_bound;
+	s64 burst_tq_upper_bound;
 
 	/* Assuming Round-Time not clamped (for FTrace reporting) */
 	STATUS_CLEAR(cbs_rq, clamp_rt);
@@ -332,7 +332,7 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 	/* bco = min(MAX(bco, -Tr), bMax*threadListSize */
 	if (cbs_rq->round_tq_correction_old < -cbs_rq->round_tq)
 		cbs_rq->round_tq_correction_old = -cbs_rq->round_tq;
-	burst_tq_upper_bound = p->burst_max_ns * cbs_rq->nr_running;
+	burst_tq_upper_bound = hrt2tq(p->burst_max_ns) * cbs_rq->nr_running;
 	if (cbs_rq->round_tq_correction_old > burst_tq_upper_bound)
 		cbs_rq->round_tq_correction_old = burst_tq_upper_bound;
 
