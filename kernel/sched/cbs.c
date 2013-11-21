@@ -494,6 +494,9 @@ run_cbs_entity_start(struct rq *rq, struct sched_cbs_entity *cbs_se)
 	// ???
 	cbs_se->burst_start = now;
 
+	/* Setup expected burst end time */
+	cbs_se->burst_stop = now + cbs_se->burst_interval;
+
 	/* Setup HRTimer (if enabled) */
 	if (hrtick_enabled(rq))
 		hrtick_start_cbs(rq, task_of(cbs_se));
