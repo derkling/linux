@@ -471,6 +471,18 @@ hrtick_start_cbs(struct rq *rq, struct task_struct *p)
 }
 
 static void
+hrtick_check_cbs(struct rq *rq, struct task_struct *p)
+{
+	struct sched_cbs_entity *cbs_se = &p->cbs;
+	u64 now = rq_clock_task(rq);
+
+	/* Check for burst being completed */
+	if (cbs_se->burst_stop <= now) {
+		set_tsk_need_resched(p);
+	}
+}
+
+static void
 run_cbs_entity_start(struct rq *rq, struct sched_cbs_entity *cbs_se)
 {
 	u64 now = rq_clock_task(rq);
@@ -880,7 +892,7 @@ set_curr_task_cbs(struct rq *rq)
 static void
 task_tick_cbs(struct rq *rq, struct task_struct *p, int queued)
 {
-
+	hrtick_check_cbs(rq, p);
 }
 
 /*
