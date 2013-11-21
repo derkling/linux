@@ -157,19 +157,25 @@ tq2hrt(u32 tq_time)
 	return ((u64)tq_time * CONFIG_CBS_TQ2NS);
 }
 
-static inline u32
-mul32_64(const u32 a, const u32 b, const u32 scale_down)
+static inline s32
+mul32_64(const s32 a, const s32 b, const u32 scale_down)
 {
-	u64 result = ((u64) a * b ) / scale_down;
-	BUG_ON(result >= (1UL << 32));
+	s64 result = a;
+	result *= b;
+	result /= scale_down;
+	BUG_ON(result >=  (1L << 32));
+	BUG_ON(result <= -(1L << 32));
 	return result;
 }
 
-static inline u32
-div32_64(const u32 a, const u32 b, const u32 scale_up)
+static inline s32
+div32_64(const s32 a, const s32 b, const u32 scale_up)
 {
-	u64 result = ((u64) a * scale_up) / b;
-	BUG_ON(result >= (1UL << 32));
+	s64 result = a;
+	result *= scale_up;
+	result /= b;
+	BUG_ON(result >=  (1L << 32));
+	BUG_ON(result <= -(1L << 32));
 	return result;
 }
 
