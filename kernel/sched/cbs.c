@@ -225,6 +225,9 @@ monitor_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se,
 	/* Cache burst value for next round */
 	cbs_se->burst_tq_old = cbs_se->burst_tq_next;
 
+	/* Reset re-initialization flag */
+	STATUS_CLEAR(cbs_se, reinit);
+
 }
 
 static void
@@ -265,9 +268,6 @@ reinit:
 
 	/* b = SP_Tp * multFactor */
 	cbs_se->burst_tq_next = cbs_se->burst_tq_sp * p->mult_factor;
-
-	/* Reset re-initialization flag */
-	STATUS_CLEAR(cbs_se, reinit);
 
 common:
 
