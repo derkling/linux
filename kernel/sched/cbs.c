@@ -683,7 +683,7 @@ dequeue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 static void
 yield_task_cbs(struct rq *rq)
 {
-
+	set_tsk_need_resched(rq->curr);
 }
 
 /*
