@@ -894,6 +894,22 @@ set_curr_task_cbs(struct rq *rq)
 static void
 task_tick_cbs(struct rq *rq, struct task_struct *p, int queued)
 {
+
+	/*
+	 * queued ticks are scheduled to match the slice, so don't bother
+	 * validating it and just reschedule.
+	 */
+	if (queued) {
+		resched_task(rq->curr);
+		return;
+	}
+
+	/*
+	 * don't let the period tick interfere with the hrtick preemption
+	 */
+	if (!sched_feat(DOUBLE_TICK) && hrtimer_active(&rq->hrtick_timer))
+		return;
+
 	hrtick_check_cbs(rq, p);
 }
 
