@@ -315,32 +315,32 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 	/* eTr = SP_Tr - Tr */
 	cbs_rq->round_tq_error = cbs_rq->round_tq_sp - cbs_rq->round_tq;
 	/* bc = bco + (krr*eTr - krr*zrr*eTro) */
-	cbs_rq->round_tq_correction = cbs_rq->round_tq_correction_old
+	cbs_rq->round_tq_corr = cbs_rq->round_tq_corr_old
 		+ mul32_64(p->krr, cbs_rq->round_tq_error, KRR_SCALE)
 		- mul32_64(p->kzr, cbs_rq->round_tq_error_old, KZR_SCALE);
 
 	/* Setup burst correction for next round.  If all inner regulators are
 	 * up-saturated, allows only decreasing round correction */
 	if (STATUS_GET(cbs_rq, all_saturated)) {
-		if (cbs_rq->round_tq_correction < cbs_rq->round_tq_correction_old)
+		if (cbs_rq->round_tq_corr < cbs_rq->round_tq_corr_old)
 			/* bc0 = bo */
-			cbs_rq->round_tq_correction_old = cbs_rq->round_tq_correction;
+			cbs_rq->round_tq_corr_old = cbs_rq->round_tq_corr;
 	} else {
 		/* bc0 = bo */
-		cbs_rq->round_tq_correction_old = cbs_rq->round_tq_correction;
+		cbs_rq->round_tq_corr_old = cbs_rq->round_tq_corr;
 	}
 
 	/* bco = min(MAX(bco, bMin*threadListSize-Tr), bMax*threadListSize) */
 	burst_tq_lower_bound = hrt2tq(p->burst_min_ns) * cbs_rq->nr_running;
-	if (cbs_rq->round_tq_correction_old < (burst_tq_lower_bound - cbs_rq->round_tq))
-		cbs_rq->round_tq_correction_old = (burst_tq_lower_bound - cbs_rq->round_tq);
+	if (cbs_rq->round_tq_corr_old < (burst_tq_lower_bound - cbs_rq->round_tq))
+		cbs_rq->round_tq_corr_old = (burst_tq_lower_bound - cbs_rq->round_tq);
 	burst_tq_upper_bound = hrt2tq(p->burst_max_ns) * cbs_rq->nr_running;
-	if (cbs_rq->round_tq_correction_old > burst_tq_upper_bound)
-		cbs_rq->round_tq_correction_old = burst_tq_upper_bound;
+	if (cbs_rq->round_tq_corr_old > burst_tq_upper_bound)
+		cbs_rq->round_tq_corr_old = burst_tq_upper_bound;
 
 	/* nextRoundTime = Tr + bco */
 	cbs_rq->round_tq_next =
-		cbs_rq->round_tq + cbs_rq->round_tq_correction_old;
+		cbs_rq->round_tq + cbs_rq->round_tq_corr_old;
 
 	/* eTro = eTr */
 	cbs_rq->round_tq_error_old = cbs_rq->round_tq_error;

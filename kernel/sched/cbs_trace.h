@@ -67,7 +67,7 @@ TRACE_EVENT(cbs_round,
 		__field( u64,		round_tq_sp		)
 		__field( u64,		round_tq_next		)
 		__field( u64,		round_tq		)
-		__field( s64,		round_tq_correction	)
+		__field( s64,		round_tq_corr		)
 		__field( s64,		round_tq_error		)
 		__field( u64,		exec_runtime		)
 		__field( u8,		status			)
@@ -80,7 +80,7 @@ TRACE_EVENT(cbs_round,
 		__entry->round_tq_sp		= cbs_rq->round_tq_sp;
 		__entry->round_tq		= cbs_rq->round_tq;
 		__entry->round_tq_next		= cbs_rq->round_tq_next;
-		__entry->round_tq_correction	= cbs_rq->round_tq_correction;
+		__entry->round_tq_corr		= cbs_rq->round_tq_corr;
 		__entry->round_tq_error		= cbs_rq->round_tq_error;
 		__entry->exec_runtime		= cbs_rq->exec_runtime;
 		__entry->status			= cbs_rq->status.all_flags;
@@ -97,7 +97,7 @@ TRACE_EVENT(cbs_round,
 		__entry->load_next,
 		__entry->round_tq_sp,
 		((__entry->status & 0x01) ? "s" : "-"), // all_saturated
-		__entry->round_tq_correction,
+		__entry->round_tq_corr,
 		__entry->round_tq_next)
 );
 

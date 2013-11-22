@@ -398,9 +398,9 @@ struct cbs_rq {
 	u64 round_tq;
 
 	/* Round correction [TQ] */
-	s64 round_tq_correction;
+	s64 round_tq_corr;
 	/* Round correction (cached) [TQ] */
-	s64 round_tq_correction_old;
+	s64 round_tq_corr_old;
 	/* Round time error [TQ] */
 	s64 round_tq_error;
 	/* Round time error (cached) [TQ] */
