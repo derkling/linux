@@ -480,7 +480,7 @@ hrtick_check_cbs(struct rq *rq, struct task_struct *p)
 
 	/* Check for burst being completed */
 	if (cbs_se->burst_stop <= now) {
-		set_tsk_need_resched(p);
+		resched_task(rq->curr);
 	}
 }
 
@@ -685,7 +685,7 @@ dequeue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 static void
 yield_task_cbs(struct rq *rq)
 {
-	set_tsk_need_resched(rq->curr);
+	resched_task(rq->curr);
 }
 
 /*
