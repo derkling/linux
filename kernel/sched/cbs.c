@@ -900,6 +900,9 @@ static void
 task_tick_cbs(struct rq *rq, struct task_struct *p, int queued)
 {
 
+	/* Account for total number of timer ticks */
+	rq->cbs.stats.count_ticks += 1;
+
 	/*
 	 * queued ticks are scheduled to match the slice, so don't bother
 	 * validating it and just reschedule.
@@ -914,9 +917,14 @@ task_tick_cbs(struct rq *rq, struct task_struct *p, int queued)
 	/*
 	 * don't let the period tick interfere with the hrtick preemption
 	 */
-	if (!sched_feat(DOUBLE_TICK) && hrtimer_active(&rq->hrtick_timer))
+	if (!sched_feat(DOUBLE_TICK) && hrtimer_active(&rq->hrtick_timer)) {
+		/* Accont for total number of timer ticks ignored */
+		rq->cbs.stats.count_ticks_ignored += 1;
 		return;
+	}
 
+	/* Account for total number of timer ticks which requires a check */
+	rq->cbs.stats.count_ticks_checked += 1;
 	hrtick_check_cbs(rq, p);
 }
 

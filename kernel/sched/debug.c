@@ -288,6 +288,10 @@ void print_cbs_rq(struct seq_file *m, int cpu, struct cbs_rq *cbs_rq)
 	P(params.burst_lower_bound);
 	P(params.burst_upper_bound);
 
+	P(stats.count_ticks);
+	P(stats.count_ticks_ignored);
+	P(stats.count_ticks_checked);
+
 	P(stats.count_rounds);
 	P(stats.count_reinit);
 	P(stats.count_bursts);

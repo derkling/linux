@@ -358,6 +358,12 @@ struct cbs_params {
 };
 
 struct cbs_stats {
+	/* Total number of timer ticks */
+	u64 count_ticks;
+	/* Total number of timer ticks ignored */
+	u64 count_ticks_ignored;
+	/* Total number of timer ticks checked */
+	u64 count_ticks_checked;
 	/* Total number of rounds */
 	u64 count_rounds;
 	/* Total number of re-initializations */
