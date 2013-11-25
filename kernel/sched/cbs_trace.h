@@ -26,8 +26,10 @@ TRACE_EVENT(cbs_burst,
 	TP_STRUCT__entry(
 		__field(	u32,	round_quota     )
 		__field(	u32,	burst_tq_sp	)
-		__field(	u32,	burst_tq	)
+		__field(	s32,	burst_tq_error	)
+		__field(	u32,	burst_tq_next	)
 		__field(	u64,	burst_interval	)
+		__field(	u32,	burst_tq	)
 		__field(	u64,	exec_runtime	)
 		__field( 	u8,	status		)
 	),
@@ -35,18 +37,22 @@ TRACE_EVENT(cbs_burst,
 	TP_fast_assign(
 		__entry->round_quota	= cbs_se->round_quota;
 		__entry->burst_tq_sp	= cbs_se->burst_tq_sp;
-		__entry->burst_tq	= cbs_se->burst_tq;
+		__entry->burst_tq_error	= cbs_se->burst_tq_error;
+		__entry->burst_tq_next	= cbs_se->burst_tq_next;
 		__entry->burst_interval	= cbs_se->burst_interval;
+		__entry->burst_tq	= cbs_se->burst_tq;
 		__entry->exec_runtime	= cbs_se->exec_runtime;
 		__entry->status		= cbs_se->status.all_flags;
 	),
 
 
-	TP_printk("exec=%Lu | Rq=%u [%s] Tt_SP=%u Tb=%Lu Tt=%u",
+	TP_printk("exec=%Lu | Rq=%u [%s] Tb_sp=%u Tb_error=%d Tb_next=%u Tb_timer=%Lu Tb=%u",
 		__entry->exec_runtime / CONFIG_CBS_TQ2NS,
 		__entry->round_quota,
 		((__entry->status & 0x02) ? "r" : "-"), // reinit
 		__entry->burst_tq_sp,
+		__entry->burst_tq_error,
+		__entry->burst_tq_next,
 		__entry->burst_interval / CONFIG_CBS_TQ2NS,
 		__entry->burst_tq)
 );
