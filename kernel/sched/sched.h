@@ -364,6 +364,10 @@ struct cbs_stats {
 	u64 count_reinit;
 	/* Total number of bursts */
 	u64 count_bursts;
+	/* Total number of burst preempted ends */
+	u64 count_bursts_preempted;
+	/* Total number of burst yielded ends */
+	u64 count_bursts_yields;
 	/* Maximum round [TQ] */
 	u64 max_round_tq;
 	/* Minimum round [TQ] */

@@ -689,6 +689,8 @@ static void
 yield_task_cbs(struct rq *rq)
 {
 	resched_task(rq->curr);
+	/* Account for total number of bursts yields */
+	rq->cbs.stats.count_bursts_yields += 1;
 }
 
 /*
@@ -903,6 +905,8 @@ task_tick_cbs(struct rq *rq, struct task_struct *p, int queued)
 	 * validating it and just reschedule.
 	 */
 	if (queued) {
+		/* Account for total number of bursts preempted */
+		rq->cbs.stats.count_bursts_preempted += 1;
 		resched_task(rq->curr);
 		return;
 	}
