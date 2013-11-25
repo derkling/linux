@@ -272,6 +272,9 @@ reinit:
 	cbs_se->burst_tq_sp =
 		mul32_64(cbs_se->round_quota, cbs_rq->round_tq_sp, RNQ_SCALE);
 
+	/* eTp = 0 */
+	cbs_se->burst_tq_error = 0;
+
 	/* b = SP_Tp * multFactor */
 	cbs_se->burst_tq_next = cbs_se->burst_tq_sp * p->mult_factor;
 
