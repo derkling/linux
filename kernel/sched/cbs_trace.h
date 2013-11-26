@@ -29,6 +29,8 @@ TRACE_EVENT(cbs_burst,
 		__field(	s32,	burst_tq_error	)
 		__field(	u32,	burst_tq_next	)
 		__field(	u64,	burst_interval	)
+		__field(	u64,	burst_start	)
+		__field(	u64,	burst_stop	)
 		__field(	u32,	burst_tq	)
 		__field(	u64,	exec_runtime	)
 		__field( 	u8,	status		)
@@ -40,13 +42,15 @@ TRACE_EVENT(cbs_burst,
 		__entry->burst_tq_error	= cbs_se->burst_tq_error;
 		__entry->burst_tq_next	= cbs_se->burst_tq_next;
 		__entry->burst_interval	= cbs_se->burst_interval;
+		__entry->burst_start	= cbs_se->burst_start;
+		__entry->burst_stop	= cbs_se->burst_stop;
 		__entry->burst_tq	= cbs_se->burst_tq;
 		__entry->exec_runtime	= cbs_se->exec_runtime;
 		__entry->status		= cbs_se->status.all_flags;
 	),
 
 
-	TP_printk("exec=%Lu | Rq=%u [%s] Tb_sp=%u Tb_error=%d Tb_next=%u Tb_timer=%Lu [%s] Tb=%u",
+	TP_printk("exec=%Lu | Rq=%u [%s] Tb_sp=%u Tb_error=%d Tb_next=%u Tb_timer=%Lu [%s] Tb=%u Tb_start=%Lu Tb_stop=%Lu",
 		__entry->exec_runtime / CONFIG_CBS_TQ2NS,
 		__entry->round_quota,
 		((__entry->status & 0x02) ? "r" : "-"), // reinit
@@ -55,7 +59,9 @@ TRACE_EVENT(cbs_burst,
 		__entry->burst_tq_next,
 		__entry->burst_interval / CONFIG_CBS_TQ2NS,
 		((__entry->status & 0x04) ? "h" : "t"), // preemption h: HRTimer, t: Tick
-		__entry->burst_tq)
+		__entry->burst_tq,
+		__entry->burst_start,
+		__entry->burst_stop)
 );
 
 /*
@@ -71,6 +77,8 @@ TRACE_EVENT(cbs_round,
 		__field( unsigned int,	nr_running		)
 		__field( unsigned long,	load			)
 		__field( unsigned long,	load_next		)
+		__field( u64,		round_start		)
+		__field( u64,		round_end		)
 		__field( u64,		round_tq_sp		)
 		__field( u64,		round_tq_next		)
 		__field( u64,		round_tq		)
@@ -85,6 +93,8 @@ TRACE_EVENT(cbs_round,
 		__entry->nr_running		= cbs_rq->nr_running;
 		__entry->load			= cbs_rq->load.weight;
 		__entry->load_next		= cbs_rq->load_next.weight;
+		__entry->round_start		= cbs_rq->round_start;
+		__entry->round_end		= cbs_rq->round_end;
 		__entry->round_tq_sp		= cbs_rq->round_tq_sp;
 		__entry->round_tq		= cbs_rq->round_tq;
 		__entry->round_tq_next		= cbs_rq->round_tq_next;
@@ -96,7 +106,7 @@ TRACE_EVENT(cbs_round,
 	),
 
 
-	TP_printk("exec=%Lu | Lw=%lu Rt=%Lu [%s] Re=%Ld ===> Nr=%u Lw=%lu Rt_SP=%Lu [%s] Rt_corr=%Ld Rt_cold=%Ld Rt_next=%Ld ",
+	TP_printk("exec=%Lu | Lw=%lu Rt=%Lu [%s] Re=%Ld ===> Nr=%u Lw=%lu Rt_SP=%Lu [%s] Rt_corr=%Ld Rt_cold=%Ld Rt_next=%Ld Rt_start=%Lu Rt_end=%Lu",
 		__entry->exec_runtime / CONFIG_CBS_TQ2NS,
 		__entry->load,
 		__entry->round_tq,
@@ -108,7 +118,9 @@ TRACE_EVENT(cbs_round,
 		((__entry->status & 0x01) ? "s" : "-"), // all_saturated
 		__entry->round_tq_corr,
 		__entry->round_tq_corr_old,
-		__entry->round_tq_next)
+		__entry->round_tq_next,
+		__entry->round_start,
+		__entry->round_end)
 );
 
 #endif /* _TRACE_CBS_H */
