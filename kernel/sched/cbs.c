@@ -302,6 +302,7 @@ static void
 tune_cbs_round(struct cbs_rq *cbs_rq)
 {
 	struct cbs_params *p = &cbs_rq->params;
+	u64 now = rq_clock_task(rq_of(cbs_rq));
 	s64 burst_tq_lower_bound;
 	s64 burst_tq_upper_bound;
 
@@ -356,6 +357,8 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 	update_round_sp(cbs_rq);
 
 	/* FTrace report */
+	cbs_rq->round_start = now;
+	cbs_rq->round_end   = now + tq2hrt(cbs_rq->round_tq_next);
 	trace_cbs_round(cbs_rq);
 
 	/* Acccount for a new round to start */

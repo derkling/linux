@@ -400,6 +400,11 @@ struct cbs_rq {
 	/* Overall RQ load (next round) */
 	struct load_weight load_next;
 
+	/* Round start time [ns] */
+	u64 round_start;
+	/* Round expected end time [ns] */
+	u64 round_end;
+
 	/* Round set-point [TQ] */
 	u64 round_tq_sp;
 	/* Round assigned [TQ] */
