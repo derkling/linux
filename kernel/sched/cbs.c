@@ -476,6 +476,7 @@ hrtick_start_cbs(struct rq *rq, struct task_struct *p)
 	delta = cbs_se->burst_interval;
 
 	hrtick_start(rq, delta);
+
 }
 
 static void
@@ -516,6 +517,9 @@ run_cbs_entity_start(struct rq *rq, struct sched_cbs_entity *cbs_se)
 
 	/* Setup expected burst end time */
 	cbs_se->burst_stop = now + cbs_se->burst_interval;
+
+	/* Assume by default tick-based preemption */
+	STATUS_CLEAR(cbs_se, hrtimer);
 
 	/* Setup HRTimer (if enabled) */
 	if (hrtick_enabled(rq))
@@ -902,6 +906,7 @@ set_curr_task_cbs(struct rq *rq)
 static void
 task_tick_cbs(struct rq *rq, struct task_struct *p, int queued)
 {
+	struct sched_cbs_entity *cbs_se;
 
 	/* Account for total number of timer ticks */
 	rq->cbs.stats.count_ticks += 1;
@@ -911,6 +916,11 @@ task_tick_cbs(struct rq *rq, struct task_struct *p, int queued)
 	 * validating it and just reschedule.
 	 */
 	if (queued) {
+
+		/* Track usage of HRTimer */
+		cbs_se = &rq->curr->cbs;
+		STATUS_SET(cbs_se, hrtimer);
+
 		/* Account for total number of bursts preempted */
 		rq->cbs.stats.count_bursts_preempted += 1;
 		resched_task(rq->curr);

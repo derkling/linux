@@ -46,7 +46,7 @@ TRACE_EVENT(cbs_burst,
 	),
 
 
-	TP_printk("exec=%Lu | Rq=%u [%s] Tb_sp=%u Tb_error=%d Tb_next=%u Tb_timer=%Lu Tb=%u",
+	TP_printk("exec=%Lu | Rq=%u [%s] Tb_sp=%u Tb_error=%d Tb_next=%u Tb_timer=%Lu [%s] Tb=%u",
 		__entry->exec_runtime / CONFIG_CBS_TQ2NS,
 		__entry->round_quota,
 		((__entry->status & 0x02) ? "r" : "-"), // reinit
@@ -54,6 +54,7 @@ TRACE_EVENT(cbs_burst,
 		__entry->burst_tq_error,
 		__entry->burst_tq_next,
 		__entry->burst_interval / CONFIG_CBS_TQ2NS,
+		((__entry->status & 0x04) ? "h" : "t"), // preemption h: HRTimer, t: Tick
 		__entry->burst_tq)
 );
 
