@@ -303,8 +303,8 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 {
 	struct cbs_params *p = &cbs_rq->params;
 	u64 now = rq_clock_task(rq_of(cbs_rq));
-	s64 burst_tq_lower_bound;
-	s64 burst_tq_upper_bound;
+	s64 round_tq_lower_bound;
+	s64 round_tq_upper_bound;
 
 	/* Assuming Round-Time not clamped (for FTrace reporting) */
 	STATUS_CLEAR(cbs_rq, clamp_rt);
@@ -335,13 +335,13 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 	}
 
 	/* bco = min(MAX(bco, bMin*threadListSize-Tr), bMax*threadListSize) */
-	burst_tq_lower_bound = hrt2tq(p->burst_min_ns) * cbs_rq->nr_running;
-	burst_tq_lower_bound -= cbs_rq->round_tq;
-	if (cbs_rq->round_tq_corr_old < burst_tq_lower_bound)
-		cbs_rq->round_tq_corr_old = burst_tq_lower_bound;
-	burst_tq_upper_bound = hrt2tq(p->burst_max_ns) * cbs_rq->nr_running;
-	if (cbs_rq->round_tq_corr_old > burst_tq_upper_bound)
-		cbs_rq->round_tq_corr_old = burst_tq_upper_bound;
+	round_tq_lower_bound = hrt2tq(p->burst_min_ns) * cbs_rq->nr_running;
+	round_tq_lower_bound -= cbs_rq->round_tq;
+	if (cbs_rq->round_tq_corr_old < round_tq_lower_bound)
+		cbs_rq->round_tq_corr_old = round_tq_lower_bound;
+	round_tq_upper_bound = hrt2tq(p->burst_max_ns) * cbs_rq->nr_running;
+	if (cbs_rq->round_tq_corr_old > round_tq_upper_bound)
+		cbs_rq->round_tq_corr_old = round_tq_upper_bound;
 
 	/* nextRoundTime = Tr + bco */
 	cbs_rq->round_tq_next =
