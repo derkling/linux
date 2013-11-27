@@ -336,8 +336,9 @@ tune_cbs_round(struct cbs_rq *cbs_rq)
 
 	/* bco = min(MAX(bco, bMin*threadListSize-Tr), bMax*threadListSize) */
 	burst_tq_lower_bound = hrt2tq(p->burst_min_ns) * cbs_rq->nr_running;
-	if (cbs_rq->round_tq_corr_old < (burst_tq_lower_bound - cbs_rq->round_tq))
-		cbs_rq->round_tq_corr_old = (burst_tq_lower_bound - cbs_rq->round_tq);
+	burst_tq_lower_bound -= cbs_rq->round_tq;
+	if (cbs_rq->round_tq_corr_old < burst_tq_lower_bound)
+		cbs_rq->round_tq_corr_old = burst_tq_lower_bound;
 	burst_tq_upper_bound = hrt2tq(p->burst_max_ns) * cbs_rq->nr_running;
 	if (cbs_rq->round_tq_corr_old > burst_tq_upper_bound)
 		cbs_rq->round_tq_corr_old = burst_tq_upper_bound;
