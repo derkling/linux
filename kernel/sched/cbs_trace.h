@@ -50,7 +50,7 @@ TRACE_EVENT(cbs_burst,
 	),
 
 
-	TP_printk("exec=%Lu | Rq=%u [%s] Tb_sp=%u Tb_error=%d Tb_next=%u Tb_timer=%Lu [%s] Tb=%u Tb_start=%Lu Tb_stop=%Lu",
+	TP_printk("exec: %Lu | Rq: %u [%s] Tb_sp: %u Tb_error: %d Tb_next: %u Tb_timer: %Lu [%s] Tb: %u Tb_start: %Lu Tb_stop: %Lu",
 		__entry->exec_runtime / CONFIG_CBS_TQ2NS,
 		__entry->round_quota,
 		((__entry->status & 0x02) ? "r" : "-"), // reinit
@@ -106,7 +106,7 @@ TRACE_EVENT(cbs_round,
 	),
 
 
-	TP_printk("exec=%Lu | Lw=%lu Rt=%Lu [%s] Re=%Ld ===> Nr=%u Lw=%lu Rt_SP=%Lu [%s] Rt_corr=%Ld Rt_cold=%Ld Rt_next=%Ld Rt_start=%Lu Rt_end=%Lu",
+	TP_printk("exec: %Lu | Lw: %lu Rt: %Lu [%s] Re: %Ld | Nr: %u Lw: %lu Rt_SP: %Lu [%s] Rt_corr: %Ld Rt_cold: %Ld Rt_next: %Ld Rt_start: %Lu Rt_end: %Lu",
 		__entry->exec_runtime / CONFIG_CBS_TQ2NS,
 		__entry->load,
 		__entry->round_tq,
