@@ -70,3 +70,13 @@ SCHED_FEAT(LB_MIN, false)
 SCHED_FEAT(NUMA,	false)
 SCHED_FEAT(NUMA_FORCE,	false)
 #endif
+
+/*
+ * Control Theory Schduler tunables.
+ * This is a set of tunable flags related to the CBS scheduling policy
+ * defined in cbs.c
+ */
+#ifdef CONFIG_SCHED_CBS
+SCHED_FEAT(CBS_REINIT_ON_ENQUEUE, true)
+SCHED_FEAT(CBS_REINIT_ON_YIELD,   false)
+#endif

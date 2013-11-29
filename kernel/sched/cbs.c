@@ -400,7 +400,8 @@ enqueue_cbs_entity(struct sched_cbs_entity *cbs_se, bool head)
 	else
 		list_add_tail(&cbs_se->run_node, &cbs_rq->run_list);
 
-	STATUS_SET(cbs_se, reinit);
+	if (sched_feat(CBS_REINIT_ON_ENQUEUE))
+		STATUS_SET(cbs_se, reinit);
 	STATUS_SET(cbs_se, on_rq);
 
 	// NOTE: Round time is defined at the beginning of the next round
@@ -696,9 +697,18 @@ dequeue_task_cbs(struct rq *rq, struct task_struct *p, int flags)
 static void
 yield_task_cbs(struct rq *rq)
 {
+	struct sched_cbs_entity *cbs_se = &rq->curr->cbs;
+	struct cbs_rq *cbs_rq = &rq->cbs;
+
+	BUG_ON(cbs_rq->curr != cbs_se);
+
 	resched_task(rq->curr);
 	/* Account for total number of bursts yields */
 	rq->cbs.stats.count_bursts_yields += 1;
+
+	if (sched_feat(CBS_REINIT_ON_YIELD))
+		STATUS_SET(cbs_se, reinit);
+
 }
 
 /*
