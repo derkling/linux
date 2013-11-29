@@ -250,6 +250,11 @@ tune_cbs_burst(struct cbs_rq *cbs_rq, struct sched_cbs_entity *cbs_se)
 			div32_64(cbs_se->load.weight, cbs_rq->load.weight, RNQ_SCALE);
 	}
 
+	if (sched_feat(CBS_REINIT_ON_YIELD) && STATUS_GET(cbs_se, yielding)) {
+		STATUS_SET(cbs_se, reinit);
+	}
+	STATUS_CLEAR(cbs_se, yielding);
+
 	// FIXME is re_initialization required only on re-quoting?!?
 	if (STATUS_GET(cbs_se, reinit))
 		goto reinit;
@@ -706,8 +711,7 @@ yield_task_cbs(struct rq *rq)
 	/* Account for total number of bursts yields */
 	rq->cbs.stats.count_bursts_yields += 1;
 
-	if (sched_feat(CBS_REINIT_ON_YIELD))
-		STATUS_SET(cbs_se, reinit);
+	STATUS_SET(cbs_se, yielding);
 
 }
 

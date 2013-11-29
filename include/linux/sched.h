@@ -1003,6 +1003,7 @@ struct sched_cbs_entity {
 			u8 on_rq:1;	// 1: SE on run-queue
 			u8 reinit:1;	// 1: external controller needs re-initialization
 			u8 hrtimer:1;	// 1: SE preempted by HRTimer
+			u8 yielding:1;	// 1: SE yielded the CPU on last burst
 		} f;
 	} status;
 
