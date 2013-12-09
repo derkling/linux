@@ -1873,7 +1873,10 @@ prepare_task_switch(struct rq *rq, struct task_struct *prev,
 {
 	trace_sched_switch(prev, next);
 	sched_info_switch(prev, next);
+
+	trace_sched_process_latency(prev);
 	sched_info_latency_track(prev);
+
 	perf_event_task_sched_out(prev, next);
 	fire_sched_out_preempt_notifiers(prev, next);
 	prepare_lock_switch(rq, next);
