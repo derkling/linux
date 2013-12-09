@@ -687,6 +687,10 @@ struct sched_info {
 	unsigned long pcount;	      /* # of times run on this cpu */
 	unsigned long long run_delay; /* time spent waiting on a runqueue */
 
+	/* one-shot counters */
+	unsigned long long exec_delay; /* runqueue wait time once ready */
+	unsigned long long exec_slice; /* execution time once scheduled */
+
 	/* timestamps */
 	unsigned long long last_arrival,/* when we last ran on a cpu */
 			   last_queued;	/* when we were last queued to run */
