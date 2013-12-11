@@ -17,6 +17,7 @@
 #include <asm/firmware.h>
 
 #include <mach/map.h>
+#include <plat/cpu.h>
 
 #include "common.h"
 #include "smc.h"
@@ -50,7 +51,7 @@ static int exynos_set_cpu_boot_addr(int cpu, unsigned long boot_addr)
 
 	boot_reg = sysram_ns_base_addr + 0x1c;
 
-	if (!soc_is_exynos4212())
+	if (!soc_is_exynos4212() && !soc_is_exynos5420())
 		boot_reg += 4*cpu;
 
 	__raw_writel(boot_addr, boot_reg);
