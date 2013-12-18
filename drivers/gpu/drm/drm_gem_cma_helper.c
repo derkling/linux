@@ -100,6 +100,9 @@ struct drm_gem_cma_object *drm_gem_cma_create(struct drm_device *drm,
 {
 	struct drm_gem_cma_object *cma_obj;
 	int ret;
+	DEFINE_DMA_ATTRS(attrs);
+
+	dma_set_attr(DMA_ATTR_WRITE_COMBINE, &attrs);
 
 	size = round_up(size, PAGE_SIZE);
 
@@ -107,8 +110,8 @@ struct drm_gem_cma_object *drm_gem_cma_create(struct drm_device *drm,
 	if (IS_ERR(cma_obj))
 		return cma_obj;
 
-	cma_obj->vaddr = dma_alloc_writecombine(drm->dev, size,
-			&cma_obj->paddr, GFP_KERNEL | __GFP_NOWARN);
+	cma_obj->vaddr = dma_alloc_attrs(drm->dev, size,
+			&cma_obj->paddr, GFP_KERNEL | __GFP_NOWARN, &attrs);
 	if (!cma_obj->vaddr) {
 		dev_err(drm->dev, "failed to allocate buffer with size %d\n",
 			size);
@@ -186,12 +189,15 @@ err_handle_create:
 void drm_gem_cma_free_object(struct drm_gem_object *gem_obj)
 {
 	struct drm_gem_cma_object *cma_obj;
+	DEFINE_DMA_ATTRS(attrs);
+
+	dma_set_attr(DMA_ATTR_WRITE_COMBINE, &attrs);
 
 	cma_obj = to_drm_gem_cma_obj(gem_obj);
 
 	if (cma_obj->vaddr) {
-		dma_free_writecombine(gem_obj->dev->dev, cma_obj->base.size,
-				      cma_obj->vaddr, cma_obj->paddr);
+		dma_free_attrs(gem_obj->dev->dev, cma_obj->base.size,
+				cma_obj->vaddr, cma_obj->paddr, &attrs);
 	} else if (gem_obj->import_attach) {
 		drm_prime_gem_destroy(gem_obj, cma_obj->sgt);
 	}
