@@ -2345,6 +2345,8 @@ static inline u64 __synchronize_entity_decay(struct sched_entity *se)
 		return 0;
 
 	se->avg.load_avg_contrib = decay_load(se->avg.load_avg_contrib, decays);
+	se->avg.uw_load_avg_contrib = decay_load(se->avg.uw_load_avg_contrib,
+						 decays);
 	se->avg.decay_count = 0;
 
 	return decays;
@@ -2458,9 +2460,11 @@ static inline void __update_task_entity_contrib(struct sched_entity *se)
 }
 
 /* Compute the current contribution to load_avg by se, return any delta */
-static long __update_entity_load_avg_contrib(struct sched_entity *se)
+static long __update_entity_load_avg_contrib(struct sched_entity *se,
+					     long *uw_contrib_delta)
 {
 	long old_contrib = se->avg.load_avg_contrib;
+	long uw_old_contrib = se->avg.uw_load_avg_contrib;
 
 	if (entity_is_task(se)) {
 		__update_task_entity_contrib(se);
@@ -2469,16 +2473,26 @@ static long __update_entity_load_avg_contrib(struct sched_entity *se)
 		__update_group_entity_contrib(se);
 	}
 
+	if (uw_contrib_delta)
+		*uw_contrib_delta = se->avg.uw_load_avg_contrib -
+					uw_old_contrib;
+
 	return se->avg.load_avg_contrib - old_contrib;
 }
 
 static inline void subtract_blocked_load_contrib(struct cfs_rq *cfs_rq,
-						 long load_contrib)
+						 long load_contrib,
+						 long uw_load_contrib)
 {
 	if (likely(load_contrib < cfs_rq->blocked_load_avg))
 		cfs_rq->blocked_load_avg -= load_contrib;
 	else
 		cfs_rq->blocked_load_avg = 0;
+
+	if (likely(uw_load_contrib < cfs_rq->uw_blocked_load_avg))
+		cfs_rq->uw_blocked_load_avg -= uw_load_contrib;
+	else
+		cfs_rq->uw_blocked_load_avg = 0;
 }
 
 static inline u64 cfs_rq_clock_task(struct cfs_rq *cfs_rq);
@@ -2488,7 +2502,7 @@ static inline void update_entity_load_avg(struct sched_entity *se,
 					  int update_cfs_rq)
 {
 	struct cfs_rq *cfs_rq = cfs_rq_of(se);
-	long contrib_delta;
+	long contrib_delta, uw_contrib_delta;
 	u64 now;
 
 	/*
@@ -2503,15 +2517,18 @@ static inline void update_entity_load_avg(struct sched_entity *se,
 	if (!__update_entity_runnable_avg(now, &se->avg, se->on_rq))
 		return;
 
-	contrib_delta = __update_entity_load_avg_contrib(se);
+	contrib_delta = __update_entity_load_avg_contrib(se, &uw_contrib_delta);
 
 	if (!update_cfs_rq)
 		return;
 
-	if (se->on_rq)
+	if (se->on_rq) {
 		cfs_rq->runnable_load_avg += contrib_delta;
+		cfs_rq->uw_runnable_load_avg += uw_contrib_delta;
+	}
 	else
-		subtract_blocked_load_contrib(cfs_rq, -contrib_delta);
+		subtract_blocked_load_contrib(cfs_rq, -contrib_delta,
+						-uw_contrib_delta);
 }
 
 /*
@@ -2528,13 +2545,18 @@ static void update_cfs_rq_blocked_load(struct cfs_rq *cfs_rq, int force_update)
 		return;
 
 	if (atomic_long_read(&cfs_rq->removed_load)) {
-		unsigned long removed_load;
+		unsigned long removed_load, uw_removed_load;
 		removed_load = atomic_long_xchg(&cfs_rq->removed_load, 0);
-		subtract_blocked_load_contrib(cfs_rq, removed_load);
+		uw_removed_load = atomic_long_xchg(&cfs_rq->uw_removed_load, 0);
+		subtract_blocked_load_contrib(cfs_rq, removed_load,
+						uw_removed_load);
 	}
 
 	if (decays) {
 		cfs_rq->blocked_load_avg = decay_load(cfs_rq->blocked_load_avg,
+						      decays);
+		cfs_rq->uw_blocked_load_avg =
+				decay_load(cfs_rq->uw_blocked_load_avg,
 						      decays);
 		atomic64_add(decays, &cfs_rq->decay_counter);
 		cfs_rq->last_decay = now;
@@ -2581,11 +2603,14 @@ static inline void enqueue_entity_load_avg(struct cfs_rq *cfs_rq,
 
 	/* migrated tasks did not contribute to our blocked load */
 	if (wakeup) {
-		subtract_blocked_load_contrib(cfs_rq, se->avg.load_avg_contrib);
+		subtract_blocked_load_contrib(cfs_rq, se->avg.load_avg_contrib,
+						se->avg.uw_load_avg_contrib);
 		update_entity_load_avg(se, 0);
 	}
 
 	cfs_rq->runnable_load_avg += se->avg.load_avg_contrib;
+	cfs_rq->uw_runnable_load_avg += se->avg.uw_load_avg_contrib;
+
 	/* we force update consideration on load-balancer moves */
 	update_cfs_rq_blocked_load(cfs_rq, !wakeup);
 }
@@ -2604,8 +2629,11 @@ static inline void dequeue_entity_load_avg(struct cfs_rq *cfs_rq,
 	update_cfs_rq_blocked_load(cfs_rq, !sleep);
 
 	cfs_rq->runnable_load_avg -= se->avg.load_avg_contrib;
+	cfs_rq->uw_runnable_load_avg -= se->avg.uw_load_avg_contrib;
+
 	if (sleep) {
 		cfs_rq->blocked_load_avg += se->avg.load_avg_contrib;
+		cfs_rq->uw_blocked_load_avg += se->avg.uw_load_avg_contrib;
 		se->avg.decay_count = atomic64_read(&cfs_rq->decay_counter);
 	} /* migrations, e.g. sleep=0 leave decay_count == 0 */
 }
@@ -4581,6 +4609,8 @@ migrate_task_rq_fair(struct task_struct *p, int next_cpu)
 		se->avg.decay_count = -__synchronize_entity_decay(se);
 		atomic_long_add(se->avg.load_avg_contrib,
 						&cfs_rq->removed_load);
+		atomic_long_add(se->avg.uw_load_avg_contrib,
+						&cfs_rq->uw_removed_load);
 	}
 
 	/* We have migrated, no longer consider this task hot */
@@ -7467,7 +7497,8 @@ static void switched_from_fair(struct rq *rq, struct task_struct *p)
 	*/
 	if (se->avg.decay_count) {
 		__synchronize_entity_decay(se);
-		subtract_blocked_load_contrib(cfs_rq, se->avg.load_avg_contrib);
+		subtract_blocked_load_contrib(cfs_rq, se->avg.load_avg_contrib,
+						se->avg.uw_load_avg_contrib);
 	}
 #endif
 }
@@ -7527,6 +7558,7 @@ void init_cfs_rq(struct cfs_rq *cfs_rq)
 #ifdef CONFIG_SMP
 	atomic64_set(&cfs_rq->decay_counter, 1);
 	atomic_long_set(&cfs_rq->removed_load, 0);
+	atomic_long_set(&cfs_rq->uw_removed_load, 0);
 #endif
 }
 
