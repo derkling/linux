@@ -96,6 +96,7 @@ static void print_cfs_group_stats(struct seq_file *m, int cpu, struct task_group
 	P(se->avg.runnable_avg_sum);
 	P(se->avg.runnable_avg_period);
 	P(se->avg.load_avg_contrib);
+	P(se->avg.uw_load_avg_contrib);
 	P(se->avg.decay_count);
 #endif
 #undef PN
@@ -635,6 +636,7 @@ void proc_sched_show_task(struct task_struct *p, struct seq_file *m)
 	P(se.avg.runnable_avg_sum);
 	P(se.avg.runnable_avg_period);
 	P(se.avg.load_avg_contrib);
+	P(se.avg.uw_load_avg_contrib);
 	P(se.avg.decay_count);
 #endif
 	P(policy);
