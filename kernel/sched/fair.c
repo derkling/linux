@@ -7000,6 +7000,7 @@ static void rebalance_domains(struct rq *rq, enum cpu_idle_type idle)
 	u64 max_cost = 0;
 
 	update_blocked_averages(cpu);
+	trace_printk("curr_capacity=%ld", atomic_long_read(&rq->cfs.curr_capacity));
 
 	rcu_read_lock();
 	for_each_domain(cpu, sd) {
@@ -7428,7 +7429,13 @@ void init_cfs_rq(struct cfs_rq *cfs_rq)
 #ifdef CONFIG_SMP
 	atomic64_set(&cfs_rq->decay_counter, 1);
 	atomic_long_set(&cfs_rq->removed_load, 0);
+        atomic_long_set(&cfs_rq->curr_capacity, 1024);
 #endif
+}
+
+void set_curr_capacity(int cpu, long capacity)
+{
+	atomic_long_xchg(&cpu_rq(cpu)->cfs.curr_capacity, capacity);
 }
 
 #ifdef CONFIG_FAIR_GROUP_SCHED

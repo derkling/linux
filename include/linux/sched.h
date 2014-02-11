@@ -3071,4 +3071,6 @@ static inline unsigned long rlimit_max(unsigned int limit)
 	return task_rlimit_max(current, limit);
 }
 
+void set_curr_capacity(int cpu, long capacity);
+
 #endif
