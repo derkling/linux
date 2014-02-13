@@ -191,7 +191,8 @@ const struct cpumask *cpu_coregroup_mask(int cpu)
  */
 const struct cpumask *cpu_corepower_mask(int cpu)
 {
-	return &cpu_topology[cpu].thread_sibling;
+	return cpu_topology[cpu].socket_id ? &cpu_topology[cpu].core_sibling :
+			&cpu_topology[cpu].thread_sibling;
 }
 
 static void update_siblings_masks(unsigned int cpuid)
@@ -275,6 +276,112 @@ void store_cpu_topology(unsigned int cpuid)
 		cpu_topology[cpuid].socket_id, mpidr);
 }
 
+#ifdef CONFIG_SCHED_ENERGY
+const struct cpumask *cpu_cpupower_mask(int cpu)
+{
+	return cpu_topology[cpu].socket_id ?
+			cpumask_of_node(cpu_to_node(cpu)) :
+			&cpu_topology[cpu].core_sibling;
+}
+
+static struct capacity_state cap_states_cluster_a7[] = {
+	 { .cap =  358, .power = 2967, },
+	 { .cap =  410, .power = 2792, },
+	 { .cap =  512, .power = 2810, },
+	 { .cap =  614, .power = 2815, },
+	 { .cap =  717, .power = 2919, },
+	 { .cap =  819, .power = 2847, },
+	 { .cap =  922, .power = 3917, },
+	 { .cap = 1024, .power = 4905, },
+	};
+
+static struct capacity_state cap_states_cluster_a15[] = {
+	 { .cap =  840, .power =  7920, },
+	 { .cap = 1008, .power =  8165, },
+	 { .cap = 1176, .power =  8172, },
+	 { .cap = 1343, .power =  8195, },
+	 { .cap = 1511, .power =  8265, },
+	 { .cap = 1679, .power =  8446, },
+	 { .cap = 1847, .power = 11426, },
+	 { .cap = 2015, .power = 15200, },
+	};
+
+static struct sd_energy energy_cluster_a7 = {
+	  .max_capacity   = 1024,
+	  .idle_power     =  100,
+	  .wake_power   =  300,
+	  .nr_cap_states  = ARRAY_SIZE(cap_states_cluster_a7),
+	  .cap_states     = cap_states_cluster_a7,
+};
+
+static struct sd_energy energy_cluster_a15 = {
+	  .max_capacity   = 2015,
+	  .idle_power     =  300,
+	  .wake_power   =  500,
+	  .nr_cap_states  = ARRAY_SIZE(cap_states_cluster_a15),
+	  .cap_states     = cap_states_cluster_a15,
+};
+
+static struct capacity_state cap_states_core_a7[] = {
+	 { .cap =  358, .power =  187, },
+	 { .cap =  410, .power =  275, },
+	 { .cap =  512, .power =  334, },
+	 { .cap =  614, .power =  407, },
+	 { .cap =  717, .power =  447, },
+	 { .cap =  819, .power =  549, },
+	 { .cap =  922, .power =  761, },
+	 { .cap = 1024, .power = 1024, },
+	};
+
+static struct capacity_state cap_states_core_a15[] = {
+	 { .cap =  840, .power = 2021, },
+	 { .cap = 1008, .power = 2312, },
+	 { .cap = 1176, .power = 2756, },
+	 { .cap = 1343, .power = 3125, },
+	 { .cap = 1511, .power = 3524, },
+	 { .cap = 1679, .power = 3846, },
+	 { .cap = 1847, .power = 5177, },
+	 { .cap = 2015, .power = 6997, },
+	};
+
+static struct sd_energy energy_core_a7 = {
+	  .max_capacity   = 1024,
+	  .idle_power     =  100,
+	  .wake_power   =  300,
+	  .nr_cap_states  = ARRAY_SIZE(cap_states_core_a7),
+	  .cap_states     = cap_states_core_a7,
+};
+
+static struct sd_energy energy_core_a15 = {
+	  .max_capacity   = 2015,
+	  .idle_power     =  300,
+	  .wake_power   =  500,
+	  .nr_cap_states  = ARRAY_SIZE(cap_states_core_a15),
+	  .cap_states     = cap_states_core_a15,
+};
+
+/* arch specific per-cpu sd energy functions */
+static inline const struct sd_energy *arch_cpu_energy_cluster_a7(void)
+{
+	return &energy_cluster_a7;
+}
+
+static inline const struct sd_energy *arch_cpu_energy_cluster_a15(void)
+{
+	return &energy_cluster_a15;
+}
+
+static inline const struct sd_energy *arch_cpu_energy_core_a7(void)
+{
+	return &energy_core_a7;
+}
+
+static inline const struct sd_energy *arch_cpu_energy_core_a15(void)
+{
+	return &energy_core_a15;
+}
+#endif /* CONFIG_SCHED_ENERGY */
+
 static inline const int cpu_corepower_flags(void)
 {
 	return SD_SHARE_PKG_RESOURCES  | SD_SHARE_POWERDOMAIN;
@@ -282,10 +389,20 @@ static inline const int cpu_corepower_flags(void)
 
 static struct sched_domain_topology_level arm_topology[] = {
 #ifdef CONFIG_SCHED_MC
+#ifdef CONFIG_SCHED_ENERGY
+	{ cpu_corepower_mask, cpu_core_flags, arch_cpu_energy_core_a7, SD_INIT_NAME(GMC) },
+	{ cpu_coregroup_mask, cpu_core_flags, arch_cpu_energy_core_a15, SD_INIT_NAME(MC) },
+#else
 	{ cpu_corepower_mask, cpu_corepower_flags, SD_INIT_NAME(GMC) },
 	{ cpu_coregroup_mask, cpu_core_flags, SD_INIT_NAME(MC) },
 #endif
+#endif
+#ifdef CONFIG_SCHED_ENERGY
+	{ cpu_cpupower_mask, 0, arch_cpu_energy_cluster_a7, SD_INIT_NAME(GDIE) },
+	{ cpu_cpu_mask, 0, arch_cpu_energy_cluster_a15, SD_INIT_NAME(DIE) },
+#else
 	{ cpu_cpu_mask, SD_INIT_NAME(DIE) },
+#endif
 	{ NULL, },
 };
 
