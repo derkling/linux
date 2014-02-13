@@ -1926,6 +1926,11 @@ config XEN
 	help
 	  Say Y if you want to run Linux in a Virtual Machine on Xen on ARM.
 
+config SCHED_ENERGY
+	bool "Energy-aware scheduling (EXPERIMENTAL)"
+	help
+	  Highly experimental energy aware task scheduling.
+
 endmenu
 
 menu "Boot options"
