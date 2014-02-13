@@ -807,6 +807,36 @@ static inline unsigned int group_first_cpu(struct sched_group *group)
 
 extern int group_balance_cpu(struct sched_group *sg);
 
+/*
+ * Check that the per-cpu provided sd energy data is consistent for all cpus
+ * within the mask.
+ */
+#ifdef CONFIG_SCHED_ENERGY
+static inline void check_sched_energy_data(int cpu, sched_domain_energy_f fn,
+					   const struct cpumask *cpumask)
+{
+	struct cpumask mask;
+	int i;
+
+	cpumask_xor(&mask, cpumask, get_cpu_mask(cpu));
+
+	for_each_cpu(i, &mask) {
+		int y = 0;
+
+		BUG_ON(fn(i)->max_capacity != fn(cpu)->max_capacity);
+		BUG_ON(fn(i)->idle_power != fn(cpu)->idle_power);
+		BUG_ON(fn(i)->wakeup_energy != fn(cpu)->wakeup_energy);
+		BUG_ON(fn(i)->nr_cap_states != fn(cpu)->nr_cap_states);
+
+		for (; y < (fn(i)->nr_cap_states); y++) {
+			BUG_ON(fn(i)->cap_states[y].cap !=
+					fn(cpu)->cap_states[y].cap);
+			BUG_ON(fn(i)->cap_states[y].power !=
+					fn(cpu)->cap_states[y].power);
+		}
+	}
+}
+#endif
 #endif /* CONFIG_SMP */
 
 #include "stats.h"
