@@ -755,12 +755,22 @@ struct sched_group_power {
 	unsigned long cpumask[0]; /* iteration mask */
 };
 
+#ifdef CONFIG_SCHED_ENERGY
+struct sched_group_energy {
+	atomic_t ref;
+	struct sched_energy data;
+};
+#endif
+
 struct sched_group {
 	struct sched_group *next;	/* Must be a circular list */
 	atomic_t ref;
 
 	unsigned int group_weight;
 	struct sched_group_power *sgp;
+#ifdef CONFIG_SCHED_ENERGY
+	struct sched_group_energy *sge;
+#endif
 
 	/*
 	 * The CPUs this group covers.

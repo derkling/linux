@@ -909,6 +909,21 @@ struct sched_domain_attr {
 
 extern int sched_domain_level_max;
 
+#ifdef CONFIG_SCHED_ENERGY
+struct capacity_state {
+	int cap;	/* compute capacity */
+	int power;	/* power consumption at this compute capacity */
+};
+
+struct sched_energy {
+	long max_capacity;	/* maximal compute capacity */
+	int idle_power;		/* power consumption in idle state */
+	int wakeup_energy;	/* energy for wakeup->sleep cycle (x1024) */
+	int nr_cap_states;	/* number of capacity states */
+	struct capacity_state *cap_states; /* ptr to capacity state array */
+};
+#endif
+
 struct sched_group;
 
 struct sched_domain {
@@ -1007,6 +1022,9 @@ bool cpus_share_cache(int this_cpu, int that_cpu);
 
 typedef const struct cpumask *(*sched_domain_mask_f)(int cpu);
 typedef const int (*sched_domain_flags_f)(void);
+#ifdef CONFIG_SCHED_ENERGY
+typedef const struct sched_energy *(*sched_domain_energy_f)(int cpu);
+#endif
 
 #define SDTL_OVERLAP	0x01
 
@@ -1014,11 +1032,17 @@ struct sd_data {
 	struct sched_domain **__percpu sd;
 	struct sched_group **__percpu sg;
 	struct sched_group_power **__percpu sgp;
+#ifdef CONFIG_SCHED_ENERGY
+	struct sched_group_energy **__percpu sge;
+#endif
 };
 
 struct sched_domain_topology_level {
 	sched_domain_mask_f mask;
 	sched_domain_flags_f sd_flags;
+#ifdef CONFIG_SCHED_ENERGY
+	sched_domain_energy_f energy;
+#endif
 	int		    flags;
 	int		    numa_level;
 	struct sd_data      data;
