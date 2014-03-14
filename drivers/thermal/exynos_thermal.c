@@ -427,7 +427,7 @@ static int exynos_bind(struct thermal_zone_device *thermal,
 		level = cpufreq_cooling_get_level(CS_POLICY_CORE, clip_data->freq_clip_max);
 #endif
 		if (level == THERMAL_CSTATE_INVALID) {
-			thermal->cooling_dev_en = false;
+			/* thermal->cooling_dev_en = false; */
 			return 0;
 		}
 		exynos_get_trip_type(th_zone->therm_dev, i, &type);
@@ -437,7 +437,7 @@ static int exynos_bind(struct thermal_zone_device *thermal,
 			if (thermal_zone_bind_cooling_device(thermal, i, cdev,
 								level, 0)) {
 				pr_err("error binding cdev inst %d\n", i);
-				thermal->cooling_dev_en = false;
+				/* thermal->cooling_dev_en = false; */
 				ret = -EINVAL;
 			}
 			th_zone->bind = true;
