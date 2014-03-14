@@ -649,49 +649,6 @@ static int exynos_get_trend(struct thermal_zone_device *thermal,
 	return 0;
 }
 
-#if defined(CONFIG_SOC_EXYNOS5430) || defined(CONFIG_SOC_EXYNOS5422)
-static int __ref exynos_throttle_cpu_hotplug(struct thermal_zone_device *thermal)
-{
-	int ret = 0;
-	int cur_temp = 0;
-
-	if (!thermal->temperature)
-		return -EINVAL;
-
-	cur_temp = thermal->temperature / MCELSIUS;
-
-	if (is_cpu_hotplugged_out) {
-		if (cur_temp < CPU_HOTPLUG_IN_TEMP) {
-			/*
-			 * If current temperature is lower than low threshold,
-			 * call big_cores_hotplug(false) for hotplugged out cpus.
-			 */
-			ret = big_cores_hotplug(false);
-			if (ret)
-				pr_err("%s: failed big cores hotplug in\n",
-							__func__);
-			else
-				is_cpu_hotplugged_out = false;
-		}
-	} else {
-		if (cur_temp >= CPU_HOTPLUG_OUT_TEMP) {
-			/*
-			 * If current temperature is higher than high threshold,
-			 * call big_cores_hotplug(true) to hold temperature down.
-			 */
-			ret = big_cores_hotplug(true);
-			if (ret)
-				pr_err("%s: failed big cores hotplug out\n",
-							__func__);
-			else
-				is_cpu_hotplugged_out = true;
-		}
-	}
-
-	return ret;
-}
-#endif
-
 /* Operation callback functions for thermal zone */
 static struct thermal_zone_device_ops exynos_dev_ops = {
 	.bind = exynos_bind,
@@ -704,9 +661,6 @@ static struct thermal_zone_device_ops exynos_dev_ops = {
 	.get_trip_type = exynos_get_trip_type,
 	.get_trip_temp = exynos_get_trip_temp,
 	.get_crit_temp = exynos_get_crit_temp,
-#if defined(CONFIG_SOC_EXYNOS5430) || defined(CONFIG_SOC_EXYNOS5422)
-	.throttle_cpu_hotplug = exynos_throttle_cpu_hotplug,
-#endif
 };
 
 /*
