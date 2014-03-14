@@ -392,7 +392,7 @@ static void handle_thermal_trip(struct thermal_zone_device *tz, int trip)
 
 	tz->ops->get_trip_type(tz, trip, &type);
 
-	if (type == THERMAL_TRIP_CRITICAL)
+	if (type == THERMAL_TRIP_CRITICAL || type == THERMAL_TRIP_HOT)
 		handle_critical_trips(tz, trip, type);
 	else
 		handle_non_critical_trips(tz, trip, type);
@@ -589,6 +589,8 @@ trip_point_type_show(struct device *dev, struct device_attribute *attr,
 	switch (type) {
 	case THERMAL_TRIP_CRITICAL:
 		return sprintf(buf, "critical\n");
+	case THERMAL_TRIP_HOT:
+		return sprintf(buf, "hot\n");
 	case THERMAL_TRIP_PASSIVE:
 		return sprintf(buf, "passive\n");
 	case THERMAL_TRIP_ACTIVE:

@@ -65,6 +65,7 @@ enum thermal_device_mode {
 enum thermal_trip_type {
 	THERMAL_TRIP_ACTIVE = 0,
 	THERMAL_TRIP_PASSIVE,
+	THERMAL_TRIP_HOT,
 	THERMAL_TRIP_CRITICAL,
 };
 
