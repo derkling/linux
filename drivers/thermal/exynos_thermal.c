@@ -49,6 +49,29 @@
 #ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
 static struct cpumask mp_cluster_cpus[CA_END];
 #endif
+static u32 mp_capacitance[CA_END] = {
+	[CA15] = 570,
+	[CA7] = 110,
+};
+
+#define GPU_ACTOR_WEIGHT (1 << 10)
+
+static u32 mp_actor_weight[CA_END] = {
+	[CA15] = 768,
+	[CA7] = 4 << 10,
+};
+
+static int empty_func(cpumask_t *cpumask, int interval, unsigned long voltage,
+                      u32 *power) {
+	*power = 0;
+	return 0;
+}
+
+/* Do one with a static function and the other one without it to test both behaviours */
+static get_static_t mp_plat_static_func[CA_END] = {
+	[CA15] = empty_func,
+	[CA7] = NULL,
+};
 
 /* Exynos generic registers */
 #define EXYNOS_TMU_REG_TRIMINFO			0x0
@@ -153,8 +176,8 @@ static struct cpumask mp_cluster_cpus[CA_END];
 #else
 #define PANIC_ZONE      			6
 #endif
-#define WARN_ZONE       			3
-#define MONITOR_ZONE    			2
+#define WARN_ZONE       			2
+#define MONITOR_ZONE    			1
 #define SAFE_ZONE       			1
 
 /* Rising, Falling interrupt bit number*/
@@ -427,7 +450,13 @@ static int exynos_bind(struct thermal_zone_device *thermal,
 		level = cpufreq_cooling_get_level(CS_POLICY_CORE, clip_data->freq_clip_max);
 #endif
 		if (level == THERMAL_CSTATE_INVALID) {
-			thermal->cooling_dev_en = false;
+			unsigned long max_state;
+			cdev->ops->get_max_state(cdev, &max_state);
+			level = max_state;
+		}
+
+		if (level == THERMAL_CSTATE_INVALID) {
+			/* thermal->cooling_dev_en = false; */
 			return 0;
 		}
 		exynos_get_trip_type(th_zone->therm_dev, i, &type);
@@ -752,6 +781,16 @@ static void exynos_report_trigger(void)
 	mutex_unlock(&th_zone->therm_dev->lock);
 }
 
+int build_dvfs_table(int cluster);
+
+static struct thermal_zone_params exynos_tz_params = {
+	.sustainable_power = 2500,
+	.k_po = 2800,
+	.k_pu = 1400,
+	.k_i = 2,
+	.num_tbps = 3,
+};
+
 /* Register with the in-kernel thermal management */
 static int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf)
 {
@@ -760,6 +799,7 @@ static int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf)
 	int i, j;
 #endif
 	struct cpumask mask_val;
+	struct thermal_bind_params *tbp;
 
 	if (!sensor_conf || !sensor_conf->read_temperature) {
 		pr_err("Temperature sensor not initialised\n");
@@ -770,6 +810,12 @@ static int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf)
 	if (!th_zone)
 		return -ENOMEM;
 
+	tbp = kcalloc(exynos_tz_params.num_tbps, sizeof(*tbp), GFP_KERNEL);
+	if (!tbp)
+		return -ENOMEM;
+
+	exynos_tz_params.tbp = tbp;
+
 	th_zone->sensor_conf = sensor_conf;
 	cpumask_clear(&mask_val);
 	cpumask_set_cpu(0, &mask_val);
@@ -777,13 +823,23 @@ static int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf)
 #ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
 	for (i = 0; i < EXYNOS_ZONE_COUNT; i++) {
 		for (j = 0; j < CA_END; j++) {
-			th_zone->cool_dev[count] = cpufreq_cooling_register(&mp_cluster_cpus[count]);
+			ret = build_dvfs_table(j);
+			if (WARN(ret, "Failed to build dvfs table\n"))
+				goto err_unregister;
+
+			th_zone->cool_dev[count] =
+				cpufreq_power_cooling_register(
+					&mp_cluster_cpus[count],
+					mp_capacitance[count],
+					mp_plat_static_func[count]);
 			if (IS_ERR(th_zone->cool_dev[count])) {
 				pr_err("Failed to register cpufreq cooling device\n");
 				ret = -EINVAL;
 				th_zone->cool_dev_size = count;
-				goto err_unregister;
 			}
+
+			tbp[j].cdev = th_zone->cool_dev[count];
+			tbp[j].weight = mp_actor_weight[j];
 			count++;
 		}
 	}
@@ -798,11 +854,20 @@ static int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf)
 		 }
 	}
 #endif
+
+	th_zone->cool_dev[count] = gpu_cooling_register();
+	if (IS_ERR(th_zone->cool_dev[count]))
+		panic("Failed to register gpu cooling device\n");
+
+	tbp[2].cdev = th_zone->cool_dev[count];
+	tbp[2].weight = GPU_ACTOR_WEIGHT;
+	count++;
+
 	th_zone->cool_dev_size = count;
 
 	th_zone->therm_dev = thermal_zone_device_register(sensor_conf->name,
-			th_zone->sensor_conf->trip_data.trip_count, 0, NULL, &exynos_dev_ops, NULL, PASSIVE_INTERVAL,
-			IDLE_INTERVAL);
+			th_zone->sensor_conf->trip_data.trip_count, 0, NULL, &exynos_dev_ops,
+			&exynos_tz_params, PASSIVE_INTERVAL, IDLE_INTERVAL);
 
 	if (IS_ERR(th_zone->therm_dev)) {
 		pr_err("Failed to register thermal zone device\n");
@@ -1301,19 +1366,6 @@ static void exynos_tmu_work(struct work_struct *work)
 		enable_irq(data->irq[i]);
 }
 
-static irqreturn_t exynos_tmu_irq(int irq, void *id)
-{
-	struct exynos_tmu_data *data = id;
-	int i;
-
-	pr_debug("[TMUIRQ] irq = %d\n", irq);
-
-	for (i = 0; i < EXYNOS_TMU_COUNT; i++)
-		disable_irq_nosync(data->irq[i]);
-	schedule_work(&data->irq_work);
-
-	return IRQ_HANDLED;
-}
 static struct thermal_sensor_conf exynos_sensor_conf = {
 	.name			= "exynos-therm",
 	.read_temperature	= (int (*)(void *))exynos_tmu_read,
@@ -1607,14 +1659,12 @@ static struct exynos_tmu_platform_data const exynos5430_tmu_data = {
 #if defined(CONFIG_SOC_EXYNOS5422)
 static struct exynos_tmu_platform_data const exynos5_tmu_data = {
 	.threshold_falling = 2,
-	.trigger_levels[0] = 95,
-	.trigger_levels[1] = 100,
-	.trigger_levels[2] = 105,
-	.trigger_levels[3] = 110,
+	.trigger_levels[0] = 67,
+	.trigger_levels[1] = 77,
 	.trigger_level0_en = 1,
 	.trigger_level1_en = 1,
-	.trigger_level2_en = 1,
-	.trigger_level3_en = 1,
+	.trigger_level2_en = 0,
+	.trigger_level3_en = 0,
 	.trigger_level4_en = 0,
 	.trigger_level5_en = 0,
 	.trigger_level6_en = 0,
@@ -1625,41 +1675,29 @@ static struct exynos_tmu_platform_data const exynos5_tmu_data = {
 	.cal_type = TYPE_ONE_POINT_TRIMMING,
 	.efuse_value = 55,
 	.freq_tab[0] = {
-		.freq_clip_max = 900 * 1000,
+		.freq_clip_max = 1900 * 1000,
 #ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
 		.freq_clip_max_kfc = 1500 * 1000,
 #endif
-		.temp_level = 95,
+		.temp_level = 67,
 #ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
 		.mask_val = &mp_cluster_cpus[CA15],
 		.mask_val_kfc = &mp_cluster_cpus[CA7],
 #endif
 	},
 	.freq_tab[1] = {
-		.freq_clip_max = 800 * 1000,
+		.freq_clip_max = 1900 * 1000,
 #ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
 		.freq_clip_max_kfc = 1200 * 1000,
 #endif
-		.temp_level = 100,
+		.temp_level = 77,
 #ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
 		.mask_val = &mp_cluster_cpus[CA15],
 		.mask_val_kfc = &mp_cluster_cpus[CA7],
 #endif
 	},
-	.freq_tab[2] = {
-		.freq_clip_max = 800 * 1000,
-#ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
-		.freq_clip_max_kfc = 1200 * 1000,
-#endif
-		.temp_level = 105,
-#ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
-		.mask_val = &mp_cluster_cpus[CA15],
-		.mask_val_kfc = &mp_cluster_cpus[CA7],
-#endif
-	},
-	.size[THERMAL_TRIP_ACTIVE] = 1,
 	.size[THERMAL_TRIP_PASSIVE] = 2,
-	.freq_tab_count = 3,
+	.freq_tab_count = 2,
 	.type = SOC_ARCH_EXYNOS,
 	.clock_count = 2,
 	.clk_name[0] = "tmu",
@@ -1932,20 +1970,6 @@ static int exynos_tmu_probe(struct platform_device *pdev)
 	INIT_WORK(&data->irq_work, exynos_tmu_work);
 
 	for (i = 0; i < EXYNOS_TMU_COUNT; i++) {
-		data->irq[i] = platform_get_irq(pdev, i);
-		if (data->irq[i] < 0) {
-			ret = data->irq[i];
-			dev_err(&pdev->dev, "Failed to get platform irq\n");
-			goto err_get_irq;
-		}
-
-		ret = request_irq(data->irq[i], exynos_tmu_irq,
-				IRQF_TRIGGER_RISING, "exynos_tmu", data);
-		if (ret) {
-			dev_err(&pdev->dev, "Failed to request irq: %d\n", data->irq[i]);
-			goto err_request_irq;
-		}
-
 		data->mem[i] = platform_get_resource(pdev, IORESOURCE_MEM, i);
 		if (!data->mem[i]) {
 			ret = -ENOENT;
@@ -2093,8 +2117,6 @@ err_get_resource:
 		if (data->irq[i])
 			free_irq(data->irq[i], data);
 	}
-err_request_irq:
-err_get_irq:
 	kfree(data);
 
 	return ret;

@@ -30,6 +30,7 @@
 #include <linux/kobject.h>
 #include <linux/sysfs.h>
 #include <linux/cpumask.h>
+#include <linux/pm_opp.h>
 
 #include <asm/smp_plat.h>
 #include <asm/cputype.h>
@@ -1529,6 +1530,37 @@ void (*disable_c3_idle)(bool disable);
 
 static void exynos_qos_nop(void *info)
 {
+}
+
+int build_dvfs_table(int cluster)
+{
+	int i;
+	struct device *dev;
+	struct cpufreq_frequency_table *freq_table;
+	unsigned int *volt_table;
+	unsigned int cpu = cpumask_any(&cluster_cpus[cluster]);
+
+	dev = get_cpu_device(cpu);
+	if (!dev)
+		return -EINVAL;
+
+	freq_table = exynos_info[cluster]->freq_table;
+	volt_table = exynos_info[cluster]->volt_table;
+
+	for (i = 0; freq_table[i].frequency != CPUFREQ_TABLE_END; i++) {
+		unsigned long freq = freq_table[i].frequency;
+
+		if (freq == CPUFREQ_ENTRY_INVALID)
+			continue;
+
+		freq *= 1000;
+
+		if (dev_pm_opp_add(dev, freq, volt_table[i]))
+			pr_warn("%s: Failed to add OPP %i, freq: %ld, volt: %d\n",
+				__func__, i, freq, volt_table[i]);
+	}
+
+	return 0;
 }
 
 static int exynos_cpu_min_qos_handler(struct notifier_block *b, unsigned long val, void *v)
