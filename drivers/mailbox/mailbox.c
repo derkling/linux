@@ -294,7 +294,6 @@ int mbox_send_message(struct mbox_chan *chan, void *mssg)
 
 	if (chan->cl->tx_block && chan->active_req) {
 		int ret;
-		init_completion(&chan->tx_complete);
 		ret = wait_for_completion_timeout(&chan->tx_complete,
 			chan->cl->tx_tout);
 		if (ret == 0) {
