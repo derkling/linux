@@ -294,6 +294,7 @@ int mbox_send_message(struct mbox_chan *chan, void *mssg)
 
 	if (chan->cl->tx_block && chan->active_req) {
 		int ret;
+		init_completion(&chan->tx_complete);
 		ret = wait_for_completion_timeout(&chan->tx_complete,
 			chan->cl->tx_tout);
 		if (ret == 0) {
@@ -584,8 +585,7 @@ void mbox_controller_unregister(struct mbox_controller *mbox)
 	list_for_each_entry(chan, &con->channels, node)
 		mbox_free_channel(chan);
 
-	if (mbox->txdone_poll)
-		del_timer_sync(&con->poll);
+	del_timer_sync(&con->poll);
 
 	kfree(con);
 }
