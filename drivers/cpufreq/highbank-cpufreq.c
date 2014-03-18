@@ -20,6 +20,7 @@
 #include <linux/err.h>
 #include <linux/of.h>
 #include <linux/mailbox_client.h>
+#include <linux/pl320-ipc.h>
 #include <linux/platform_device.h>
 
 #define HB_CPUFREQ_CHANGE_NOTE	0x80000001
