@@ -25,4 +25,4 @@ obj-y += gpu_control.o
 obj-y += gpu_dvfs_handler.o
 obj-y += gpu_dvfs_governor.o
 obj-y += gpu_custom_interface.o
-obj-$(CONFIG_CPU_THERMAL_IPA) += gpu_ipa.o
+obj-$(CONFIG_MALI_THERMAL_INTERFACE) += gpu_ipa.o

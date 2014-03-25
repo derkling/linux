@@ -41,9 +41,9 @@ int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation);
 int gpu_dvfs_handler_init(struct kbase_device *kbdev);
 int gpu_dvfs_handler_deinit(struct kbase_device *kbdev);
 int gpu_dvfs_handler_control(struct kbase_device *kbdev, gpu_dvfs_handler_command command, int param);
-#ifdef CONFIG_CPU_THERMAL_IPA
+#ifdef CONFIG_MALI_THERMAL_INTERFACE
 int gpu_dvfs_get_clock(int level);
 int gpu_dvfs_get_step(void);
-#endif /* CONFIG_CPU_THERMAL_IPA */
+#endif /* CONFIG_MALI_THERMAL_INTERFACE */
 
 #endif /* _GPU_DVFS_HANDLER_H_ */

@@ -25,9 +25,9 @@
 #include "gpu_dvfs_handler.h"
 #include "gpu_dvfs_governor.h"
 #include "gpu_control.h"
-#ifdef CONFIG_CPU_THERMAL_IPA
+#ifdef CONFIG_MALI_THERMAL_INTERFACE
 #include "gpu_ipa.h"
-#endif /* CONFIG_CPU_THERMAL_IPA */
+#endif /* CONFIG_MALI_THERMAL_INTERFACE */
 
 #ifdef CONFIG_MALI_T6XX_DVFS
 typedef void (*GET_NEXT_FREQ)(struct kbase_device *kbdev, int utilization);
@@ -265,9 +265,9 @@ int gpu_dvfs_governor_init(struct kbase_device *kbdev, int governor_type)
 	platform->target_lock_type = -1;
 	platform->max_lock = 0;
 	platform->min_lock = 0;
-#ifdef CONFIG_CPU_THERMAL_IPA
+#ifdef CONFIG_MALI_THERMAL_INTERFACE
 	gpu_ipa_dvfs_calc_norm_utilisation(kbdev);
-#endif /* CONFIG_CPU_THERMAL_IPA */
+#endif /* CONFIG_MALI_THERMAL_INTERFACE */
 	for (i = 0; i < NUMBER_LOCK; i++) {
 		platform->user_max_lock[i] = 0;
 		platform->user_min_lock[i] = 0;

@@ -36,9 +36,9 @@ typedef enum {
 typedef enum gpu_lock_type {
 	TMU_LOCK = 0,
 	SYSFS_LOCK,
-#ifdef CONFIG_CPU_THERMAL_IPA
+#ifdef CONFIG_MALI_THERMAL_INTERFACE
 	IPA_LOCK,
-#endif /* CONFIG_CPU_THERMAL_IPA */
+#endif /* CONFIG_MALI_THERMAL_INTERFACE */
 	NUMBER_LOCK
 } gpu_lock_type;
 
@@ -100,11 +100,11 @@ struct exynos_context {
 	spinlock_t gpu_dvfs_spinlock;
 #ifdef CONFIG_MALI_T6XX_DVFS
 	int utilization;
-#ifdef CONFIG_CPU_THERMAL_IPA
+#ifdef CONFIG_MALI_THERMAL_INTERFACE
 	int norm_utilisation;
 	int freq_for_normalisation;
 	unsigned long long power;
-#endif /* CONFIG_CPU_THERMAL_IPA */
+#endif /* CONFIG_MALI_THERMAL_INTERFACE */
 	int max_lock;
 	int min_lock;
 	int user_max_lock[NUMBER_LOCK];
@@ -116,11 +116,11 @@ struct exynos_context {
 	int governor_type;
 	char governor_list[100];
 	bool dvfs_status;
-#ifdef CONFIG_CPU_THERMAL_IPA
+#ifdef CONFIG_MALI_THERMAL_INTERFACE
 	int time_tick;
 	u32 time_busy;
 	u32 time_idle;
-#endif /* CONFIG_CPU_THERMAL_IPA */
+#endif /* CONFIG_MALI_THERMAL_INTERFACE */
 #endif
 	int cur_clock;
 	int cur_voltage;
@@ -131,7 +131,7 @@ struct exynos_context {
 	struct workqueue_struct *dvfs_wq;
 };
 
-#ifdef CONFIG_CPU_THERMAL_IPA
+#ifdef CONFIG_MALI_THERMAL_INTERFACE
 struct mali_utilisation_stats
 {
 	int utilisation;
@@ -146,7 +146,7 @@ struct mali_debug_utilisation_stats
 	u32 time_idle;
 	int time_tick;
 };
-#endif /* CONFIG_CPU_THERMAL_IPA */
+#endif /* CONFIG_MALI_THERMAL_INTERFACE */
 
 void gpu_set_debug_level(int level);
 int gpu_get_debug_level(void);

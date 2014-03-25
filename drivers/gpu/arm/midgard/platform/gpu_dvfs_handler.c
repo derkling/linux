@@ -21,15 +21,15 @@
 #include "gpu_control.h"
 #include "gpu_dvfs_handler.h"
 #include "gpu_dvfs_governor.h"
-#ifdef CONFIG_CPU_THERMAL_IPA
+#ifdef CONFIG_MALI_THERMAL_INTERFACE
 #include "gpu_ipa.h"
-#endif /* CONFIG_CPU_THERMAL_IPA */
+#endif /* CONFIG_MALI_THERMAL_INTERFACE */
 
 extern struct kbase_device *pkbdev;
 
 void ipa_mali_dvfs_requested(unsigned int freq);
 
-#ifdef CONFIG_CPU_THERMAL_IPA
+#ifdef CONFIG_MALI_THERMAL_INTERFACE
 int gpu_dvfs_get_clock(int level)
 {
 	struct kbase_device *kbdev = pkbdev;
@@ -51,7 +51,7 @@ int gpu_dvfs_get_step(void)
 
 	return platform->table_size;
 }
-#endif /* CONFIG_CPU_THERMAL_IPA */
+#endif /* CONFIG_MALI_THERMAL_INTERFACE */
 
 static int gpu_get_target_freq(void)
 {
@@ -127,7 +127,7 @@ int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation)
 
 #ifdef CONFIG_MALI_T6XX_DVFS
 	spin_lock_irqsave(&platform->gpu_dvfs_spinlock, flags);
-#ifdef CONFIG_CPU_THERMAL_IPA
+#ifdef CONFIG_MALI_THERMAL_INTERFACE
 	if (platform->time_tick < GPU_DVFS_TIME_INTERVAL) {
 		platform->time_tick++;
 		platform->time_busy += kbdev->pm.metrics.time_busy;
@@ -137,12 +137,12 @@ int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation)
 		platform->time_idle = kbdev->pm.metrics.time_idle;
 		platform->time_tick = 0;
 	}
-#endif /* CONFIG_CPU_THERMAL_IPA */
+#endif /* CONFIG_MALI_THERMAL_INTERFACE */
 
 	platform->utilization = utilisation;
-#ifdef CONFIG_CPU_THERMAL_IPA
+#ifdef CONFIG_MALI_THERMAL_INTERFACE
 	gpu_ipa_dvfs_calc_norm_utilisation(kbdev);
-#endif /* CONFIG_CPU_THERMAL_IPA */
+#endif /* CONFIG_MALI_THERMAL_INTERFACE */
 	spin_unlock_irqrestore(&platform->gpu_dvfs_spinlock, flags);
 #endif /* CONFIG_MALI_T6XX_DVFS */
 
@@ -172,11 +172,11 @@ int gpu_dvfs_handler_init(struct kbase_device *kbdev)
 
 	if (!platform->dvfs_status)
 		platform->dvfs_status = true;
-#ifdef CONFIG_CPU_THERMAL_IPA
+#ifdef CONFIG_MALI_THERMAL_INTERFACE
 	platform->time_tick = 0;
 	platform->time_busy = 0;
 	platform->time_idle = 0;
-#endif /* CONFIG_CPU_THERMAL_IPA */
+#endif /* CONFIG_MALI_THERMAL_INTERFACE */
 
 	GPU_LOG(DVFS_INFO, "g3d dvfs handler initialized\n");
 #endif /* CONFIG_MALI_T6XX_DVFS */
@@ -212,7 +212,9 @@ static int gpu_dvfs_on_off(struct kbase_device *kbdev, bool enable)
 
 	if (enable && !platform->dvfs_status) {
 		platform->dvfs_status = true;
+#ifdef CONFIG_MALI_THERMAL_INTERFACE
 		gpu_control_state_set(kbdev, GPU_CONTROL_CHANGE_CLK_VOL, platform->cur_clock);
+#endif
 		gpu_dvfs_handler_init(kbdev);
 		if (!kbdev->pm.metrics.timer_active) {
 			spin_lock_irqsave(&kbdev->pm.metrics.lock, flags);
