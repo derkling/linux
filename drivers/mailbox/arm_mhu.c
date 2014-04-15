@@ -69,7 +69,7 @@
  * |  CPU_INTR_H_CLEAR  | 0x130 |  TX_CLEAR(H)  |
  * +--------------------+-------+---------------+
 */
-#define RX_OFFSET(chan)		((idx) * 0x20)
+#define RX_OFFSET(chan)		((chan) * 0x20)
 #define RX_STATUS(chan)		RX_OFFSET(chan)
 #define RX_SET(chan)		(RX_OFFSET(chan) + 0x8)
 #define RX_CLEAR(chan)		(RX_OFFSET(chan) + 0x10)
@@ -121,24 +121,22 @@ static inline struct mhu_chan *to_mhu_chan(struct mbox_link *lnk)
 
 static irqreturn_t mbox_handler(int irq, void *p)
 {
-	struct mbox_link *link = (struct mbox_link *)p;
-	struct mhu_chan *chan = to_mhu_chan(link);
+	struct mhu_chan *chan = to_mhu_chan(p);
 	struct mhu_ctlr *ctlr = chan->ctlr;
-	void __iomem *mbox_base = ctlr->mbox_base;
-	void __iomem *payload = ctlr->payload_base;
 	int idx = chan->index;
-	u32 status = readl(mbox_base + RX_STATUS(idx));
+	u32 status = readl(ctlr->mbox_base + RX_STATUS(idx));
 
 	if (status && irq == chan->rx_irq) {
 		struct mhu_data_buf *data = chan->data;
 		if (!data)
-			return IRQ_NONE; /* spurious */
+			return IRQ_NONE;	/* spurious */
 		if (data->rx_buf)
-			memcpy(data->rx_buf, payload + RX_PAYLOAD(idx),
+			memcpy(data->rx_buf,
+			       ctlr->payload_base + RX_PAYLOAD(idx),
 			       data->rx_size);
 		chan->data = NULL;
-		writel(~0, mbox_base + RX_CLEAR(idx));
-		mbox_link_received_data(link, data);
+		writel(~0, ctlr->mbox_base + RX_CLEAR(idx));
+		mbox_link_received_data(p, data);
 	}
 
 	return IRQ_HANDLED;
@@ -148,18 +146,16 @@ static int mhu_send_data(struct mbox_link *link, void *msg)
 {
 	struct mhu_chan *chan = to_mhu_chan(link);
 	struct mhu_ctlr *ctlr = chan->ctlr;
-	void __iomem *mbox_base = ctlr->mbox_base;
-	void __iomem *payload = ctlr->payload_base;
-	struct mhu_data_buf *data = (struct mhu_data_buf *)msg;
-	int idx = chan->index;
+	struct mhu_data_buf *data = msg;
 
 	if (!data)
 		return -EINVAL;
 
 	chan->data = data;
 	if (data->tx_buf)
-		memcpy(payload + TX_PAYLOAD(idx), data->tx_buf, data->tx_size);
-	writel(data->cmd, mbox_base + TX_SET(idx));
+		memcpy(ctlr->payload_base + TX_PAYLOAD(chan->index),
+		       data->tx_buf, data->tx_size);
+	writel(data->cmd, ctlr->mbox_base + TX_SET(chan->index));
 
 	return 0;
 }
@@ -167,15 +163,10 @@ static int mhu_send_data(struct mbox_link *link, void *msg)
 static int mhu_startup(struct mbox_link *link, void *ignored)
 {
 	struct mhu_chan *chan = to_mhu_chan(link);
-	int err, mbox_irq = chan->rx_irq;
-
-	err = request_threaded_irq(mbox_irq, NULL, mbox_handler, IRQF_ONESHOT,
-				   link->link_name, link);
-	if (err)
-		return err;
 
 	chan->data = NULL;
-	return 0;
+	return request_threaded_irq(chan->rx_irq, NULL, mbox_handler,
+				    IRQF_ONESHOT, link->link_name, link);
 }
 
 static void mhu_shutdown(struct mbox_link *link)
@@ -190,10 +181,7 @@ static bool mhu_last_tx_done(struct mbox_link *link)
 {
 	struct mhu_chan *chan = to_mhu_chan(link);
 	struct mhu_ctlr *ctlr = chan->ctlr;
-	void __iomem *mbox_base = ctlr->mbox_base;
-	int idx = chan->index;
-
-	return !readl(mbox_base + TX_STATUS(idx));
+	return readl(ctlr->mbox_base + TX_STATUS(chan->index)) == 0;
 }
 
 static struct mbox_link_ops mhu_ops = {
@@ -205,13 +193,13 @@ static struct mbox_link_ops mhu_ops = {
 
 static int mhu_probe(struct platform_device *pdev)
 {
+	int idx;
 	struct mhu_ctlr *ctlr;
 	struct mhu_chan *chan;
-	struct device *dev = &pdev->dev;
 	struct mbox_link **l;
 	struct resource *res;
-	int idx;
-	static const char * const channel_names[] = {
+	struct device *dev = &pdev->dev;
+	static const char *const channel_names[] = {
 		CHANNEL_LOW_PRIORITY,
 		CHANNEL_HIGH_PRIORITY
 	};
@@ -275,7 +263,6 @@ static int mhu_probe(struct platform_device *pdev)
 		l[idx] = &chan->link;
 		snprintf(l[idx]->link_name, 16, channel_names[idx]);
 	}
-	l[idx] = NULL;
 
 	if (mbox_controller_register(&ctlr->mbox_con)) {
 		dev_err(dev, "failed to register mailbox controller\n");
@@ -305,19 +292,21 @@ static int mhu_remove(struct platform_device *pdev)
 }
 
 static struct of_device_id mhu_of_match[] = {
-	{ .compatible = "arm,mhu" },
+	{.compatible = "arm,mhu"},
 	{},
 };
+
 MODULE_DEVICE_TABLE(of, mhu_of_match);
 
 static struct platform_driver mhu_driver = {
 	.probe = mhu_probe,
 	.remove = mhu_remove,
 	.driver = {
-		.name = DRIVER_NAME,
-		.of_match_table = mhu_of_match,
-	},
+		   .name = DRIVER_NAME,
+		   .of_match_table = mhu_of_match,
+		   },
 };
+module_platform_driver(mhu_driver);
 
 static int __init mhu_init(void)
 {
