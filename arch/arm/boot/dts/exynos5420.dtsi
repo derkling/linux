@@ -83,6 +83,7 @@
 			clock-frequency = <1800000000>;
 		};
 
+/*
 		cpu4: cpu@100 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a7";
@@ -110,6 +111,7 @@
 			reg = <0x103>;
 			clock-frequency = <1000000000>;
 		};
+*/		
 	};
 
 	sysram@02020000 {
