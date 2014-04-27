@@ -5870,19 +5870,21 @@ static void init_sched_groups_energy(int cpu, struct sched_domain *sd,
 				     struct sched_domain_topology_level *tl)
 {
 	struct sched_group *sg = sd->groups;
-	sched_domain_energy_f energy = tl->energy;
+	sched_domain_energy_f fn = tl->energy;
+
+	if (!fn)
+		return;
 
 	WARN_ON(!sg);
 
-	if (!energy)
-		return;
+	check_sd_energy_data(cpu, fn, sg);
 
-	sg->sge->data.max_capacity = energy()->max_capacity;
-	sg->sge->data.idle_power = energy()->idle_power;
-	sg->sge->data.wake_power = energy()->wake_power;
-	sg->sge->data.nr_cap_states = energy()->nr_cap_states;
+	sg->sge->data.max_capacity = fn(cpu)->max_capacity;
+	sg->sge->data.idle_power = fn(cpu)->idle_power;
+	sg->sge->data.wake_power = fn(cpu)->wake_power;
+	sg->sge->data.nr_cap_states = fn(cpu)->nr_cap_states;
 
-	memcpy(sg->sge->data.cap_states, energy()->cap_states,
+	memcpy(sg->sge->data.cap_states, fn(cpu)->cap_states,
 	       sg->sge->data.nr_cap_states*sizeof(struct capacity_state));
 }
 #endif
@@ -6406,7 +6408,7 @@ static int __sdt_alloc(const struct cpumask *cpu_map)
 			 * not used but will be freed later XXX.
 			 */
 			unsigned int nr_cap_states = tl->energy ?
-					tl->energy()->nr_cap_states : 0;
+					tl->energy(j)->nr_cap_states : 0;
 #endif
 
 		       	sd = kzalloc_node(sizeof(struct sched_domain) + cpumask_size(),

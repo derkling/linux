@@ -361,24 +361,16 @@ static struct sd_energy energy_core_a15 = {
 };
 
 /* arch specific per-cpu sd energy functions */
-static inline const struct sd_energy *arch_cpu_energy_cluster_a7(void)
+static inline const struct sd_energy *arch_cpu_energy_cluster(int cpu)
 {
-	return &energy_cluster_a7;
+	return cpu_topology[cpu].socket_id ? &energy_cluster_a7 :
+			&energy_cluster_a15;
 }
 
-static inline const struct sd_energy *arch_cpu_energy_cluster_a15(void)
+static inline const struct sd_energy *arch_cpu_energy_core(int cpu)
 {
-	return &energy_cluster_a15;
-}
-
-static inline const struct sd_energy *arch_cpu_energy_core_a7(void)
-{
-	return &energy_core_a7;
-}
-
-static inline const struct sd_energy *arch_cpu_energy_core_a15(void)
-{
-	return &energy_core_a15;
+	return cpu_topology[cpu].socket_id ? &energy_core_a7 :
+			&energy_core_a15;
 }
 #endif /* CONFIG_SCHED_ENERGY */
 
@@ -390,16 +382,15 @@ static inline const int cpu_corepower_flags(void)
 static struct sched_domain_topology_level arm_topology[] = {
 #ifdef CONFIG_SCHED_MC
 #ifdef CONFIG_SCHED_ENERGY
-	{ cpu_corepower_mask, cpu_core_flags, arch_cpu_energy_core_a7, SD_INIT_NAME(GMC) },
-	{ cpu_coregroup_mask, cpu_core_flags, arch_cpu_energy_core_a15, SD_INIT_NAME(MC) },
+	{ cpu_corepower_mask, cpu_corepower_flags, arch_cpu_energy_core, SD_INIT_NAME(GMC) },
+	{ cpu_coregroup_mask, cpu_core_flags, arch_cpu_energy_core, SD_INIT_NAME(MC) },
 #else
 	{ cpu_corepower_mask, cpu_corepower_flags, SD_INIT_NAME(GMC) },
 	{ cpu_coregroup_mask, cpu_core_flags, SD_INIT_NAME(MC) },
 #endif
 #endif
 #ifdef CONFIG_SCHED_ENERGY
-	{ cpu_cpupower_mask, 0, arch_cpu_energy_cluster_a7, SD_INIT_NAME(GDIE) },
-	{ cpu_cpu_mask, 0, arch_cpu_energy_cluster_a15, SD_INIT_NAME(DIE) },
+	{ cpu_cpu_mask, 0, arch_cpu_energy_cluster, SD_INIT_NAME(DIE) },
 #else
 	{ cpu_cpu_mask, SD_INIT_NAME(DIE) },
 #endif

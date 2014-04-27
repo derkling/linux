@@ -1023,7 +1023,7 @@ bool cpus_share_cache(int this_cpu, int that_cpu);
 typedef const struct cpumask *(*sched_domain_mask_f)(int cpu);
 typedef const int (*sched_domain_flags_f)(void);
 #ifdef CONFIG_SCHED_ENERGY
-typedef const struct sd_energy *(*sched_domain_energy_f)(void);
+typedef const struct sd_energy *(*sched_domain_energy_f)(int cpu);
 #endif
 
 #define SDTL_OVERLAP	0x01

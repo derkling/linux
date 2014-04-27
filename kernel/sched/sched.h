@@ -807,6 +807,40 @@ static inline unsigned int group_first_cpu(struct sched_group *group)
 
 extern int group_balance_cpu(struct sched_group *sg);
 
+/*
+ * Check that the per-cpu provided sd energy data is consistent for all cpus
+ * within a sched group with a weight greater than 1
+ */
+#ifdef CONFIG_SCHED_ENERGY
+static inline void
+check_sd_energy_data(int cpu, sched_domain_energy_f fn, struct sched_group *sg)
+{
+	int i;
+	struct cpumask mask;
+
+	if (cpumask_weight(sched_group_cpus(sg)) == 1)
+		return;
+
+	cpumask_xor(&mask, sched_group_cpus(sg), get_cpu_mask(cpu));
+
+	for_each_cpu(i, &mask) {
+		int y = 0;
+
+		BUG_ON(fn(i)->max_capacity != fn(cpu)->max_capacity);
+		BUG_ON(fn(i)->idle_power != fn(cpu)->idle_power);
+		BUG_ON(fn(i)->wake_power != fn(cpu)->wake_power);
+		BUG_ON(fn(i)->nr_cap_states != fn(cpu)->nr_cap_states);
+
+		for (; y < (fn(i)->nr_cap_states); y++) {
+			BUG_ON(fn(i)->cap_states[y].cap !=
+			       fn(cpu)->cap_states[y].cap);
+			BUG_ON(fn(i)->cap_states[y].power !=
+			       fn(cpu)->cap_states[y].power);
+		}
+	}
+}
+#endif
+
 #endif /* CONFIG_SMP */
 
 #include "stats.h"
