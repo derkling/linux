@@ -869,10 +869,8 @@ static void update_siblings_masks(unsigned int cpuid)
 	int cpu;
 
 	if (cpuid_topo->cluster_id == -1) {
-		/*
-		 * DT does not contain topology information for this cpu.
-		 */
-		pr_debug("CPU%u: No topology information configured\n", cpuid);
+		/* No topology information for this cpu ?! */
+		pr_err("CPU%u: No topology information configured\n", cpuid);
 		return;
 	}
 
