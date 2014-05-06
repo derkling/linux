@@ -82,6 +82,13 @@ trace_seq_bitmask(struct trace_seq *s, const unsigned long *maskp,
 	return 0;
 }
 
+static inline int
+trace_seq_bitmask(struct trace_seq *s, const unsigned long *maskp,
+		  int nmaskbits)
+{
+	return 0;
+}
+
 static inline int trace_print_seq(struct seq_file *m, struct trace_seq *s)
 {
 	return 0;
