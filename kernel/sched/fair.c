@@ -6049,6 +6049,14 @@ static bool update_sd_pick_busiest(struct lb_env *env,
 			return true;
 	}
 
+	/*
+	 * The group capacity is reduced probably because of activity from other
+	 * sched class or interrupts which use part of the available capacity
+	 */
+	if ((sg->sgc->capacity_orig * 100) > (sgs->group_capacity *
+				env->sd->imbalance_pct))
+		return true;
+
 	return false;
 }
 
@@ -6534,13 +6542,23 @@ static int need_active_balance(struct lb_env *env)
 	struct sched_domain *sd = env->sd;
 
 	if (env->idle == CPU_NEWLY_IDLE) {
+		int src_cpu = env->src_cpu;
 
 		/*
 		 * ASYM_PACKING needs to force migrate tasks from busy but
 		 * higher numbered CPUs in order to pack all tasks in the
 		 * lowest numbered CPUs.
 		 */
-		if ((sd->flags & SD_ASYM_PACKING) && env->src_cpu > env->dst_cpu)
+		if ((sd->flags & SD_ASYM_PACKING) && src_cpu > env->dst_cpu)
+			return 1;
+
+		/*
+		 * If the CPUs share their cache and the src_cpu's capacity is
+		 * reduced because of other sched_class or IRQs, we trig an
+		 * active balance to move the task
+		 */
+		if ((capacity_orig_of(src_cpu) * 100) > (capacity_of(src_cpu) *
+				sd->imbalance_pct))
 			return 1;
 	}
 
@@ -6643,6 +6661,8 @@ redo:
 
 	schedstat_add(sd, lb_imbalance[idle], env.imbalance);
 
+	env.src_cpu = busiest->cpu;
+
 	ld_moved = 0;
 	if (busiest->nr_running > 1) {
 		/*
@@ -6652,7 +6672,6 @@ redo:
 		 * correctly treated as an imbalance.
 		 */
 		env.flags |= LBF_ALL_PINNED;
-		env.src_cpu   = busiest->cpu;
 		env.src_rq    = busiest;
 		env.loop_max  = min(sysctl_sched_nr_migrate, busiest->nr_running);
 
@@ -7359,10 +7378,12 @@ end:
 
 /*
  * Current heuristic for kicking the idle load balancer in the presence
- * of an idle cpu is the system.
+ * of an idle cpu in the system.
  *   - This rq has more than one task.
- *   - At any scheduler domain level, this cpu's scheduler group has multiple
- *     busy cpu's exceeding the group's capacity.
+ *   - This rq has at least one CFS task and the capacity of the CPU is
+ *     significantly reduced because of RT tasks or IRQs.
+ *   - At parent of LLC scheduler domain level, this cpu's scheduler group has
+ *     multiple busy cpu.
  *   - For SD_ASYM_PACKING, if the lower numbered cpu's in the scheduler
  *     domain span are idle.
  */
@@ -7372,9 +7393,10 @@ static inline int nohz_kick_needed(struct rq *rq)
 	struct sched_domain *sd;
 	struct sched_group_capacity *sgc;
 	int nr_busy, cpu = rq->cpu;
+	bool kick = false;
 
 	if (unlikely(rq->idle_balance))
-		return 0;
+		return false;
 
        /*
 	* We may be recently in ticked or tickless idle mode. At the first
@@ -7388,38 +7410,45 @@ static inline int nohz_kick_needed(struct rq *rq)
 	 * balancing.
 	 */
 	if (likely(!atomic_read(&nohz.nr_cpus)))
-		return 0;
+		return false;
 
 	if (time_before(now, nohz.next_balance))
-		return 0;
+		return false;
 
 	if (rq->nr_running >= 2)
-		goto need_kick;
+		return true;
 
 	rcu_read_lock();
 	sd = rcu_dereference(per_cpu(sd_busy, cpu));
-
 	if (sd) {
 		sgc = sd->groups->sgc;
 		nr_busy = atomic_read(&sgc->nr_busy_cpus);
 
-		if (nr_busy > 1)
-			goto need_kick_unlock;
+		if (nr_busy > 1) {
+			kick = true;
+			goto unlock;
+		}
+
+	}
+
+	sd = rcu_dereference(rq->sd);
+	if (sd) {
+		if ((rq->cfs.h_nr_running >= 1) &&
+				((rq->cpu_capacity * sd->imbalance_pct) <
+				(rq->cpu_capacity_orig * 100))) {
+			kick = true;
+			goto unlock;
+		}
 	}
 
 	sd = rcu_dereference(per_cpu(sd_asym, cpu));
-
 	if (sd && (cpumask_first_and(nohz.idle_cpus_mask,
 				  sched_domain_span(sd)) < cpu))
-		goto need_kick_unlock;
+		kick = true;
 
+unlock:
 	rcu_read_unlock();
-	return 0;
-
-need_kick_unlock:
-	rcu_read_unlock();
-need_kick:
-	return 1;
+	return kick;
 }
 #else
 static void nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle) { }
