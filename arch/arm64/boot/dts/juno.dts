@@ -6,8 +6,6 @@
 
 /dts-v1/;
 
-#include <dt-bindings/interrupt-controller/arm-gic.h>
-
 / {
 	model = "Juno";
 	compatible = "arm,juno", "arm,vexpress";
@@ -125,10 +123,10 @@
 		      <0x0 0x2c02f000 0 0x1000>,
 		      <0x0 0x2c04f000 0 0x2000>,
 		      <0x0 0x2c06f000 0 0x2000>;
-		interrupts = <GIC_PPI 9 0xf04>;
+		interrupts = <1 9 0xf04>;
 	};
 
-	msi0: msi@2c1c0000 {
+	msi0: msi@30000000 {
 		compatible = "arm,gic-msi";
 		reg = <0x0 0x2c1c0000 0 0x10000
 		       0x0 0x2c1d0000 0 0x10000
@@ -138,18 +136,18 @@
 
 	timer {
 		compatible = "arm,armv8-timer";
-		interrupts = <GIC_PPI 13 0xff01>,
-			     <GIC_PPI 14 0xff01>,
-			     <GIC_PPI 11 0xff01>,
-			     <GIC_PPI 10 0xff01>;
+		interrupts = <1 13 0xff01>,
+			     <1 14 0xff01>,
+			     <1 11 0xff01>,
+			     <1 10 0xff01>;
 	};
 
 	pmu {
 		compatible = "arm,armv8-pmuv3";
-		interrupts = <GIC_SPI 60 4>,
-			     <GIC_SPI 61 4>,
-			     <GIC_SPI 62 4>,
-			     <GIC_SPI 63 4>;
+		interrupts = <0 60 4>,
+			     <0 61 4>,
+			     <0 62 4>,
+			     <0 63 4>;
 	};
 
 	psci {
