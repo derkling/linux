@@ -364,6 +364,11 @@ static inline const struct sched_energy *cpu_core_energy(int cpu)
 	return cpu_topology[cpu].socket_id ? &energy_core_a7 :
 			&energy_core_a15;
 }
+
+static inline const struct sched_energy *cpu_sys_energy(int cpu)
+{
+	return NULL;
+}
 #endif /* CONFIG_SCHED_ENERGY */
 
 static inline const int cpu_corepower_flags(void)
@@ -382,10 +387,11 @@ static struct sched_domain_topology_level arm_topology[] = {
 #endif
 #ifdef CONFIG_SCHED_ENERGY
 	{ cpu_cpu_mask, 0, cpu_cluster_energy, SD_INIT_NAME(DIE) },
+	{ NULL,	0, cpu_sys_energy},
 #else
 	{ cpu_cpu_mask, SD_INIT_NAME(DIE) },
+	{ NULL,	},
 #endif
-	{ NULL, },
 };
 
 /*

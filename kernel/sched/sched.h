@@ -760,6 +760,8 @@ struct sched_group_energy {
 	atomic_t ref;
 	struct sched_energy data;
 };
+
+extern struct sched_energy *sse;
 #endif
 
 struct sched_group {
