@@ -4180,6 +4180,199 @@ static long effective_load(struct task_group *tg, int cpu, long wl, long wg)
 
 #endif
 
+#ifdef CONFIG_SCHED_ENERGY
+
+#define for_each_energy_state(state) \
+		for (; state->cap; state++)
+
+/* Assumptions:
+ * 1. When capacity states are shared (SD_SHARE_CAP_STATES) the capacity state
+ * tables are equivalent. That is, the same table index can be used across all
+ * tables.
+ */
+
+/* Find suitable capacity state for util. If over-utilized, return nr_cap_states */
+static int energy_match_cap(unsigned long util, struct capacity_state *cap_table)
+{
+	struct capacity_state *state = cap_table;
+	int idx;
+
+	idx = 0;
+	for_each_energy_state(state) {
+		if (state->cap >= util)
+			return idx;
+		idx++;
+	}
+
+	return idx;
+}
+
+static void find_max_util(const struct cpumask *mask, int cpu, int util,
+		unsigned long *max_util_bef, unsigned long *max_util_aft)
+{
+	int i;
+
+	*max_util_bef = 0;
+	*max_util_aft = 0;
+
+	for_each_cpu(i, mask) {
+		unsigned long cpu_util = weighted_cpuload(i);
+		trace_printk("fmu0: cu=%lu u=%d mb=%lu ma=%lu", cpu_util, util, *max_util_bef, *max_util_aft);
+
+		*max_util_bef = max(*max_util_bef, cpu_util);
+		
+		if (unlikely(i == cpu))
+			cpu_util += util;
+
+		*max_util_aft = max(*max_util_aft, cpu_util);
+		trace_printk("fmu1: cu=%lu mb=%lu ma=%lu", cpu_util, *max_util_bef, *max_util_aft);
+	}
+}
+
+static int energy_diff_load(int cpu, int util)
+{
+	struct sched_domain *sd;
+	int i;
+	int energy_diff = 0;
+	int curr_cap_idx = -1;
+	int new_cap_idx = -1;
+	unsigned long max_util_bef, max_util_aft, aff_util_bef, aff_util_aft;
+	unsigned long cpu_curr_capacity = atomic_long_read(&cpu_rq(cpu)->cfs.curr_capacity);
+
+	/* Set max_util_aft to the new cpu utilization for the iteration */
+	max_util_aft = weighted_cpuload(cpu) + util;
+
+	rcu_read_lock();
+	for_each_domain(cpu, sd) {
+		struct capacity_state *curr_state, *new_state, *cap_table;
+
+		if (!sd->groups->sge)
+			continue;
+
+		cap_table = sd->groups->sge->data.cap_states;
+		if (curr_cap_idx < 0 || !(sd->flags & SD_SHARE_CAP_STATES)) {
+			/* 
+			 * This has to be fixed for !SD_SHARE_CAP_STATES parent domains
+			 * that have more than one capacity state.
+			 */
+
+			curr_cap_idx = energy_match_cap(cpu_curr_capacity, cap_table);
+
+			/* 
+			 * If we remove tasks, i.e. util < 0, we should find out if the cap
+			 * state changes as well, but that is complicated and might not be worth
+			 * it.
+			 *
+			 * Also, if the cap state is shared new_cap_state can't be lower than
+			 * curr_cap_idx as the utilization on an other cpu might have higher
+			 * utilization than this cpu.
+			 */
+			if (cap_table[curr_cap_idx].cap < max_util_aft) {
+				new_cap_idx = energy_match_cap(max_util_aft, cap_table);
+				if (new_cap_idx >= sd->groups->sge->data.nr_cap_states) {
+					/* cpu can't handle the additional load */
+					energy_diff = INT_MAX;
+					goto unlock;
+				}
+			} else {
+				new_cap_idx = curr_cap_idx;
+			}
+		}
+
+		curr_state = &cap_table[curr_cap_idx];
+		new_state = &cap_table[new_cap_idx];
+
+		trace_printk("edl: cpu=%d mu=%lu cc=%d cp=%d u=%d nc=%d np=%d", cpu, max_util_aft, curr_state->cap, curr_state->power, util, new_state->cap, new_state->power);
+
+		/* 
+		 * Factor in other affected cpus 
+		 * We assume that all affected cpus have the same cap_table.
+		 * We assume that only the lowest level is allowed to set
+		 * SD_SHARE_CAP_STATES. (Lifting this restriction is possible
+		 * but a bit messy).
+		 * We assume no independent higher level cap_states. Cluster/
+		 * package power either fixed or linked with cpus.
+		 */
+
+		find_max_util(sched_group_cpus(sd->groups), cpu, util,
+				&max_util_bef, &max_util_aft);
+
+		if (!sd->child) {
+			/* Lowest level - groups are individual cpus */
+			if (sd->flags & SD_SHARE_CAP_STATES) {
+				int sum_util = 0;
+				for_each_cpu(i, sched_domain_span(sd))
+					sum_util += weighted_cpuload(i);
+				aff_util_bef = sum_util;
+			} else {
+				aff_util_bef = weighted_cpuload(cpu);
+			}
+			aff_util_aft = aff_util_bef + util;
+		} else {
+			/* Higher level - energy depends on activity at lower levels */
+			aff_util_bef = max_util_bef;
+			aff_util_aft = max_util_aft;
+		}
+
+		/* 
+		 * Does the load change have any impact at this level (or any
+		 * parent level)?
+		 */
+		if (aff_util_bef == aff_util_aft && curr_cap_idx == new_cap_idx) {
+			trace_printk("edl: cpu=%d impact accounted for", cpu);
+			goto unlock;
+		}
+
+		trace_printk("edl: cpu=%d aff_util_bef=%lu aff_util_aft=%lu max_util_bef=%lu max_util_aft=%lu", cpu, aff_util_bef, aff_util_aft, max_util_bef, max_util_aft);
+
+		/* Energy before */
+		energy_diff -= (aff_util_bef*curr_state->power)/curr_state->cap;
+		trace_printk("edl: cpu=%d diff=%d", cpu, energy_diff);
+
+		/* Energy after */
+		energy_diff += (aff_util_aft*new_state->power)/new_state->cap;
+		trace_printk("edl: cpu=%d diff=%d", cpu, energy_diff);
+	}
+
+	/*
+	 * Top level
+	 * We don't have any groups covering all cpus in the sched_domain
+	 * hierarchy.
+	 */
+	if (sse) {
+		struct capacity_state *cap_table = sse->cap_states;
+		struct capacity_state *curr_state, *new_state;
+
+		curr_state = &cap_table[curr_cap_idx];
+		new_state = &cap_table[new_cap_idx];
+
+		find_max_util(cpu_online_mask, cpu, util, &aff_util_bef,
+				&aff_util_aft);
+
+		trace_printk("edl: top: cpu=%d aff_util_bef=%lu aff_util_aft=%lu", cpu, aff_util_bef, aff_util_aft);
+
+		/* Energy before */
+		energy_diff -= (aff_util_bef*curr_state->power)/curr_state->cap;
+		trace_printk("edl: cpu=%d diff=%d", cpu, energy_diff);
+
+		/* Energy after */
+		energy_diff += (aff_util_aft*new_state->power)/new_state->cap;
+		trace_printk("edl: cpu=%d diff=%d", cpu, energy_diff);
+	}
+
+unlock:
+	rcu_read_unlock();
+
+	return energy_diff;
+}
+
+static int energy_diff_task(int cpu, struct task_struct *p)
+{
+	return energy_diff_load(cpu, p->se.avg.load_avg_contrib);
+}
+
+#endif
+
 static int wake_wide(struct task_struct *p)
 {
 	int factor = this_cpu_read(sd_llc_size);
@@ -4367,6 +4560,7 @@ find_idlest_cpu(struct sched_group *group, struct task_struct *p, int this_cpu)
 		if (load < min_load || (load == min_load && i == this_cpu)) {
 			min_load = load;
 			idlest = i;
+			trace_printk("fic: cpu=%d ediff=%d", i, energy_diff_task(i, p));
 		}
 	}
 
