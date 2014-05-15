@@ -99,5 +99,6 @@ static struct smp_operations __initdata mcpm_smp_ops = {
 
 void __init mcpm_smp_set_ops(void)
 {
+	pr_info("Set MCPM as smp_ops\n");
 	smp_set_ops(&mcpm_smp_ops);
 }
