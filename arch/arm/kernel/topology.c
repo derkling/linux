@@ -379,7 +379,7 @@ static inline const int cpu_corepower_flags(void)
 static struct sched_domain_topology_level arm_topology[] = {
 #ifdef CONFIG_SCHED_MC
 #ifdef CONFIG_SCHED_ENERGY
-	{ cpu_coregroup_mask, cpu_core_flags, cpu_core_energy, SD_INIT_NAME(MC) },
+	{ cpu_coregroup_mask, cpu_corepower_flags, cpu_core_energy, SD_INIT_NAME(MC) },
 #else
 	{ cpu_corepower_mask, cpu_corepower_flags, SD_INIT_NAME(GMC) },
 	{ cpu_coregroup_mask, cpu_core_flags, SD_INIT_NAME(MC) },
