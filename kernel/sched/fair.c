@@ -4741,9 +4741,18 @@ find_idlest_cpu(struct sched_group *group, struct task_struct *p, int this_cpu)
  */
 static int select_idle_sibling(struct task_struct *p, int target)
 {
-	struct sched_domain *sd;
+	struct sched_domain *sd = NULL, *tmp;
 	struct sched_group *sg;
 	int i = task_cpu(p);
+	int target_nrg;
+
+	if (energy_aware()) {
+		/* When energy-aware, go above sd_llc */
+		for_each_domain(target, tmp)
+			sd = tmp;
+
+		goto loop;
+	}
 
 	if (idle_cpu(target))
 		return target;
@@ -4758,6 +4767,10 @@ static int select_idle_sibling(struct task_struct *p, int target)
 	 * Otherwise, iterate the domains and find an elegible idle cpu.
 	 */
 	sd = rcu_dereference(per_cpu(sd_llc, target));
+
+loop:
+	target_nrg = energy_diff_task(target, p);
+
 	for_each_lower_domain(sd) {
 		sg = sd->groups;
 		do {
@@ -4766,7 +4779,11 @@ static int select_idle_sibling(struct task_struct *p, int target)
 				goto next;
 
 			for_each_cpu(i, sched_group_cpus(sg)) {
+				int nrg_diff;
 				if (i == target || !idle_cpu(i))
+					goto next;
+				nrg_diff = energy_diff_task(i, p);
+				if (nrg_diff > target_nrg)
 					goto next;
 			}
 
