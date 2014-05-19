@@ -4367,6 +4367,10 @@ static int energy_diff_load(int cpu, int util, int wakeups)
 		find_max_util(cpu_online_mask, cpu, util, &aff_util_bef,
 				&aff_util_aft);
 
+		/* Wakeups from idle estimation. */
+		unused_util = new_state->cap - aff_util_aft;
+		wakeup_energy = sse->wakeup_energy;
+
 		trace_printk("edl: top: cpu=%d aff_util_bef=%lu aff_util_aft=%lu", cpu, aff_util_bef, aff_util_aft);
 
 		/* Energy before */
@@ -4376,6 +4380,9 @@ static int energy_diff_load(int cpu, int util, int wakeups)
 		/* Energy after */
 		energy_diff += (aff_util_aft*new_state->power)/new_state->cap;
 		trace_printk("edl: cpu=%d diff=%d", cpu, energy_diff);
+
+		energy_diff += (wakeups * wakeup_energy >> 10) * unused_util /
+			new_state->cap;
 	}
 
 unlock:
