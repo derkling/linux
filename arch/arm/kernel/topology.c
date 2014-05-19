@@ -301,7 +301,7 @@ static struct capacity_state cap_states_cluster_a15[] = {
 static struct sched_energy energy_cluster_a7 = {
 	  .max_capacity   = 1024,
 	  .idle_power     =   10,
-	  .wakeup_energy  =   20, /* x1024 */
+	  .wakeup_energy  =    6, /* x1024 */
 	  .nr_cap_states  = ARRAY_SIZE(cap_states_cluster_a7),
 	  .cap_states     = cap_states_cluster_a7,
 };
@@ -309,7 +309,7 @@ static struct sched_energy energy_cluster_a7 = {
 static struct sched_energy energy_cluster_a15 = {
 	  .max_capacity   = 2015,
 	  .idle_power     =   25,
-	  .wakeup_energy  =  700, /* x1024 */
+	  .wakeup_energy  =  210, /* x1024 */
 	  .nr_cap_states  = ARRAY_SIZE(cap_states_cluster_a15),
 	  .cap_states     = cap_states_cluster_a15,
 };
@@ -339,7 +339,7 @@ static struct capacity_state cap_states_core_a15[] = {
 static struct sched_energy energy_core_a7 = {
 	  .max_capacity   = 1024,
 	  .idle_power     =    0, /* No power gating */
-	  .wakeup_energy  =    0, /* x1024 */
+	  .wakeup_energy  =    0, /* << 10 */
 	  .nr_cap_states  = ARRAY_SIZE(cap_states_core_a7),
 	  .cap_states     = cap_states_core_a7,
 };
@@ -347,7 +347,7 @@ static struct sched_energy energy_core_a7 = {
 static struct sched_energy energy_core_a15 = {
 	  .max_capacity   = 2015,
 	  .idle_power     =    0, /* No power gating */
-	  .wakeup_energy  =   15, /* x1024 */
+	  .wakeup_energy  =    5, /* << 10 */
 	  .nr_cap_states  = ARRAY_SIZE(cap_states_core_a15),
 	  .cap_states     = cap_states_core_a15,
 };
