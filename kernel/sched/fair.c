@@ -4229,14 +4229,14 @@ static void find_max_util(const struct cpumask *mask, int cpu, int util,
 	}
 }
 
-static int energy_diff_load(int cpu, int util)
+static int energy_diff_load(int cpu, int util, int wakeups)
 {
 	struct sched_domain *sd;
-	int i;
+	int i, wakeup_energy;
 	int energy_diff = 0;
 	int curr_cap_idx = -1;
 	int new_cap_idx = -1;
-	unsigned long max_util_bef, max_util_aft, aff_util_bef, aff_util_aft;
+	unsigned long max_util_bef, max_util_aft, aff_util_bef, aff_util_aft, unused_util;
 	unsigned long cpu_curr_capacity = atomic_long_read(&cpu_rq(cpu)->cfs.curr_capacity);
 
 	/* Set max_util_aft to the new cpu utilization for the iteration */
@@ -4282,7 +4282,7 @@ static int energy_diff_load(int cpu, int util)
 		curr_state = &cap_table[curr_cap_idx];
 		new_state = &cap_table[new_cap_idx];
 
-		trace_printk("edl: cpu=%d mu=%lu cc=%d cp=%d u=%d nc=%d np=%d", cpu, max_util_aft, curr_state->cap, curr_state->power, util, new_state->cap, new_state->power);
+		trace_printk("edl: cpu=%d mu=%lu cc=%d cp=%d u=%d wu=%d nc=%d np=%d", cpu, max_util_aft, curr_state->cap, curr_state->power, util, wakeups, new_state->cap, new_state->power);
 
 		/* 
 		 * Factor in other affected cpus 
@@ -4308,30 +4308,48 @@ static int energy_diff_load(int cpu, int util)
 				aff_util_bef = weighted_cpuload(cpu);
 			}
 			aff_util_aft = aff_util_bef + util;
+
+			/*
+			 * Estimate how many of the wakeups that happens while
+			 * cpu is idle assuming the are uniformly distributed.
+			 * Ignoring wakeups caused by other tasks.
+			 */
+			unused_util = new_state->cap - weighted_cpuload(cpu) - util;
 		} else {
 			/* Higher level - energy depends on activity at lower levels */
 			aff_util_bef = max_util_bef;
 			aff_util_aft = max_util_aft;
+
+			/* Wakeups from idle estimation. */
+			unused_util = new_state->cap - aff_util_aft;
 		}
 
 		/* 
 		 * Does the load change have any impact at this level (or any
 		 * parent level)?
 		 */
-		if (aff_util_bef == aff_util_aft && curr_cap_idx == new_cap_idx) {
+		if (aff_util_bef == aff_util_aft && curr_cap_idx == new_cap_idx
+				&& unused_util < 100) {
 			trace_printk("edl: cpu=%d impact accounted for", cpu);
 			goto unlock;
 		}
 
 		trace_printk("edl: cpu=%d aff_util_bef=%lu aff_util_aft=%lu max_util_bef=%lu max_util_aft=%lu", cpu, aff_util_bef, aff_util_aft, max_util_bef, max_util_aft);
 
+		wakeup_energy = sd->groups->sge->data.wakeup_energy;
+
 		/* Energy before */
 		energy_diff -= (aff_util_bef*curr_state->power)/curr_state->cap;
-		trace_printk("edl: cpu=%d diff=%d", cpu, energy_diff);
+		trace_printk("edl: cpu=%d util diff=%d", cpu, energy_diff);
 
 		/* Energy after */
 		energy_diff += (aff_util_aft*new_state->power)/new_state->cap;
-		trace_printk("edl: cpu=%d diff=%d", cpu, energy_diff);
+		trace_printk("edl: cpu=%d util diff=%d", cpu, energy_diff);
+
+		trace_printk("cpu=%d wu=%d wue=%d uu=%lu cap=%d", cpu, wakeups, wakeup_energy, unused_util, new_state->cap);
+		energy_diff += (wakeups * wakeup_energy >> 10) * unused_util /
+			new_state->cap;
+		trace_printk("edl: cpu=%d wake diff=%d", cpu, energy_diff);
 	}
 
 	/*
@@ -4368,7 +4386,8 @@ unlock:
 
 static int energy_diff_task(int cpu, struct task_struct *p)
 {
-	return energy_diff_load(cpu, p->se.avg.load_avg_contrib);
+	return energy_diff_load(cpu, p->se.avg.load_avg_contrib,
+			p->se.avg.wakeup_avg_sum);
 }
 
 #endif
