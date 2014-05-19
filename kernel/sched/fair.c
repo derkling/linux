@@ -4601,7 +4601,11 @@ static int select_idle_sibling(struct task_struct *p, int target)
 	struct sched_domain *sd;
 	struct sched_group *sg;
 	int i = task_cpu(p);
+	int target_energy;
 
+	trace_printk("sis: prev=%d target=%d", i, target);
+
+#ifndef CONFIG_SCHED_ENERGY
 	if (idle_cpu(target))
 		return target;
 
@@ -4610,6 +4614,9 @@ static int select_idle_sibling(struct task_struct *p, int target)
 	 */
 	if (i != target && cpus_share_cache(i, target) && idle_cpu(i))
 		return i;
+#endif
+	target_energy = energy_diff_task(target, p);
+	trace_printk("sis: target=%d energy=%d", target, target_energy);
 
 	/*
 	 * Otherwise, iterate the domains and find an elegible idle cpu.
@@ -4623,7 +4630,12 @@ static int select_idle_sibling(struct task_struct *p, int target)
 				goto next;
 
 			for_each_cpu(i, sched_group_cpus(sg)) {
+				int diff;
 				if (i == target || !idle_cpu(i))
+					goto next;
+				diff = energy_diff_task(i, p);
+				trace_printk("sis: i=%d energy=%d", i, diff);
+				if (diff >= target_energy)
 					goto next;
 			}
 
