@@ -4040,6 +4040,8 @@ static void update_wakeup_avg(struct task_struct *p)
 	}
 
 	sa->wakeup_avg_sum += 1024;
+
+	trace_printk("pid=%d wakeup_avg_sum=%lu", (int)p->pid, sa->wakeup_avg_sum);
 }
 
 static void task_waking_fair(struct task_struct *p)
@@ -4217,7 +4219,6 @@ static void find_max_util(const struct cpumask *mask, int cpu, int util,
 
 	for_each_cpu(i, mask) {
 		unsigned long cpu_util = weighted_cpuload(i);
-		trace_printk("fmu0: cu=%lu u=%d mb=%lu ma=%lu", cpu_util, util, *max_util_bef, *max_util_aft);
 
 		*max_util_bef = max(*max_util_bef, cpu_util);
 		
@@ -4225,7 +4226,6 @@ static void find_max_util(const struct cpumask *mask, int cpu, int util,
 			cpu_util += util;
 
 		*max_util_aft = max(*max_util_aft, cpu_util);
-		trace_printk("fmu1: cu=%lu mb=%lu ma=%lu", cpu_util, *max_util_bef, *max_util_aft);
 	}
 }
 
@@ -4555,6 +4555,7 @@ find_target_group(struct sched_domain *sd, struct task_struct *p,
 
 			avg_load += load;
 
+			trace_printk("fig: cpu=%d load=%lu pload=%lu", i, load, probe_load);
 			if (load < probe_load) {
 				probe_load = load;
 				probe_cpu = i;
@@ -4714,6 +4715,8 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	int new_cpu = cpu;
 	int want_affine = 0;
 	int sync = wake_flags & WF_SYNC;
+
+	trace_printk("strf: cpu=%d sync=%d pid=%d", cpu, sync, (int)p->pid);
 
 	if (p->nr_cpus_allowed == 1)
 		return prev_cpu;
