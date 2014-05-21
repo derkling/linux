@@ -4232,11 +4232,12 @@ static void find_max_util(const struct cpumask *mask, int cpu, int util,
 static int energy_diff_load(int cpu, int util, int wakeups)
 {
 	struct sched_domain *sd;
-	int i, wakeup_energy;
+	int i, wakeup_energy, idle_power;
 	int energy_diff = 0;
 	int curr_cap_idx = -1;
 	int new_cap_idx = -1;
-	unsigned long max_util_bef, max_util_aft, aff_util_bef, aff_util_aft, unused_util;
+	unsigned long max_util_bef, max_util_aft, aff_util_bef, aff_util_aft;
+	unsigned long unused_util_bef, unused_util_aft;
 	unsigned long cpu_curr_capacity = atomic_long_read(&cpu_rq(cpu)->cfs.curr_capacity);
 
 	/* Set max_util_aft to the new cpu utilization for the iteration */
@@ -4310,18 +4311,21 @@ static int energy_diff_load(int cpu, int util, int wakeups)
 			aff_util_aft = aff_util_bef + util;
 
 			/*
-			 * Estimate how many of the wakeups that happens while
-			 * cpu is idle assuming the are uniformly distributed.
+			 * Estimate idle time and how many of the wakeups that
+			 * happens while cpu is idle assuming the are uniformly
+			 * distributed.
 			 * Ignoring wakeups caused by other tasks.
 			 */
-			unused_util = new_state->cap - weighted_cpuload(cpu) - util;
+			unused_util_bef = curr_state->cap - weighted_cpuload(cpu);
+			unused_util_aft = new_state->cap - weighted_cpuload(cpu) - util;
 		} else {
 			/* Higher level - energy depends on activity at lower levels */
 			aff_util_bef = max_util_bef;
 			aff_util_aft = max_util_aft;
 
-			/* Wakeups from idle estimation. */
-			unused_util = new_state->cap - aff_util_aft;
+			/* Idle time and wakeups from idle estimation. */
+			unused_util_bef = curr_state->cap - aff_util_bef;
+			unused_util_aft = new_state->cap - aff_util_aft;
 		}
 
 		/* 
@@ -4329,7 +4333,7 @@ static int energy_diff_load(int cpu, int util, int wakeups)
 		 * parent level)?
 		 */
 		if (aff_util_bef == aff_util_aft && curr_cap_idx == new_cap_idx
-				&& unused_util < 100) {
+				&& unused_util_aft < 100) {
 			trace_printk("edl: cpu=%d impact accounted for", cpu);
 			goto unlock;
 		}
@@ -4337,18 +4341,24 @@ static int energy_diff_load(int cpu, int util, int wakeups)
 		trace_printk("edl: cpu=%d aff_util_bef=%lu aff_util_aft=%lu max_util_bef=%lu max_util_aft=%lu", cpu, aff_util_bef, aff_util_aft, max_util_bef, max_util_aft);
 
 		wakeup_energy = sd->groups->sge->data.wakeup_energy;
+		idle_power = sd->groups->sge->data.idle_power;
 
 		/* Energy before */
 		energy_diff -= (aff_util_bef*curr_state->power)/curr_state->cap;
 		trace_printk("edl: cpu=%d util diff=%d", cpu, energy_diff);
+		energy_diff -= (unused_util_bef * idle_power)/curr_state->cap;
+		trace_printk("edl: cpu=%d idle diff=%d", cpu, energy_diff);
 
 		/* Energy after */
 		energy_diff += (aff_util_aft*new_state->power)/new_state->cap;
 		trace_printk("edl: cpu=%d util diff=%d", cpu, energy_diff);
+		energy_diff += (unused_util_aft * idle_power)/new_state->cap;
+		trace_printk("edl: cpu=%d idle diff=%d", cpu, energy_diff);
 
-		trace_printk("cpu=%d wu=%d wue=%d uu=%lu cap=%d", cpu, wakeups, wakeup_energy, unused_util, new_state->cap);
-		energy_diff += (wakeups * wakeup_energy >> 10) * unused_util /
-			new_state->cap;
+		trace_printk("cpu=%d wu=%d wue=%d uu=%lu cap=%d", cpu, wakeups, wakeup_energy, unused_util_aft, new_state->cap);
+		energy_diff += (wakeups * wakeup_energy >> 10) * unused_util_aft
+			/ new_state->cap;
+
 		trace_printk("edl: cpu=%d wake diff=%d", cpu, energy_diff);
 	}
 
@@ -4367,22 +4377,28 @@ static int energy_diff_load(int cpu, int util, int wakeups)
 		find_max_util(cpu_online_mask, cpu, util, &aff_util_bef,
 				&aff_util_aft);
 
-		/* Wakeups from idle estimation. */
-		unused_util = new_state->cap - aff_util_aft;
+		/* Idle power and wakeups from idle estimation. */
+		unused_util_bef = curr_state->cap - aff_util_bef;
+		unused_util_aft = new_state->cap - aff_util_aft;
 		wakeup_energy = sse->wakeup_energy;
+		idle_power = sse->idle_power;
 
 		trace_printk("edl: top: cpu=%d aff_util_bef=%lu aff_util_aft=%lu", cpu, aff_util_bef, aff_util_aft);
 
 		/* Energy before */
 		energy_diff -= (aff_util_bef*curr_state->power)/curr_state->cap;
 		trace_printk("edl: cpu=%d diff=%d", cpu, energy_diff);
+		energy_diff -= (unused_util_bef * idle_power)/curr_state->cap;
+		trace_printk("edl: cpu=%d idle diff=%d", cpu, energy_diff);
 
 		/* Energy after */
 		energy_diff += (aff_util_aft*new_state->power)/new_state->cap;
 		trace_printk("edl: cpu=%d diff=%d", cpu, energy_diff);
+		energy_diff += (unused_util_aft * idle_power)/new_state->cap;
+		trace_printk("edl: cpu=%d idle diff=%d", cpu, energy_diff);
 
-		energy_diff += (wakeups * wakeup_energy >> 10) * unused_util /
-			new_state->cap;
+		energy_diff += (wakeups * wakeup_energy >> 10) * unused_util_aft
+			/ new_state->cap;
 	}
 
 unlock:
