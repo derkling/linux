@@ -4529,10 +4529,10 @@ find_target_group(struct sched_domain *sd, struct task_struct *p,
 		load_idx = sd->wake_idx;
 
 	do {
-		unsigned long load, avg_load;
+		unsigned long load, avg_load, probe_load = UINT_MAX;
 		int local_group;
 		int i;
-		int probe_cpu, probe_load = INT_MAX, energy_diff;
+		int probe_cpu, energy_diff;
 
 		/* Skip over this group if it has no CPUs allowed */
 		if (!cpumask_intersects(sched_group_cpus(group),
