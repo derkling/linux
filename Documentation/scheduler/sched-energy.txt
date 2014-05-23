@@ -1,0 +1,66 @@
+Energy cost model for energy-aware scheduling (EXPERIMENTAL)
+
+Introduction
+=============
+The basic energy model uses platform energy data stored in sched_energy data
+structures attached to the sched_groups in the sched_domain hierarchy. The
+energy cost model offers two function that can be used to guide scheduling
+decisions:
+
+1.	energy_diff_util(cpu, util, wakeups) 
+2.	energy_diff_task(cpu, task)
+
+Both return the energy cost delta caused by adding/removing utilization or a
+task to/from a specific cpu.
+
+CONFIG_SCHED_ENERGY needs to be defined in Kconfig to enable the energy cost
+model and associated data structures.
+
+The basic algorithm
+====================
+The basic idea is to determine the energy cost at each level in sched_domain
+hierarchy based on utilization:
+
+	for_each_domain(cpu, sd) {
+		sg = sched_group_of(cpu)
+		energy_before = curr_util(sg) * busy_power(sg)
+                	        + 1-curr_util(sg) * idle_power(sg)
+		energy_after = new_util(sg) * busy_power(sg)
+                	        + 1-new_util(sg) * idle_power(sg)
+                        	+ new_util(sg) * task_wakeups
+							* wakeup_energy(sg)
+		energy_diff += energy_before - energy_after
+	}
+
+	return energy_diff
+
+Platform energy data
+=====================
+struct sched_energy has the following members:
+
+cap_states:
+	List of struct capacity_state representing the supported capacity states 
+	(P-states). struct capacity_state has two members: cap and power, which 
+	represents the compute capacity and the busy power of the state. The 
+	list must ordered by capacity low->high.
+
+nr_cap_states:
+	Number of capacity states in cap_states.
+
+max_capacity:
+	The highest capacity supported by any of the capacity states in 
+	cap_states.
+
+idle_power:
+	Idle power consumption. Will be extended to support multiple C-states 
+	later.
+
+wakeup_energy:
+	Energy cost of wakeup/power-down cycle for the sched_group which this is 
+	attached to. Will be extended to support different costs for different 
+	C-states later.
+
+There are no unit requirements for the energy cost data. Data can be normalized 
+with any reference, however, the normalization must be consistent across all 
+energy cost data. That is, one bogo-joule/watt must be same quantity for data, 
+but we don't care what it is.
