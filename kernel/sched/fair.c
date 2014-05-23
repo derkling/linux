@@ -4324,11 +4324,13 @@ static void find_max_util(const struct cpumask *mask, int cpu, int util,
  *				+ 1-curr_util(sg) * idle_power(sg)
  *	energy_after = new_util(sg) * busy_power(sg)
  *				+ 1-new_util(sg) * idle_power(sg)
+ *				+ new_util(sg) * task_wakeups
+ *							* wakeup_energy(sg)
  *	energy_diff += energy_before - energy_after
  * }
  *
  */
-static int energy_diff_util(int cpu, int util)
+static int energy_diff_util(int cpu, int util, int wakeups)
 {
 	struct sched_domain *sd;
 	int i;
@@ -4421,7 +4423,8 @@ static int energy_diff_util(int cpu, int util)
 		 * The utilization change has no impact at this level (or any
 		 * parent level).
 		 */
-		if (aff_util_bef == aff_util_aft && curr_cap_idx == new_cap_idx)
+		if (aff_util_bef == aff_util_aft && curr_cap_idx == new_cap_idx
+				&& unused_util_aft < 100)
 			goto unlock;
 
 		/* Energy before */
@@ -4433,6 +4436,13 @@ static int energy_diff_util(int cpu, int util)
 		energy_diff += (aff_util_aft*new_state->power)/new_state->cap;
 		energy_diff += (unused_util_aft * sge->idle_power)
 				/new_state->cap;
+		/*
+		 * Estimate how many of the wakeups that happens while cpu is
+		 * idle assuming they are uniformly distributed. Ignoring
+		 * wakeups caused by other tasks.
+		 */
+		energy_diff += (wakeups * sge->wakeup_energy >> 10)
+				* unused_util_aft/new_state->cap;
 	}
 
 	/*
@@ -4463,6 +4473,8 @@ static int energy_diff_util(int cpu, int util)
 		energy_diff += (aff_util_aft*new_state->power)/new_state->cap;
 		energy_diff += (unused_util_aft * sse->idle_power)
 				/new_state->cap;
+		energy_diff += (wakeups * sse->wakeup_energy >> 10)
+				* unused_util_aft/new_state->cap;
 	}
 
 unlock:
@@ -4473,7 +4485,8 @@ unlock:
 
 static int energy_diff_task(int cpu, struct task_struct *p)
 {
-	return energy_diff_util(cpu, p->se.avg.load_avg_contrib);
+	return energy_diff_util(cpu, p->se.avg.load_avg_contrib,
+			p->se.avg.wakeup_avg_sum);
 }
 
 #else
