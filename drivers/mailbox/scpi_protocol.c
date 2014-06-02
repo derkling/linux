@@ -480,6 +480,56 @@ static struct scpi_dvfs_info *scpi_dvfs_get_info(u8 domain)
 	return info;
 }
 
+int scpi_sensor_get_idx(char *name)
+{
+	struct __packed {
+		u32 status;
+		u16 sensors;
+	} cap_buf;
+	struct __packed {
+		u32 status;
+		u16 sensor;
+		u8 class;
+		u8 trigger;
+		char name[20];
+	} info_buf;
+	int ret;
+	u16 sensor_id;
+
+	ret = scpi_send_message(SCPI_CMD_SENSOR_CAPABILITIES, NULL, 0, &cap_buf);
+	if (ret)
+		goto out;
+
+	for (sensor_id = 0; sensor_id < cap_buf.sensors; sensor_id++) {
+		ret = scpi_send_message(SCPI_CMD_SENSOR_INFO, &sensor_id,
+					sizeof(sensor_id), &info_buf);
+		if (ret)
+			break;
+
+		if (!strcmp(name, info_buf.name)) {
+			ret = sensor_id;
+			break;
+		}
+	}
+out:
+	return ret;
+}
+
+int scpi_sensor_get_value(u16 sensor, u32 *val)
+{
+	struct __packed {
+		u32 status;
+		u32 val;
+	} buf;
+	int ret;
+
+	ret = scpi_send_message(SCPI_CMD_SENSOR_VALUE, &sensor, sizeof(sensor), &buf);
+	if (!ret)
+		*val = buf.val;
+
+	return ret;
+}
+
 static struct scpi_ops scpi_ops = {
 	.get_version = scpi_get_version,
 	.clk_get_range = scpi_clk_get_range,
@@ -488,6 +538,8 @@ static struct scpi_ops scpi_ops = {
 	.dvfs_get_idx = scpi_dvfs_get_idx,
 	.dvfs_set_idx = scpi_dvfs_set_idx,
 	.dvfs_get_info = scpi_dvfs_get_info,
+	.sensor_get_idx = scpi_sensor_get_idx,
+	.sensor_get_value = scpi_sensor_get_value,
 };
 
 struct scpi_ops *get_scpi_ops(void)
