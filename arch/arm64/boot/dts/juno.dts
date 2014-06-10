@@ -75,7 +75,7 @@
 			enable-method = "psci";
 			clocks = <&scpi_dvfs 1>;
 			clock-names = "vlittle";
-			cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>;
+			/* cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>; */
 		};
 
 		CPU1:cpu@101 {
@@ -85,7 +85,7 @@
 			enable-method = "psci";
 			clocks = <&scpi_dvfs 1>;
 			clock-names = "vlittle";
-			cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>;
+			/* cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>; */
 		};
 
 		CPU2:cpu@102 {
@@ -95,7 +95,7 @@
 			enable-method = "psci";
 			clocks = <&scpi_dvfs 1>;
 			clock-names = "vlittle";
-			cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>;
+			/* cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>; */
 		};
 
 		CPU3:cpu@103 {
@@ -105,7 +105,7 @@
 			enable-method = "psci";
 			clocks = <&scpi_dvfs 1>;
 			clock-names = "vlittle";
-			cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>;
+			/* cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>; */
 		};
 
 		CPU4:cpu@0 {
@@ -115,7 +115,7 @@
 			enable-method = "psci";
 			clocks = <&scpi_dvfs 0>;
 			clock-names = "vbig";
-			cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>;
+			/* cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>; */
 		};
 
 		CPU5:cpu@1 {
@@ -125,7 +125,7 @@
 			enable-method = "psci";
 			clocks = <&scpi_dvfs 0>;
 			clock-names = "vbig";
-			cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>;
+			/* cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>; */
 		};
 	};
 
