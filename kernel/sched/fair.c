@@ -4292,7 +4292,19 @@ static int wake_affine(struct sched_domain *sd, struct task_struct *p, int sync)
 	this_cpu  = smp_processor_id();
 	prev_cpu  = task_cpu(p);
 	load	  = source_load(prev_cpu, idx, 0);
+	{
+		unsigned long uw_val = source_load(prev_cpu, idx, 1);
+		if ((unsigned long)load != uw_val)
+			trace_printk("source_load[0]=%lu source_load[1]=%lu\n",
+					(unsigned long)load, uw_val);
+	}
 	this_load = target_load(this_cpu, idx, 0);
+	{
+		unsigned long uw_val = target_load(this_cpu, idx, 1);
+		if ((unsigned long)this_load != uw_val)
+			trace_printk("target_load[0]=%lu target_load[1]=%lu\n",
+					(unsigned long)this_load, uw_val);
+	}
 
 	/*
 	 * If sync wakeup then subtract the (maximum possible)
@@ -4346,6 +4358,16 @@ static int wake_affine(struct sched_domain *sd, struct task_struct *p, int sync)
 	schedstat_inc(p, se.statistics.nr_wakeups_affine_attempts);
 	tl_per_task = cpu_avg_load_per_task(this_cpu);
 
+	{
+		if (balanced || this_load <= load) {
+			unsigned long val = target_load(prev_cpu, idx, 0);
+			unsigned long uw_val = target_load(prev_cpu, idx, 1);
+			if (val!= uw_val)
+				trace_printk("target_load[0]=%lu target_load[1]=%lu\n",
+						val, uw_val);
+		}
+	}
+
 	if (balanced ||
 	    (this_load <= load &&
 	     this_load + target_load(prev_cpu, idx, 0) <= tl_per_task)) {
@@ -4396,10 +4418,24 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 
 		for_each_cpu(i, sched_group_cpus(group)) {
 			/* Bias balancing toward cpus of our domain */
-			if (local_group)
+			if (local_group) {
 				load = source_load(i, load_idx, 0);
-			else
+				{
+					unsigned long uw_val = source_load(i, load_idx, 1);
+					if ((unsigned long)load != uw_val)
+						trace_printk("source_load[0]=%lu source_load[1]=%lu\n",
+								(unsigned long)load, uw_val);
+				}
+			}
+			else {
 				load = target_load(i, load_idx, 0);
+				{
+					unsigned long uw_val = target_load(i, load_idx, 1);
+					if ((unsigned long)load != uw_val)
+						trace_printk("target_load[0]=%lu target_load[1]=%lu\n",
+								(unsigned long)load, uw_val);
+				}
+			}
 
 			avg_load += load;
 		}
@@ -4433,7 +4469,12 @@ find_idlest_cpu(struct sched_group *group, struct task_struct *p, int this_cpu)
 	/* Traverse only the allowed CPUs */
 	for_each_cpu_and(i, sched_group_cpus(group), tsk_cpus_allowed(p)) {
 		load = cpu_load(i, 0);
-
+		{
+			unsigned long uw_val = cpu_load(i, 1);
+			if (load != uw_val)
+				trace_printk("cpu_load[0]=%lu cpu_load[1]=%lu\n",
+						load, uw_val);
+		}
 		if (load < min_load || (load == min_load && i == this_cpu)) {
 			min_load = load;
 			idlest = i;
@@ -5402,6 +5443,12 @@ static int move_tasks(struct lb_env *env)
 			goto next;
 
 		load = task_h_load(p, 0);
+		{
+			unsigned long uw_val = task_h_load(p, 1);
+			if (load != uw_val)
+				trace_printk("task_h_load[0]=%lu task_h_load[1]=%lu\n",
+						load, uw_val);
+		}
 
 		if (sched_feat(LB_MIN) && load < 16 && !env->sd->nr_balance_failed)
 			goto next;
@@ -5916,10 +5963,25 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 		struct rq *rq = cpu_rq(i);
 
 		/* Bias balancing toward cpus of our domain */
-		if (local_group)
+		if (local_group) {
 			load = target_load(i, load_idx, 0);
-		else
+			{
+				unsigned long uw_val = target_load(i, load_idx, 1);
+				if ((unsigned long)load != uw_val)
+					trace_printk("target_load[0]=%lu target_load[1]=%lu\n",
+							(unsigned long)load, uw_val);
+			}
+		}
+		else {
 			load = source_load(i, load_idx, 0);
+			{
+				unsigned long uw_val = source_load(i, load_idx, 1);
+				if ((unsigned long)load != uw_val)
+					trace_printk("source_load[0]=%lu source_load[1]=%lu\n",
+							(unsigned long)load, uw_val);
+			}
+
+		}
 
 		sgs->group_load += load;
 		sgs->sum_nr_running += rq->nr_running;
@@ -5928,6 +5990,13 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 		sgs->nr_preferred_running += rq->nr_preferred_running;
 #endif
 		sgs->sum_weighted_load += cpu_load(i, 0);
+		{
+			unsigned long val = cpu_load(i, 0);
+			unsigned long uw_val = cpu_load(i, 1);
+			if (val != uw_val)
+				trace_printk("cpu_load[0]=%lu cpu_load[1]=%lu\n",
+						val, uw_val);
+		}
 		if (idle_cpu(i))
 			sgs->idle_cpus++;
 	}
@@ -6423,6 +6492,12 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 			capacity_factor = fix_small_capacity(env->sd, group);
 
 		load = cpu_load(i, 0);
+		{
+			unsigned long uw_val = cpu_load(i, 1);
+			if (load != uw_val)
+				trace_printk("cpu_load[0]=%lu cpu_load[1]=%lu\n",
+						load, uw_val);
+		}
 
 		/*
 		 * When comparing with imbalance, use cpu_load()
