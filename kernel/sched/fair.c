@@ -4264,6 +4264,11 @@ static long effective_load(struct task_group *tg, int cpu, long wl, long wg)
  * that the controller will adjust the capacity to match the load.
  */
 
+static inline bool energy_aware(void)
+{
+	return sched_feat(ENERGY_AWARE);
+}
+
 /*
  * Find suitable capacity state for utilization.
  * If over-utilized, return nr_cap_states.
