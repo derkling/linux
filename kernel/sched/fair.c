@@ -4264,24 +4264,18 @@ static long effective_load(struct task_group *tg, int cpu, long wl, long wg)
  * that the controller will adjust the capacity to match the load.
  */
 
-#define for_each_energy_state(state) \
-		for (; state->cap; state++)
-
 /*
  * Find suitable capacity state for utilization.
  * If over-utilized, return nr_cap_states.
  */
 static int energy_match_cap(unsigned long util,
-		struct capacity_state *cap_table)
+		struct sched_energy *sge)
 {
-	struct capacity_state *state = cap_table;
 	int idx;
 
-	idx = 0;
-	for_each_energy_state(state) {
-		if (state->cap >= util)
+	for (idx = 0; idx < sge->nr_cap_states; idx++) {
+		if (sge->cap_states[idx].cap >= util)
 			return idx;
-		idx++;
 	}
 
 	return idx;
@@ -4359,8 +4353,7 @@ static int energy_diff_util(int cpu, int util, int wakeups)
 		if (curr_cap_idx < 0 || !(sd->flags & SD_SHARE_CAP_STATES)) {
 
 			/* TODO: Fix assumption 2 and 3. */
-			curr_cap_idx = energy_match_cap(cpu_curr_capacity,
-					cap_table);
+			curr_cap_idx = energy_match_cap(cpu_curr_capacity, sge);
 
 			/*
 			 * If we remove tasks, i.e. util < 0, we should find
@@ -4376,7 +4369,7 @@ static int energy_diff_util(int cpu, int util, int wakeups)
 
 			if (cap_table[curr_cap_idx].cap < max_util_aft) {
 				new_cap_idx = energy_match_cap(max_util_aft,
-						cap_table);
+						sge);
 				if (new_cap_idx >= sge->nr_cap_states) {
 					/* can't handle the additional load */
 					energy_diff = INT_MAX;
