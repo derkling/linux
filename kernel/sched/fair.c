@@ -4233,7 +4233,6 @@ static long effective_load(struct task_group *tg, int cpu, long wl, long wg)
 
 #endif
 
-#ifdef CONFIG_SCHED_ENERGY
 /*
  * Energy model for energy-aware scheduling
  *
@@ -4483,16 +4482,12 @@ unlock:
 
 static int energy_diff_task(int cpu, struct task_struct *p)
 {
+	if (!energy_aware())
+		return INT_MAX;
+
 	return energy_diff_util(cpu, p->se.avg.load_avg_contrib,
 			p->se.avg.wakeup_avg_sum);
 }
-
-#else
-static int energy_diff_task(int cpu, struct task_struct *p)
-{
-	return INT_MAX;
-}
-#endif
 
 static int wake_wide(struct task_struct *p)
 {
@@ -4683,15 +4678,15 @@ find_target_group(struct sched_domain *sd, struct task_struct *p,
 		}
 	} while (group = group->next, group != sd->groups);
 
-#ifdef CONFIG_SCHED_ENERGY
-	if (energy && min_energy < local_energy)
-		return energy;
-	return NULL;
-#else
+	if (energy_aware()) {
+		if (energy && min_energy < local_energy)
+			return energy;
+		return NULL;
+	}
+
 	if (!idlest || 100*this_load < imbalance*min_load)
 		return NULL;
 	return idlest;
-#endif
 }
 
 /*
@@ -4737,16 +4732,16 @@ static int select_idle_sibling(struct task_struct *p, int target)
 	int i = task_cpu(p);
 	int target_energy;
 
-#ifndef CONFIG_SCHED_ENERGY
-	if (idle_cpu(target))
+	if (!energy_aware() && idle_cpu(target))
 		return target;
 
 	/*
 	 * If the prevous cpu is cache affine and idle, don't be stupid.
 	 */
-	if (i != target && cpus_share_cache(i, target) && idle_cpu(i))
+	if (!energy_aware() && i != target && cpus_share_cache(i, target)
+			&& idle_cpu(i))
 		return i;
-#endif
+
 	target_energy = energy_diff_task(target, p);
 
 	/*
