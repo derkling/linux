@@ -80,7 +80,7 @@ static inline int cpu_idle_poll(void)
  * set, and it returns with polling set.  If it ever stops polling, it
  * must clear the polling bit.
  */
-static void cpuidle_idle_call(unsigned int latency_req)
+static void cpuidle_idle_call(unsigned int latency_req, s64 next_timer_event)
 {
 	struct cpuidle_device *dev = __this_cpu_read(cpuidle_devices);
 	struct cpuidle_driver *drv = cpuidle_get_cpu_driver(dev);
@@ -113,7 +113,7 @@ static void cpuidle_idle_call(unsigned int latency_req)
 	 * Ask the cpuidle framework to choose a convenient idle state.
 	 * Fall back to the default arch idle method on errors.
 	 */
-	next_state = cpuidle_select(drv, dev, latency_req);
+	next_state = cpuidle_select(drv, dev, latency_req, next_timer_event);
 	if (next_state < 0) {
 use_default:
 		/*
@@ -195,6 +195,7 @@ exit_idle:
 static void cpu_idle_loop(void)
 {
 	unsigned int latency_req;
+	s64 next_timer_event;
 
 	while (1) {
 		/*
@@ -221,6 +222,9 @@ static void cpu_idle_loop(void)
 
 			latency_req = pm_qos_request(PM_QOS_CPU_DMA_LATENCY);
 
+			next_timer_event =
+				ktime_to_us(tick_nohz_get_sleep_length());
+
 			/*
 			 * In poll mode we reenable interrupts and spin.
 			 *
@@ -238,7 +242,8 @@ static void cpu_idle_loop(void)
 			    tick_check_broadcast_expired())
 				cpu_idle_poll();
 			else
-				cpuidle_idle_call(latency_req);
+				cpuidle_idle_call(latency_req,
+						  next_timer_event);
 
 			arch_cpu_idle_exit();
 		}
