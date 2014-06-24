@@ -384,6 +384,18 @@ static int exynos_get_crit_temp(struct thermal_zone_device *thermal,
 	return ret;
 }
 
+/* Set trip temperature callback functions for thermal zone */
+static int exynos_set_trip_temp(struct thermal_zone_device *thermal, int trip,
+				unsigned long temp)
+{
+	if (trip < GET_TRIP(MONITOR_ZONE) || trip > GET_TRIP(PANIC_ZONE))
+		return -EINVAL;
+
+	th_zone->sensor_conf->trip_data.trip_val[trip] = temp / MCELSIUS;
+
+	return 0;
+}
+
 /* Bind callback functions for thermal zone */
 static int exynos_bind(struct thermal_zone_device *thermal,
 			struct thermal_cooling_device *cdev)
@@ -704,9 +716,7 @@ static struct thermal_zone_device_ops const exynos_dev_ops = {
 	.get_trip_type = exynos_get_trip_type,
 	.get_trip_temp = exynos_get_trip_temp,
 	.get_crit_temp = exynos_get_crit_temp,
-#if defined(CONFIG_SOC_EXYNOS5430) || defined(CONFIG_SOC_EXYNOS5422)
-	.throttle_cpu_hotplug = exynos_throttle_cpu_hotplug,
-#endif
+	.set_trip_temp = exynos_set_trip_temp,
 };
 
 /*
@@ -760,6 +770,7 @@ static int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf)
 	int i, j;
 #endif
 	struct cpumask mask_val;
+	unsigned int trip_writability;
 
 	if (!sensor_conf || !sensor_conf->read_temperature) {
 		pr_err("Temperature sensor not initialised\n");
@@ -800,9 +811,13 @@ static int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf)
 #endif
 	th_zone->cool_dev_size = count;
 
+	/* Make all trips writable */
+	trip_writability = (1 << th_zone->sensor_conf->trip_data.trip_count) - 1;
+
 	th_zone->therm_dev = thermal_zone_device_register(sensor_conf->name,
-			th_zone->sensor_conf->trip_data.trip_count, 0, NULL, &exynos_dev_ops, NULL, PASSIVE_INTERVAL,
-			IDLE_INTERVAL);
+			th_zone->sensor_conf->trip_data.trip_count,
+			trip_writability, NULL, &exynos_dev_ops,
+			NULL, PASSIVE_INTERVAL, IDLE_INTERVAL);
 
 	if (IS_ERR(th_zone->therm_dev)) {
 		pr_err("Failed to register thermal zone device\n");
