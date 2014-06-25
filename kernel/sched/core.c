@@ -558,10 +558,12 @@ int get_nohz_timer_target(void)
 	int cpu = smp_processor_id();
 	int i;
 	struct sched_domain *sd;
+	struct cpumask sd_span;
 
 	rcu_read_lock();
 	for_each_domain(cpu, sd) {
-		for_each_cpu(i, sched_domain_span(sd)) {
+		cpumask_andnot(&sd_span, sched_domain_span(sd), cpu_asleep_mask);
+		for_each_cpu(i, &sd_span) {
 			if (!idle_cpu(i)) {
 				cpu = i;
 				goto unlock;
@@ -1194,6 +1196,8 @@ static int select_fallback_rq(int cpu, struct task_struct *p)
 				continue;
 			if (!cpu_active(dest_cpu))
 				continue;
+			if (cpu_asleep(dest_cpu))
+				continue;
 			if (cpumask_test_cpu(dest_cpu, tsk_cpus_allowed(p)))
 				return dest_cpu;
 		}
@@ -1205,6 +1209,8 @@ static int select_fallback_rq(int cpu, struct task_struct *p)
 			if (!cpu_online(dest_cpu))
 				continue;
 			if (!cpu_active(dest_cpu))
+				continue;
+			if (cpu_asleep(dest_cpu))
 				continue;
 			goto out;
 		}
@@ -1283,6 +1289,7 @@ ttwu_stat(struct task_struct *p, int cpu, int wake_flags)
 
 #ifdef CONFIG_SMP
 	int this_cpu = smp_processor_id();
+	struct cpumask sd_span;
 
 	if (cpu == this_cpu) {
 		schedstat_inc(rq, ttwu_local);
@@ -1293,7 +1300,8 @@ ttwu_stat(struct task_struct *p, int cpu, int wake_flags)
 		schedstat_inc(p, se.statistics.nr_wakeups_remote);
 		rcu_read_lock();
 		for_each_domain(this_cpu, sd) {
-			if (cpumask_test_cpu(cpu, sched_domain_span(sd))) {
+			cpumask_andnot(&sd_span, sched_domain_span(sd), cpu_asleep_mask);
+			if (cpumask_test_cpu(cpu, &sd_span)) {
 				schedstat_inc(sd, ttwu_wake_remote);
 				break;
 			}
@@ -2684,7 +2692,7 @@ void sched_exec(void)
 	if (dest_cpu == smp_processor_id())
 		goto unlock;
 
-	if (likely(cpu_active(dest_cpu))) {
+	if (likely(cpu_active(dest_cpu) && !cpu_asleep(dest_cpu))) {
 		struct migration_arg arg = { p, dest_cpu };
 
 		raw_spin_unlock_irqrestore(&p->pi_lock, flags);
@@ -3827,6 +3835,9 @@ int idle_cpu(int cpu)
 		return 0;
 #endif
 
+	if (cpu_asleep(cpu))
+		return 0;
+
 	return 1;
 }
 
@@ -4849,6 +4860,7 @@ int set_cpus_allowed_ptr(struct task_struct *p, const struct cpumask *new_mask)
 	struct rq *rq;
 	unsigned int dest_cpu;
 	int ret = 0;
+	struct cpumask filtered_mask;
 
 	rq = task_rq_lock(p, &flags);
 
@@ -4860,13 +4872,21 @@ int set_cpus_allowed_ptr(struct task_struct *p, const struct cpumask *new_mask)
 		goto out;
 	}
 
+	if (cpumask_intersects(new_mask, cpu_asleep_mask)) {
+		ret = -EINVAL;
+		goto out;
+	}
+
 	do_set_cpus_allowed(p, new_mask);
 
 	/* Can the task run on the task's current CPU? If so, we're done */
 	if (cpumask_test_cpu(task_cpu(p), new_mask))
 		goto out;
 
-	dest_cpu = cpumask_any_and(cpu_active_mask, new_mask);
+	/* remove asleep CPUs from consideration */
+	cpumask_andnot(&filtered_mask, new_mask, cpu_asleep_mask);
+
+	dest_cpu = cpumask_any_and(cpu_active_mask, &filtered_mask);
 	if (p->on_rq) {
 		struct migration_arg arg = { p, dest_cpu };
 		/* Need help from migration thread: drop lock and wait. */
@@ -5028,6 +5048,34 @@ static void migrate_tasks(unsigned int dead_cpu)
 	}
 
 	rq->stop = stop;
+}
+
+/* No RQ locks required */
+void sched_unclear_cpu(unsigned int cpu)
+{
+	set_cpu_asleep((long)cpu, false);
+}
+/* called with rq lock held whilst running stopper */
+void sched_clear_cpu(unsigned int cpu)
+{
+	/*
+	 * this should be called from inside
+	 * a stopper running on the CPU we're going
+	 * to remove from wakeup and load balancing
+	 * decisions to avoid leaving tasks behind.
+	 */
+	WARN_ON(cpu != smp_processor_id());
+	set_cpu_asleep(cpu, true);
+}
+
+void __fake_hotplug_migrate_tasks(void)
+{
+	unsigned int cpu = smp_processor_id();
+	struct rq *rq = cpu_rq(cpu);
+	raw_spin_lock(&rq->lock);
+	migrate_tasks(cpu);
+	sched_clear_cpu(cpu);
+	raw_spin_unlock(&rq->lock);
 }
 
 #endif /* CONFIG_HOTPLUG_CPU */
