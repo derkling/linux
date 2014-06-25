@@ -3444,9 +3444,11 @@ find_idlest_cpu(struct sched_group *group, struct task_struct *p, int this_cpu)
 	unsigned long load, min_load = ULONG_MAX;
 	int idlest = -1;
 	int i;
+	struct cpumask sd_group_cpus;
 
 	/* Traverse only the allowed CPUs */
-	for_each_cpu_and(i, sched_group_cpus(group), tsk_cpus_allowed(p)) {
+	cpumask_andnot(&sd_group_cpus, sched_group_cpus(group), cpu_asleep_mask);
+	for_each_cpu_and(i, &sd_group_cpus, tsk_cpus_allowed(p)) {
 		load = weighted_cpuload(i);
 
 		if (load < min_load || (load == min_load && i == this_cpu)) {
@@ -3465,6 +3467,7 @@ static int select_idle_sibling(struct task_struct *p, int target)
 {
 	struct sched_domain *sd;
 	struct sched_group *sg;
+	struct cpumask sd_group_cpus;
 	int i = task_cpu(p);
 
 	if (idle_cpu(target))
@@ -3483,16 +3486,17 @@ static int select_idle_sibling(struct task_struct *p, int target)
 	for_each_lower_domain(sd) {
 		sg = sd->groups;
 		do {
-			if (!cpumask_intersects(sched_group_cpus(sg),
+			cpumask_andnot(&sd_group_cpus, sched_group_cpus(sg), cpu_asleep_mask);
+			if (!cpumask_intersects(&sd_group_cpus,
 						tsk_cpus_allowed(p)))
 				goto next;
 
-			for_each_cpu(i, sched_group_cpus(sg)) {
+			for_each_cpu(i, &sd_group_cpus) {
 				if (i == target || !idle_cpu(i))
 					goto next;
 			}
 
-			target = cpumask_first_and(sched_group_cpus(sg),
+			target = cpumask_first_and(&sd_group_cpus,
 					tsk_cpus_allowed(p));
 			goto done;
 next:
@@ -3562,11 +3566,12 @@ static enum hrtimer_restart hmp_cpu_keepalive_notify(struct hrtimer *hrtimer)
  */
 static void hmp_keepalive_delay(unsigned int *ns_delay)
 {
+	unsigned int us_delay = UINT_MAX;
+	unsigned int us_max_delay = *ns_delay / 1000;
 	struct cpuidle_driver *drv;
-	drv = cpuidle_driver_ref();
+
+	drv = cpuidle_get_driver();
 	if (drv) {
-		unsigned int us_delay = UINT_MAX;
-		unsigned int us_max_delay = *ns_delay / 1000;
 		int idx;
 		/* if cpuidle states are guaranteed to be sorted we
 		 * could stop at the first match.
@@ -3577,12 +3582,12 @@ static void hmp_keepalive_delay(unsigned int *ns_delay)
 				us_delay = drv->states[idx].target_residency;
 			}
 		}
-		if (us_delay == UINT_MAX)
-			*ns_delay = 0; /* no timer required */
-		else
-			*ns_delay = 1000 * (us_delay - 1);
 	}
-	cpuidle_driver_unref();
+
+	if (us_delay == UINT_MAX)
+		*ns_delay = 0; /* no timer required */
+	else
+		*ns_delay = 1000 * (us_delay - 1);
 }
 
 static void hmp_cpu_keepalive_trigger(void)
@@ -4234,6 +4239,8 @@ static inline unsigned int hmp_domain_min_load(struct hmp_domain *hmpd,
 	 * right HMP domain
 	 */
 	cpumask_and(&temp_cpumask, &hmpd->cpus, affinity ? affinity : cpu_online_mask);
+	/* remove sleeping CPUs */
+	cpumask_andnot(&temp_cpumask, &temp_cpumask, cpu_asleep_mask);
 
 	for_each_cpu_mask(cpu, temp_cpumask) {
 		avg = &cpu_rq(cpu)->avg;
@@ -4351,6 +4358,7 @@ select_task_rq_fair(struct task_struct *p, int sd_flag, int wake_flags)
 	int new_cpu = cpu;
 	int want_affine = 0;
 	int sync = wake_flags & WF_SYNC;
+	struct cpumask sd_span;
 
 	if (p->nr_cpus_allowed == 1)
 		return prev_cpu;
@@ -4383,8 +4391,9 @@ select_task_rq_fair(struct task_struct *p, int sd_flag, int wake_flags)
 		 * If both cpu and prev_cpu are part of this domain,
 		 * cpu is a valid SD_WAKE_AFFINE target.
 		 */
+		cpumask_andnot(&sd_span, sched_domain_span(tmp), cpu_asleep_mask);
 		if (want_affine && (tmp->flags & SD_WAKE_AFFINE) &&
-		    cpumask_test_cpu(prev_cpu, sched_domain_span(tmp))) {
+		    cpumask_test_cpu(prev_cpu, &sd_span)) {
 			affine_sd = tmp;
 			break;
 		}
@@ -6120,7 +6129,9 @@ static int load_balance(int this_cpu, struct rq *this_rq,
 	if (idle == CPU_NEWLY_IDLE)
 		env.dst_grpmask = NULL;
 
-	cpumask_copy(cpus, cpu_active_mask);
+	/* remove asleep CPUs from list */
+	/* cpumask_copy(cpus, cpu_active_mask); */
+	cpumask_andnot(cpus, cpu_active_mask, cpu_asleep_mask);
 
 	schedstat_inc(sd, lb_count[idle]);
 
@@ -6400,6 +6411,10 @@ static int __do_active_load_balance_cpu_stop(void *data, bool check_sd_lb_flag)
 #ifdef CONFIG_SCHED_HMP
 	p = busiest_rq->migrate_task;
 #endif
+
+	if (cpu_asleep(target_cpu))
+		goto out_unlock;
+
 	/* make sure the requested cpu hasn't gone down in the meantime */
 	if (unlikely(busiest_cpu != smp_processor_id() ||
 		     !busiest_rq->active_balance))
@@ -6810,6 +6825,8 @@ static inline int nohz_kick_needed(struct rq *rq, int cpu)
 	if (unlikely(idle_cpu(cpu)))
 		return 0;
 
+	if (unlikely(cpu_asleep(cpu)))
+		return 0;
        /*
 	* We may be recently in ticked or tickless idle mode. At the first
 	* busy tick after returning from idle, we will update the busy stats.
@@ -7071,6 +7088,9 @@ static void hmp_migrate_runnable_task(struct rq *rq)
 		goto out;
 
 	if (src_rq->nr_running <= 1)
+		goto out;
+
+	if (cpu_asleep(dst_cpu))
 		goto out;
 
 	if (task_rq(p) != src_rq)
