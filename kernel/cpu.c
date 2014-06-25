@@ -262,15 +262,23 @@ static inline void check_for_tasks(int cpu)
 
 struct take_cpu_down_param {
 	unsigned long mod;
+	unsigned int fail_before_powerdown;
 	void *hcpu;
 };
+
+extern void __fake_hotplug_migrate_tasks(void);
 
 /* Take this CPU down. */
 static int __ref take_cpu_down(void *_param)
 {
 	struct take_cpu_down_param *param = _param;
 	int err;
-
+	/* HACK HACK HACK - remove irqs and tasks */
+	if (param->fail_before_powerdown) {
+		migrate_irqs();
+		__fake_hotplug_migrate_tasks();
+		return -EROFS;
+	}
 	/* Ensure this CPU doesn't handle any more interrupts. */
 	err = __cpu_disable();
 	if (err < 0)
@@ -283,7 +291,7 @@ static int __ref take_cpu_down(void *_param)
 }
 
 /* Requires cpu_add_remove_lock to be held */
-static int __ref _cpu_down(unsigned int cpu, int tasks_frozen)
+static int __ref _cpu_down(unsigned int cpu, int tasks_frozen, int fail_before_powerdown)
 {
 	int err, nr_calls = 0;
 	void *hcpu = (void *)(long)cpu;
@@ -291,6 +299,7 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen)
 	struct take_cpu_down_param tcd_param = {
 		.mod = mod,
 		.hcpu = hcpu,
+		.fail_before_powerdown = fail_before_powerdown
 	};
 
 	if (num_online_cpus() == 1)
@@ -314,6 +323,7 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen)
 	err = __stop_machine(take_cpu_down, &tcd_param, cpumask_of(cpu));
 	if (err) {
 		/* CPU didn't die: tell everyone.  Can't complain. */
+		/* lightweight hotplug triggers this intentionally */
 		smpboot_unpark_threads(cpu);
 		cpu_notify_nofail(CPU_DOWN_FAILED | mod, hcpu);
 		goto out_release;
@@ -345,6 +355,29 @@ out_release:
 	return err;
 }
 
+int __ref cpu_down_willfail(unsigned int cpu)
+{
+	int err;
+
+	cpu_maps_update_begin();
+
+	if (cpu_hotplug_disabled) {
+		err = -EBUSY;
+		goto out;
+	}
+	if (!cpu_active(cpu)) {
+		err = -EBUSY;
+		goto out;
+	}
+
+	err = _cpu_down(cpu, 0, 1);
+
+out:
+	cpu_maps_update_done();
+	return err;
+}
+EXPORT_SYMBOL(cpu_down_willfail);
+
 int __ref cpu_down(unsigned int cpu)
 {
 	int err;
@@ -356,7 +389,7 @@ int __ref cpu_down(unsigned int cpu)
 		goto out;
 	}
 
-	err = _cpu_down(cpu, 0);
+	err = _cpu_down(cpu, 0, 0);
 
 out:
 	cpu_maps_update_done();
@@ -494,7 +527,7 @@ int disable_nonboot_cpus(void)
 	for_each_online_cpu(cpu) {
 		if (cpu == first_cpu)
 			continue;
-		error = _cpu_down(cpu, 1);
+		error = _cpu_down(cpu, 1, 0);
 		if (!error)
 			cpumask_set_cpu(cpu, frozen_cpus);
 		else {

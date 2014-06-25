@@ -88,9 +88,52 @@ static ssize_t __ref store_online(struct device *dev,
 }
 static DEVICE_ATTR(online, 0644, show_online, store_online);
 
+static ssize_t show_clear(struct device *dev,
+			   struct device_attribute *attr,
+			   char *buf)
+{
+	struct cpu *cpu = container_of(dev, struct cpu, dev);
+
+	return sprintf(buf, "%u\n", !!cpu_asleep(cpu->dev.id));
+}
+
+extern void sched_unclear_cpu(unsigned int);
+
+static ssize_t __ref store_clear(struct device *dev,
+				  struct device_attribute *attr,
+				  const char *buf, size_t count)
+{
+	struct cpu *cpu = container_of(dev, struct cpu, dev);
+	int cpuid = cpu->dev.id;
+	ssize_t ret;
+
+	cpu_hotplug_driver_lock();
+	switch (buf[0]) {
+	case '0':
+		sched_unclear_cpu(cpuid);
+		ret = 0;
+		break;
+	case '1':
+		ret = cpu_down_willfail(cpuid);
+		/* CPU DOWN should fail with -EROFS */
+		if (ret == -EROFS)
+			ret = 0;
+		break;
+	default:
+		ret = -EINVAL;
+	}
+	cpu_hotplug_driver_unlock();
+
+	if (ret >= 0)
+		ret = count;
+	return ret;
+}
+static DEVICE_ATTR(clear, 0644, show_clear, store_clear);
+
 static void __cpuinit register_cpu_control(struct cpu *cpu)
 {
 	device_create_file(&cpu->dev, &dev_attr_online);
+	device_create_file(&cpu->dev, &dev_attr_clear);
 }
 void unregister_cpu(struct cpu *cpu)
 {
@@ -99,6 +142,7 @@ void unregister_cpu(struct cpu *cpu)
 	unregister_cpu_under_node(logical_cpu, cpu_to_node(logical_cpu));
 
 	device_remove_file(&cpu->dev, &dev_attr_online);
+	device_remove_file(&cpu->dev, &dev_attr_clear);
 
 	device_unregister(&cpu->dev);
 	per_cpu(cpu_sys_devices, logical_cpu) = NULL;
