@@ -5749,7 +5749,7 @@ build_sched_groups(struct sched_domain *sd, int cpu)
 
 		group = get_group(i, sdd, &sg);
 		cpumask_clear(sched_group_cpus(sg));
-		sg->sgp->power = 0;
+		sg->sgc->capacity = 0;
 		cpumask_setall(sched_group_mask(sg));
 
 		for_each_cpu(j, span) {
