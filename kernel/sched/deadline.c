@@ -804,6 +804,19 @@ int dl_runtime_exceeded(struct sched_dl_entity *dl_se)
 extern bool sched_rt_bandwidth_account(struct rt_rq *rt_rq);
 
 /*
+ * This function implements the GRUB accounting rule:
+ * according to the GRUB reclaiming algorithm, the runtime is
+ * not decreased as "dq = -dt", but as "dq = -Uact dt", where
+ * Uact is the (per-runqueue) active utilization.
+ * Since rq->dl.running_bw contains Uact * 2^20, the result
+ * has to be shifted right by 20.
+ */
+u64 grub_reclaim(u64 delta, struct rq *rq)
+{
+	return (delta * rq->dl.running_bw) >> 20;
+}
+
+/*
  * Update the current task's runtime statistics (provided it is still
  * a -deadline task and has not been removed from the dl_rq).
  */
@@ -843,6 +856,7 @@ static void update_curr_dl(struct rq *rq)
 	curr->se.exec_start = rq_clock_task(rq);
 	cpuacct_charge(curr, delta_exec);
 
+	delta_exec = grub_reclaim(delta_exec, rq);
 	dl_se->runtime -= delta_exec;
 
 throttle:
