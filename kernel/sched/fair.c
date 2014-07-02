@@ -7338,6 +7338,9 @@ static void run_rebalance_domains(struct softirq_action *h)
 	enum cpu_idle_type idle = this_rq->idle_balance ?
 						CPU_IDLE : CPU_NOT_IDLE;
 
+	if (unlikely(cpu_asleep(this_cpu)))
+		return;
+
 #ifdef CONFIG_SCHED_HMP
 	/* shortcut for hmp idle pull wakeups */
 	if (unlikely(this_rq->wake_for_idle_pull)) {
