@@ -1709,8 +1709,10 @@ void kvm_vcpu_kick(struct kvm_vcpu *vcpu)
 
 	me = get_cpu();
 	if (cpu != me && (unsigned)cpu < nr_cpu_ids && cpu_online(cpu))
-		if (kvm_arch_vcpu_should_kick(vcpu))
+		if (kvm_arch_vcpu_should_kick(vcpu)){
+			trace_printk("send resched ipi to %d from kvm_vcpu_kick", cpu);
 			smp_send_reschedule(cpu);
+		}
 	put_cpu();
 }
 EXPORT_SYMBOL_GPL(kvm_vcpu_kick);

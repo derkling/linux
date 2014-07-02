@@ -160,6 +160,7 @@ static void cpufreq_interactive_timer_start(
 	unsigned long flags;
 
 	pcpu->cpu_timer.expires = expires;
+	trace_printk("cpufreq_interactive_timer_start on cpu %d", cpu);
 	add_timer_on(&pcpu->cpu_timer, cpu);
 	if (tunables->timer_slack_val >= 0 &&
 	    pcpu->target_freq > pcpu->policy->min) {

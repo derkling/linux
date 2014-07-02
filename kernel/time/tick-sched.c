@@ -880,6 +880,8 @@ static void tick_nohz_restart(struct tick_sched *ts, ktime_t now)
 
 static void tick_nohz_restart_sched_tick(struct tick_sched *ts, ktime_t now)
 {
+	trace_printk("tick_nohz_restart_sched_tick on CPU %d", smp_processor_id());
+
 	/* Update jiffies first */
 	tick_do_update_jiffies64(now);
 	update_cpu_load_nohz();

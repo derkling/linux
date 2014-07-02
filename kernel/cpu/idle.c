@@ -68,7 +68,7 @@ void __weak arch_cpu_idle(void)
 static void cpu_idle_loop(void)
 {
 	while (1) {
-		trace_printk("enter cpu_idle_loop\n");
+		trace_printk("enter cpu_idle_loop on CPU%d\n", smp_processor_id());
 		tick_nohz_idle_enter();
 
 		while (!need_resched()) {
@@ -107,6 +107,7 @@ static void cpu_idle_loop(void)
 			}
 			arch_cpu_idle_exit();
 		}
+		trace_printk("end of idle loop on CPU %d", smp_processor_id());
 		tick_nohz_idle_exit();
 		schedule_preempt_disabled();
 	}

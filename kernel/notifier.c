@@ -90,7 +90,9 @@ static int __kprobes notifier_call_chain(struct notifier_block **nl,
 			continue;
 		}
 #endif
+		trace_printk("notifier_call_chain calling fn %p", nb->notifier_call);
 		ret = nb->notifier_call(nb, val, v);
+		trace_printk("notifier_call_chain finished fn %p", nb->notifier_call);
 
 		if (nr_calls)
 			(*nr_calls)++;

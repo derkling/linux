@@ -461,9 +461,11 @@ static int __cpuinit arch_timer_cpu_notify(struct notifier_block *self,
 	 */
 	switch (action & ~CPU_TASKS_FROZEN) {
 	case CPU_STARTING:
+		trace_printk("arch_timer_cpu_notify CPU_STARTING on cpu %d", smp_processor_id());
 		arch_timer_setup(this_cpu_ptr(arch_timer_evt));
 		break;
 	case CPU_DYING:
+		trace_printk("arch_timer_cpu_notify CPU_DYING on cpu %d", smp_processor_id());
 		arch_timer_stop(this_cpu_ptr(arch_timer_evt));
 		break;
 	}
@@ -480,10 +482,13 @@ static unsigned int saved_cntkctl;
 static int arch_timer_cpu_pm_notify(struct notifier_block *self,
 				    unsigned long action, void *hcpu)
 {
-	if (action == CPU_PM_ENTER)
+	if (action == CPU_PM_ENTER) {
+		trace_printk("arch_timer_cpu_pm_notify CPU_PM_ENTER on cpu %d", smp_processor_id());
 		saved_cntkctl = arch_timer_get_cntkctl();
-	else if (action == CPU_PM_ENTER_FAILED || action == CPU_PM_EXIT)
+	} else if (action == CPU_PM_ENTER_FAILED || action == CPU_PM_EXIT) {
+		trace_printk("arch_timer_cpu_pm_notify CPU_PM_ENTER_FAILED|CPU_PM_EXIT on cpu %d", smp_processor_id());
 		arch_timer_set_cntkctl(saved_cntkctl);
+	}
 	return NOTIFY_OK;
 }
 

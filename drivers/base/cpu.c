@@ -114,10 +114,11 @@ static ssize_t __ref store_clear(struct device *dev,
 		ret = 0;
 		break;
 	case '1':
-		ret = cpu_down_willfail(cpuid);
+		ret = cpu_down(cpuid);
 		/* CPU DOWN should fail with -EROFS */
-		if (ret == -EROFS)
-			ret = 0;
+		if (!ret)
+			ret = cpu_up(cpuid);
+
 		break;
 	default:
 		ret = -EINVAL;
