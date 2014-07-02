@@ -610,9 +610,10 @@ void resched_task(struct task_struct *p)
 		return;
 	}
 
-	if (set_nr_and_not_polling(p))
+	if (set_nr_and_not_polling(p)) {
+		trace_printk("send resched ipi to %d from resched_task", cpu);
 		smp_send_reschedule(cpu);
-	else
+	} else
 		trace_sched_wake_idle_without_ipi(cpu);
 }
 
@@ -680,9 +681,10 @@ static void wake_up_idle_cpu(int cpu)
 	if (cpu == smp_processor_id())
 		return;
 
-	if (set_nr_and_not_polling(rq->idle))
+	if (set_nr_and_not_polling(rq->idle)) {
+		trace_printk("send resched ipi to %d from wake_up_idle_cpu", cpu);
 		smp_send_reschedule(cpu);
-	else
+	} else
 		trace_sched_wake_idle_without_ipi(cpu);
 }
 
@@ -690,8 +692,10 @@ static bool wake_up_full_nohz_cpu(int cpu)
 {
 	if (tick_nohz_full_cpu(cpu)) {
 		if (cpu != smp_processor_id() ||
-		    tick_nohz_tick_stopped())
+		    tick_nohz_tick_stopped()) {
+			trace_printk("send resched ipi to %d from wake_up_full_nohz_cpu", cpu);
 			smp_send_reschedule(cpu);
+		}
 		return true;
 	}
 
@@ -1315,8 +1319,10 @@ void kick_process(struct task_struct *p)
 
 	preempt_disable();
 	cpu = task_cpu(p);
-	if ((cpu != smp_processor_id()) && task_curr(p))
+	if ((cpu != smp_processor_id()) && task_curr(p)){
+		trace_printk("send resched ipi to %d from kick_process", cpu);
 		smp_send_reschedule(cpu);
+	}
 	preempt_enable();
 }
 EXPORT_SYMBOL_GPL(kick_process);
@@ -1618,9 +1624,11 @@ static void ttwu_queue_remote(struct task_struct *p, int cpu)
 	struct rq *rq = cpu_rq(cpu);
 
 	if (llist_add(&p->wake_entry, &cpu_rq(cpu)->wake_list)) {
-		if (!set_nr_if_polling(rq->idle))
+		if (!set_nr_if_polling(rq->idle)) {
+			trace_printk("send resched ipi to %d from ttwu_queue_remote for task %d %s",
+					cpu, p->pid, p->comm);
 			smp_send_reschedule(cpu);
-		else
+		} else
 			trace_sched_wake_idle_without_ipi(cpu);
 	}
 }

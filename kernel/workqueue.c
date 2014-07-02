@@ -1449,6 +1449,8 @@ static void __queue_delayed_work(int cpu, struct workqueue_struct *wq,
 	WARN_ON_ONCE(timer_pending(timer));
 	WARN_ON_ONCE(!list_empty(&work->entry));
 
+	trace_printk("__queue_delayed_work %p on CPU %d", cpu);
+
 	/* silently convert sleeping CPU work to unbound */
 	if (cpumask_test_cpu(cpu, cpu_asleep_mask))
 		cpu = WORK_CPU_UNBOUND;

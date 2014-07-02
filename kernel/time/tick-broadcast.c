@@ -160,6 +160,7 @@ int tick_device_uses_broadcast(struct clock_event_device *dev, int cpu)
 	unsigned long flags;
 	int ret;
 
+	trace_printk("tick_device_uses_broadcast cpu%d",cpu);
 	raw_spin_lock_irqsave(&tick_broadcast_lock, flags);
 
 	/*
@@ -286,6 +287,7 @@ static void tick_do_broadcast(struct cpumask *mask)
  */
 static void tick_do_periodic_broadcast(void)
 {
+	trace_printk("tick_do_periodic_broadcast %d", smp_processor_id());
 	cpumask_and(tmpmask, cpu_online_mask, tick_broadcast_mask);
 	tick_do_broadcast(tmpmask);
 }
@@ -336,6 +338,7 @@ static void tick_do_broadcast_on_off(unsigned long *reason)
 	unsigned long flags;
 	int cpu, bc_stopped;
 
+	trace_printk("tick_do_broadcast_on_off %d", smp_processor_id());
 	raw_spin_lock_irqsave(&tick_broadcast_lock, flags);
 
 	cpu = smp_processor_id();
@@ -426,6 +429,7 @@ void tick_shutdown_broadcast(unsigned int *cpup)
 	unsigned long flags;
 	unsigned int cpu = *cpup;
 
+	trace_printk("tick_shutdown_broadcast %d", cpu);
 	raw_spin_lock_irqsave(&tick_broadcast_lock, flags);
 
 	bc = tick_broadcast_device.evtdev;
@@ -445,6 +449,7 @@ void tick_suspend_broadcast(void)
 	struct clock_event_device *bc;
 	unsigned long flags;
 
+	trace_printk("tick_suspend_broadcast %d", smp_processor_id());
 	raw_spin_lock_irqsave(&tick_broadcast_lock, flags);
 
 	bc = tick_broadcast_device.evtdev;
@@ -460,6 +465,7 @@ int tick_resume_broadcast(void)
 	unsigned long flags;
 	int broadcast = 0;
 
+	trace_printk("tick_resume_broadcast %d", smp_processor_id());
 	raw_spin_lock_irqsave(&tick_broadcast_lock, flags);
 
 	bc = tick_broadcast_device.evtdev;
@@ -578,6 +584,7 @@ static void tick_handle_oneshot_broadcast(struct clock_event_device *dev)
 	ktime_t now, next_event;
 	int cpu, next_cpu = 0;
 
+	trace_printk("tick_handle_oneshot_broadcast %d", smp_processor_id());
 	raw_spin_lock(&tick_broadcast_lock);
 again:
 	dev->next_event.tv64 = KTIME_MAX;
@@ -624,6 +631,7 @@ again:
 		char tmp[16], tmp2[16];
 		cpumask_scnprintf(tmp, 16, tmpmask);
 		cpumask_scnprintf(tmp2, 16, tmpmask2);
+		trace_printk("removed asleep CPUs changing mask %s to mask %s", tmp, tmp2);
 		cpumask_copy(tmpmask, tmpmask2);
 	}
 	/*

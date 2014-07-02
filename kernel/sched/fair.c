@@ -4401,6 +4401,8 @@ find_idlest_cpu(struct sched_group *group, struct task_struct *p, int this_cpu)
 	cpumask_andnot(&sd_group_cpus, sched_group_cpus(group), cpu_asleep_mask);
 	for_each_cpu_and(i, &sd_group_cpus, tsk_cpus_allowed(p)) {
 		load = weighted_cpuload(i);
+		if (cpu_asleep(i))
+			trace_printk("ERROR: find_idlest_cpu selecting asleep cpu %d", i);
 
 		if (load < min_load || (load == min_load && i == this_cpu)) {
 			min_load = load;
@@ -6982,6 +6984,7 @@ static void nohz_balancer_kick(void)
 	 * is idle. And the softirq performing nohz idle load balance
 	 * will be run before returning from the IPI.
 	 */
+	trace_printk("send resched ipi to %d from nohz_balancer_kick", ilb_cpu);
 	smp_send_reschedule(ilb_cpu);
 	return;
 }

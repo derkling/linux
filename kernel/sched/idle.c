@@ -187,6 +187,9 @@ exit_idle:
 static void cpu_idle_loop(void)
 {
 	while (1) {
+
+		trace_printk("cpu_idle_loop enter\n");
+
 		/*
 		 * If the arch has a polling bit, we maintain an invariant:
 		 *
