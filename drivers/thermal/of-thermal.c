@@ -865,6 +865,7 @@ int __init of_parse_thermal_zones(void)
 	for_each_child_of_node(np, child) {
 		struct thermal_zone_device *zone;
 		struct thermal_zone_params *tzp;
+		int i, mask = 0;
 
 		/* Check whether child is enabled or not */
 		if (!of_device_is_available(child))
@@ -891,8 +892,11 @@ int __init of_parse_thermal_zones(void)
 		/* No hwmon because there might be hwmon drivers registering */
 		tzp->no_hwmon = true;
 
+		for (i = 0; i < tz->ntrips; i++)
+			mask |= 1 << i;
+
 		zone = thermal_zone_device_register(child->name, tz->ntrips,
-						    0, tz,
+						    mask, tz,
 						    ops, tzp,
 						    tz->passive_delay,
 						    tz->polling_delay);
