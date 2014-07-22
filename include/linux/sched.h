@@ -1073,10 +1073,10 @@ struct sched_avg {
 	 * above by 1024/(1-y).  Thus we only need a u32 to store them for all
 	 * choices of y < 1-2^(-32)*1024.
 	 */
-	u32 runnable_avg_sum, runnable_avg_period;
+	u32 runnable_avg_sum, runnable_avg_period, running_avg_sum;
 	u64 last_runnable_update;
 	s64 decay_count;
-	unsigned long load_avg_contrib;
+	unsigned long load_avg_contrib, usage_avg_contrib;
 };
 
 #ifdef CONFIG_SCHEDSTATS
