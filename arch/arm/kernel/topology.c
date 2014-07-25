@@ -391,6 +391,50 @@ static inline const struct sched_group_energy *cpu_sys_energy(int cpu)
 	return NULL;
 }
 
+static unsigned long freqs_a7[] = {350000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000};
+static unsigned long freqs_a15[] = {500000, 600000, 700000, 800000, 900000, 10000000, 1100000, 1200000};
+
+static DEFINE_PER_CPU(atomic_long_t, cpu_curr_capacity);
+
+unsigned long arch_scale_curr_capacity(int cpu)
+{
+	return atomic_long_read(&per_cpu(cpu_curr_capacity, cpu));
+}
+
+unsigned long arch_scale_avg_capacity(struct task_struct *p)
+{
+	return arch_scale_curr_capacity(task_cpu(p));
+}
+
+
+void arch_scale_set_curr_freq(int cpu, unsigned long freq)
+{
+	unsigned long *freqs_table;
+	unsigned long idx, nr_states;
+	struct sched_group_energy *capacity_table;
+
+	if (cpu_topology[cpu].socket_id) {
+		freqs_table = freqs_a7;
+		nr_states = ARRAY_SIZE(freqs_a7);
+		capacity_table = &energy_core_a7;
+	} else {
+		freqs_table = freqs_a15;
+		nr_states = ARRAY_SIZE(freqs_a15);
+		capacity_table = &energy_core_a15;
+	}
+
+	for (idx = 0; idx < nr_states; idx++)
+		if (freqs_table[idx] == freq)
+			break;
+
+	if (idx >= nr_states)
+		idx = nr_states-1;
+
+	atomic_long_set(&per_cpu(cpu_curr_capacity, cpu), capacity_table->cap_states[idx].cap);
+	trace_printk("arm set_curr_capacity cpu=%d cap=%lu", cpu, capacity_table->cap_states[idx].cap);
+}
+
+
 static inline const int cpu_corepower_flags(void)
 {
 	return SD_SHARE_PKG_RESOURCES  | SD_SHARE_POWERDOMAIN | \
@@ -424,6 +468,8 @@ void __init init_cpu_topology(void)
 		cpumask_clear(&cpu_topo->thread_sibling);
 
 		set_capacity_scale(cpu, SCHED_CAPACITY_SCALE);
+		atomic_long_set(&per_cpu(cpu_curr_capacity, cpu),
+						SCHED_CAPACITY_SCALE);
 	}
 	smp_wmb();
 
