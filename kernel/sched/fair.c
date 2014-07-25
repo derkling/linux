@@ -6118,6 +6118,16 @@ unsigned long __weak arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
 	return default_scale_capacity(sd, cpu);
 }
 
+unsigned long __weak arch_scale_curr_capacity(int cpu)
+{
+	return SCHED_CAPACITY_SCALE;
+}
+
+unsigned long __weak arch_scale_avg_capacity(struct task_struct *p)
+{
+	return SCHED_CAPACITY_SCALE;
+}
+
 static unsigned long default_scale_smt_capacity(struct sched_domain *sd, int cpu)
 {
 	unsigned long weight = sd->span_weight;
