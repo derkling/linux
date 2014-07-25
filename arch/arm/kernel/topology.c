@@ -286,31 +286,31 @@ static struct idle_state idle_states_cluster_a7[] = {
 	};
 
 static struct idle_state idle_states_cluster_a15[] = {
-	 { .power = 25, .wu_energy = 210 /* << 10 */, },
+	 { .power = 16, .wu_energy = 31 /* << 10 */, },
 	};
 
 static struct capacity_state cap_states_cluster_a7[] = {
 	/* Cluster only power */
-	 { .cap =  358, .power = 2967, }, /*  350 MHz */
-	 { .cap =  410, .power = 2792, }, /*  400 MHz */
-	 { .cap =  512, .power = 2810, }, /*  500 MHz */
-	 { .cap =  614, .power = 2815, }, /*  600 MHz */
-	 { .cap =  717, .power = 2919, }, /*  700 MHz */
-	 { .cap =  819, .power = 2847, }, /*  800 MHz */
-	 { .cap =  922, .power = 3917, }, /*  900 MHz */
-	 { .cap = 1024, .power = 4905, }, /* 1000 MHz */
+	 { .cap =  182, .power =  434, }, /*  350 MHz */
+	 { .cap =  208, .power =  409, }, /*  400 MHz */
+	 { .cap =  260, .power =  411, }, /*  500 MHz */
+	 { .cap =  312, .power =  412, }, /*  600 MHz */
+	 { .cap =  364, .power =  427, }, /*  700 MHz */
+	 { .cap =  416, .power =  417, }, /*  800 MHz */
+	 { .cap =  468, .power =  573, }, /*  900 MHz */
+	 { .cap =  520, .power =  718, }, /* 1000 MHz */
 	};
 
 static struct capacity_state cap_states_cluster_a15[] = {
 	/* Cluster only power */
-	 { .cap =  840, .power =  7920, }, /*  500 MHz */
-	 { .cap = 1008, .power =  8165, }, /*  600 MHz */
-	 { .cap = 1176, .power =  8172, }, /*  700 MHz */
-	 { .cap = 1343, .power =  8195, }, /*  800 MHz */
-	 { .cap = 1511, .power =  8265, }, /*  900 MHz */
-	 { .cap = 1679, .power =  8446, }, /* 1000 MHz */
-	 { .cap = 1847, .power = 11426, }, /* 1100 MHz */
-	 { .cap = 2015, .power = 15200, }, /* 1200 MHz */
+	 { .cap =  427, .power = 1159, }, /*  500 MHz */
+	 { .cap =  512, .power = 1195, }, /*  600 MHz */
+	 { .cap =  597, .power = 1196, }, /*  700 MHz */
+	 { .cap =  683, .power = 1199, }, /*  800 MHz */
+	 { .cap =  768, .power = 1210, }, /*  900 MHz */
+	 { .cap =  853, .power = 1236, }, /* 1000 MHz */
+	 { .cap =  939, .power = 1672, }, /* 1100 MHz */
+	 { .cap = 1024, .power = 2225, }, /* 1200 MHz */
 	};
 
 static struct sched_group_energy energy_cluster_a7 = {
@@ -332,31 +332,31 @@ static struct idle_state idle_states_core_a7[] = {
 	};
 
 static struct idle_state idle_states_core_a15[] = {
-	 { .power = 0 /* No power gating */, .wu_energy = 5 /* << 10 */, },
+	 { .power = 0 /* No power gating */, .wu_energy = 1 /* << 10 */, },
 	};
 
 static struct capacity_state cap_states_core_a7[] = {
 	/* Power per cpu */
-	 { .cap =  358, .power =  187, }, /*  350 MHz */
-	 { .cap =  410, .power =  275, }, /*  400 MHz */
-	 { .cap =  512, .power =  334, }, /*  500 MHz */
-	 { .cap =  614, .power =  407, }, /*  600 MHz */
-	 { .cap =  717, .power =  447, }, /*  700 MHz */
-	 { .cap =  819, .power =  549, }, /*  800 MHz */
-	 { .cap =  922, .power =  761, }, /*  900 MHz */
-	 { .cap = 1024, .power = 1024, }, /* 1000 MHz */
+	 { .cap =  182, .power =   27, }, /*  350 MHz */
+	 { .cap =  208, .power =   40, }, /*  400 MHz */
+	 { .cap =  260, .power =   49, }, /*  500 MHz */
+	 { .cap =  312, .power =   60, }, /*  600 MHz */
+	 { .cap =  364, .power =   65, }, /*  700 MHz */
+	 { .cap =  416, .power =   80, }, /*  800 MHz */
+	 { .cap =  468, .power =  111, }, /*  900 MHz */
+	 { .cap =  520, .power =  150, }, /* 1000 MHz */
 	};
 
 static struct capacity_state cap_states_core_a15[] = {
 	/* Power per cpu */
-	 { .cap =  840, .power = 2021, }, /*  500 MHz */
-	 { .cap = 1008, .power = 2312, }, /*  600 MHz */
-	 { .cap = 1176, .power = 2756, }, /*  700 MHz */
-	 { .cap = 1343, .power = 3125, }, /*  800 MHz */
-	 { .cap = 1511, .power = 3524, }, /*  900 MHz */
-	 { .cap = 1679, .power = 3846, }, /* 1000 MHz */
-	 { .cap = 1847, .power = 5177, }, /* 1100 MHz */
-	 { .cap = 2015, .power = 6997, }, /* 1200 MHz */
+	 { .cap =  427, .power =  296, }, /*  500 MHz */
+	 { .cap =  512, .power =  338, }, /*  600 MHz */
+	 { .cap =  597, .power =  403, }, /*  700 MHz */
+	 { .cap =  683, .power =  457, }, /*  800 MHz */
+	 { .cap =  768, .power =  516, }, /*  900 MHz */
+	 { .cap =  853, .power =  563, }, /* 1000 MHz */
+	 { .cap =  939, .power =  758, }, /* 1100 MHz */
+	 { .cap = 1024, .power = 1024, }, /* 1200 MHz */
 	};
 
 static struct sched_group_energy energy_core_a7 = {
