@@ -21,8 +21,7 @@
 #include <linux/exynos_iovmm.h>
 
 #define TRACE_LOG trace_printk
-#define TRACE_LOG_DEV(dev, fmt, args...)  \
-		TRACE_LOG("%s: " fmt, dev_name(dev), ##args)
+#define TRACE_LOG_DEV(dev, fmt, args...)
 
 #define MODULE_NAME "exynos-sysmmu"
 
