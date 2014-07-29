@@ -2264,6 +2264,8 @@ static u32 __compute_runnable_contrib(u64 n)
 	return contrib + runnable_avg_yN_sum[n];
 }
 
+static inline unsigned long get_curr_capacity(int cpu);
+
 /*
  * We can represent the historical contribution to runnable average as the
  * coefficients of a geometric series.  To do this we sub-divide our runnable
@@ -2292,12 +2294,14 @@ static u32 __compute_runnable_contrib(u64 n)
  *   load_avg = u_0` + y*(u_0 + u_1*y + u_2*y^2 + ... )
  *            = u_0 + u_1*y + u_2*y^2 + ... [re-labeling u_i --> u_{i+1}]
  */
+
 static __always_inline int __update_entity_runnable_avg(u64 now,
 							struct sched_avg *sa,
-							int runnable)
+							int runnable,
+							int cpu)
 {
 	u64 delta, periods;
-	u32 runnable_contrib;
+	u32 runnable_contrib, cap;
 	int delta_w, decayed = 0;
 
 	delta = now - sa->last_runnable_update;
@@ -2319,6 +2323,8 @@ static __always_inline int __update_entity_runnable_avg(u64 now,
 		return 0;
 	sa->last_runnable_update = now;
 
+	cap = get_curr_capacity(cpu);
+
 	/* delta_w is the amount already accumulated against our next period */
 	delta_w = sa->runnable_avg_period % 1024;
 	if (delta + delta_w >= 1024) {
@@ -2332,7 +2338,8 @@ static __always_inline int __update_entity_runnable_avg(u64 now,
 		 */
 		delta_w = 1024 - delta_w;
 		if (runnable)
-			sa->runnable_avg_sum += delta_w;
+			sa->runnable_avg_sum += (delta_w * cap)
+				>> SCHED_CAPACITY_SHIFT;
 		sa->runnable_avg_period += delta_w;
 
 		delta -= delta_w;
@@ -2349,13 +2356,14 @@ static __always_inline int __update_entity_runnable_avg(u64 now,
 		/* Efficiently calculate \sum (1..n_period) 1024*y^i */
 		runnable_contrib = __compute_runnable_contrib(periods);
 		if (runnable)
-			sa->runnable_avg_sum += runnable_contrib;
+			sa->runnable_avg_sum += (runnable_contrib * cap)
+						>> SCHED_CAPACITY_SHIFT;
 		sa->runnable_avg_period += runnable_contrib;
 	}
 
 	/* Remainder of delta accrued against u_0` */
 	if (runnable)
-		sa->runnable_avg_sum += delta;
+		sa->runnable_avg_sum += (delta * cap) >> SCHED_CAPACITY_SHIFT;
 	sa->runnable_avg_period += delta;
 
 	return decayed;
@@ -2460,7 +2468,8 @@ static inline void __update_group_entity_contrib(struct sched_entity *se)
 
 static inline void update_rq_runnable_avg(struct rq *rq, int runnable)
 {
-	__update_entity_runnable_avg(rq_clock_task(rq), &rq->avg, runnable);
+	__update_entity_runnable_avg(rq_clock_task(rq), &rq->avg, runnable,
+				     cpu_of(rq));
 	__update_tg_runnable_avg(&rq->avg, &rq->cfs);
 }
 #else /* CONFIG_FAIR_GROUP_SCHED */
@@ -2541,7 +2550,8 @@ static inline void update_entity_load_avg(struct sched_entity *se,
 	else
 		now = cfs_rq_clock_task(group_cfs_rq(se));
 
-	if (!__update_entity_runnable_avg(now, &se->avg, se->on_rq))
+	if (!__update_entity_runnable_avg(now, &se->avg, se->on_rq,
+					  cpu_of(rq_of(cfs_rq))))
 		return;
 
 	contrib_delta = __update_entity_load_avg_contrib(se, &uw_contrib_delta);
@@ -4395,8 +4405,6 @@ static void find_max_util(const struct cpumask *mask, int cpu, int util,
 		*max_util_aft = max(*max_util_aft, cpu_util);
 	}
 }
-
-static inline unsigned long get_curr_capacity(int cpu);
 
 /*
  * Estimate the energy cost delta caused by adding/removing utilization (util)
