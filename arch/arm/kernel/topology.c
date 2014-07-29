@@ -310,7 +310,7 @@ static struct capacity_state cap_states_cluster_a15[] = {
 	 { .cap =  768, .power = 1210, }, /*  900 MHz */
 	 { .cap =  853, .power = 1236, }, /* 1000 MHz */
 	 { .cap =  939, .power = 1672, }, /* 1100 MHz */
-	 { .cap = 1024, .power = 2225, }, /* 1200 MHz */
+	 { .cap = SCHED_CAPACITY_SCALE, .power = 2225, }, /* 1200 MHz */
 	};
 
 static struct sched_group_energy energy_cluster_a7 = {
