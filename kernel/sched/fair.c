@@ -2264,6 +2264,8 @@ static u32 __compute_runnable_contrib(u64 n)
 	return contrib + runnable_avg_yN_sum[n];
 }
 
+unsigned long arch_scale_avg_capacity(struct task_struct *p);
+
 /*
  * We can represent the historical contribution to runnable average as the
  * coefficients of a geometric series.  To do this we sub-divide our runnable
@@ -2299,6 +2301,11 @@ static __always_inline int __update_entity_runnable_avg(u64 now,
 	u64 delta, periods;
 	u32 runnable_contrib;
 	int delta_w, decayed = 0;
+	u32 avg_cap = SCHED_CAPACITY_SCALE;
+	struct sched_entity *se = container_of(sa, struct sched_entity, avg);
+
+	if (entity_is_task(se))
+		avg_cap = arch_scale_avg_capacity(task_of(se));
 
 	delta = now - sa->last_runnable_update;
 	/*
@@ -2331,8 +2338,10 @@ static __always_inline int __update_entity_runnable_avg(u64 now,
 		 * period and accrue it.
 		 */
 		delta_w = 1024 - delta_w;
+
 		if (runnable)
-			sa->runnable_avg_sum += delta_w;
+			sa->runnable_avg_sum += (delta_w * avg_cap)
+					>> SCHED_CAPACITY_SHIFT;
 		sa->runnable_avg_period += delta_w;
 
 		delta -= delta_w;
@@ -2348,14 +2357,17 @@ static __always_inline int __update_entity_runnable_avg(u64 now,
 
 		/* Efficiently calculate \sum (1..n_period) 1024*y^i */
 		runnable_contrib = __compute_runnable_contrib(periods);
+
 		if (runnable)
-			sa->runnable_avg_sum += runnable_contrib;
+			sa->runnable_avg_sum += (runnable_contrib * avg_cap)
+						>> SCHED_CAPACITY_SHIFT;
 		sa->runnable_avg_period += runnable_contrib;
 	}
 
 	/* Remainder of delta accrued against u_0` */
 	if (runnable)
-		sa->runnable_avg_sum += delta;
+		sa->runnable_avg_sum += (delta * avg_cap)
+				>> SCHED_CAPACITY_SHIFT;
 	sa->runnable_avg_period += delta;
 
 	return decayed;
