@@ -4641,6 +4641,105 @@ static int energy_diff_cpu(int dst_cpu, int src_cpu)
 	return dst_nrg_diff + src_nrg_diff;
 }
 
+static inline unsigned long cpu_util_norm(int cpu)
+{
+	struct sched_domain *sd = rcu_dereference_check_sched_domain(cpu_rq(cpu)->sd);
+	struct sched_group_energy *sge = sd->groups->sge;
+	unsigned long max_cap = sge->cap_states[sge->nr_cap_states-1].cap;
+
+	return (min(cpu_load(cpu, 1), max_cap) * 1024)/max_cap;
+}
+
+static unsigned long group_max_util_norm(struct sched_group *sg)
+{
+	int i;
+	unsigned long max_util = 0;
+
+	for_each_cpu(i, sched_group_cpus(sg))
+		max_util = max(max_util, cpu_util_norm(i));
+
+	return max_util;
+}
+
+unsigned long arch_scale_curr_capacity(int cpu);
+
+static int energy_total_domain(struct sched_domain *sd_top)
+{
+	struct sched_domain *sd;
+	struct sched_group *sg;
+	struct cpumask covered_cpus, covered_cpus_inv;
+	unsigned long total_nrg_busy = 0, total_nrg_idle = 0;
+	char buf[20];
+	int buf_len = 20;
+	int buf_content;
+
+	cpumask_clear(&covered_cpus);
+
+	buf_content = cpumask_scnprintf(buf, buf_len, sched_domain_span(sd_top));
+	/*trace_printk("etd: top sd=%s sd_sw=%d bc=%d", buf, sd_top->span_weight, buf_content);*/
+
+	while (!cpumask_equal(&covered_cpus, sched_domain_span(sd_top))) {
+		int cpu, i;
+		unsigned long max_util_norm = 0;
+		struct cpumask tmp_mask;
+
+		cpumask_andnot(&covered_cpus_inv, cpu_possible_mask, &covered_cpus);
+		cpu = cpumask_first_and(&covered_cpus_inv, sched_domain_span(sd_top));
+
+		cpumask_clear(&tmp_mask);
+
+		/*trace_printk("etd: next cpu=%d", cpu);*/
+
+		for_each_domain(cpu, sd) {
+			unsigned long sg_nrg_busy, sg_nrg_idle;
+			int cap_idx;
+
+			cpumask_scnprintf(buf, buf_len, sched_domain_span(sd));
+			/*trace_printk("etd: curr sd=%s sd_sw=%d", buf, sd->span_weight);*/
+
+			/* Has somebody else already done the work for this domain? */
+			if (cpumask_intersects(sched_domain_span(sd), &covered_cpus))
+				break;
+
+			sg = sd->groups;
+			do {
+				if (!cpumask_intersects(sched_domain_span(sd_top), sched_group_cpus(sg)))
+					continue;
+
+				max_util_norm = group_max_util_norm(sg);
+				cap_idx = energy_match_cap(arch_scale_curr_capacity(cpumask_first(sched_group_cpus(sg))), sg->sge);
+
+				sg_nrg_busy = (max_util_norm * sg->sge->cap_states[cap_idx].power)/1024;
+				sg_nrg_idle = ((1024-max_util_norm)*sg->sge->idle_states[likely_idle_state_idx(sg)].power)/1024;
+				total_nrg_busy += sg_nrg_busy;
+				total_nrg_idle += sg_nrg_idle;
+				trace_printk("etd: nrg sd=%s util=%lu busy=%lu idle=%lu", buf, max_util_norm, sg_nrg_busy, sg_nrg_idle);
+
+			} while (sg = sg->next, sg != sd->groups);
+
+			/* Mark cpus as covered if they have been visited a the lowest level */
+			if (!sd->child) {
+				for_each_cpu(i, sched_domain_span(sd))
+					cpumask_set_cpu(i, &tmp_mask);
+			}
+
+			/* Is the domain above the highest one we are interested in? */
+			if (sd_top->span_weight <= sd->groups->group_weight)
+				break;
+		}
+
+		for_each_cpu(i, &tmp_mask)
+			cpumask_set_cpu(i, &covered_cpus);
+
+		cpumask_scnprintf(buf, buf_len, &covered_cpus);
+		/*trace_printk("etd: cover mask=%s w=%d", buf, cpumask_weight(&covered_cpus));*/
+	}
+
+	trace_printk("etd: done eb=%lu ei=%lu", total_nrg_busy, total_nrg_idle);
+
+	return total_nrg_busy + total_nrg_idle;
+}
+
 static int wake_wide(struct task_struct *p)
 {
 	int factor = this_cpu_read(sd_llc_size);
@@ -7671,6 +7770,19 @@ static void rebalance_domains(struct rq *rq, enum cpu_idle_type idle)
 	update_blocked_averages(cpu);
 
 	rcu_read_lock();
+	if (cpu_online(0)) {
+		for_each_domain(0, sd) {
+			energy_total_domain(sd);
+			break;
+		}
+	}
+	if (cpu_online(2)) {
+		for_each_domain(2, sd) {
+			energy_total_domain(sd);
+			break;
+		}
+	}
+
 	for_each_domain(cpu, sd) {
 		/*
 		 * Decay the newidle max times here because this is a regular
