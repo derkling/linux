@@ -401,12 +401,6 @@ unsigned long arch_scale_curr_capacity(int cpu)
 	return atomic_long_read(&per_cpu(cpu_curr_capacity, cpu));
 }
 
-unsigned long arch_scale_avg_capacity(struct task_struct *p)
-{
-	return arch_scale_curr_capacity(task_cpu(p));
-}
-
-
 void arch_scale_set_curr_freq(int cpu, unsigned long freq)
 {
 	unsigned long *freqs_table;
@@ -433,7 +427,6 @@ void arch_scale_set_curr_freq(int cpu, unsigned long freq)
 	atomic_long_set(&per_cpu(cpu_curr_capacity, cpu), capacity_table->cap_states[idx].cap);
 	trace_printk("arm set_curr_capacity cpu=%d cap=%lu", cpu, capacity_table->cap_states[idx].cap);
 }
-
 
 static inline const int cpu_corepower_flags(void)
 {
