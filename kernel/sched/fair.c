@@ -4245,37 +4245,28 @@ static int energy_diff_util(int cpu, int util, int wakeups)
 		sge = sd->groups->sge;
 		cap_table = sge->cap_states;
 
-		if (curr_cap_idx < 0 || !(sd->flags & SD_SHARE_CAP_STATES)) {
+		/* TODO: Fix assumption 2 and 3. */
+		curr_cap_idx = energy_match_cap(cpu_curr_cap, sge);
 
-			/* TODO: Fix assumption 2 and 3. */
-			curr_cap_idx = energy_match_cap(cpu_curr_cap, sge);
+		/*
+		 * If we remove tasks, i.e. util < 0, we should find
+		 * out if the cap state changes as well, but that is
+		 * complicated and might not be worth it. It is assumed
+		 * that the state won't be lowered for now.
+		 *
+		 * Also, if the cap state is shared new_cap_state can't
+		 * be lower than curr_cap_idx as the utilization on an
+		 * other cpu might have higher utilization than this
+		 * cpu.
+		 */
 
-			/*
-			 * If we remove tasks, i.e. util < 0, we should find
-			 * out if the cap state changes as well, but that is
-			 * complicated and might not be worth it. It is assumed
-			 * that the state won't be lowered for now.
-			 *
-			 * Also, if the cap state is shared new_cap_state can't
-			 * be lower than curr_cap_idx as the utilization on an
-			 * other cpu might have higher utilization than this
-			 * cpu.
-			 */
-
-			if (cap_table[curr_cap_idx].cap < max_util_aft) {
-				new_cap_idx = energy_match_cap(max_util_aft,
-						sge);
-				if (new_cap_idx >= sge->nr_cap_states) {
-					/*
-					 * Can't handle the additional
-					 * utilization
-					 */
-					goto error;
-				}
-			} else {
-				new_cap_idx = curr_cap_idx;
-			}
-		}
+		if (cap_table[curr_cap_idx].cap < max_util_aft) {
+			new_cap_idx = energy_match_cap(max_util_aft, sge);
+			if (new_cap_idx >= sge->nr_cap_states)
+				/* Can't handle the additional utilization */
+				goto error;
+		} else
+			new_cap_idx = curr_cap_idx;
 
 		curr_state = &cap_table[curr_cap_idx];
 		new_state = &cap_table[new_cap_idx];
