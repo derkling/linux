@@ -4221,7 +4221,7 @@ static int energy_diff_util(int cpu, int util, int wakeups)
 	int curr_cap_idx = -1;
 	int new_cap_idx = -1;
 	unsigned long max_util_bef, max_util_aft, aff_util_bef, aff_util_aft;
-	unsigned long unused_util_bef, unused_util_aft;
+	unsigned long spare_util_bef, spare_util_aft;
 	unsigned long cpu_curr_cap;
 
 	cpu_curr_cap = get_curr_capacity(cpu);
@@ -4301,20 +4301,20 @@ static int energy_diff_util(int cpu, int util, int wakeups)
 			}
 			aff_util_aft = aff_util_bef + util;
 
-			/* Estimate idle time based on unused utilization */
-			unused_util_bef = curr_state->cap
+			/* Estimate idle time based on spare utilization */
+			spare_util_bef = curr_state->cap
 						- cpu_load(cpu, 1);
-			unused_util_aft = new_state->cap - cpu_load(cpu, 1)
+			spare_util_aft = new_state->cap - cpu_load(cpu, 1)
 						- util;
 		} else {
 			/* Higher level */
 			aff_util_bef = max_util_bef;
 			aff_util_aft = max_util_aft;
 
-			/* Estimate idle time based on unused utilization */
-			unused_util_bef = curr_state->cap
+			/* Estimate idle time based on spare utilization */
+			spare_util_bef = curr_state->cap
 					- min(aff_util_bef, curr_state->cap);
-			unused_util_aft = new_state->cap
+			spare_util_aft = new_state->cap
 					- min(aff_util_aft, new_state->cap);
 		}
 
@@ -4323,16 +4323,16 @@ static int energy_diff_util(int cpu, int util, int wakeups)
 		 * parent level).
 		 */
 		if (aff_util_bef == aff_util_aft && curr_cap_idx == new_cap_idx
-				&& unused_util_aft < 100)
+				&& spare_util_aft < 100)
 			goto unlock;
 
 		/* Energy before */
 		e_diff -= (aff_util_bef * curr_state->power)/curr_state->cap;
-		e_diff -= (unused_util_bef * is->power)/curr_state->cap;
+		e_diff -= (spare_util_bef * is->power)/curr_state->cap;
 
 		/* Energy after */
 		e_diff += (aff_util_aft*new_state->power)/new_state->cap;
-		e_diff += (unused_util_aft * is->power)/new_state->cap;
+		e_diff += (spare_util_aft * is->power)/new_state->cap;
 
 		/*
 		 * Estimate how many of the wakeups that happens while cpu is
@@ -4340,8 +4340,9 @@ static int energy_diff_util(int cpu, int util, int wakeups)
 		 * wakeups caused by other tasks.
 		 */
 		e_diff += (wakeups * is->wu_energy >> 10)
-				* unused_util_aft/new_state->cap;
+				* spare_util_aft/new_state->cap;
 	}
+
 	goto unlock;
 error:
 	e_diff = INT_MAX;
