@@ -5787,11 +5787,6 @@ unsigned long __weak arch_scale_curr_capacity(int cpu)
 	return SCHED_CAPACITY_SCALE;
 }
 
-unsigned long __weak arch_scale_avg_capacity(struct task_struct *p)
-{
-	return SCHED_CAPACITY_SCALE;
-}
-
 static inline unsigned long get_curr_capacity(int cpu)
 {
 	return arch_scale_curr_capacity(cpu);
