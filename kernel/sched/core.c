@@ -5974,16 +5974,15 @@ static void init_sched_groups_capacity(int cpu, struct sched_domain *sd)
 }
 
 /* System-wide energy information. */
-struct sched_group_energy *sse;
+struct sched_domain *ssd;
 
 static void init_sched_energy(int cpu, struct sched_domain *sd,
 			      struct sched_domain_topology_level *tl)
 {
 	struct sched_group *sg = sd ? sd->groups : NULL;
-	struct sched_group_energy *energy = sd ? sg->sge : sse;
+	struct sched_group_energy *energy = sd ? sg->sge : 0;
 	sched_domain_energy_f fn = tl->energy;
-	const struct cpumask *mask = sd ? sched_group_cpus(sg) :
-					  cpu_cpu_mask(cpu);
+	const struct cpumask *mask = sd ? sched_group_cpus(sg) : tl->mask(cpu);
 
 	if (!fn || !fn(cpu) || (!sd && energy))
 		return;
@@ -5992,13 +5991,31 @@ static void init_sched_energy(int cpu, struct sched_domain *sd,
 		check_sched_energy_data(cpu, fn, mask);
 
 	if (!sd) {
-		energy = sse = kzalloc(sizeof(struct sched_group_energy) +
-				       fn(cpu)->nr_idle_states*
-				       sizeof(struct idle_state) +
-				       fn(cpu)->nr_cap_states*
-				       sizeof(struct capacity_state),
-				       GFP_KERNEL);
+		if (ssd)
+			return;
+
+		ssd = kzalloc(sizeof(struct sched_domain) + cpumask_size(),
+			      GFP_KERNEL);
+		BUG_ON(!ssd);
+		ssd->flags = SD_PHANTOM;
+#ifdef CONFIG_SCHED_DEBUG
+		ssd->name = tl->name;
+#endif
+
+		sg = kzalloc(sizeof(struct sched_group) + cpumask_size(),
+			     GFP_KERNEL);
+		BUG_ON(!sg);
+		cpumask_copy(sched_group_cpus(sg), mask);
+		ssd->groups = sg;
+
+		energy = kzalloc(sizeof(struct sched_group_energy) +
+				 fn(cpu)->nr_idle_states*
+				 sizeof(struct idle_state) +
+				 fn(cpu)->nr_cap_states*
+				 sizeof(struct capacity_state),
+				 GFP_KERNEL);
 		BUG_ON(!energy);
+		sg->sge = energy;
 
 		energy->idle_states = (struct idle_state *)
 				      ((void *)&energy->cap_states +
@@ -6691,6 +6708,9 @@ static int build_sched_domains(const struct cpumask *cpu_map,
 	/* Calculate CPU capacity for physical packages and nodes */
 	for (i = nr_cpumask_bits-1; i >= 0; i--) {
 		struct sched_domain_topology_level *tl = sched_domain_topology;
+		struct sched_domain_topology_level sys_tl;
+
+		memset(&sys_tl, 0, sizeof(sys_tl));
 
 		if (!cpumask_test_cpu(i, cpu_map))
 			continue;
@@ -6699,9 +6719,14 @@ static int build_sched_domains(const struct cpumask *cpu_map,
 			init_sched_energy(i, sd, tl);
 			claim_allocations(i, sd);
 			init_sched_groups_capacity(i, sd);
+			sys_tl.mask = tl->mask;
 		}
 
-		init_sched_energy(i, NULL, tl);
+		sys_tl.energy = tl->energy;
+#if CONFIG_SCHED_DEBUG
+		sys_tl.name = tl->name;
+#endif
+		init_sched_energy(i, NULL, &sys_tl);
 	}
 
 	/* Attach the domains */

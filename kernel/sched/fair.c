@@ -4447,7 +4447,7 @@ static int energy_diff_util(int cpu, int util, int wakeups)
 	}
 
 	rcu_read_lock();
-	for_each_domain(cpu, sd) {
+	for_each_domain_inc_ssd(cpu, sd) {
 		struct capacity_state *curr_state, *new_state, *cap_table;
 		struct idle_state *is;
 		struct sched_group_energy *sge;
@@ -4550,39 +4550,6 @@ static int energy_diff_util(int cpu, int util, int wakeups)
 		nrg_diff += (wakeups * is->wu_energy >> 10)
 				* unused_util_aft/new_state->cap;
 	}
-
-	/*
-	 * We don't have any sched_group covering all cpus in the sched_domain
-	 * hierarchy to associate system wide energy with. Treat it specially
-	 * for now until it can be folded into the loop above.
-	 */
-	if (sse) {
-		struct capacity_state *cap_table = sse->cap_states;
-		struct capacity_state *curr_state, *new_state;
-		struct idle_state *is;
-
-		curr_state = &cap_table[curr_cap_idx];
-		new_state = &cap_table[new_cap_idx];
-
-		find_max_util(cpu_online_mask, cpu, util, &aff_util_bef,
-				&aff_util_aft);
-		is = &sse->idle_states[likely_idle_state_idx(NULL)];
-
-		/* Estimate idle time based on unused utilization */
-		unused_util_bef = curr_state->cap - aff_util_bef;
-		unused_util_aft = new_state->cap - aff_util_aft;
-
-		/* Energy before */
-		nrg_diff -= (aff_util_bef*curr_state->power)/curr_state->cap;
-		nrg_diff -= (unused_util_bef * is->power)/curr_state->cap;
-
-		/* Energy after */
-		nrg_diff += (aff_util_aft*new_state->power)/new_state->cap;
-		nrg_diff += (unused_util_aft * is->power)/new_state->cap;
-		nrg_diff += (wakeups * is->wu_energy >> 10)
-				* unused_util_aft/new_state->cap;
-	}
-
 unlock:
 	rcu_read_unlock();
 
