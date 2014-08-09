@@ -707,6 +707,13 @@ extern int migrate_swap(struct task_struct *, struct task_struct *);
 	for (__sd = rcu_dereference_check_sched_domain(cpu_rq(cpu)->sd); \
 			__sd; __sd = __sd->parent)
 
+extern struct sched_domain *ssd;
+
+#define for_each_domain_inc_ssd(cpu, __sd) \
+	for (__sd = rcu_dereference_check_sched_domain(cpu_rq(cpu)->sd); __sd; \
+	  __sd = (__sd->parent || (__sd->flags & SD_PHANTOM)) ? __sd->parent : \
+			  ssd)
+
 #define for_each_lower_domain(sd) for (; sd; sd = sd->child)
 
 /**
