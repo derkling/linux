@@ -4523,7 +4523,7 @@ find_target_group(struct sched_domain *sd, struct task_struct *p,
 	unsigned long min_load = ULONG_MAX, this_load = 0;
 	int load_idx = sd->forkexec_idx;
 	int imbalance = 100 + (sd->imbalance_pct-100)/2;
-	int local_nrg = 0, min_nrg = INT_MAX;
+	int e_local = 0, e_min = INT_MAX;
 
 	if (sd_flag & SD_BALANCE_WAKE)
 		load_idx = sd->wake_idx;
@@ -4532,7 +4532,7 @@ find_target_group(struct sched_domain *sd, struct task_struct *p,
 		unsigned long load, avg_load, util, probe_util = UINT_MAX;
 		int local_group;
 		int i;
-		int probe_cpu, nrg_diff;
+		int probe_cpu, e_diff;
 
 		/* Skip over this group if it has no CPUs allowed */
 		if (!cpumask_intersects(sched_group_cpus(group),
@@ -4573,26 +4573,26 @@ find_target_group(struct sched_domain *sd, struct task_struct *p,
 		 * expensive.
 		 */
 
-		nrg_diff = energy_diff_task(probe_cpu, p);
+		e_diff = energy_diff_task(probe_cpu, p);
 
 		if (local_group) {
 			this_load = avg_load;
-			local_nrg = nrg_diff;
+			e_local = e_diff;
 		} else {
 			if (avg_load < min_load) {
 				min_load = avg_load;
 				idlest = group;
 			}
 
-			if (nrg_diff < min_nrg) {
-				min_nrg = nrg_diff;
+			if (e_diff < e_min) {
+				e_min = e_diff;
 				energy = group;
 			}
 		}
 	} while (group = group->next, group != sd->groups);
 
 	if (energy_aware()) {
-		if (energy && min_nrg < local_nrg)
+		if (energy && e_min < e_local)
 			return energy;
 		return NULL;
 	}
@@ -4609,28 +4609,28 @@ static int
 find_target_cpu(struct sched_group *group, struct task_struct *p, int this_cpu)
 {
 	unsigned long load, min_load = ULONG_MAX;
-	int min_nrg = INT_MAX, nrg, least_nrg = -1;
+	int e_min = INT_MAX, e, e_least = -1;
 	int idlest = -1;
 	int i;
 
 	/* Traverse only the allowed CPUs */
 	for_each_cpu_and(i, sched_group_cpus(group), tsk_cpus_allowed(p)) {
 		load = cpu_load(i, 0);
-		nrg = energy_diff_task(i, p);
+		e = energy_diff_task(i, p);
 
 		if (load < min_load || (load == min_load && i == this_cpu)) {
 			min_load = load;
 			idlest = i;
 		}
 
-		if (nrg < min_nrg) {
-			min_nrg = nrg;
-			least_nrg = i;
+		if (e < e_min) {
+			e_min = e;
+			e_least = i;
 		}
 	}
 
-	if (least_nrg >= 0)
-		return least_nrg;
+	if (e_least >= 0)
+		return e_least;
 
 	return idlest;
 }
