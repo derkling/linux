@@ -4855,8 +4855,7 @@ static int select_idle_sibling(struct task_struct *p, int target)
 	struct sched_domain *sd = NULL, *tmp;
 	struct sched_group *sg;
 	int i = task_cpu(p);
-	int target_nrg;
-	int nrg_min, nrg_cpu = -1;
+	int e_tgt, e_min, e_cpu = -1;
 
 	if (energy_aware()) {
 		/* When energy-aware, go above sd_llc */
@@ -4881,7 +4880,7 @@ static int select_idle_sibling(struct task_struct *p, int target)
 	sd = rcu_dereference(per_cpu(sd_llc, target));
 
 loop:
-	target_nrg = nrg_min = energy_diff_task(target, p);
+	e_tgt = e_min = energy_diff_task(target, p);
 
 	for_each_lower_domain(sd) {
 		sg = sd->groups;
@@ -4891,15 +4890,17 @@ loop:
 				goto next;
 
 			for_each_cpu(i, sched_group_cpus(sg)) {
-				int nrg_diff;
 				if (energy_aware()) {
+					int e_diff;
+
 					if (!idle_cpu(i))
 						continue;
 
-					nrg_diff = energy_diff_task(i, p);
-					if (nrg_diff < nrg_min) {
-						nrg_min = nrg_diff;
-						nrg_cpu = i;
+					e_diff = energy_diff_task(i, p);
+
+					if (e_diff < e_min) {
+						e_min = e_diff;
+						e_cpu = i;
 					}
 				}
 
@@ -4916,8 +4917,8 @@ next:
 			sg = sg->next;
 		} while (sg != sd->groups);
 
-		if (nrg_cpu >= 0) {
-			target = nrg_cpu;
+		if (e_cpu >= 0) {
+			target = e_cpu;
 			goto done;
 		}
 	}
