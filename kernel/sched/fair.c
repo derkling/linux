@@ -4217,14 +4217,14 @@ static int energy_diff_util(int cpu, int util, int wakeups)
 {
 	struct sched_domain *sd;
 	int i;
-	int nrg_diff = 0;
+	int e_diff = 0;
 	int curr_cap_idx = -1;
 	int new_cap_idx = -1;
 	unsigned long max_util_bef, max_util_aft, aff_util_bef, aff_util_aft;
 	unsigned long unused_util_bef, unused_util_aft;
-	unsigned long cpu_curr_capacity;
+	unsigned long cpu_curr_cap;
 
-	cpu_curr_capacity = get_curr_capacity(cpu);
+	cpu_curr_cap = get_curr_capacity(cpu);
 
 	max_util_aft = cpu_load(cpu, 1) + util;
 
@@ -4249,7 +4249,7 @@ static int energy_diff_util(int cpu, int util, int wakeups)
 		if (curr_cap_idx < 0 || !(sd->flags & SD_SHARE_CAP_STATES)) {
 
 			/* TODO: Fix assumption 2 and 3. */
-			curr_cap_idx = energy_match_cap(cpu_curr_capacity, sge);
+			curr_cap_idx = energy_match_cap(cpu_curr_cap, sge);
 
 			/*
 			 * If we remove tasks, i.e. util < 0, we should find
@@ -4327,28 +4327,28 @@ static int energy_diff_util(int cpu, int util, int wakeups)
 			goto unlock;
 
 		/* Energy before */
-		nrg_diff -= (aff_util_bef * curr_state->power)/curr_state->cap;
-		nrg_diff -= (unused_util_bef * is->power)/curr_state->cap;
+		e_diff -= (aff_util_bef * curr_state->power)/curr_state->cap;
+		e_diff -= (unused_util_bef * is->power)/curr_state->cap;
 
 		/* Energy after */
-		nrg_diff += (aff_util_aft*new_state->power)/new_state->cap;
-		nrg_diff += (unused_util_aft * is->power)/new_state->cap;
+		e_diff += (aff_util_aft*new_state->power)/new_state->cap;
+		e_diff += (unused_util_aft * is->power)/new_state->cap;
 
 		/*
 		 * Estimate how many of the wakeups that happens while cpu is
 		 * idle assuming they are uniformly distributed. Ignoring
 		 * wakeups caused by other tasks.
 		 */
-		nrg_diff += (wakeups * is->wu_energy >> 10)
+		e_diff += (wakeups * is->wu_energy >> 10)
 				* unused_util_aft/new_state->cap;
 	}
 	goto unlock;
 error:
-	nrg_diff = INT_MAX;
+	e_diff = INT_MAX;
 unlock:
 	rcu_read_unlock();
 
-	return nrg_diff;
+	return e_diff;
 }
 
 static int energy_diff_task(int cpu, struct task_struct *p)
