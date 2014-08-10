@@ -4271,8 +4271,7 @@ static int energy_diff_util(int cpu, int util, int wakeups)
 					 * Can't handle the additional
 					 * utilization
 					 */
-					nrg_diff = INT_MAX;
-					goto unlock;
+					goto error;
 				}
 			} else {
 				new_cap_idx = curr_cap_idx;
@@ -4281,6 +4280,11 @@ static int energy_diff_util(int cpu, int util, int wakeups)
 
 		curr_state = &cap_table[curr_cap_idx];
 		new_state = &cap_table[new_cap_idx];
+
+		/* In case scheduler is not completely set-up. */
+		if (!curr_state->cap || !new_state->cap)
+			goto error;
+
 		find_max_util(sched_group_cpus(sd->groups), cpu, util,
 				&max_util_bef, &max_util_aft);
 		is = &sge->idle_states[likely_idle_state_idx(sd->groups)];
@@ -4338,6 +4342,9 @@ static int energy_diff_util(int cpu, int util, int wakeups)
 		nrg_diff += (wakeups * is->wu_energy >> 10)
 				* unused_util_aft/new_state->cap;
 	}
+	goto unlock;
+error:
+	nrg_diff = INT_MAX;
 unlock:
 	rcu_read_unlock();
 
