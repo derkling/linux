@@ -4365,7 +4365,7 @@ static int energy_diff_task(int cpu, struct task_struct *p)
 
 static int energy_diff_cpu(int dst_cpu, int src_cpu)
 {
-	int util_diff, dst_nrg_diff, src_nrg_diff;
+	int util_diff, dst_e_diff, src_e_diff;
 	unsigned long src_curr_cap, src_util;
 	unsigned long dst_curr_cap = get_curr_capacity(dst_cpu);
 	unsigned long dst_util = cpu_load(dst_cpu, 1);
@@ -4390,13 +4390,13 @@ static int energy_diff_cpu(int dst_cpu, int src_cpu)
 
 	util_diff = min(dst_curr_cap - dst_util, src_util);
 
-	dst_nrg_diff = energy_diff_util(dst_cpu, util_diff, 0);
-	src_nrg_diff = energy_diff_util(src_cpu, -util_diff, 0);
+	dst_e_diff = energy_diff_util(dst_cpu, util_diff, 0);
+	src_e_diff = energy_diff_util(src_cpu, -util_diff, 0);
 
-	if (dst_nrg_diff == INT_MAX || src_nrg_diff == INT_MAX)
+	if (dst_e_diff == INT_MAX || src_e_diff == INT_MAX)
 		return INT_MAX;
 
-	return dst_nrg_diff + src_nrg_diff;
+	return dst_e_diff + src_e_diff;
 }
 
 static int wake_wide(struct task_struct *p)
@@ -5693,7 +5693,7 @@ struct sg_lb_stats {
 	unsigned int nr_numa_running;
 	unsigned int nr_preferred_running;
 #endif
-	int nrg_diff; /* Maximum energy difference btwn dst_cpu and probe_cpu */
+	int e_diff; /* Maximum energy difference btwn dst_cpu and probe_cpu */
 };
 
 /*
@@ -5729,7 +5729,7 @@ static inline void init_sd_lb_stats(struct sd_lb_stats *sds)
 		.use_ea = 0,
 		.busiest_stat = {
 			.avg_load = 0UL,
-			.nrg_diff = INT_MAX,
+			.e_diff = INT_MAX,
 		},
 	};
 }
@@ -6033,7 +6033,7 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 
 	memset(sgs, 0, sizeof(*sgs));
 
-	sgs->nrg_diff = INT_MAX;
+	sgs->e_diff = INT_MAX;
 
 	for_each_cpu_and(i, sched_group_cpus(group), env->cpus) {
 		struct rq *rq = cpu_rq(i);
@@ -6081,7 +6081,7 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 		sgs->group_has_free_capacity = 1;
 
 	if (energy_aware() && !local_group)
-		sgs->nrg_diff = energy_diff_cpu(env->dst_cpu, probe_cpu);
+		sgs->e_diff = energy_diff_cpu(env->dst_cpu, probe_cpu);
 }
 
 /**
@@ -6103,7 +6103,7 @@ static bool update_sd_pick_busiest(struct lb_env *env,
 				   struct sg_lb_stats *sgs)
 {
 	if (energy_aware()) {
-		if (sgs->nrg_diff < sds->busiest_stat.nrg_diff) {
+		if (sgs->e_diff < sds->busiest_stat.e_diff) {
 			sds->use_ea = 1;
 			return true;
 		}
@@ -6532,7 +6532,7 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 {
 	struct rq *busiest = NULL, *rq;
 	unsigned long busiest_load = 0, busiest_capacity = 1;
-	int i, min_nrg = INT_MAX;
+	int i, e_min = INT_MAX;
 
 	for_each_cpu_and(i, sched_group_cpus(group), env->cpus) {
 		unsigned long capacity, capacity_factor, load;
@@ -6579,10 +6579,10 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 			continue;
 
 		if (energy_aware() && env->use_ea) {
-			int nrg = energy_diff_cpu(env->dst_cpu, i);
+			int e = energy_diff_cpu(env->dst_cpu, i);
 
-			if (nrg < min_nrg) {
-				min_nrg = nrg;
+			if (e < e_min) {
+				e_min = e;
 				busiest = rq;
 			}
 		}
