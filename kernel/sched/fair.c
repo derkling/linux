@@ -4170,27 +4170,75 @@ static int energy_match_cap(unsigned long util,
 	return idx;
 }
 
+struct diff_util_env {
+       struct sched_domain *sd;
+       int cpu;
+       int util;
+       struct capacity_state *curr_state;
+       struct capacity_state *new_state;
+
+       unsigned long aff_util_bef;
+       unsigned long aff_util_aft;
+       unsigned long spare_util_bef;
+       unsigned long spare_util_aft;
+};
+
+static void init_diff_util_env(struct diff_util_env *env,
+                              struct sched_domain *sd,
+                              int cpu, int util,
+                              struct capacity_state *curr_state,
+                              struct capacity_state *new_state)
+{
+       *env = (struct diff_util_env){
+               .sd             = sd,
+               .cpu            = cpu,
+               .util           = util,
+               .curr_state     = curr_state,
+               .new_state      = new_state,
+               .aff_util_bef   = 0UL,
+               .aff_util_aft   = 0UL,
+               .spare_util_bef = 0UL,
+               .spare_util_aft = 0UL,
+       };
+}
+
 /*
- * Find the max cpu utilization in a group of cpus before and after
- * adding/removing tasks (util) from a specific cpu (cpu).
+ * Calculate the affected and spare cpu utilization in a group of cpus before
+ * and after adding/removing tasks (env->util) from a specific cpu (env->cpu).
  */
-static void find_max_util(const struct cpumask *mask, int cpu, int util,
-		unsigned long *max_util_bef, unsigned long *max_util_aft)
+static void calc_diff_util(struct diff_util_env* env)
 {
 	int i;
+	unsigned long curr_cap = env->curr_state->cap;
+	unsigned long new_cap = env->new_state->cap;
 
-	*max_util_bef = 0;
-	*max_util_aft = 0;
+	if (!env->sd->child && env->sd->flags & SD_SHARE_CAP_STATES) {
+		for_each_cpu(i, sched_domain_span(env->sd))
+			    env->aff_util_bef += cpu_load(i, 1);
+		env->aff_util_aft = env->aff_util_bef + env->util;
+	} else {
+		for_each_cpu(i, sched_group_cpus(env->sd->groups)) {
+			unsigned long cpu_util = cpu_load(i, 1);
 
-	for_each_cpu(i, mask) {
-		unsigned long cpu_util = cpu_load(i, 1);
+			env->aff_util_bef = max(env->aff_util_bef, cpu_util);
 
-		*max_util_bef = max(*max_util_bef, cpu_util);
+			if (i == env->cpu)
+				cpu_util += env->util;
 
-		if (i == cpu)
-			cpu_util += util;
+			env->aff_util_aft = max(env->aff_util_aft, cpu_util);
+		}
+	}
 
-		*max_util_aft = max(*max_util_aft, cpu_util);
+	if (!env->sd->child) {
+		env->spare_util_bef = curr_cap - cpu_load(env->cpu, 1);
+		env->spare_util_aft = new_cap - cpu_load(env->cpu, 1) -
+					env->util;
+	}
+	else {
+		env->spare_util_bef = curr_cap - min(env->spare_util_bef,
+							curr_cap);
+		env->spare_util_aft = new_cap - min(env->spare_util_aft,
+							new_cap);
 	}
 }
 
@@ -4217,14 +4265,8 @@ static void find_max_util(const struct cpumask *mask, int cpu, int util,
 static int energy_diff_util(int cpu, int util, int wakeups)
 {
 	struct sched_domain *sd;
-	int i;
-	int e_diff = 0;
-	int curr_cap_idx = -1;
-	int new_cap_idx = -1;
-	unsigned long max_util_bef, max_util_aft, aff_util_bef, aff_util_aft;
-	unsigned long spare_util_bef, spare_util_aft;
-	unsigned long cpu_curr_cap;
-	int cpu_util;
+	int e_diff = 0, cpu_util, curr_cap_idx = -1, new_cap_idx = -1;
+	unsigned long max_util_aft, cpu_curr_cap;
 
 	cpu_curr_cap = get_curr_capacity(cpu);
 	cpu_util = cpu_load(cpu, 1);
@@ -4238,6 +4280,7 @@ static int energy_diff_util(int cpu, int util, int wakeups)
 		struct capacity_state *curr_state, *new_state, *cap_table;
 		struct idle_state *is;
 		struct sched_group_energy *sge;
+		struct diff_util_env env;
 
 		if (!sd->groups->sge)
 			continue;
@@ -4275,54 +4318,28 @@ static int energy_diff_util(int cpu, int util, int wakeups)
 		if (!curr_state->cap || !new_state->cap)
 			goto error;
 
-		find_max_util(sched_group_cpus(sd->groups), cpu, util,
-				&max_util_bef, &max_util_aft);
-		is = &sge->idle_states[likely_idle_state_idx(sd->groups)];
-
-		if (!sd->child) {
-			/* Lowest level - groups are individual cpus */
-			if (sd->flags & SD_SHARE_CAP_STATES) {
-				int sum_util = 0;
-				for_each_cpu(i, sched_domain_span(sd))
-					sum_util += cpu_load(i, 1);
-				aff_util_bef = sum_util;
-			} else {
-				aff_util_bef = cpu_load(cpu, 1);
-			}
-			aff_util_aft = aff_util_bef + util;
-
-			/* Estimate idle time based on spare utilization */
-			spare_util_bef = curr_state->cap
-						- cpu_load(cpu, 1);
-			spare_util_aft = new_state->cap - cpu_load(cpu, 1)
-						- util;
-		} else {
-			/* Higher level */
-			aff_util_bef = max_util_bef;
-			aff_util_aft = max_util_aft;
-
-			/* Estimate idle time based on spare utilization */
-			spare_util_bef = curr_state->cap
-					- min(aff_util_bef, curr_state->cap);
-			spare_util_aft = new_state->cap
-					- min(aff_util_aft, new_state->cap);
-		}
+		init_diff_util_env(&env, sd, cpu, util, curr_state, new_state);
+		calc_diff_util(&env);
 
 		/*
 		 * The utilization change has no impact at this level (or any
 		 * parent level).
 		 */
-		if (aff_util_bef == aff_util_aft && curr_cap_idx == new_cap_idx
-				&& spare_util_aft < 100)
+		if (env.aff_util_bef == env.aff_util_aft &&
+		    curr_cap_idx == new_cap_idx &&
+		    env.spare_util_aft < 100)
 			goto unlock;
 
+		/* Estimate idle time based on spare utilization */
+		is = &sge->idle_states[likely_idle_state_idx(sd->groups)];
+
 		/* Energy before */
-		e_diff -= (aff_util_bef * curr_state->power)/curr_state->cap;
-		e_diff -= (spare_util_bef * is->power)/curr_state->cap;
+		e_diff -= (env.aff_util_bef * curr_state->power)/curr_state->cap;
+		e_diff -= (env.spare_util_bef * is->power)/curr_state->cap;
 
 		/* Energy after */
-		e_diff += (aff_util_aft*new_state->power)/new_state->cap;
-		e_diff += (spare_util_aft * is->power)/new_state->cap;
+		e_diff += (env.aff_util_aft * new_state->power)/new_state->cap;
+		e_diff += (env.spare_util_aft * is->power)/new_state->cap;
 
 		/*
 		 * Estimate how many of the wakeups that happens while cpu is
@@ -4330,7 +4347,7 @@ static int energy_diff_util(int cpu, int util, int wakeups)
 		 * wakeups caused by other tasks.
 		 */
 		e_diff += (wakeups * is->wu_energy >> 10)
-				* spare_util_aft/new_state->cap;
+				* env.spare_util_aft/new_state->cap;
 	}
 
 	goto unlock;
