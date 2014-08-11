@@ -251,7 +251,7 @@
 				clocks = <&v2m_oscclk1>, <&smbclk>;
 				clock-names = "clcdclk", "apb_pclk";
 				memory-region = <&v2m_video_ram>;
-				max-memory-bandwidth = <50350000>; /* 16bpp @ 25.175MHz */
+				max-memory-bandwidth = <50350000>; /* Bps, 640x480@60 16bpp */
 
 				port {
 					v2m_clcd_pads: endpoint {

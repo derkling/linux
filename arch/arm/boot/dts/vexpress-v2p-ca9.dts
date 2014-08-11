@@ -74,7 +74,7 @@
 		interrupts = <0 44 4>;
 		clocks = <&oscclk1>, <&oscclk2>;
 		clock-names = "clcdclk", "apb_pclk";
-		max-memory-bandwidth = <130000000>; /* 16bpp @ 63.5MHz */
+		max-memory-bandwidth = <130000000>; /* Bps, 1024x768@60 16bpp */
 
 		port {
 			clcd_pads: endpoint {
