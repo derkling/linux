@@ -4281,6 +4281,7 @@ static int energy_diff_util(int cpu, int util, int wakeups)
 		struct idle_state *is;
 		struct sched_group_energy *sge;
 		struct diff_util_env env;
+		int e_cap, e_idle, e_wu;
 
 		if (!sd->groups->sge)
 			continue;
@@ -4330,24 +4331,24 @@ static int energy_diff_util(int cpu, int util, int wakeups)
 		    env.spare_util_aft < 100)
 			goto unlock;
 
-		/* Estimate idle time based on spare utilization */
 		is = &sge->idle_states[likely_idle_state_idx(sd->groups)];
 
-		/* Energy before */
-		e_diff -= (env.aff_util_bef * curr_state->power)/curr_state->cap;
-		e_diff -= (env.spare_util_bef * is->power)/curr_state->cap;
+		e_cap = (env.aff_util_aft * new_state->power)/new_state->cap -
+			(env.aff_util_bef * curr_state->power)/curr_state->cap;
 
-		/* Energy after */
-		e_diff += (env.aff_util_aft * new_state->power)/new_state->cap;
-		e_diff += (env.spare_util_aft * is->power)/new_state->cap;
+		/* Estimate idle time based on spare utilization */
+		e_idle = (env.spare_util_aft * is->power)/new_state->cap -
+			 (env.spare_util_bef * is->power)/curr_state->cap;
 
 		/*
 		 * Estimate how many of the wakeups that happens while cpu is
 		 * idle assuming they are uniformly distributed. Ignoring
 		 * wakeups caused by other tasks.
 		 */
-		e_diff += (wakeups * is->wu_energy >> 10)
-				* env.spare_util_aft/new_state->cap;
+		e_wu = (wakeups * is->wu_energy >> 10) *
+		       env.spare_util_aft/new_state->cap;
+
+		e_diff += e_cap + e_idle + e_wu;
 	}
 
 	goto unlock;
