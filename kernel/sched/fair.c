@@ -4213,6 +4213,7 @@ static void find_max_util(const struct cpumask *mask, int cpu, int util,
  * }
  *
  */
+
 static int energy_diff_util(int cpu, int util, int wakeups)
 {
 	struct sched_domain *sd;
@@ -4223,16 +4224,14 @@ static int energy_diff_util(int cpu, int util, int wakeups)
 	unsigned long max_util_bef, max_util_aft, aff_util_bef, aff_util_aft;
 	unsigned long spare_util_bef, spare_util_aft;
 	unsigned long cpu_curr_cap;
+	int cpu_util;
 
 	cpu_curr_cap = get_curr_capacity(cpu);
-
-	max_util_aft = cpu_load(cpu, 1) + util;
+	cpu_util = cpu_load(cpu, 1);
 
 	/* Can't remove more utilization than there is */
-	if (max_util_aft < 0) {
-		max_util_aft = 0;
-		util = -cpu_load(cpu, 1);
-	}
+	max_util_aft = clamp(cpu_util + util, 0, cpu_util + util);
+	util = max_util_aft ? util : -cpu_util;
 
 	rcu_read_lock();
 	for_each_domain_inc_ssd(cpu, sd) {
