@@ -4502,9 +4502,26 @@ static int energy_total_domain(struct sched_domain *sd_top)
 		/*trace_printk("etd: cover mask=%s w=%d", buf, cpumask_weight(&covered_cpus));*/
 	}
 
-	trace_printk("etd: done eb=%lu ei=%lu", total_nrg_busy, total_nrg_idle);
+	trace_printk("etd: done eb=%lu ei=%lu sw=%d", total_nrg_busy, total_nrg_idle, sd_top->span_weight);
 
 	return total_nrg_busy + total_nrg_idle;
+}
+
+unsigned long long (*fn_energy_reader)(int cluster);
+
+int register_energy_reader(void *fn)
+{
+	fn_energy_reader = fn;
+	printk("sched: energy_reader registered\n");
+
+	return 0;
+}
+
+unsigned long long read_energy(int cluster)
+{
+	if (!fn_energy_reader)
+		return 0;
+	return fn_energy_reader(cluster);
 }
 
 static int wake_wide(struct task_struct *p)
@@ -7325,12 +7342,14 @@ static void rebalance_domains(struct rq *rq, enum cpu_idle_type idle)
 	if (cpu_online(0)) {
 		for_each_domain(0, sd) {
 			energy_total_domain(sd);
+			trace_printk("cluster energy=%llu", read_energy(1));
 			break;
 		}
 	}
 	if (cpu_online(2)) {
 		for_each_domain(2, sd) {
 			energy_total_domain(sd);
+			trace_printk("cluster energy=%llu", read_energy(0));
 			break;
 		}
 	}

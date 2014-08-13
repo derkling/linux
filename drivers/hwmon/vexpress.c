@@ -23,6 +23,8 @@
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/vexpress.h>
+#include <linux/sched.h>
+#include <linux/workqueue.h>
 
 struct vexpress_hwmon_data {
 	struct device *hwmon_dev;
@@ -38,6 +40,9 @@ static ssize_t vexpress_hwmon_name_show(struct device *dev,
 	return sprintf(buffer, "%s\n", compatible);
 }
 
+static struct vexpress_hwmon_data *data_a7;
+static struct vexpress_hwmon_data *data_a15;
+
 static ssize_t vexpress_hwmon_label_show(struct device *dev,
 		struct device_attribute *dev_attr, char *buffer)
 {
@@ -50,7 +55,7 @@ static ssize_t vexpress_hwmon_label_show(struct device *dev,
 }
 
 static ssize_t vexpress_hwmon_u32_show(struct device *dev,
-		struct device_attribute *dev_attr, char *buffer)
+struct device_attribute *dev_attr, char *buffer)
 {
 	struct vexpress_hwmon_data *data = dev_get_drvdata(dev);
 	int err;
@@ -62,6 +67,47 @@ static ssize_t vexpress_hwmon_u32_show(struct device *dev,
 
 	return snprintf(buffer, PAGE_SIZE, "%u\n", value /
 			to_sensor_dev_attr(dev_attr)->index);
+}
+
+static unsigned long long vexpress_read_energy(int cluster)
+{
+	struct vexpress_hwmon_data *data;
+	int err;
+	u32 value_hi, value_lo;
+
+	if (cluster) {
+		if (data_a7)
+			data = data_a7;
+		else
+			return 0;
+	} else {
+		if (data_a15)
+			data = data_a15;
+		else
+			return 0;
+	}
+
+	err = regmap_read(data->reg, 0, &value_lo);
+	if (err)
+		return err;
+
+	err = regmap_read(data->reg, 1, &value_hi);
+	if (err)
+		return err;
+
+	return ((u64)value_hi << 32) | value_lo;
+}
+
+static void work_read_energy(struct work_struct *work)
+{
+	trace_printk("hwmon: a15=%llu a7=%llu", vexpress_read_energy(0), vexpress_read_energy(1));
+
+	INIT_DELAYED_WORK(to_delayed_work(work), work_read_energy);
+
+	if (cpu_online(2))
+		queue_delayed_work_on(2, system_highpri_wq, to_delayed_work(work), msecs_to_jiffies(10));
+	else
+		queue_delayed_work(system_highpri_wq, to_delayed_work(work), msecs_to_jiffies(10));
 }
 
 static ssize_t vexpress_hwmon_u64_show(struct device *dev,
@@ -78,6 +124,10 @@ static ssize_t vexpress_hwmon_u64_show(struct device *dev,
 	err = vexpress_config_read(data->func, 1, &value_hi);
 	if (err)
 		return err;
+
+	printk("hwmon: index=%d\n", to_sensor_dev_attr(dev_attr)->index);
+
+	printk("hwmon: read test=%llu", vexpress_read_energy(0));
 
 	return snprintf(buffer, PAGE_SIZE, "%llu\n",
 			div_u64(((u64)value_hi << 32) | value_lo,
@@ -160,6 +210,8 @@ static struct of_device_id vexpress_hwmon_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, vexpress_hwmon_of_match);
 
+static struct delayed_work *dwork_p;
+
 static int vexpress_hwmon_probe(struct platform_device *pdev)
 {
 	int err;
@@ -187,6 +239,19 @@ static int vexpress_hwmon_probe(struct platform_device *pdev)
 	if (IS_ERR(data->hwmon_dev)) {
 		err = PTR_ERR(data->hwmon_dev);
 		goto error;
+	}
+
+	if (strcmp("A7 Jcore", (const char *) of_get_property(pdev->dev.of_node, "label", NULL))==0) {
+		printk("hwmon: setting a7 pointer\n");
+		data_a7 = data;
+	}
+	if (strcmp("A15 Jcore", (const char *) of_get_property(pdev->dev.of_node, "label", NULL))==0) {
+		printk("hwmon: setting a15 pointer\n");
+		data_a15 = data;
+		dwork_p = (struct delayed_work*) devm_kzalloc(&pdev->dev, sizeof(struct delayed_work), GFP_KERNEL);
+
+		INIT_DELAYED_WORK(dwork_p, work_read_energy);
+		schedule_delayed_work(dwork_p, msecs_to_jiffies(10));
 	}
 
 	return 0;
