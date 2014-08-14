@@ -5878,7 +5878,7 @@ static void init_sched_energy(int cpu, struct sched_domain *sd,
 	sched_domain_energy_f fn = tl->energy;
 	const struct cpumask *mask = sd ? sched_group_cpus(sg) : tl->mask(cpu);
 
-	if (!fn || !fn(cpu) || (!sd && energy))
+	if (!fn || !fn(cpu))
 		return;
 
 	if (cpumask_weight(mask) > 1)
