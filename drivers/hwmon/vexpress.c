@@ -87,11 +87,11 @@ static unsigned long long vexpress_read_energy(int cluster)
 			return 0;
 	}
 
-	err = regmap_read(data->reg, 0, &value_lo);
+	err = vexpress_config_read(data->func, 0, &value_lo);
 	if (err)
 		return err;
 
-	err = regmap_read(data->reg, 1, &value_hi);
+	err = vexpress_config_read(data->func, 1, &value_hi);
 	if (err)
 		return err;
 
