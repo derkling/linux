@@ -1234,7 +1234,7 @@ struct hmp_global_attr {
 	ssize_t (*to_sysfs_text)(char *buf, int buf_size);
 };
 
-#define HMP_DATA_SYSFS_MAX 8
+#define HMP_DATA_SYSFS_MAX 9
 
 struct hmp_data_struct {
 #ifdef CONFIG_HMP_FREQUENCY_INVARIANT_SCALE
@@ -3844,6 +3844,8 @@ unsigned int hmp_packing_enabled = 1;
 unsigned int hmp_full_threshold = 650;
 #endif
 
+unsigned int hmp_idle_pull_enabled = 1;
+
 static unsigned int hmp_up_migration(int cpu, int *target_cpu, struct sched_entity *se);
 static unsigned int hmp_down_migration(int cpu, struct sched_entity *se);
 static inline unsigned int hmp_domain_min_load(struct hmp_domain *hmpd,
@@ -4222,6 +4224,12 @@ static int hmp_attr_init(void)
 		NULL,
 		0);
 #endif
+	hmp_attr_add("idle_pull_enable",
+		&hmp_idle_pull_enabled,
+		NULL,
+		hmp_toggle_from_sysfs,
+		NULL,
+		0);
 	hmp_data.attr_group.name = "hmp";
 	hmp_data.attr_group.attrs = hmp_data.attributes;
 	ret = sysfs_create_group(kernel_kobj,
@@ -7158,10 +7166,13 @@ out:
 
 static DEFINE_SPINLOCK(hmp_force_migration);
 
+#define hmp_skip_target(rq) ((rq->active_balance || rq->wake_for_idle_pull))
+
 /*
  * hmp_force_up_migration checks runqueues for tasks that need to
  * be actively migrated to a faster cpu.
  */
+
 static void hmp_force_up_migration(int this_cpu)
 {
 	int cpu, target_cpu;
@@ -7170,16 +7181,30 @@ static void hmp_force_up_migration(int this_cpu)
 	unsigned long flags;
 	unsigned int force, got_target;
 	struct task_struct *p;
+	bool use_idle_pull = hmp_idle_pull_enabled;
 
 	if (!spin_trylock(&hmp_force_migration))
 		return;
+
+	/* only use idle pull if all the big CPUs are idle */
+	if (use_idle_pull) {
+		struct hmp_domain *domain;
+		domain = list_entry(hmp_domains.next, struct hmp_domain, hmp_domains);
+		for_each_cpu(cpu, &domain->cpus) {
+			if (!idle_cpu(cpu)) {
+				use_idle_pull = 0;
+				break;
+			}
+		}
+	}
+
 	for_each_online_cpu(cpu) {
 		force = 0;
 		got_target = 0;
 		target = cpu_rq(cpu);
 		raw_spin_lock_irqsave(&target->lock, flags);
 		curr = target->cfs.curr;
-		if (!curr || target->active_balance) {
+		if (idle_cpu(cpu) || !curr || hmp_skip_target(target)) {
 			raw_spin_unlock_irqrestore(&target->lock, flags);
 			continue;
 		}
@@ -7200,13 +7225,22 @@ static void hmp_force_up_migration(int this_cpu)
 		}
 		p = task_of(curr);
 		if (hmp_up_migration(cpu, &target_cpu, curr)) {
-			cpu_rq(target_cpu)->wake_for_idle_pull = 1;
-			raw_spin_unlock_irqrestore(&target->lock, flags);
-			spin_unlock(&hmp_force_migration);
-			smp_send_reschedule(target_cpu);
-			return;
+			if (use_idle_pull) {
+				trace_sched_hmp_migrate(p, target_cpu, HMP_MIGRATE_FORCED_IDLE_PULL);
+				target->wake_for_idle_pull = 1;
+				raw_spin_unlock_irqrestore(&target->lock, flags);
+				smp_send_reschedule(target_cpu);
+				continue;
+			} else {
+				get_task_struct(p);
+				target->push_cpu = target_cpu;
+				target->migrate_task = p;
+				got_target = 1;
+				trace_sched_hmp_migrate(p, target->push_cpu, HMP_MIGRATE_FORCE);
+				hmp_next_up_delay(&p->se, target->push_cpu);
+			}
 		}
-		if (!got_target) {
+		if (!got_target && !hmp_cpu_is_slowest(cpu)) {
 			/*
 			 * For now we just check the currently running task.
 			 * Selecting the lightest task for offloading will

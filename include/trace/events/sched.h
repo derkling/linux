@@ -635,6 +635,7 @@ TRACE_EVENT(sched_hmp_migrate_idle_running,
 #define HMP_MIGRATE_FORCE  1
 #define HMP_MIGRATE_OFFLOAD 2
 #define HMP_MIGRATE_IDLE_PULL 3
+#define HMP_MIGRATE_FORCED_IDLE_PULL 4
 TRACE_EVENT(sched_hmp_migrate,
 
 	TP_PROTO(struct task_struct *tsk, int dest, int force),
