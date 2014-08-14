@@ -3844,7 +3844,7 @@ unsigned int hmp_packing_enabled = 1;
 unsigned int hmp_full_threshold = 650;
 #endif
 
-unsigned int hmp_idle_pull_enabled = 1;
+unsigned int hmp_idle_pull_enabled = 0;
 
 static unsigned int hmp_up_migration(int cpu, int *target_cpu, struct sched_entity *se);
 static unsigned int hmp_down_migration(int cpu, struct sched_entity *se);
