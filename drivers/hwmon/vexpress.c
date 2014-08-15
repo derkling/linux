@@ -104,8 +104,8 @@ static void work_read_energy(struct work_struct *work)
 
 	INIT_DELAYED_WORK(to_delayed_work(work), work_read_energy);
 
-	if (cpu_online(2))
-		queue_delayed_work_on(2, system_highpri_wq, to_delayed_work(work), msecs_to_jiffies(10));
+	if (cpu_online(0))
+		queue_delayed_work_on(0, system_highpri_wq, to_delayed_work(work), msecs_to_jiffies(10));
 	else
 		queue_delayed_work(system_highpri_wq, to_delayed_work(work), msecs_to_jiffies(10));
 }

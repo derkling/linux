@@ -7339,15 +7339,15 @@ static void rebalance_domains(struct rq *rq, enum cpu_idle_type idle)
 	update_blocked_averages(cpu);
 
 	rcu_read_lock();
-	if (cpu_online(0)) {
-		for_each_domain(0, sd) {
+	if (cpu_online(3)) {
+		for_each_domain(3, sd) {
 			energy_total_domain(sd);
 			trace_printk("cluster energy=%llu", read_energy(1));
 			break;
 		}
 	}
-	if (cpu_online(2)) {
-		for_each_domain(2, sd) {
+	if (cpu_online(0)) {
+		for_each_domain(0, sd) {
 			energy_total_domain(sd);
 			trace_printk("cluster energy=%llu", read_energy(0));
 			break;
