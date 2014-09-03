@@ -28,6 +28,7 @@ struct phy;
  * @exit: operation to be performed while exiting
  * @power_on: powering on the phy
  * @power_off: powering off the phy
+ * @calibrate: calibrate the phy post init
  * @owner: the module owner containing the ops
  */
 struct phy_ops {
@@ -35,6 +36,7 @@ struct phy_ops {
 	int	(*exit)(struct phy *phy);
 	int	(*power_on)(struct phy *phy);
 	int	(*power_off)(struct phy *phy);
+	int	(*calibrate)(struct phy *phy);
 	struct module *owner;
 };
 
@@ -61,7 +63,6 @@ struct phy {
 	struct device		dev;
 	int			id;
 	const struct phy_ops	*ops;
-	struct phy_init_data	*init_data;
 	struct mutex		mutex;
 	int			init_count;
 	int			power_count;
@@ -84,33 +85,21 @@ struct phy_provider {
 		struct of_phandle_args *args);
 };
 
-/**
- * struct phy_consumer - represents the phy consumer
- * @dev_name: the device name of the controller that will use this PHY device
- * @port: name given to the consumer port
- */
-struct phy_consumer {
-	const char *dev_name;
-	const char *port;
+struct phy_lookup {
+	struct list_head node;
+	const char *phy_name;
+	const char *dev_id;
+	const char *con_id;
 };
 
-/**
- * struct phy_init_data - contains the list of PHY consumers
- * @num_consumers: number of consumers for this PHY device
- * @consumers: list of PHY consumers
- */
-struct phy_init_data {
-	unsigned int num_consumers;
-	struct phy_consumer *consumers;
-};
+#define PHY_LOOKUP(a, b, c)	\
+	{				\
+		.phy_name = a,		\
+		.dev_id = b,		\
+		.con_id = c,		\
+	}
 
-#define PHY_CONSUMER(_dev_name, _port)				\
-{								\
-	.dev_name	= _dev_name,				\
-	.port		= _port,				\
-}
-
-#define	to_phy(dev)	(container_of((dev), struct phy, dev))
+#define	to_phy(a)	(container_of((a), struct phy, dev))
 
 #define	of_phy_provider_register(dev, xlate)	\
 	__of_phy_provider_register((dev), THIS_MODULE, (xlate))
@@ -139,6 +128,7 @@ int phy_init(struct phy *phy);
 int phy_exit(struct phy *phy);
 int phy_power_on(struct phy *phy);
 int phy_power_off(struct phy *phy);
+int phy_calibrate(struct phy *phy);
 static inline int phy_get_bus_width(struct phy *phy)
 {
 	return phy->attrs.bus_width;
@@ -159,10 +149,9 @@ struct phy *of_phy_get(struct device_node *np, const char *con_id);
 struct phy *of_phy_simple_xlate(struct device *dev,
 	struct of_phandle_args *args);
 struct phy *phy_create(struct device *dev, struct device_node *node,
-		       const struct phy_ops *ops,
-		       struct phy_init_data *init_data);
+		       const struct phy_ops *ops);
 struct phy *devm_phy_create(struct device *dev, struct device_node *node,
-	const struct phy_ops *ops, struct phy_init_data *init_data);
+			    const struct phy_ops *ops);
 void phy_destroy(struct phy *phy);
 void devm_phy_destroy(struct device *dev, struct phy *phy);
 struct phy_provider *__of_phy_provider_register(struct device *dev,
@@ -174,6 +163,10 @@ struct phy_provider *__devm_of_phy_provider_register(struct device *dev,
 void of_phy_provider_unregister(struct phy_provider *phy_provider);
 void devm_of_phy_provider_unregister(struct device *dev,
 	struct phy_provider *phy_provider);
+void phy_register_lookup(struct phy_lookup *pl);
+void phy_unregister_lookup(struct phy_lookup *pl);
+int phy_create_lookup(struct phy *phy, const char *con_id, const char *dev_id);
+void phy_remove_lookup(struct phy *phy, const char *con_id, const char *dev_id);
 #else
 static inline int phy_pm_runtime_get(struct phy *phy)
 {
@@ -241,6 +234,11 @@ static inline int phy_power_off(struct phy *phy)
 	return -ENOSYS;
 }
 
+static inline int phy_calibrate(struct phy *phy)
+{
+	return -ENOSYS;
+}
+
 static inline int phy_get_bus_width(struct phy *phy)
 {
 	return -ENOSYS;
@@ -301,16 +299,14 @@ static inline struct phy *of_phy_simple_xlate(struct device *dev,
 
 static inline struct phy *phy_create(struct device *dev,
 				     struct device_node *node,
-				     const struct phy_ops *ops,
-				     struct phy_init_data *init_data)
+				     const struct phy_ops *ops)
 {
 	return ERR_PTR(-ENOSYS);
 }
 
 static inline struct phy *devm_phy_create(struct device *dev,
 					  struct device_node *node,
-					  const struct phy_ops *ops,
-					  struct phy_init_data *init_data)
+					  const struct phy_ops *ops)
 {
 	return ERR_PTR(-ENOSYS);
 }
@@ -345,6 +341,15 @@ static inline void devm_of_phy_provider_unregister(struct device *dev,
 	struct phy_provider *phy_provider)
 {
 }
+static inline void phy_register_lookup(struct phy_lookup *pl) { }
+static inline void phy_unregister_lookup(struct phy_lookup *pl) { }
+static inline int
+phy_create_lookup(struct phy *phy, const char *con_id, const char *dev_id)
+{
+	return 0;
+}
+static inline void phy_remove_lookup(struct phy *phy, const char *con_id,
+				     const char *dev_id) { }
 #endif
 
 #endif /* __DRIVERS_PHY_H */

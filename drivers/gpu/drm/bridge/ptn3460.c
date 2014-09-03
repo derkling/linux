@@ -19,13 +19,12 @@
 #include <linux/i2c.h>
 #include <linux/gpio.h>
 #include <linux/delay.h>
+#include <drm/drm_panel.h>
 
 #include "drmP.h"
 #include "drm_edid.h"
 #include "drm_crtc.h"
 #include "drm_crtc_helper.h"
-
-#include "bridge/ptn3460.h"
 
 #define PTN3460_EDID_ADDR			0x0
 #define PTN3460_EDID_EMULATION_ADDR		0x84
@@ -36,11 +35,11 @@
 struct ptn3460_bridge {
 	struct drm_connector connector;
 	struct i2c_client *client;
-	struct drm_encoder *encoder;
 	struct drm_bridge *bridge;
+	struct drm_panel *panel;
 	struct edid *edid;
-	int gpio_pd_n;
-	int gpio_rst_n;
+	struct gpio_desc *gpio_pd_n;
+	struct gpio_desc *gpio_rst_n;
 	u32 edid_emulation;
 	bool enabled;
 };
@@ -117,14 +116,13 @@ static void ptn3460_pre_enable(struct drm_bridge *bridge)
 	if (ptn_bridge->enabled)
 		return;
 
-	if (gpio_is_valid(ptn_bridge->gpio_pd_n))
-		gpio_set_value(ptn_bridge->gpio_pd_n, 1);
+	gpiod_set_value(ptn_bridge->gpio_pd_n, 1);
 
-	if (gpio_is_valid(ptn_bridge->gpio_rst_n)) {
-		gpio_set_value(ptn_bridge->gpio_rst_n, 0);
-		udelay(10);
-		gpio_set_value(ptn_bridge->gpio_rst_n, 1);
-	}
+	gpiod_set_value(ptn_bridge->gpio_rst_n, 0);
+	udelay(10);
+	gpiod_set_value(ptn_bridge->gpio_rst_n, 1);
+
+	drm_panel_prepare(ptn_bridge->panel);
 
 	/*
 	 * There's a bug in the PTN chip where it falsely asserts hotplug before
@@ -142,6 +140,9 @@ static void ptn3460_pre_enable(struct drm_bridge *bridge)
 
 static void ptn3460_enable(struct drm_bridge *bridge)
 {
+	struct ptn3460_bridge *ptn_bridge = bridge->driver_private;
+
+	drm_panel_enable(ptn_bridge->panel);
 }
 
 static void ptn3460_disable(struct drm_bridge *bridge)
@@ -153,36 +154,23 @@ static void ptn3460_disable(struct drm_bridge *bridge)
 
 	ptn_bridge->enabled = false;
 
-	if (gpio_is_valid(ptn_bridge->gpio_rst_n))
-		gpio_set_value(ptn_bridge->gpio_rst_n, 1);
+	drm_panel_disable(ptn_bridge->panel);
 
-	if (gpio_is_valid(ptn_bridge->gpio_pd_n))
-		gpio_set_value(ptn_bridge->gpio_pd_n, 0);
+	gpiod_set_value(ptn_bridge->gpio_rst_n, 1);
+	gpiod_set_value(ptn_bridge->gpio_pd_n, 0);
 }
 
 static void ptn3460_post_disable(struct drm_bridge *bridge)
 {
+	struct ptn3460_bridge *ptn_bridge = bridge->driver_private;
+
+	drm_panel_unprepare(ptn_bridge->panel);
 }
 
 void ptn3460_bridge_destroy(struct drm_bridge *bridge)
 {
-	struct ptn3460_bridge *ptn_bridge = bridge->driver_private;
-
 	drm_bridge_cleanup(bridge);
-	if (gpio_is_valid(ptn_bridge->gpio_pd_n))
-		gpio_free(ptn_bridge->gpio_pd_n);
-	if (gpio_is_valid(ptn_bridge->gpio_rst_n))
-		gpio_free(ptn_bridge->gpio_rst_n);
-	/* Nothing else to free, we've got devm allocated memory */
 }
-
-struct drm_bridge_funcs ptn3460_bridge_funcs = {
-	.pre_enable = ptn3460_pre_enable,
-	.enable = ptn3460_enable,
-	.disable = ptn3460_disable,
-	.post_disable = ptn3460_post_disable,
-	.destroy = ptn3460_bridge_destroy,
-};
 
 int ptn3460_get_modes(struct drm_connector *connector)
 {
@@ -231,7 +219,7 @@ struct drm_encoder *ptn3460_best_encoder(struct drm_connector *connector)
 
 	ptn_bridge = container_of(connector, struct ptn3460_bridge, connector);
 
-	return ptn_bridge->encoder;
+	return ptn_bridge->bridge->encoder;
 }
 
 struct drm_connector_helper_funcs ptn3460_connector_helper_funcs = {
@@ -257,87 +245,161 @@ struct drm_connector_funcs ptn3460_connector_funcs = {
 	.destroy = ptn3460_connector_destroy,
 };
 
-int ptn3460_init(struct drm_device *dev, struct drm_encoder *encoder,
-		struct i2c_client *client, struct device_node *node)
+int ptn3460_post_encoder_init(struct drm_bridge *bridge)
 {
+	struct ptn3460_bridge *ptn_bridge = bridge->driver_private;
 	int ret;
+
+	/* bridge is attached to encoder.
+	 * safe to remove it from the bridge_lookup table.
+	 */
+	drm_bridge_remove_from_lookup(bridge);
+
+	ret = drm_bridge_init(bridge->drm_dev, bridge);
+	if (ret) {
+		DRM_ERROR("Failed to initialize bridge with drm\n");
+		return ret;
+	}
+
+	/* connector implementation */
+	ptn_bridge->connector.polled = bridge->connector_polled;
+
+	ret = drm_connector_init(bridge->drm_dev, &ptn_bridge->connector,
+			&ptn3460_connector_funcs, DRM_MODE_CONNECTOR_LVDS);
+	if (ret) {
+		DRM_ERROR("Failed to initialize connector with drm\n");
+		return ret;
+	}
+	drm_connector_helper_add(&ptn_bridge->connector,
+					&ptn3460_connector_helper_funcs);
+	drm_connector_register(&ptn_bridge->connector);
+	drm_mode_connector_attach_encoder(&ptn_bridge->connector,
+							bridge->encoder);
+
+	if (ptn_bridge->panel)
+		drm_panel_attach(ptn_bridge->panel, &ptn_bridge->connector);
+
+	return ret;
+}
+
+struct drm_bridge_funcs ptn3460_bridge_funcs = {
+	.post_encoder_init = ptn3460_post_encoder_init,
+	.pre_enable = ptn3460_pre_enable,
+	.enable = ptn3460_enable,
+	.disable = ptn3460_disable,
+	.post_disable = ptn3460_post_disable,
+	.destroy = ptn3460_bridge_destroy,
+};
+
+static int ptn3460_probe(struct i2c_client *client,
+				const struct i2c_device_id *id)
+{
+	struct device *dev = &(client->dev);
+	struct device_node *panel_node;
 	struct drm_bridge *bridge;
 	struct ptn3460_bridge *ptn_bridge;
+	int ret;
 
-	bridge = devm_kzalloc(dev->dev, sizeof(*bridge), GFP_KERNEL);
+	bridge = devm_kzalloc(dev, sizeof(*bridge), GFP_KERNEL);
 	if (!bridge) {
 		DRM_ERROR("Failed to allocate drm bridge\n");
 		return -ENOMEM;
 	}
 
-	ptn_bridge = devm_kzalloc(dev->dev, sizeof(*ptn_bridge), GFP_KERNEL);
+	ptn_bridge = devm_kzalloc(dev, sizeof(*ptn_bridge), GFP_KERNEL);
 	if (!ptn_bridge) {
 		DRM_ERROR("Failed to allocate ptn bridge\n");
 		return -ENOMEM;
 	}
 
+	panel_node = of_parse_phandle(dev->of_node, "panel", 0);
+	if (panel_node) {
+		ptn_bridge->panel = of_drm_find_panel(panel_node);
+		of_node_put(panel_node);
+		if (!ptn_bridge->panel)
+			return -EPROBE_DEFER;
+	}
+
+	bridge->dev = dev;
+	bridge->driver_private = ptn_bridge;
+	bridge->funcs = &ptn3460_bridge_funcs;
+
 	ptn_bridge->client = client;
-	ptn_bridge->encoder = encoder;
 	ptn_bridge->bridge = bridge;
-	ptn_bridge->gpio_pd_n = of_get_named_gpio(node, "powerdown-gpio", 0);
-	if (gpio_is_valid(ptn_bridge->gpio_pd_n)) {
-		ret = gpio_request_one(ptn_bridge->gpio_pd_n,
-				GPIOF_OUT_INIT_HIGH, "PTN3460_PD_N");
+
+	ptn_bridge->gpio_pd_n = devm_gpiod_get(&client->dev, "powerdown");
+	if (IS_ERR(ptn_bridge->gpio_pd_n)) {
+		ret = PTR_ERR(ptn_bridge->gpio_pd_n);
+		DRM_ERROR("cannot get gpio_pd_n %d\n", ret);
+		return ret;
+	} else {
+		ret = gpiod_direction_output(ptn_bridge->gpio_pd_n, 1);
 		if (ret) {
-			DRM_ERROR("Request powerdown-gpio failed (%d)\n", ret);
+			DRM_ERROR("cannot configure gpio_pd_n\n");
 			return ret;
 		}
 	}
 
-	ptn_bridge->gpio_rst_n = of_get_named_gpio(node, "reset-gpio", 0);
-	if (gpio_is_valid(ptn_bridge->gpio_rst_n)) {
+	ptn_bridge->gpio_rst_n = devm_gpiod_get(&client->dev, "reset");
+	if (IS_ERR(ptn_bridge->gpio_rst_n)) {
+		ret = PTR_ERR(ptn_bridge->gpio_rst_n);
+		DRM_ERROR("cannot get gpio_rst_n %d\n", ret);
+		return ret;
+	} else {
 		/*
 		 * Request the reset pin low to avoid the bridge being
 		 * initialized prematurely
 		 */
-		ret = gpio_request_one(ptn_bridge->gpio_rst_n,
-				GPIOF_OUT_INIT_LOW, "PTN3460_RST_N");
+		ret = gpiod_direction_output(ptn_bridge->gpio_rst_n, 0);
 		if (ret) {
-			DRM_ERROR("Request reset-gpio failed (%d)\n", ret);
-			gpio_free(ptn_bridge->gpio_pd_n);
+			DRM_ERROR("cannot configure gpio_pd_n\n");
 			return ret;
 		}
 	}
 
-	ret = of_property_read_u32(node, "edid-emulation",
+	ret = of_property_read_u32(dev->of_node, "edid-emulation",
 			&ptn_bridge->edid_emulation);
 	if (ret) {
 		DRM_ERROR("Can't read edid emulation value\n");
-		goto err;
+		return -ENODEV;
 	}
 
-	ret = drm_bridge_init(dev, bridge, &ptn3460_bridge_funcs);
-	if (ret) {
-		DRM_ERROR("Failed to initialize bridge with drm\n");
-		goto err;
-	}
+	i2c_set_clientdata(client, ptn_bridge);
 
-	bridge->driver_private = ptn_bridge;
-	encoder->bridge = bridge;
-
-	ret = drm_connector_init(dev, &ptn_bridge->connector,
-			&ptn3460_connector_funcs, DRM_MODE_CONNECTOR_LVDS);
-	if (ret) {
-		DRM_ERROR("Failed to initialize connector with drm\n");
-		goto err;
-	}
-	drm_connector_helper_add(&ptn_bridge->connector,
-			&ptn3460_connector_helper_funcs);
-	drm_connector_register(&ptn_bridge->connector);
-	drm_mode_connector_attach_encoder(&ptn_bridge->connector, encoder);
+	drm_bridge_add_for_lookup(bridge);
 
 	return 0;
-
-err:
-	if (gpio_is_valid(ptn_bridge->gpio_pd_n))
-		gpio_free(ptn_bridge->gpio_pd_n);
-	if (gpio_is_valid(ptn_bridge->gpio_rst_n))
-		gpio_free(ptn_bridge->gpio_rst_n);
-	return ret;
 }
-EXPORT_SYMBOL(ptn3460_init);
+
+static int ptn3460_remove(struct i2c_client *client)
+{
+	return 0;
+}
+
+static const struct i2c_device_id ptn3460_i2c_table[] = {
+	{"nxp,ptn3460", 0},
+	{},
+};
+MODULE_DEVICE_TABLE(i2c, ptn3460_i2c_table);
+
+static const struct of_device_id ptn3460_match[] = {
+	{ .compatible = "nxp,ptn3460" },
+	{},
+};
+MODULE_DEVICE_TABLE(of, ptn3460_match);
+
+struct i2c_driver ptn3460_driver = {
+	.id_table	= ptn3460_i2c_table,
+	.probe		= ptn3460_probe,
+	.remove		= ptn3460_remove,
+	.driver		= {
+		.name	= "nxp,ptn3460",
+		.owner	= THIS_MODULE,
+		.of_match_table = of_match_ptr(ptn3460_match),
+	},
+};
+module_i2c_driver(ptn3460_driver);
+
+MODULE_AUTHOR("Sean Paul <seanpaul@chromium.org>");
+MODULE_DESCRIPTION("NXP ptn3460 eDP-LVDS converter driver");
+MODULE_LICENSE("GPL");
