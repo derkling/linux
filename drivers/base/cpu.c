@@ -31,6 +31,53 @@ static int cpu_subsys_match(struct device *dev, struct device_driver *drv)
 }
 
 #ifdef CONFIG_HOTPLUG_CPU
+
+static ssize_t cpu_clear_show(struct device *dev,
+			      struct device_attribute *attr,
+			      char *buf)
+{
+	struct cpu *cpu = container_of(dev, struct cpu, dev);
+	int cpuid = cpu->dev.id;
+	ssize_t rc;
+
+	rc = sprintf(buf, "%u\n", !!cpu_asleep(cpuid));
+	return rc;
+}
+
+extern void sched_unclear_cpu(unsigned int);
+
+static ssize_t cpu_clear_store(struct device *dev,
+			       struct device_attribute *attr,
+			       const char *buf,
+			       size_t count)
+{
+	struct cpu *cpu = container_of(dev, struct cpu, dev);
+	int cpuid = cpu->dev.id;
+	ssize_t rc;
+
+	lock_device_hotplug();
+	switch (buf[0]) {
+	case '0':
+		sched_unclear_cpu(cpuid);
+		rc = 0;
+		break;
+	case '1':
+		rc = cpu_down_willfail(cpuid);
+		/* CPU DOWN should fail with -EROFS */
+		if (rc == -EROFS)
+			rc = 0;
+		break;
+	default:
+		rc = -EINVAL;
+	}
+	unlock_device_hotplug();
+
+	if (rc >= 0)
+		rc = count;
+	return rc;
+}
+static DEVICE_ATTR(clear, 0644, cpu_clear_show, cpu_clear_store);
+
 static void change_cpu_under_node(struct cpu *cpu,
 			unsigned int from_nid, unsigned int to_nid)
 {
@@ -71,6 +118,8 @@ static int cpu_subsys_offline(struct device *dev)
 void unregister_cpu(struct cpu *cpu)
 {
 	int logical_cpu = cpu->dev.id;
+
+	device_remove_file(&cpu->dev, &dev_attr_clear);
 
 	unregister_cpu_under_node(logical_cpu, cpu_to_node(logical_cpu));
 
@@ -119,6 +168,7 @@ static ssize_t cpu_release_store(struct device *dev,
 static DEVICE_ATTR(probe, S_IWUSR, NULL, cpu_probe_store);
 static DEVICE_ATTR(release, S_IWUSR, NULL, cpu_release_store);
 #endif /* CONFIG_ARCH_CPU_PROBE_RELEASE */
+
 #endif /* CONFIG_HOTPLUG_CPU */
 
 struct bus_type cpu_subsys = {
@@ -353,6 +403,8 @@ int register_cpu(struct cpu *cpu, int num)
 		per_cpu(cpu_sys_devices, num) = &cpu->dev;
 	if (!error)
 		register_cpu_under_node(num, cpu_to_node(num));
+
+	device_create_file(&cpu->dev, &dev_attr_clear);
 
 	return error;
 }
