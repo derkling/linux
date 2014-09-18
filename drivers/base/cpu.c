@@ -54,8 +54,12 @@ static ssize_t cpu_clear_store(struct device *dev,
 	struct cpu *cpu = container_of(dev, struct cpu, dev);
 	int cpuid = cpu->dev.id;
 	ssize_t rc;
+	int ret;
 
-	lock_device_hotplug();
+	ret = lock_device_hotplug_sysfs();
+	if (ret)
+		return ret;
+
 	switch (buf[0]) {
 	case '0':
 		sched_unclear_cpu(cpuid);
