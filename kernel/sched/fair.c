@@ -2299,7 +2299,8 @@ unsigned long arch_scale_load_capacity(int cpu);
  */
 static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 							struct sched_avg *sa,
-							int runnable)
+							int runnable,
+							int running)
 {
 	u64 delta, periods;
 	u32 runnable_contrib;
@@ -2341,6 +2342,8 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 		if (runnable)
 			sa->runnable_avg_sum += (delta_w * scale_cap)
 					>> SCHED_CAPACITY_SHIFT;
+		if (running)
+			sa->usage_avg_sum += delta_w;
 		sa->runnable_avg_period += delta_w;
 
 		delta -= delta_w;
@@ -2353,6 +2356,7 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 						  periods + 1);
 		sa->runnable_avg_period = decay_load(sa->runnable_avg_period,
 						     periods + 1);
+		sa->usage_avg_sum = decay_load(sa->usage_avg_sum, periods + 1);
 
 		/* Efficiently calculate \sum (1..n_period) 1024*y^i */
 		runnable_contrib = __compute_runnable_contrib(periods);
@@ -2360,6 +2364,8 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 		if (runnable)
 			sa->runnable_avg_sum += (runnable_contrib * scale_cap)
 						>> SCHED_CAPACITY_SHIFT;
+		if (running)
+			sa->usage_avg_sum += runnable_contrib;
 		sa->runnable_avg_period += runnable_contrib;
 	}
 
@@ -2367,6 +2373,8 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 	if (runnable)
 		sa->runnable_avg_sum += (delta * scale_cap)
 				>> SCHED_CAPACITY_SHIFT;
+	if (running)
+		sa->usage_avg_sum += delta;
 	sa->runnable_avg_period += delta;
 
 	return decayed;
@@ -2473,7 +2481,7 @@ static inline void __update_group_entity_contrib(struct sched_entity *se)
 static inline void update_rq_runnable_avg(struct rq *rq, int runnable)
 {
 	__update_entity_runnable_avg(rq_clock_task(rq), rq->cpu, &rq->avg,
-					runnable);
+					runnable, runnable);
 	__update_tg_runnable_avg(&rq->avg, &rq->cfs);
 }
 #else /* CONFIG_FAIR_GROUP_SCHED */
@@ -2539,7 +2547,8 @@ static inline void update_entity_load_avg(struct sched_entity *se,
 	else
 		now = cfs_rq_clock_task(group_cfs_rq(se));
 
-	if (!__update_entity_runnable_avg(now, cpu, &se->avg, se->on_rq))
+	if (!__update_entity_runnable_avg(now, cpu, &se->avg, se->on_rq,
+					  cfs_rq->curr == se))
 		return;
 
 	contrib_delta = __update_entity_load_avg_contrib(se);
