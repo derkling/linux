@@ -2343,7 +2343,8 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 			sa->runnable_avg_sum += (delta_w * scale_cap)
 					>> SCHED_CAPACITY_SHIFT;
 		if (running)
-			sa->usage_avg_sum += delta_w;
+			sa->usage_avg_sum += (delta_w * scale_cap)
+					>> SCHED_CAPACITY_SHIFT;
 		sa->runnable_avg_period += delta_w;
 
 		delta -= delta_w;
@@ -2365,7 +2366,8 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 			sa->runnable_avg_sum += (runnable_contrib * scale_cap)
 						>> SCHED_CAPACITY_SHIFT;
 		if (running)
-			sa->usage_avg_sum += runnable_contrib;
+			sa->usage_avg_sum += (runnable_contrib * scale_cap)
+						>> SCHED_CAPACITY_SHIFT;
 		sa->runnable_avg_period += runnable_contrib;
 	}
 
@@ -2374,7 +2376,8 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 		sa->runnable_avg_sum += (delta * scale_cap)
 				>> SCHED_CAPACITY_SHIFT;
 	if (running)
-		sa->usage_avg_sum += delta;
+		sa->usage_avg_sum += (delta * scale_cap)
+				>> SCHED_CAPACITY_SHIFT;
 	sa->runnable_avg_period += delta;
 
 	return decayed;
