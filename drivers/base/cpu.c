@@ -45,6 +45,7 @@ static ssize_t cpu_clear_show(struct device *dev,
 }
 
 extern void sched_unclear_cpu(unsigned int);
+extern void __fake_hotplug_cpu_online(unsigned int cpu);
 
 static ssize_t cpu_clear_store(struct device *dev,
 			       struct device_attribute *attr,
@@ -62,7 +63,7 @@ static ssize_t cpu_clear_store(struct device *dev,
 
 	switch (buf[0]) {
 	case '0':
-		sched_unclear_cpu(cpuid);
+		__fake_hotplug_cpu_online(cpuid);
 		rc = 0;
 		break;
 	case '1':
