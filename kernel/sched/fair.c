@@ -2302,9 +2302,9 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 							int runnable,
 							int running)
 {
-	u64 delta, periods;
-	u32 runnable_contrib;
-	int delta_w, decayed = 0;
+	u64 delta, scaled_delta, periods;
+	u32 runnable_contrib, scaled_runnable_contrib;
+	int delta_w, scaled_delta_w, decayed = 0;
 	u32 scale_cap = arch_scale_load_capacity(cpu);
 
 	delta = now - sa->last_runnable_update;
@@ -2339,12 +2339,12 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 		 */
 		delta_w = 1024 - delta_w;
 
+		scaled_delta_w = (delta_w * scale_cap) >> SCHED_CAPACITY_SHIFT;
+
 		if (runnable)
-			sa->runnable_avg_sum += (delta_w * scale_cap)
-					>> SCHED_CAPACITY_SHIFT;
+			sa->runnable_avg_sum += scaled_delta_w;
 		if (running)
-			sa->usage_avg_sum += (delta_w * scale_cap)
-					>> SCHED_CAPACITY_SHIFT;
+			sa->usage_avg_sum += scaled_delta_w;
 		sa->runnable_avg_period += delta_w;
 
 		delta -= delta_w;
@@ -2362,22 +2362,23 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 		/* Efficiently calculate \sum (1..n_period) 1024*y^i */
 		runnable_contrib = __compute_runnable_contrib(periods);
 
+		scaled_runnable_contrib = (runnable_contrib * scale_cap)
+						>> SCHED_CAPACITY_SHIFT;
+
 		if (runnable)
-			sa->runnable_avg_sum += (runnable_contrib * scale_cap)
-						>> SCHED_CAPACITY_SHIFT;
+			sa->runnable_avg_sum +=  scaled_runnable_contrib;
 		if (running)
-			sa->usage_avg_sum += (runnable_contrib * scale_cap)
-						>> SCHED_CAPACITY_SHIFT;
+			sa->usage_avg_sum +=  scaled_runnable_contrib;
 		sa->runnable_avg_period += runnable_contrib;
 	}
 
 	/* Remainder of delta accrued against u_0` */
+	scaled_delta = (delta * scale_cap) >> SCHED_CAPACITY_SHIFT;
+
 	if (runnable)
-		sa->runnable_avg_sum += (delta * scale_cap)
-				>> SCHED_CAPACITY_SHIFT;
+		sa->runnable_avg_sum += scaled_delta;
 	if (running)
-		sa->usage_avg_sum += (delta * scale_cap)
-				>> SCHED_CAPACITY_SHIFT;
+		sa->usage_avg_sum += scaled_delta;
 	sa->runnable_avg_period += delta;
 
 	return decayed;
