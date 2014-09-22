@@ -3450,6 +3450,8 @@ find_idlest_cpu(struct sched_group *group, struct task_struct *p, int this_cpu)
 	cpumask_andnot(&sd_group_cpus, sched_group_cpus(group), cpu_asleep_mask);
 	for_each_cpu_and(i, &sd_group_cpus, tsk_cpus_allowed(p)) {
 		load = weighted_cpuload(i);
+		if (cpu_asleep(i))
+			trace_printk("ERROR: find_idlest_cpu selecting asleep cpu %d", i);
 
 		if (load < min_load || (load == min_load && i == this_cpu)) {
 			min_load = load;
@@ -3569,7 +3571,6 @@ static void hmp_keepalive_delay(unsigned int *ns_delay)
 	unsigned int us_delay = UINT_MAX;
 	unsigned int us_max_delay = *ns_delay / 1000;
 	struct cpuidle_driver *drv;
-
 	drv = cpuidle_get_driver();
 	if (drv) {
 		int idx;
@@ -4369,6 +4370,8 @@ select_task_rq_fair(struct task_struct *p, int sd_flag, int wake_flags)
 		new_cpu = hmp_select_faster_cpu(p, prev_cpu);
 		if (new_cpu != NR_CPUS) {
 			hmp_next_up_delay(&p->se, new_cpu);
+			if (cpu_asleep(new_cpu))
+					trace_printk("hmp_select_faster_cpu selected asleep CPU %d", new_cpu);
 			return new_cpu;
 		}
 		/* failed to perform HMP fork balance, use normal balance */
@@ -4377,8 +4380,11 @@ select_task_rq_fair(struct task_struct *p, int sd_flag, int wake_flags)
 #endif
 
 	if (sd_flag & SD_BALANCE_WAKE) {
-		if (cpumask_test_cpu(cpu, tsk_cpus_allowed(p)))
+		if (cpumask_test_cpu(cpu, tsk_cpus_allowed(p))) {
+			if (cpu_asleep(prev_cpu))
+				trace_printk("cpu %d is asleep, wake_affine=1", prev_cpu);
 			want_affine = 1;
+		}
 		new_cpu = prev_cpu;
 	}
 
@@ -4453,6 +4459,9 @@ unlock:
 
 #ifdef CONFIG_SCHED_HMP
 	prev_cpu = task_cpu(p);
+
+	if(cpu_asleep(prev_cpu))
+		trace_printk("hmp wakeup migration, prev_cpu %d is asleep", prev_cpu);
 
 	if (hmp_up_migration(prev_cpu, &new_cpu, &p->se)) {
 		hmp_next_up_delay(&p->se, new_cpu);
@@ -6594,6 +6603,7 @@ static void nohz_balancer_kick(int cpu)
 	 * is idle. And the softirq performing nohz idle load balance
 	 * will be run before returning from the IPI.
 	 */
+	trace_printk("send resched ipi to %d from nohz_balancer_kick", ilb_cpu);
 	smp_send_reschedule(ilb_cpu);
 	return;
 }
@@ -7180,6 +7190,7 @@ static void hmp_force_up_migration(int this_cpu)
 			cpu_rq(target_cpu)->wake_for_idle_pull = 1;
 			raw_spin_unlock_irqrestore(&target->lock, flags);
 			spin_unlock(&hmp_force_migration);
+			trace_printk("send resched ipi to %d from hmp_force_up_migration", target_cpu);
 			smp_send_reschedule(target_cpu);
 			return;
 		}

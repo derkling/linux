@@ -215,6 +215,7 @@ int pvclock_gtod_register_notifier(struct notifier_block *nb)
 	int ret;
 
 	raw_spin_lock_irqsave(&timekeeper_lock, flags);
+	trace_printk("pvclock_gtod_register_notifier %d", 0);
 	ret = raw_notifier_chain_register(&pvclock_gtod_chain, nb);
 	update_pvclock_gtod(tk);
 	raw_spin_unlock_irqrestore(&timekeeper_lock, flags);
@@ -233,6 +234,7 @@ int pvclock_gtod_unregister_notifier(struct notifier_block *nb)
 	int ret;
 
 	raw_spin_lock_irqsave(&timekeeper_lock, flags);
+	trace_printk("pvclock_gtod_unregister_notifier %d", 0);
 	ret = raw_notifier_chain_unregister(&pvclock_gtod_chain, nb);
 	raw_spin_unlock_irqrestore(&timekeeper_lock, flags);
 
@@ -496,6 +498,7 @@ int do_settimeofday(const struct timespec *tv)
 		return -EINVAL;
 
 	raw_spin_lock_irqsave(&timekeeper_lock, flags);
+	trace_printk("do_settimeofday %d", 0);
 	write_seqcount_begin(&timekeeper_seq);
 
 	timekeeping_forward_now(tk);
@@ -537,6 +540,7 @@ int timekeeping_inject_offset(struct timespec *ts)
 		return -EINVAL;
 
 	raw_spin_lock_irqsave(&timekeeper_lock, flags);
+	trace_printk("timekeeping_inject_offset %d", 0);
 	write_seqcount_begin(&timekeeper_seq);
 
 	timekeeping_forward_now(tk);
@@ -603,6 +607,7 @@ void timekeeping_set_tai_offset(s32 tai_offset)
 	unsigned long flags;
 
 	raw_spin_lock_irqsave(&timekeeper_lock, flags);
+	trace_printk("timekeeping_set_tai_offset %d", 0);
 	write_seqcount_begin(&timekeeper_seq);
 	__timekeeping_set_tai_offset(tk, tai_offset);
 	write_seqcount_end(&timekeeper_seq);
@@ -624,6 +629,7 @@ static int change_clocksource(void *data)
 	new = (struct clocksource *) data;
 
 	raw_spin_lock_irqsave(&timekeeper_lock, flags);
+	trace_printk("change_clocksource %d", 0);
 	write_seqcount_begin(&timekeeper_seq);
 
 	timekeeping_forward_now(tk);
@@ -793,6 +799,7 @@ void __init timekeeping_init(void)
 	}
 
 	raw_spin_lock_irqsave(&timekeeper_lock, flags);
+	trace_printk("timekeeping_init %d", 0);
 	write_seqcount_begin(&timekeeper_seq);
 	ntp_init();
 
@@ -866,6 +873,7 @@ void timekeeping_inject_sleeptime(struct timespec *delta)
 		return;
 
 	raw_spin_lock_irqsave(&timekeeper_lock, flags);
+	trace_printk("timekeeping_inject_sleeptime %d", 0);
 	write_seqcount_begin(&timekeeper_seq);
 
 	timekeeping_forward_now(tk);
@@ -903,6 +911,7 @@ static void timekeeping_resume(void)
 	clocksource_resume();
 
 	raw_spin_lock_irqsave(&timekeeper_lock, flags);
+	trace_printk("timekeeping_resume %d", 0);
 	write_seqcount_begin(&timekeeper_seq);
 
 	/*
@@ -984,6 +993,7 @@ static int timekeeping_suspend(void)
 		persistent_clock_exist = true;
 
 	raw_spin_lock_irqsave(&timekeeper_lock, flags);
+	trace_printk("timekeeping_suspend %d", 0);
 	write_seqcount_begin(&timekeeper_seq);
 	timekeeping_forward_now(tk);
 	timekeeping_suspended = 1;
@@ -1350,7 +1360,7 @@ static void update_wall_time(void)
 	unsigned long flags;
 
 	raw_spin_lock_irqsave(&timekeeper_lock, flags);
-
+	trace_printk("update_wall_time %d", 0);
 	/* Make sure we're fully resumed: */
 	if (unlikely(timekeeping_suspended))
 		goto out;
@@ -1670,6 +1680,7 @@ int do_adjtimex(struct timex *txc)
 	getnstimeofday(&ts);
 
 	raw_spin_lock_irqsave(&timekeeper_lock, flags);
+	trace_printk("do_adjtimex %d", 0);
 	write_seqcount_begin(&timekeeper_seq);
 
 	orig_tai = tai = tk->tai_offset;
@@ -1694,6 +1705,7 @@ void hardpps(const struct timespec *phase_ts, const struct timespec *raw_ts)
 	unsigned long flags;
 
 	raw_spin_lock_irqsave(&timekeeper_lock, flags);
+	trace_printk("hardpps %d", 0);
 	write_seqcount_begin(&timekeeper_seq);
 
 	__hardpps(phase_ts, raw_ts);

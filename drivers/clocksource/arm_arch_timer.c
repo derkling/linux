@@ -254,9 +254,11 @@ static int __cpuinit arch_timer_cpu_notify(struct notifier_block *self,
 	 */
 	switch (action & ~CPU_TASKS_FROZEN) {
 	case CPU_STARTING:
+		trace_printk("arch_timer_cpu_notify CPU_STARTING on cpu %d", smp_processor_id());
 		arch_timer_setup(this_cpu_ptr(arch_timer_evt));
 		break;
 	case CPU_DYING:
+		trace_printk("arch_timer_cpu_notify CPU_DYING on cpu %d", smp_processor_id());
 		arch_timer_stop(this_cpu_ptr(arch_timer_evt));
 		break;
 	}
