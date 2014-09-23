@@ -340,10 +340,11 @@ struct cfs_rq {
 	 * This allows for the description of both thread and group usage (in
 	 * the FAIR_GROUP_SCHED case).
 	 */
-	unsigned long runnable_load_avg, blocked_load_avg, usage_util_avg;
+	unsigned long runnable_load_avg, blocked_load_avg;
+	unsigned long usage_util_avg, blocked_util_avg;
 	atomic64_t decay_counter;
 	u64 last_decay;
-	atomic_long_t removed_load;
+	atomic_long_t removed_load, removed_util;
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	/* Required to track per-cpu representation of a task_group */
