@@ -77,12 +77,17 @@ void cpuidle_use_deepest_state(bool enable)
 }
 
 /**
- * cpuidle_find_deepest_state - Find the state of the greatest exit latency.
+ * cpuidle_find_state - Find an idle state given the constraints
+ *
  * @drv: cpuidle driver for a given CPU.
  * @dev: cpuidle device for a given CPU.
+ *
+ * Returns an index of the state fulfilling the time constraint passed as
+ * parameter, -1 otherwise
+ *
  */
-static int cpuidle_find_deepest_state(struct cpuidle_driver *drv,
-				      struct cpuidle_device *dev)
+int cpuidle_find_state(struct cpuidle_driver *drv, struct cpuidle_device *dev,
+		       unsigned int sleep_time, unsigned int latency_req)
 {
 	int i, ret = -1;
 
@@ -91,6 +96,12 @@ static int cpuidle_find_deepest_state(struct cpuidle_driver *drv,
 		struct cpuidle_state_usage *su = &dev->states_usage[i];
 
 		if (s->disabled || su->disable)
+			continue;
+
+		if (s->target_residency > sleep_time)
+			continue;
+
+		if (s->exit_latency > latency_req)
 			continue;
 
 		ret = i;
@@ -197,7 +208,7 @@ int cpuidle_select(struct cpuidle_driver *drv, struct cpuidle_device *dev,
 		return -EBUSY;
 
 	if (unlikely(use_deepest_state))
-		return cpuidle_find_deepest_state(drv, dev);
+		return cpuidle_find_state(drv, dev, UINT_MAX, UINT_MAX);
 
 	return cpuidle_curr_governor->select(drv, dev, latency_req,
 					     next_timer_event);

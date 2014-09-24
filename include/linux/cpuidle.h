@@ -122,6 +122,11 @@ struct cpuidle_driver {
 #ifdef CONFIG_CPU_IDLE
 extern void disable_cpuidle(void);
 
+extern int cpuidle_find_state(struct cpuidle_driver *drv,
+			      struct cpuidle_device *dev,
+			      unsigned int sleep_time,
+			      unsigned int latency_req);
+
 extern int cpuidle_select(struct cpuidle_driver *drv,
 			  struct cpuidle_device *dev,
 			  int latency_req, s64 next_timer_event);
@@ -151,6 +156,11 @@ extern void cpuidle_use_deepest_state(bool enable);
 extern struct cpuidle_driver *cpuidle_get_cpu_driver(struct cpuidle_device *dev);
 #else
 static inline void disable_cpuidle(void) { }
+static inline int cpuidle_find_state(struct cpuidle_driver *drv,
+				     struct cpuidle_device *dev,
+				     unsigned int sleep_time,
+				     unsigned int latency_req)
+{return -ENODEV; }
 static inline int cpuidle_select(struct cpuidle_driver *drv,
 				 struct cpuidle_device *dev,
 				 int latency_req, s64 next_timer_event)
