@@ -84,17 +84,15 @@ void cpuidle_use_deepest_state(bool enable)
 static int cpuidle_find_deepest_state(struct cpuidle_driver *drv,
 				      struct cpuidle_device *dev)
 {
-	unsigned int latency_req = 0;
 	int i, ret = -1;
 
 	for (i = 0; i < drv->state_count; i++) {
 		struct cpuidle_state *s = &drv->states[i];
 		struct cpuidle_state_usage *su = &dev->states_usage[i];
 
-		if (s->disabled || su->disable || s->exit_latency <= latency_req)
+		if (s->disabled || su->disable)
 			continue;
 
-		latency_req = s->exit_latency;
 		ret = i;
 	}
 	return ret;
