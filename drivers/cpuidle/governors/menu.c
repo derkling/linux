@@ -357,7 +357,6 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev,
 		       int latency_req, s64 next_timer_event)
 {
 	struct menu_device *data = this_cpu_ptr(&menu_devices);
-	int i;
 	unsigned int interactivity_req;
 	unsigned int interactivity_overrride_us;
 	unsigned long nr_iowaiters, cpu_load;
@@ -402,19 +401,8 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev,
 	 * Find the idle state with the lowest power while satisfying
 	 * our constraints.
 	 */
-	for (i = 0; i < drv->state_count; i++) {
-		struct cpuidle_state *s = &drv->states[i];
-		struct cpuidle_state_usage *su = &dev->states_usage[i];
-
-		if (s->disabled || su->disable)
-			continue;
-		if (s->target_residency > data->predicted_us)
-			continue;
-		if (s->exit_latency > latency_req)
-			continue;
-
-		data->last_state_idx = i;
-	}
+	data->last_state_idx = cpuidle_find_state(drv, dev, data->predicted_us,
+						  latency_req);
 
 	return data->last_state_idx;
 }
