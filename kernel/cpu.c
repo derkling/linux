@@ -454,8 +454,7 @@ int __ref hotplug_cpu_unclear(unsigned int cpu)
 	cpu_hotplug_begin();
 
 	set_cpu_asleep((long)cpu, false);
-	//trigger_load_balance(cpu_rq(cpu));
-	wake_up_nohz_cpu(cpu);
+	smp_send_reschedule(cpu);
 
 	cpu_hotplug_done();
 	cpu_maps_update_done();
