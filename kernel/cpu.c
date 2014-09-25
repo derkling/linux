@@ -450,15 +450,25 @@ EXPORT_SYMBOL(hotplug_cpu_clear);
 
 int __ref hotplug_cpu_unclear(unsigned int cpu)
 {
+	int err = 0;
+
 	cpu_maps_update_begin();
+
+	if (cpu_hotplug_disabled) {
+		err = -EBUSY;
+		goto out;
+	}
+
 	cpu_hotplug_begin();
 
 	set_cpu_asleep((long)cpu, false);
 	smp_send_reschedule(cpu);
 
 	cpu_hotplug_done();
+
+out:
 	cpu_maps_update_done();
-	return 0;
+	return err;
 }
 EXPORT_SYMBOL(hotplug_cpu_unclear);
 
