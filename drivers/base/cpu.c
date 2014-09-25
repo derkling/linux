@@ -32,7 +32,7 @@ static int cpu_subsys_match(struct device *dev, struct device_driver *drv)
 
 #ifdef CONFIG_HOTPLUG_CPU
 
-static ssize_t cpu_clear_show(struct device *dev,
+static ssize_t clear_show(struct device *dev,
 			      struct device_attribute *attr,
 			      char *buf)
 {
@@ -44,44 +44,28 @@ static ssize_t cpu_clear_show(struct device *dev,
 	return rc;
 }
 
-extern void sched_unclear_cpu(unsigned int);
-extern void __fake_hotplug_cpu_online(unsigned int cpu);
+extern int hotplug_cpu_clear(unsigned int cpu);
+extern int hotplug_cpu_unclear(unsigned int cpu);
 
-static ssize_t cpu_clear_store(struct device *dev,
-			       struct device_attribute *attr,
-			       const char *buf,
-			       size_t count)
+static ssize_t clear_store(struct device *dev, struct device_attribute *attr,
+			    const char *buf, size_t count)
 {
-	struct cpu *cpu = container_of(dev, struct cpu, dev);
-	int cpuid = cpu->dev.id;
-	ssize_t rc;
+	bool val;
 	int ret;
+
+	ret = strtobool(buf, &val);
+	if (ret < 0)
+		return ret;
 
 	ret = lock_device_hotplug_sysfs();
 	if (ret)
 		return ret;
 
-	switch (buf[0]) {
-	case '0':
-		__fake_hotplug_cpu_online(cpuid);
-		rc = 0;
-		break;
-	case '1':
-		rc = cpu_down_willfail(cpuid);
-		/* CPU DOWN should fail with -EROFS */
-		if (rc == -EROFS)
-			rc = 0;
-		break;
-	default:
-		rc = -EINVAL;
-	}
+	ret = val ? hotplug_cpu_clear(dev->id) : hotplug_cpu_unclear(dev->id);
 	unlock_device_hotplug();
-
-	if (rc >= 0)
-		rc = count;
-	return rc;
+	return ret < 0 ? ret : count;
 }
-static DEVICE_ATTR(clear, 0644, cpu_clear_show, cpu_clear_store);
+static DEVICE_ATTR(clear, 0644, clear_show, clear_store);
 
 static void change_cpu_under_node(struct cpu *cpu,
 			unsigned int from_nid, unsigned int to_nid)

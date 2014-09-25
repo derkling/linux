@@ -4910,16 +4910,6 @@ void sched_clear_cpu(unsigned int cpu)
 
 static void set_rq_offline(struct rq *rq);
 
-void __fake_hotplug_cpu_online(unsigned int cpu)
-{
-	cpu_maps_update_begin();
-	cpu_hotplug_begin();
-	sched_unclear_cpu(cpu);
-	cpu_hotplug_done();
-	cpu_maps_update_done();
-
-}
-
 void __fake_hotplug_migrate_tasks(void)
 {
 	unsigned int cpu = smp_processor_id();
