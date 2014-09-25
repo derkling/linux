@@ -4851,6 +4851,10 @@ simple:
 	return p;
 
 idle:
+	/* Avoid idle balance on asleep CPUs */
+	if (cpu_asleep(rq->cpu))
+		return NULL;
+
 	new_tasks = idle_balance(rq);
 	/*
 	 * Because idle_balance() releases (and re-acquires) rq->lock, it is
@@ -6509,6 +6513,9 @@ static int load_balance(int this_cpu, struct rq *this_rq,
 		.fbq_type	= all,
 	};
 
+	if (cpu_asleep(this_cpu))
+		return 0;
+
 	/*
 	 * For NEWLY_IDLE load_balancing, we don't need to consider
 	 * other cpus in our group
@@ -6520,6 +6527,7 @@ static int load_balance(int this_cpu, struct rq *this_rq,
 	/* cpumask_copy(cpus, cpu_active_mask); */
 	cpumask_andnot(cpus, cpu_active_mask, cpu_asleep_mask);
 
+	cpumask_copy(env.cpus, cpus);
 	schedstat_inc(sd, lb_count[idle]);
 
 redo:
