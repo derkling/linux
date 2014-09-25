@@ -4916,17 +4916,11 @@ void __fake_hotplug_migrate_tasks(void)
 	struct rq *rq = cpu_rq(cpu);
 	unsigned long flags;
 
-	sched_clear_cpu(cpu);
-
-	sched_ttwu_pending();
-	/* Update our root-domain */
 	raw_spin_lock_irqsave(&rq->lock, flags);
-	if (rq->rd) {
-		BUG_ON(!cpumask_test_cpu(cpu, rq->rd->span));
-		set_rq_offline(rq);
-	}
+	/* Mark the CPU as asleep before moving tasks away, this should avoid
+	 * some other CPU to destroy our cleanup work */
+	sched_clear_cpu(cpu);
 	migrate_tasks(cpu);
-	BUG_ON(rq->nr_running != 1); /* the migration thread */
 	raw_spin_unlock_irqrestore(&rq->lock, flags);
 }
 
