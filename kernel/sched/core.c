@@ -4890,23 +4890,6 @@ static void migrate_tasks(unsigned int dead_cpu)
 	rq->stop = stop;
 }
 
-/* No RQ locks required */
-void sched_unclear_cpu(unsigned int cpu)
-{
-	set_cpu_asleep((long)cpu, false);
-}
-/* called with rq lock held whilst running stopper */
-void sched_clear_cpu(unsigned int cpu)
-{
-	/*
-	 * this should be called from inside
-	 * a stopper running on the CPU we're going
-	 * to remove from wakeup and load balancing
-	 * decisions to avoid leaving tasks behind.
-	 */
-	WARN_ON(cpu != smp_processor_id());
-	set_cpu_asleep(cpu, true);
-}
 
 static void set_rq_offline(struct rq *rq);
 
@@ -4919,7 +4902,7 @@ void __fake_hotplug_migrate_tasks(void)
 	raw_spin_lock_irqsave(&rq->lock, flags);
 	/* Mark the CPU as asleep before moving tasks away, this should avoid
 	 * some other CPU to destroy our cleanup work */
-	sched_clear_cpu(cpu);
+	set_cpu_asleep(cpu, true);
 	migrate_tasks(cpu);
 	raw_spin_unlock_irqrestore(&rq->lock, flags);
 
