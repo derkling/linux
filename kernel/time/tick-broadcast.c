@@ -621,9 +621,6 @@ again:
 	/* hack out asleep CPUs */
 	cpumask_andnot(tmpmask2, tmpmask, cpu_asleep_mask);
 	if (!cpumask_equal(tmpmask, tmpmask2)) {
-		char tmp[16], tmp2[16];
-		cpumask_scnprintf(tmp, 16, tmpmask);
-		cpumask_scnprintf(tmp2, 16, tmpmask2);
 		cpumask_copy(tmpmask, tmpmask2);
 	}
 	/*
