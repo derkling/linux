@@ -4922,6 +4922,9 @@ void __fake_hotplug_migrate_tasks(void)
 	sched_clear_cpu(cpu);
 	migrate_tasks(cpu);
 	raw_spin_unlock_irqrestore(&rq->lock, flags);
+
+	migrate_irqs();
+
 }
 
 #endif /* CONFIG_HOTPLUG_CPU */

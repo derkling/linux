@@ -307,7 +307,6 @@ static int __ref take_cpu_down(void *_param)
 	/* HACK HACK HACK - remove irqs and tasks */
 	if (param->fail_before_powerdown) {
 		__fake_hotplug_migrate_tasks();
-		migrate_irqs();
 		return -EROFS;
 	}
 	/* Ensure this CPU doesn't handle any more interrupts. */
