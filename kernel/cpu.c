@@ -406,29 +406,6 @@ out_release:
 	return err;
 }
 
-int __ref cpu_down_willfail(unsigned int cpu)
-{
-	int err;
-
-	cpu_maps_update_begin();
-
-	if (cpu_hotplug_disabled) {
-		err = -EBUSY;
-		goto out;
-	}
-	if (!cpu_active(cpu)) {
-		err = -EBUSY;
-		goto out;
-	}
-
-	err = _cpu_down(cpu, 0, 1);
-
-out:
-	cpu_maps_update_done();
-	return err;
-}
-EXPORT_SYMBOL(cpu_down_willfail);
-
 int __ref hotplug_cpu_clear(unsigned int cpu)
 {
 	int err;
