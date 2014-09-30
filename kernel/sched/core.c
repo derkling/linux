@@ -1350,8 +1350,6 @@ static int select_fallback_rq(int cpu, struct task_struct *p)
 				continue;
 			if (!cpu_active(dest_cpu))
 				continue;
-			if (cpu_asleep(dest_cpu))
-				continue;
 			if (cpumask_test_cpu(dest_cpu, tsk_cpus_allowed(p)))
 				return dest_cpu;
 		}
