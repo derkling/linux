@@ -4851,10 +4851,6 @@ simple:
 	return p;
 
 idle:
-	/* Avoid idle balance on asleep CPUs */
-	if (cpu_asleep(rq->cpu))
-		return NULL;
-
 	new_tasks = idle_balance(rq);
 	/*
 	 * Because idle_balance() releases (and re-acquires) rq->lock, it is
