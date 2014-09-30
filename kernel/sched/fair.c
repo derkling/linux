@@ -7314,12 +7314,8 @@ static void nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle) { }
 static void run_rebalance_domains(struct softirq_action *h)
 {
 	struct rq *this_rq = this_rq();
-	int this_cpu = cpu_of(this_rq);
 	enum cpu_idle_type idle = this_rq->idle_balance ?
 						CPU_IDLE : CPU_NOT_IDLE;
-
-	if (unlikely(cpu_asleep(this_cpu)))
-		return;
 
 	rebalance_domains(this_rq, idle);
 
