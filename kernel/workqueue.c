@@ -1449,9 +1449,6 @@ static void __queue_delayed_work(int cpu, struct workqueue_struct *wq,
 	WARN_ON_ONCE(timer_pending(timer));
 	WARN_ON_ONCE(!list_empty(&work->entry));
 
-	/* silently convert sleeping CPU work to unbound */
-	if (cpumask_test_cpu(cpu, cpu_asleep_mask))
-		cpu = WORK_CPU_UNBOUND;
 	/*
 	 * If @delay is 0, queue @dwork->work immediately.  This is for
 	 * both optimization and correctness.  The earliest @timer can
