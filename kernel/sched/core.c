@@ -1443,7 +1443,6 @@ ttwu_stat(struct task_struct *p, int cpu, int wake_flags)
 
 #ifdef CONFIG_SMP
 	int this_cpu = smp_processor_id();
-	struct cpumask sd_span;
 
 	if (cpu == this_cpu) {
 		schedstat_inc(rq, ttwu_local);
@@ -1454,8 +1453,7 @@ ttwu_stat(struct task_struct *p, int cpu, int wake_flags)
 		schedstat_inc(p, se.statistics.nr_wakeups_remote);
 		rcu_read_lock();
 		for_each_domain(this_cpu, sd) {
-			cpumask_andnot(&sd_span, sched_domain_span(sd), cpu_asleep_mask);
-			if (cpumask_test_cpu(cpu, &sd_span)) {
+			if (cpumask_test_cpu(cpu, sched_domain_span(sd))) {
 				schedstat_inc(sd, ttwu_wake_remote);
 				break;
 			}
