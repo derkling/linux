@@ -4395,11 +4395,9 @@ find_idlest_cpu(struct sched_group *group, struct task_struct *p, int this_cpu)
 	unsigned long load, min_load = ULONG_MAX;
 	int idlest = -1;
 	int i;
-	struct cpumask sd_group_cpus;
 
 	/* Traverse only the allowed CPUs */
-	cpumask_andnot(&sd_group_cpus, sched_group_cpus(group), cpu_asleep_mask);
-	for_each_cpu_and(i, &sd_group_cpus, tsk_cpus_allowed(p)) {
+	for_each_cpu_and(i, sched_group_cpus(group), tsk_cpus_allowed(p)) {
 		load = weighted_cpuload(i);
 
 		if (load < min_load || (load == min_load && i == this_cpu)) {
