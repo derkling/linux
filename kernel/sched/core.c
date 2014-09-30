@@ -4624,7 +4624,6 @@ int set_cpus_allowed_ptr(struct task_struct *p, const struct cpumask *new_mask)
 	struct rq *rq;
 	unsigned int dest_cpu;
 	int ret = 0;
-	struct cpumask filtered_mask;
 
 	rq = task_rq_lock(p, &flags);
 
@@ -4636,21 +4635,13 @@ int set_cpus_allowed_ptr(struct task_struct *p, const struct cpumask *new_mask)
 		goto out;
 	}
 
-	if (cpumask_intersects(new_mask, cpu_asleep_mask)) {
-		ret = -EINVAL;
-		goto out;
-	}
-
 	do_set_cpus_allowed(p, new_mask);
 
 	/* Can the task run on the task's current CPU? If so, we're done */
 	if (cpumask_test_cpu(task_cpu(p), new_mask))
 		goto out;
 
-	/* remove asleep CPUs from consideration */
-	cpumask_andnot(&filtered_mask, new_mask, cpu_asleep_mask);
-
-	dest_cpu = cpumask_any_and(cpu_active_mask, &filtered_mask);
+	dest_cpu = cpumask_any_and(cpu_active_mask, new_mask);
 	if (p->on_rq) {
 		struct migration_arg arg = { p, dest_cpu };
 		/* Need help from migration thread: drop lock and wait. */
