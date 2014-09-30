@@ -1586,9 +1586,6 @@ void scheduler_ipi(void)
 			&& !got_nohz_idle_kick())
 		return;
 
-	if (unlikely(cpu_asleep(smp_processor_id())))
-		return;
-
 	/*
 	 * Not all reschedule IPI handlers call irq_enter/irq_exit, since
 	 * traditionally all their work was done from the interrupt return
