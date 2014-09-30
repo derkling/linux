@@ -32,7 +32,6 @@ static struct tick_device tick_broadcast_device;
 static cpumask_var_t tick_broadcast_mask;
 static cpumask_var_t tick_broadcast_on;
 static cpumask_var_t tmpmask;
-static cpumask_var_t tmpmask2;
 static DEFINE_RAW_SPINLOCK(tick_broadcast_lock);
 static int tick_broadcast_force;
 
@@ -618,11 +617,6 @@ again:
 	if (WARN_ON_ONCE(!cpumask_subset(tmpmask, cpu_online_mask)))
 		cpumask_and(tmpmask, tmpmask, cpu_online_mask);
 
-	/* hack out asleep CPUs */
-	cpumask_andnot(tmpmask2, tmpmask, cpu_asleep_mask);
-	if (!cpumask_equal(tmpmask, tmpmask2)) {
-		cpumask_copy(tmpmask, tmpmask2);
-	}
 	/*
 	 * Wakeup the cpus which have an expired event.
 	 */
