@@ -4418,7 +4418,6 @@ static int select_idle_sibling(struct task_struct *p, int target)
 {
 	struct sched_domain *sd;
 	struct sched_group *sg;
-	struct cpumask sd_group_cpus;
 	int i = task_cpu(p);
 
 	if (idle_cpu(target))
@@ -4437,17 +4436,16 @@ static int select_idle_sibling(struct task_struct *p, int target)
 	for_each_lower_domain(sd) {
 		sg = sd->groups;
 		do {
-			cpumask_andnot(&sd_group_cpus, sched_group_cpus(sg), cpu_asleep_mask);
-			if (!cpumask_intersects(&sd_group_cpus,
+			if (!cpumask_intersects(sched_group_cpus(sg),
 						tsk_cpus_allowed(p)))
 				goto next;
 
-			for_each_cpu(i, &sd_group_cpus) {
+			for_each_cpu(i, sched_group_cpus(sg)) {
 				if (i == target || !idle_cpu(i))
 					goto next;
 			}
 
-			target = cpumask_first_and(&sd_group_cpus,
+			target = cpumask_first_and(sched_group_cpus(sg),
 					tsk_cpus_allowed(p));
 			goto done;
 next:
