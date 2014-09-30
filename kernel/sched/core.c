@@ -1364,8 +1364,6 @@ static int select_fallback_rq(int cpu, struct task_struct *p)
 				continue;
 			if (!cpu_active(dest_cpu))
 				continue;
-			if (cpu_asleep(dest_cpu))
-				continue;
 			goto out;
 		}
 
