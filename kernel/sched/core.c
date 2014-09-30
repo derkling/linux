@@ -642,7 +642,6 @@ int get_nohz_timer_target(int pinned)
 	int cpu = smp_processor_id();
 	int i;
 	struct sched_domain *sd;
-	struct cpumask sd_span;
 
 	if (pinned || !get_sysctl_timer_migration() || !idle_cpu(cpu))
 		return cpu;
@@ -650,12 +649,9 @@ int get_nohz_timer_target(int pinned)
 	rcu_read_lock();
 	for_each_domain(cpu, sd) {
 		for_each_cpu(i, sched_domain_span(sd)) {
-			cpumask_andnot(&sd_span, sched_domain_span(sd), cpu_asleep_mask);
-			for_each_cpu(i, &sd_span) {
-				if (!idle_cpu(i)) {
-					cpu = i;
-					goto unlock;
-				}
+			if (!idle_cpu(i)) {
+				cpu = i;
+				goto unlock;
 			}
 		}
 	}
