@@ -306,7 +306,13 @@ static int __ref take_cpu_down(void *_param)
 	int err;
 	/* HACK HACK HACK - remove irqs and tasks */
 	if (param->fail_before_powerdown) {
-		__fake_hotplug_migrate_tasks();
+		/* Simplified __cpu_disable() */
+		set_cpu_online(smp_processor_id(), false);
+		migrate_irqs();
+		/* Notify all hotplug thread we are going down */
+		cpu_notify(CPU_DYING | param->mod, param->hcpu);
+		/* Park the stopper thread */
+		kthread_park(current);
 		return -EROFS;
 	}
 	/* Ensure this CPU doesn't handle any more interrupts. */
@@ -364,8 +370,7 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen, int fail_before_p
 #endif
 	synchronize_rcu();
 
-	if (!fail_before_powerdown)
-		smpboot_park_threads(cpu);
+	smpboot_park_threads(cpu);
 
 	/*
 	 * So now all preempt/rcu users must observe !cpu_active().
@@ -382,8 +387,6 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen, int fail_before_p
 	if (err) {
 		/* CPU didn't die: tell everyone.  Can't complain. */
 		/* lightweight hotplug triggers this intentionally */
-		if (!fail_before_powerdown)
-			smpboot_unpark_threads(cpu);
 		cpu_notify_nofail(CPU_DOWN_FAILED | mod, hcpu);
 		goto out_release;
 	}
