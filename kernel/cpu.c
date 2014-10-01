@@ -485,7 +485,7 @@ static int _cpu_up(unsigned int cpu, int tasks_frozen)
 		goto out;
 	}
 
-	idle = idle_thread_get(cpu);
+	idle = idle_thread_get(cpu, unclear);
 	if (IS_ERR(idle)) {
 		ret = PTR_ERR(idle);
 		goto out;

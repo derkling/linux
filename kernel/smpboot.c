@@ -24,13 +24,14 @@
  */
 static DEFINE_PER_CPU(struct task_struct *, idle_threads);
 
-struct task_struct *idle_thread_get(unsigned int cpu)
+struct task_struct *idle_thread_get(unsigned int cpu, int unclear)
 {
 	struct task_struct *tsk = per_cpu(idle_threads, cpu);
 
 	if (!tsk)
 		return ERR_PTR(-ENOMEM);
-	init_idle(tsk, cpu);
+	if (!unclear)
+		init_idle(tsk, cpu);
 	return tsk;
 }
 
