@@ -364,7 +364,8 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen, int fail_before_p
 #endif
 	synchronize_rcu();
 
-	smpboot_park_threads(cpu);
+	if (!fail_before_powerdown)
+		smpboot_park_threads(cpu);
 
 	/*
 	 * So now all preempt/rcu users must observe !cpu_active().
@@ -374,7 +375,8 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen, int fail_before_p
 	if (err) {
 		/* CPU didn't die: tell everyone.  Can't complain. */
 		/* lightweight hotplug triggers this intentionally */
-		smpboot_unpark_threads(cpu);
+		if (!fail_before_powerdown)
+			smpboot_unpark_threads(cpu);
 		cpu_notify_nofail(CPU_DOWN_FAILED | mod, hcpu);
 		goto out_release;
 	}
