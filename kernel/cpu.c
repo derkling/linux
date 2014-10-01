@@ -372,6 +372,13 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen, int fail_before_p
 	 */
 
 	err = __stop_machine(take_cpu_down, &tcd_param, cpumask_of(cpu));
+	if (fail_before_powerdown) {
+		while (!idle_cpu(cpu))
+			cpu_relax();
+		cpu_notify_nofail(CPU_DEAD | mod, hcpu);
+		err = 0;
+		goto out_release;
+	}
 	if (err) {
 		/* CPU didn't die: tell everyone.  Can't complain. */
 		/* lightweight hotplug triggers this intentionally */
