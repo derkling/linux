@@ -131,7 +131,17 @@ static int smpboot_thread_fn(void *data)
 			continue;
 		}
 
-		BUG_ON(td->cpu != smp_processor_id());
+		// BUG_ON(td->cpu != smp_processor_id());
+		if (td->cpu != smp_processor_id()) {
+			printk(KERN_ERR "CPU: %d, td->cpu: %d",
+					td->cpu, smp_processor_id());
+			trace_printk("BUG CPU: %d while td->cpu: %d",
+					td->cpu, smp_processor_id());
+			tracing_off();
+			schedule();
+			continue;
+		}
+
 
 		/* Check for state change setup */
 		switch (td->status) {
