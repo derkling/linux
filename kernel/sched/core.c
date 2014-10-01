@@ -4891,8 +4891,6 @@ static void migrate_tasks(unsigned int dead_cpu)
 }
 
 
-static void set_rq_offline(struct rq *rq);
-
 void __fake_hotplug_migrate_tasks(void)
 {
 	unsigned int cpu = smp_processor_id();
