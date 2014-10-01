@@ -471,7 +471,7 @@ EXPORT_SYMBOL(cpu_down);
 #endif /*CONFIG_HOTPLUG_CPU*/
 
 /* Requires cpu_add_remove_lock to be held */
-static int _cpu_up(unsigned int cpu, int tasks_frozen)
+static int _cpu_up(unsigned int cpu, int tasks_frozen, int unclear)
 {
 	int ret, nr_calls = 0;
 	void *hcpu = (void *)(long)cpu;
@@ -503,10 +503,14 @@ static int _cpu_up(unsigned int cpu, int tasks_frozen)
 		goto out_notify;
 	}
 
-	/* Arch-specific enabling code. */
-	ret = __cpu_up(cpu, idle);
-	if (ret != 0)
-		goto out_notify;
+	if (unclear) {
+		set_cpu_online(cpu, true);
+	} else {
+		/* Arch-specific enabling code. */
+		ret = __cpu_up(cpu, idle);
+		if (ret != 0)
+			goto out_notify;
+	}
 	BUG_ON(!cpu_online(cpu));
 
 	/* Wake the per cpu threads */
@@ -548,7 +552,7 @@ int cpu_up(unsigned int cpu)
 		goto out;
 	}
 
-	err = _cpu_up(cpu, 0);
+	err = _cpu_up(cpu, 0, 0);
 
 out:
 	cpu_maps_update_done();
@@ -621,7 +625,7 @@ void __ref enable_nonboot_cpus(void)
 
 	for_each_cpu(cpu, frozen_cpus) {
 		trace_suspend_resume(TPS("CPU_ON"), cpu, true);
-		error = _cpu_up(cpu, 1);
+		error = _cpu_up(cpu, 1, 0);
 		trace_suspend_resume(TPS("CPU_ON"), cpu, false);
 		if (!error) {
 			pr_info("CPU%d is up\n", cpu);
