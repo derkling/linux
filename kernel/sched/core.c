@@ -4880,12 +4880,12 @@ void __fake_hotplug_migrate_tasks(void)
 	struct rq *rq = cpu_rq(cpu);
 	unsigned long flags;
 
-	raw_spin_lock_irqsave(&rq->lock, flags);
+	raw_spin_lock(&rq->lock);
 	/* Mark the CPU as asleep before moving tasks away, this should avoid
 	 * some other CPU to destroy our cleanup work */
 	set_cpu_asleep(cpu, true);
 	migrate_tasks(cpu);
-	raw_spin_unlock_irqrestore(&rq->lock, flags);
+	raw_spin_unlock(&rq->lock);
 
 	migrate_irqs();
 
