@@ -433,6 +433,7 @@ out:
 }
 EXPORT_SYMBOL(hotplug_cpu_clear);
 
+static int _cpu_up(unsigned int cpu, int tasks_frozen, int unclear);
 int __ref hotplug_cpu_unclear(unsigned int cpu)
 {
 	int err = 0;
@@ -444,12 +445,8 @@ int __ref hotplug_cpu_unclear(unsigned int cpu)
 		goto out;
 	}
 
-	cpu_hotplug_begin();
-
 	set_cpu_asleep((long)cpu, false);
-	smp_send_reschedule(cpu);
-
-	cpu_hotplug_done();
+	err = _cpu_up(cpu, 0, 1);
 
 out:
 	cpu_maps_update_done();
