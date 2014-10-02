@@ -2484,7 +2484,8 @@ static inline void __update_group_entity_contrib(struct sched_entity *se)
 		se->avg.load_avg_contrib >>= NICE_0_SHIFT;
 	}
 
-	se->avg.usage_avg_contrib = cfs_rq->usage_util_avg;
+	se->avg.usage_avg_contrib = cfs_rq->usage_util_avg
+					+ cfs_rq->blocked_util_avg;
 }
 
 static inline void update_rq_runnable_avg(struct rq *rq, int runnable)
