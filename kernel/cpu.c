@@ -314,7 +314,7 @@ static int __ref take_cpu_down(void *_param)
 }
 
 /* Requires cpu_add_remove_lock to be held */
-static int __ref _cpu_down(unsigned int cpu, int tasks_frozen)
+static int __ref _cpu_down(unsigned int cpu, int tasks_frozen, bool cpu_clear)
 {
 	int err, nr_calls = 0;
 	void *hcpu = (void *)(long)cpu;
@@ -407,7 +407,7 @@ int __ref cpu_down(unsigned int cpu)
 		goto out;
 	}
 
-	err = _cpu_down(cpu, 0);
+	err = _cpu_down(cpu, 0, 0);
 
 out:
 	cpu_maps_update_done();
@@ -522,7 +522,7 @@ int disable_nonboot_cpus(void)
 		if (cpu == first_cpu)
 			continue;
 		trace_suspend_resume(TPS("CPU_OFF"), cpu, true);
-		error = _cpu_down(cpu, 1);
+		error = _cpu_down(cpu, 1, 0);
 		trace_suspend_resume(TPS("CPU_OFF"), cpu, false);
 		if (!error)
 			cpumask_set_cpu(cpu, frozen_cpus);
