@@ -2601,6 +2601,11 @@ static inline void update_entity_load_avg(struct sched_entity *se,
 	if (se->on_rq) {
 		cfs_rq->runnable_load_avg += contrib_delta;
 		cfs_rq->utilization_load_avg += utilization_delta;
+		trace_printk("cfs_rq cpu=%d rla=%lu bla=%lu uua=%lu bua=%lu tgid=%d seuac=%lu", cpu, cfs_rq->runnable_load_avg, cfs_rq->blocked_load_avg, cfs_rq->utilization_load_avg, cfs_rq->utilization_blocked_avg, cfs_rq->tg->css.cgroup->id, se->avg.utilization_avg_contrib);
+		if (se->parent)
+			trace_printk("pse cpu=%d seuac=%lu", cpu, se->parent->avg.utilization_avg_contrib);
+		else
+			trace_printk("rq cpu=%d uac=%lu", cpu, (cpu_rq(cpu)->avg.running_avg_sum*scale_load_down(NICE_0_LOAD))/(cpu_rq(cpu)->avg.avg_period +1));
 	} else {
 		subtract_blocked_load_contrib(cfs_rq, -contrib_delta);
 		subtract_utilization_blocked_contrib(cfs_rq,
@@ -2691,6 +2696,12 @@ static inline void enqueue_entity_load_avg(struct cfs_rq *cfs_rq,
 	cfs_rq->utilization_load_avg += se->avg.utilization_avg_contrib;
 	/* we force update consideration on load-balancer moves */
 	update_cfs_rq_blocked_load(cfs_rq, !wakeup);
+
+	trace_printk("cfs_rq cpu=%d rla=%lu bla=%lu uua=%lu bua=%lu tgid=%d seuac=%lu", rq_of(cfs_rq)->cpu, cfs_rq->runnable_load_avg, cfs_rq->blocked_load_avg, cfs_rq->utilization_load_avg, cfs_rq->utilization_blocked_avg, cfs_rq->tg->css.cgroup->id, se->avg.utilization_avg_contrib);
+	if (se->parent)
+		trace_printk("pse cpu=%d seuac=%lu", rq_of(cfs_rq)->cpu, se->parent->avg.utilization_avg_contrib);
+	else
+		trace_printk("rq cpu=%d uac=%lu", rq_of(cfs_rq)->cpu, (rq_of(cfs_rq)->avg.running_avg_sum*scale_load_down(NICE_0_LOAD))/(rq_of(cfs_rq)->avg.avg_period +1));
 }
 
 /*
@@ -2714,6 +2725,12 @@ static inline void dequeue_entity_load_avg(struct cfs_rq *cfs_rq,
 						se->avg.utilization_avg_contrib;
 		se->avg.decay_count = atomic64_read(&cfs_rq->decay_counter);
 	} /* migrations, e.g. sleep=0 leave decay_count == 0 */
+
+	trace_printk("cfs_rq cpu=%d rla=%lu bla=%lu uua=%lu bua=%lu tgid=%d seuac=%lu", rq_of(cfs_rq)->cpu, cfs_rq->runnable_load_avg, cfs_rq->blocked_load_avg, cfs_rq->utilization_load_avg, cfs_rq->utilization_blocked_avg, cfs_rq->tg->css.cgroup->id, se->avg.utilization_avg_contrib);
+	if (se->parent)
+		trace_printk("pse cpu=%d seuac=%lu", rq_of(cfs_rq)->cpu, se->parent->avg.utilization_avg_contrib);
+	else
+		trace_printk("rq cpu=%d uac=%lu", rq_of(cfs_rq)->cpu, (rq_of(cfs_rq)->avg.running_avg_sum*scale_load_down(NICE_0_LOAD))/(rq_of(cfs_rq)->avg.avg_period +1));
 }
 
 /*
