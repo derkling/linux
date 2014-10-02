@@ -4888,6 +4888,27 @@ static void migrate_tasks(unsigned int dead_cpu)
 	rq->stop = stop;
 }
 
+
+void clear_cpu(unsigned int cpu)
+{
+	struct rq *rq = cpu_rq(cpu);
+	unsigned long flags;
+
+	BUG_ON(cpu != smp_processor_id());
+
+	raw_spin_lock_irqsave(&rq->lock, flags);
+
+	/* Mark the CPU as asleep and migrate tasks */
+	set_cpu_asleep(cpu, true);
+	migrate_tasks(cpu);
+
+	raw_spin_unlock_irqrestore(&rq->lock, flags);
+
+	/* Migrate IRQs */
+	migrate_irqs();
+
+}
+
 #endif /* CONFIG_HOTPLUG_CPU */
 
 #if defined(CONFIG_SCHED_DEBUG) && defined(CONFIG_SYSCTL)
