@@ -61,7 +61,9 @@ static ssize_t clear_store(struct device *dev, struct device_attribute *attr,
 	if (ret)
 		return ret;
 
+	trace_printk("CPU%d %s", dev->id, val ? "Clear START" : "Unclear START");
 	ret = val ? hotplug_cpu_clear(dev->id) : hotplug_cpu_unclear(dev->id);
+	trace_printk("CPU%d %s", dev->id, val ? "Clear END" : "Unclear END");
 	unlock_device_hotplug();
 	return ret < 0 ? ret : count;
 }
