@@ -1466,10 +1466,14 @@ static void __queue_delayed_work(int cpu, struct workqueue_struct *wq,
 	dwork->cpu = cpu;
 	timer->expires = jiffies + delay;
 
-	if (unlikely(cpu != WORK_CPU_UNBOUND))
+	if (unlikely(cpu != WORK_CPU_UNBOUND)) {
+		trace_printk("@CPU%d", cpu);
 		add_timer_on(timer, cpu);
-	else
-		add_timer(timer);
+		return;
+	}
+
+	trace_printk("@CPU%d", cpu);
+	add_timer(timer);
 }
 
 /**
