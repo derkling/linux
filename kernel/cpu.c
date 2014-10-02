@@ -710,6 +710,11 @@ static DECLARE_BITMAP(cpu_active_bits, CONFIG_NR_CPUS) __read_mostly;
 const struct cpumask *const cpu_active_mask = to_cpumask(cpu_active_bits);
 EXPORT_SYMBOL(cpu_active_mask);
 
+static DECLARE_BITMAP(cpu_asleep_bits, CONFIG_NR_CPUS) __read_mostly;
+const struct cpumask *const cpu_asleep_mask = to_cpumask(cpu_asleep_bits);
+EXPORT_SYMBOL(cpu_asleep_mask);
+
+
 void set_cpu_possible(unsigned int cpu, bool possible)
 {
 	if (possible)
@@ -742,6 +747,14 @@ void set_cpu_active(unsigned int cpu, bool active)
 		cpumask_set_cpu(cpu, to_cpumask(cpu_active_bits));
 	else
 		cpumask_clear_cpu(cpu, to_cpumask(cpu_active_bits));
+}
+
+void set_cpu_asleep(unsigned int cpu, bool asleep)
+{
+	if (asleep)
+		cpumask_set_cpu(cpu, to_cpumask(cpu_asleep_bits));
+	else
+		cpumask_clear_cpu(cpu, to_cpumask(cpu_asleep_bits));
 }
 
 void init_cpu_present(const struct cpumask *src)
