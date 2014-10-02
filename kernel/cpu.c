@@ -313,6 +313,17 @@ static int __ref take_cpu_down(void *_param)
 	return 0;
 }
 
+extern void clear_cpu(unsigned int cpu);
+
+/* Make this CPU clear. */
+static int __ref make_cpu_clear(void *_param)
+{
+	struct take_cpu_down_param *param = _param;
+	unsigned int cpu = (long)param->hcpu;
+	clear_cpu(cpu);
+	return 0;
+}
+
 /* Requires cpu_add_remove_lock to be held */
 static int __ref _cpu_down(unsigned int cpu, int tasks_frozen, bool cpu_clear)
 {
@@ -356,13 +367,15 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen, bool cpu_clear)
 #endif
 	synchronize_rcu();
 
-	smpboot_park_threads(cpu);
-
-	/*
-	 * So now all preempt/rcu users must observe !cpu_active().
-	 */
-
-	err = __stop_machine(take_cpu_down, &tcd_param, cpumask_of(cpu));
+	if (cpu_clear) {
+		err = __stop_machine(make_cpu_clear, &tcd_param, cpumask_of(cpu));
+		cpu_notify_nofail(CPU_DOWN_FAILED | mod, hcpu);
+		goto out_release;
+	} else {
+		smpboot_park_threads(cpu);
+		/*  So now all preempt/rcu users must observe !cpu_active(). */
+		err = __stop_machine(take_cpu_down, &tcd_param, cpumask_of(cpu));
+	}
 	if (err) {
 		/* CPU didn't die: tell everyone.  Can't complain. */
 		smpboot_unpark_threads(cpu);
@@ -391,7 +404,7 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen, bool cpu_clear)
 
 out_release:
 	cpu_hotplug_done();
-	if (!err)
+	if (!err && !cpu_clear)
 		cpu_notify_nofail(CPU_POST_DEAD | mod, hcpu);
 	return err;
 }
