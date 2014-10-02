@@ -409,6 +409,49 @@ out_release:
 	return err;
 }
 
+int __ref hotplug_cpu_clear(unsigned int cpu)
+{
+	int err;
+
+	cpu_maps_update_begin();
+
+	if (cpu_hotplug_disabled) {
+		err = -EBUSY;
+		goto out;
+	}
+
+	err = _cpu_down(cpu, 0, 1);
+
+out:
+	cpu_maps_update_done();
+	return err;
+}
+EXPORT_SYMBOL(hotplug_cpu_clear);
+
+int __ref hotplug_cpu_unclear(unsigned int cpu)
+{
+	int err = 0;
+
+	cpu_maps_update_begin();
+
+	if (cpu_hotplug_disabled) {
+		err = -EBUSY;
+		goto out;
+	}
+
+	cpu_hotplug_begin();
+
+	set_cpu_asleep((long)cpu, false);
+	smp_send_reschedule(cpu);
+
+	cpu_hotplug_done();
+
+out:
+	cpu_maps_update_done();
+	return err;
+}
+EXPORT_SYMBOL(hotplug_cpu_unclear);
+
 int __ref cpu_down(unsigned int cpu)
 {
 	int err;
