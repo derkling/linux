@@ -448,7 +448,9 @@ static ssize_t online_store(struct device *dev, struct device_attribute *attr,
 	if (ret)
 		return ret;
 
+	trace_printk("CPU%d %s", dev->id, val ? "PlugOff START" : "PlugIn START");
 	ret = val ? device_online(dev) : device_offline(dev);
+	trace_printk("CPU%d %s", dev->id, val ? "PlugOff END" : "PlugIn END");
 	unlock_device_hotplug();
 	return ret < 0 ? ret : count;
 }
