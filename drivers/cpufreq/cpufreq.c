@@ -1364,7 +1364,9 @@ static int __cpufreq_remove_dev_prepare(struct device *dev,
 	if (has_target()) {
 		ret = __cpufreq_governor(policy, CPUFREQ_GOV_STOP);
 		if (ret) {
-			pr_err("%s: Failed to stop governor\n", __func__);
+			// LWHP - Better investigate how to avoid that
+			// notification in case of lw-hotplug
+			//pr_err("%s: Failed to stop governor\n", __func__);
 			return ret;
 		}
 	}
