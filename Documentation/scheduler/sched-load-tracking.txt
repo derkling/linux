@@ -1,0 +1,275 @@
+			  Load Tracking
+			  -------------
+
+CONTENTS
+========
+
+ 1. Overview
+ 2. Load Tracking Definitions
+ 3. Load Tracking with PELT
+ 4. Load Tracking Example
+ 5. Load Tracking Data in CFS
+ 6. How does CFS use Load Tracking
+
+
+1. Overview
+===========
+
+Per-Entity Load Tracking (PELT) provides per sched entity (task and
+taskgroup) as well as a per cfs-rq values for load based on runnable
+and running time.
+
+The CFS scheduling class maps those values to load and utilization values
+for sched entity and cfs-rq (cpu).
+
+This documents defines the related concepts involved and maps those
+definitions to functions and data of the CFS scheduling class.
+
+
+2. Load Tracking Definitions
+============================
+
+- cpu:
+
+  A cpu denotes a compute resource that can execute a task. That is a
+  hardware thread on SMT systems, otherwise it refers to a processor
+  core.
+
+- running/runnable/blocked (sleeping):
+
+  A running task is the currently executing task, a runnable task can run
+  once the currently executing task has relinquished the cpu and a
+  blocked task is currently waiting on the availability of an event or a
+  resource. The term 'runnable' stands for all tasks which are currently
+  on the run queue but also includes the running task.
+
+    time(runnable) = time(running) + time(waiting to run)
+
+    time(total) = time(runnable) + time(blocked/sleeping)
+
+- cpu utilization:
+
+  The amount of time a cpu is busy executing instructions over an
+  elapsed period of time. It is the quotient '(busy time)/period' and
+  therefore a value between 0 and 1.
+
+  To describe the busy time, the run time of the currently 'runnable'
+  task or the run time of the currently 'running' task could be used.
+
+- cpu load:
+
+  A metric for task placement and load balancing. The metric can be
+  defined as cpu utilization, derived from utilization but biased by
+  weighting tasks unequally, or something completely different.
+  Besides this definition, the cpu load will also depend on the
+  characteristic of the workload (cpu versus memory bound). We neglect
+  the effect of memory bound workloads for now.
+
+- cpu capacity:
+
+  The relative (towards other cpus in the system) ability of a cpu to
+  execute a workload.
+
+  XXX It is a metric to describe how many cpu utilization a cpu is able to
+  hold. [We can only add this sentence (comparing cpu capacity with cpu
+  utilization) if we introduce scale-invariance here. Cpu capacity is
+  the bucket size and cpu utilization is the true volume taken up by the
+  running & blocked tasks on this cpu.] XXX
+
+- weight:
+
+  The weight of a task (sched entity) depends on the task priority
+  (niceness) and the scheduling policy. A task with a nice value of
+  0 has a weight of 1024.
+
+
+3. Load Tracking with PELT
+==========================
+
+for tasks:
+
+- cpu load (based on runnable time and weighted (with task priority):
+
+  contrib_runnable(t) =
+    weight(t) * runnable_avg_sum(t)/(runnable_avg_period(t) + 1)
+
+  /* we don't use blocked load at the moment */
+  cpu load = \sum_{t=t_1}^{t_n} contrib_runnable(t)
+
+- cpu load (based running time and un-weighted)
+
+  contrib_running(t) =
+    1024 * running_avg_sum(t)/(running_avg_period(t) + 1)
+
+  /* we don't use blocked load at the moment */
+  cpu load = \sum_{t=t_1}^{t_n} contrib_running(t)
+
+
+4. Load Tracking Example
+========================
+
+gnuplot snippet to paste into gnuplot shell:
+
+# Example to illustrate the Per-Entity Load Tracking (PELT).
+
+# se  ... Sched Entity
+# crq ... Cfs Run Queue
+# rbl ... RunnaBLe
+# rng ... RuNninG
+# prd ... PeRioD
+# ctb ... ConTriB
+
+# It shows 2 se's of tasks running flat out, se1 starts to run at 0ms,
+# se2 at 345ms. Depending on whether their runnable or running time is
+# used to express the busy time the resulting signals of the crq's look
+# different.
+
+# f(x) = \sum usage_n*x^n = usage_0 + usage_1*x^1 + usage_2*x^2 + ... =
+# usage*(1-a**x)/(1-a) (a != 1)
+
+a = 0.978515625; # 4008/4096
+load_avg_max = 47742;
+load_avg_max_n = 345;
+weight = 1024; # NICE_0_LOAD (don't take task priority into consideration)
+
+# coefficient of the nth term usage_n*x^n (only 1024 and 1024/2 are used
+# in this example)
+usage(x) = 1024;
+
+set xrange [0:2*load_avg_max_n];
+set grid;
+set key outside;
+
+rbl_avg_sum_se1(x) = usage(x)*(1-a**x)/(1-a);
+rbl_avg_sum_se2(x) = (x<=load_avg_max_n) ? 0 : (usage(x)*(1-a**(x-load_avg_max_n))/(1-a));
+
+rbl_avg_prd(x) = load_avg_max;
+
+rng_avg_sum_se1(x) = (x<=load_avg_max_n) ? (usage(x)*(1-a**x)/(1-a)) :
+rng_avg_sum_se1(load_avg_max_n) - (usage(x)/2*(1-a**(x-load_avg_max_n))/(1-a));
+rng_avg_sum_se2(x) = (x<=load_avg_max_n) ? 0 : (usage(x)/2*(1-a**(x-load_avg_max_n))/(1-a));
+
+
+rbl_ctb_se1(x) = weight*rbl_avg_sum_se1(x)/(rbl_avg_prd(x) + 1);
+rbl_ctb_se2(x) = weight*rbl_avg_sum_se2(x)/(rbl_avg_prd(x) + 1);
+rbl_ctb_crq(x) = rbl_ctb_se1(x) + rbl_ctb_se2(x);
+
+rng_ctb_se1(x) = weight*rng_avg_sum_se1(x)/(rbl_avg_prd(x) + 1);
+rng_ctb_se2(x) = weight*rng_avg_sum_se2(x)/(rbl_avg_prd(x) + 1);
+rng_ctb_crq(x) = rng_ctb_se1(x) + rng_ctb_se2(x);
+
+set multiplot layout 2, 1 title "PELT"
+set title "Runnable"
+plot rbl_ctb_se1(x), rbl_ctb_se2(x), rbl_ctb_crq(x);
+set title "Running"
+plot rng_ctb_se1(x), rng_ctb_se2(x), rng_ctb_crq(x);
+unset multiplot;
+
+
+5. Load Tracking Data in CFS Scheduler Class
+============================================
+
+To facilitate the mapping between the definitions in this document and
+the actual code, the definitions from this document are mapped to the
+relevant data from the CFS scheduler class.
+
+- per entity load tracking:
+
+  (a) weighted load contribution based on runnable time
+
+	struct sched_entity {
+		...
+		struct sched_avg {
+			...
+			unsigned long runnable_load_avg_contrib;
+			...
+		}
+		...
+	}
+
+  (b) un-weighted load contribution based on running time
+
+	struct sched_entity {
+		...
+		struct sched_avg {
+			...
+			unsigned long running_load_avg_contrib;
+			...
+		}
+		...
+	}
+
+- aggregated (onto the cfs_rq) per entity load tracking:
+
+  (c) weighted load contribution based on runnable time
+
+	struct cfs_rq {
+		...
+		unsigned long runnable_load_avg;
+		...
+	}
+
+  (d) weighted load contribution of blocked entities
+
+	struct cfs_rq {
+		...
+		unsigned long blocked_runnable_load_avg;
+		...
+	}
+
+  (e) un-weighted load contribution based on running time
+
+	struct cfs_rq {
+		...
+		unsigned long running_load_avg;
+		...
+	}
+
+  (f) un-weighted load contribution of blocked entities
+
+	struct cfs_rq {
+		...
+		unsigned long blocked_running_load_avg;
+		...
+	}
+
+
+6. How does CFS use Load Tracking
+=================================
+
+This paragraph maps the relevant PELT data to the load/utilization
+getter functions of the CFS sched class.
+
+- sched entity:
+
+  - task:
+
+    (a) unsigned long task_h_load(struct task_struct *p)
+
+        returns (5.a)
+
+  - taskgroup:
+
+    (b) unsigned long task_h_load(struct task_struct *p)
+
+        uses (5.a)
+
+- cfs_rq (cpu):
+
+    (c) unsigned long get_cpu_load(const int cpu)
+
+        returns (5.c)
+
+    (d) unsigned long cpu_avg_load_per_task(int cpu)
+
+        uses (5.a)
+
+    (e) unsigned long get_rq_runnable_load(struct rq *rq)
+
+        returns (5.c) in case CONFIG_SMP is defined
+
+	[actually defined and used in kernel/sched/proc.c]
+
+    (e) unsigned long get_cpu_util(const int cpu)
+
+        returns (5.e)
