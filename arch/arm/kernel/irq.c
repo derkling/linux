@@ -157,6 +157,7 @@ static bool migrate_one_irq(struct irq_desc *desc)
 {
 	struct irq_data *d = irq_desc_get_irq_data(desc);
 	const struct cpumask *affinity = d->affinity;
+	struct cpumask filtered_mask;
 	struct irq_chip *c;
 	bool ret = false;
 
@@ -167,8 +168,10 @@ static bool migrate_one_irq(struct irq_desc *desc)
 	if (irqd_is_per_cpu(d) || !cpumask_test_cpu(smp_processor_id(), affinity))
 		return false;
 
-	if (cpumask_any_and(affinity, cpu_online_mask) >= nr_cpu_ids) {
-		affinity = cpu_online_mask;
+	/* remove asleep CPUs from consideration */
+	cpumask_andnot(&filtered_mask, cpu_online_mask, cpu_asleep_mask);
+	if (cpumask_any_and(affinity, &filtered_mask) >= nr_cpu_ids) {
+		affinity = &filtered_mask;
 		ret = true;
 	}
 
