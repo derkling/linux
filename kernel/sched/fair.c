@@ -2267,7 +2267,8 @@ static u32 __compute_runnable_contrib(u64 n)
 	return contrib + runnable_avg_yN_sum[n];
 }
 
-unsigned long arch_scale_load_capacity(int cpu);
+unsigned long arch_scale_cpu_capacity(struct sched_domain *sd, int cpu);
+unsigned long arch_scale_freq_capacity(struct sched_domain *sd, int cpu);
 
 /*
  * We can represent the historical contribution to runnable average as the
@@ -2305,7 +2306,10 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 	u64 delta, scaled_delta, periods;
 	u32 runnable_contrib, scaled_runnable_contrib;
 	int delta_w, scaled_delta_w, decayed = 0;
-	u32 scale_cap = arch_scale_load_capacity(cpu);
+	u32 scale_cap = arch_scale_cpu_capacity(NULL, cpu);
+
+	scale_cap *= arch_scale_freq_capacity(NULL, cpu);
+	scale_cap >>= SCHED_CAPACITY_SHIFT;
 
 	delta = now - sa->last_runnable_update;
 	/*
@@ -5831,16 +5835,6 @@ static unsigned long default_scale_cpu_capacity(struct sched_domain *sd, int cpu
 unsigned long __weak arch_scale_cpu_capacity(struct sched_domain *sd, int cpu)
 {
 	return default_scale_cpu_capacity(sd, cpu);
-}
-
-static unsigned long default_scale_load_capacity(int cpu)
-{
-	return SCHED_CAPACITY_SCALE;
-}
-
-unsigned long __weak arch_scale_load_capacity(int cpu)
-{
-	return default_scale_load_capacity(cpu);
 }
 
 static unsigned long scale_rt_capacity(int cpu)
