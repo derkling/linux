@@ -4395,9 +4395,11 @@ find_idlest_cpu(struct sched_group *group, struct task_struct *p, int this_cpu)
 	unsigned long load, min_load = ULONG_MAX;
 	int idlest = -1;
 	int i;
+	struct cpumask sd_group_cpus;
 
 	/* Traverse only the allowed CPUs */
-	for_each_cpu_and(i, sched_group_cpus(group), tsk_cpus_allowed(p)) {
+	cpumask_andnot(&sd_group_cpus, sched_group_cpus(group), cpu_asleep_mask);
+	for_each_cpu_and(i, &sd_group_cpus, tsk_cpus_allowed(p)) {
 		load = weighted_cpuload(i);
 
 		if (load < min_load || (load == min_load && i == this_cpu)) {
@@ -4416,6 +4418,7 @@ static int select_idle_sibling(struct task_struct *p, int target)
 {
 	struct sched_domain *sd;
 	struct sched_group *sg;
+	struct cpumask sd_group_cpus;
 	int i = task_cpu(p);
 
 	if (idle_cpu(target))
@@ -4434,16 +4437,17 @@ static int select_idle_sibling(struct task_struct *p, int target)
 	for_each_lower_domain(sd) {
 		sg = sd->groups;
 		do {
-			if (!cpumask_intersects(sched_group_cpus(sg),
+			cpumask_andnot(&sd_group_cpus, sched_group_cpus(sg), cpu_asleep_mask);
+			if (!cpumask_intersects(&sd_group_cpus,
 						tsk_cpus_allowed(p)))
 				goto next;
 
-			for_each_cpu(i, sched_group_cpus(sg)) {
+			for_each_cpu(i, &sd_group_cpus) {
 				if (i == target || !idle_cpu(i))
 					goto next;
 			}
 
-			target = cpumask_first_and(sched_group_cpus(sg),
+			target = cpumask_first_and(&sd_group_cpus,
 					tsk_cpus_allowed(p));
 			goto done;
 next:
@@ -4474,6 +4478,7 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	int new_cpu = cpu;
 	int want_affine = 0;
 	int sync = wake_flags & WF_SYNC;
+	struct cpumask sd_span;
 
 	if (p->nr_cpus_allowed == 1)
 		return prev_cpu;
@@ -4493,8 +4498,9 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 		 * If both cpu and prev_cpu are part of this domain,
 		 * cpu is a valid SD_WAKE_AFFINE target.
 		 */
+		cpumask_andnot(&sd_span, sched_domain_span(tmp), cpu_asleep_mask);
 		if (want_affine && (tmp->flags & SD_WAKE_AFFINE) &&
-		    cpumask_test_cpu(prev_cpu, sched_domain_span(tmp))) {
+		    cpumask_test_cpu(prev_cpu, &sd_span)) {
 			affine_sd = tmp;
 			break;
 		}
@@ -4845,6 +4851,10 @@ simple:
 	return p;
 
 idle:
+	/* Avoid idle balance on asleep CPUs */
+	if (cpu_asleep(rq->cpu))
+		return NULL;
+
 	new_tasks = idle_balance(rq);
 	/*
 	 * Because idle_balance() releases (and re-acquires) rq->lock, it is
@@ -6503,6 +6513,9 @@ static int load_balance(int this_cpu, struct rq *this_rq,
 		.fbq_type	= all,
 	};
 
+	if (cpu_asleep(this_cpu))
+		return 0;
+
 	/*
 	 * For NEWLY_IDLE load_balancing, we don't need to consider
 	 * other cpus in our group
@@ -6510,8 +6523,10 @@ static int load_balance(int this_cpu, struct rq *this_rq,
 	if (idle == CPU_NEWLY_IDLE)
 		env.dst_grpmask = NULL;
 
-	cpumask_copy(cpus, cpu_active_mask);
+	/* remove asleep CPUs from list */
+	cpumask_andnot(cpus, cpu_active_mask, cpu_asleep_mask);
 
+	cpumask_copy(env.cpus, cpus);
 	schedstat_inc(sd, lb_count[idle]);
 
 redo:
@@ -6866,6 +6881,9 @@ static int active_load_balance_cpu_stop(void *data)
 	struct sched_domain *sd;
 
 	raw_spin_lock_irq(&busiest_rq->lock);
+
+	if (cpu_asleep(target_cpu))
+		goto out_unlock;
 
 	/* make sure the requested cpu hasn't gone down in the meantime */
 	if (unlikely(busiest_cpu != smp_processor_id() ||
@@ -7236,6 +7254,9 @@ static inline int nohz_kick_needed(struct rq *rq)
 	if (unlikely(rq->idle_balance))
 		return 0;
 
+	if (unlikely(cpu_asleep(cpu)))
+		return 0;
+
        /*
 	* We may be recently in ticked or tickless idle mode. At the first
 	* busy tick after returning from idle, we will update the busy stats.
@@ -7292,8 +7313,12 @@ static void nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle) { }
 static void run_rebalance_domains(struct softirq_action *h)
 {
 	struct rq *this_rq = this_rq();
+	int this_cpu = cpu_of(this_rq);
 	enum cpu_idle_type idle = this_rq->idle_balance ?
 						CPU_IDLE : CPU_NOT_IDLE;
+
+	if (unlikely(cpu_asleep(this_cpu)))
+		return;
 
 	rebalance_domains(this_rq, idle);
 
