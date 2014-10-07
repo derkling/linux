@@ -79,9 +79,6 @@ static unsigned long *__cpu_capacity;
 
 static unsigned long middle_capacity = 1;
 
-static unsigned long max_raw_capacity = 1;
-static DEFINE_PER_CPU(unsigned long, cpu_raw_capacity);
-
 /*
  * Iterate all CPUs' descriptor in DT and compute the efficiency
  * (as per table_efficiency). Also calculate a middle efficiency
@@ -119,9 +116,6 @@ static void __init parse_dt_topology(void)
 
 		if (cpu_eff->compatible == NULL)
 			continue;
-
-		per_cpu(cpu_raw_capacity, cpu) = cpu_eff->efficiency;
-		max_raw_capacity = max(max_raw_capacity, cpu_eff->efficiency);
 
 		rate = of_get_property(cn, "clock-frequency", &len);
 		if (!rate || len != 4) {
@@ -179,8 +173,7 @@ static void update_cpu_capacity(unsigned int cpu)
  * Scheduler load-tracking scale-invariance
  *
  * Provides the scheduler with a scale-invariance correction factor that
- * compensates for frequency scaling and micro-architecture differences between
- * cpus.
+ * compensates for frequency scaling.
  */
 
 static DEFINE_PER_CPU(atomic_long_t, cpu_curr_freq);
@@ -202,15 +195,11 @@ unsigned long arch_scale_load_capacity(int cpu)
 {
 	unsigned long curr = atomic_long_read(&per_cpu(cpu_curr_freq, cpu));
 	unsigned long max = atomic_long_read(&per_cpu(cpu_max_freq, cpu));
-	unsigned long ret;
 
-	if (!max || !per_cpu(cpu_raw_capacity, cpu))
+	if (!max)
 		return SCHED_CAPACITY_SCALE;
 
-	ret = (curr * SCHED_CAPACITY_SCALE) / max;
-	ret = (ret * per_cpu(cpu_raw_capacity, cpu)) / max_raw_capacity;
-
-	return ret;
+	return (curr * SCHED_CAPACITY_SCALE) / max;
 }
 
 unsigned long arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
