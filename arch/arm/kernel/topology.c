@@ -213,6 +213,17 @@ unsigned long arch_scale_load_capacity(int cpu)
 	return ret;
 }
 
+unsigned long arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
+{
+	unsigned long curr = atomic_long_read(&per_cpu(cpu_curr_freq, cpu));
+	unsigned long max = atomic_long_read(&per_cpu(cpu_max_freq, cpu));
+
+	if (unlikely(!max))
+		return SCHED_CAPACITY_SCALE;
+
+	return (curr * SCHED_CAPACITY_SCALE) / max;
+}
+
 #else
 static inline void parse_dt_topology(void) {}
 static inline void update_cpu_capacity(unsigned int cpuid) {}
