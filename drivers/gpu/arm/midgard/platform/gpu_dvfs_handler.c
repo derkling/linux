@@ -28,6 +28,8 @@
 extern struct kbase_device *pkbdev;
 
 void ipa_mali_dvfs_requested(unsigned int freq);
+void thermal_framework_mali_dvfs_requested(unsigned int freq);
+void thermal_framework_mali_dvfs_current(unsigned int freq);
 
 #ifdef CONFIG_MALI_THERMAL_INTERFACE
 int gpu_dvfs_get_clock(int level)
@@ -73,12 +75,20 @@ static int gpu_get_target_freq(void)
 	ipa_mali_dvfs_requested(freq);
 #endif
 
+#ifdef CONFIG_GPU_THERMAL
+	thermal_framework_mali_dvfs_requested(freq);
+#endif
+
 #ifdef CONFIG_MALI_T6XX_DVFS
 	if ((platform->max_lock > 0) && (freq > platform->max_lock))
 		freq = platform->max_lock;
 	else if ((platform->min_lock > 0) && (freq < platform->min_lock))
 		freq = platform->min_lock;
 #endif /* CONFIG_MALI_T6XX_DVFS */
+
+#ifdef CONFIG_GPU_THERMAL
+	thermal_framework_mali_dvfs_current(freq);
+#endif
 
 	return freq;
 }
