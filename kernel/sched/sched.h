@@ -336,10 +336,10 @@ struct cfs_rq {
 	 * This allows for the description of both thread and group usage (in
 	 * the FAIR_GROUP_SCHED case).
 	 */
-	unsigned long runnable_load_avg, blocked_load_avg;
+	unsigned long runnable_load_avg, blocked_runnable_load_avg;
 	atomic64_t decay_counter;
 	u64 last_decay;
-	atomic_long_t removed_load;
+	atomic_long_t removed_runnable_load;
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	/* Required to track per-cpu representation of a task_group */
@@ -1201,7 +1201,7 @@ unsigned long to_ratio(u64 period, u64 runtime);
 
 extern void update_idle_cpu_load(struct rq *this_rq);
 
-extern void init_task_runnable_average(struct task_struct *p);
+extern void init_task_load_average(struct task_struct *p);
 
 static inline void add_nr_running(struct rq *rq, unsigned count)
 {

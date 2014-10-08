@@ -669,19 +669,20 @@ static unsigned long task_h_load(struct task_struct *p);
 
 static inline void __update_task_entity_contrib(struct sched_entity *se);
 
-/* Give new task start runnable values to heavy its load in infant time */
-void init_task_runnable_average(struct task_struct *p)
+/* Give new task start time (busy time (runnable) awa period)
+ * values to heavy its load in infant time */
+void init_task_load_average(struct task_struct *p)
 {
 	u32 slice;
 
 	p->se.avg.decay_count = 0;
 	slice = sched_slice(task_cfs_rq(p), &p->se) >> 10;
 	p->se.avg.runnable_avg_sum = slice;
-	p->se.avg.runnable_avg_period = slice;
+	p->se.avg.avg_period = slice;
 	__update_task_entity_contrib(&p->se);
 }
 #else
-void init_task_runnable_average(struct task_struct *p)
+void init_task_load_average(struct task_struct *p)
 {
 }
 #endif
@@ -1534,7 +1535,7 @@ static u64 numa_get_avg_runtime(struct task_struct *p, u64 *period)
 		*period = now - p->last_task_numa_placement;
 	} else {
 		delta = p->se.avg.runnable_avg_sum;
-		*period = p->se.avg.runnable_avg_period;
+		*period = p->se.avg.avg_period;
 	}
 
 	p->last_sum_exec_runtime = runtime;
@@ -2174,7 +2175,7 @@ static inline void update_cfs_shares(struct cfs_rq *cfs_rq)
 #define LOAD_AVG_MAX_N 345 /* number of full periods to produce LOAD_MAX_AVG */
 
 /* Precomputed fixed inverse multiplies for multiplication by y^n */
-static const u32 runnable_avg_yN_inv[] = {
+static const u32 load_avg_yN_inv[] = {
 	0xffffffff, 0xfa83b2da, 0xf5257d14, 0xefe4b99a, 0xeac0c6e6, 0xe5b906e6,
 	0xe0ccdeeb, 0xdbfbb796, 0xd744fcc9, 0xd2a81d91, 0xce248c14, 0xc9b9bd85,
 	0xc5672a10, 0xc12c4cc9, 0xbd08a39e, 0xb8fbaf46, 0xb504f333, 0xb123f581,
@@ -2187,7 +2188,7 @@ static const u32 runnable_avg_yN_inv[] = {
  * Precomputed \Sum y^k { 1<=k<=n }.  These are floor(true_value) to prevent
  * over-estimates when re-combining.
  */
-static const u32 runnable_avg_yN_sum[] = {
+static const u32 load_avg_yN_sum[] = {
 	    0, 1002, 1982, 2941, 3880, 4798, 5697, 6576, 7437, 8279, 9103,
 	 9909,10698,11470,12226,12966,13690,14398,15091,15769,16433,17082,
 	17718,18340,18949,19545,20128,20698,21256,21802,22336,22859,23371,
@@ -2221,42 +2222,42 @@ static __always_inline u64 decay_load(u64 val, u64 n)
 		local_n %= LOAD_AVG_PERIOD;
 	}
 
-	val *= runnable_avg_yN_inv[local_n];
+	val *= load_avg_yN_inv[local_n];
 	/* We don't use SRR here since we always want to round down. */
 	return val >> 32;
 }
 
 /*
- * For updates fully spanning n periods, the contribution to runnable
+ * For updates fully spanning n periods, the contribution to load
  * average will be: \Sum 1024*y^n
  *
  * We can compute this reasonably efficiently by combining:
  *   y^PERIOD = 1/2 with precomputed \Sum 1024*y^n {for  n <PERIOD}
  */
-static u32 __compute_runnable_contrib(u64 n)
+static u32 __compute_load_contrib(u64 n)
 {
 	u32 contrib = 0;
 
 	if (likely(n <= LOAD_AVG_PERIOD))
-		return runnable_avg_yN_sum[n];
+		return load_avg_yN_sum[n];
 	else if (unlikely(n >= LOAD_AVG_MAX_N))
 		return LOAD_AVG_MAX;
 
 	/* Compute \Sum k^n combining precomputed values for k^i, \Sum k^j */
 	do {
 		contrib /= 2; /* y^LOAD_AVG_PERIOD = 1/2 */
-		contrib += runnable_avg_yN_sum[LOAD_AVG_PERIOD];
+		contrib += load_avg_yN_sum[LOAD_AVG_PERIOD];
 
 		n -= LOAD_AVG_PERIOD;
 	} while (n > LOAD_AVG_PERIOD);
 
 	contrib = decay_load(contrib, n);
-	return contrib + runnable_avg_yN_sum[n];
+	return contrib + load_avg_yN_sum[n];
 }
 
 /*
- * We can represent the historical contribution to runnable average as the
- * coefficients of a geometric series.  To do this we sub-divide our runnable
+ * We can represent the historical contribution to load average as the
+ * coefficients of a geometric series.  To do this we sub-divide our load
  * history into segments of approximately 1ms (1024us); label the segment that
  * occurred N-ms ago p_N, with p_0 corresponding to the current period, e.g.
  *
@@ -2264,7 +2265,7 @@ static u32 __compute_runnable_contrib(u64 n)
  *      p0            p1           p2
  *     (now)       (~1ms ago)  (~2ms ago)
  *
- * Let u_i denote the fraction of p_i that the entity was runnable.
+ * Let u_i denote the fraction of p_i that the entity was busy.
  *
  * We then designate the fractions u_i as our co-efficients, yielding the
  * following representation of historical load:
@@ -2282,21 +2283,21 @@ static u32 __compute_runnable_contrib(u64 n)
  *   load_avg = u_0` + y*(u_0 + u_1*y + u_2*y^2 + ... )
  *            = u_0 + u_1*y + u_2*y^2 + ... [re-labeling u_i --> u_{i+1}]
  */
-static __always_inline int __update_entity_runnable_avg(u64 now,
-							struct sched_avg *sa,
-							int runnable)
+static __always_inline int __update_entity_load_avg(u64 now,
+						    struct sched_avg *sa,
+						    int runnable)
 {
 	u64 delta, periods;
-	u32 runnable_contrib;
+	u32 contrib;
 	int delta_w, decayed = 0;
 
-	delta = now - sa->last_runnable_update;
+	delta = now - sa->last_update;
 	/*
 	 * This should only happen when time goes backwards, which it
 	 * unfortunately does during sched clock init when we swap over to TSC.
 	 */
 	if ((s64)delta < 0) {
-		sa->last_runnable_update = now;
+		sa->last_update = now;
 		return 0;
 	}
 
@@ -2307,10 +2308,10 @@ static __always_inline int __update_entity_runnable_avg(u64 now,
 	delta >>= 10;
 	if (!delta)
 		return 0;
-	sa->last_runnable_update = now;
+	sa->last_update = now;
 
 	/* delta_w is the amount already accumulated against our next period */
-	delta_w = sa->runnable_avg_period % 1024;
+	delta_w = sa->avg_period % 1024;
 	if (delta + delta_w >= 1024) {
 		/* period roll-over */
 		decayed = 1;
@@ -2323,7 +2324,7 @@ static __always_inline int __update_entity_runnable_avg(u64 now,
 		delta_w = 1024 - delta_w;
 		if (runnable)
 			sa->runnable_avg_sum += delta_w;
-		sa->runnable_avg_period += delta_w;
+		sa->avg_period += delta_w;
 
 		delta -= delta_w;
 
@@ -2333,20 +2334,19 @@ static __always_inline int __update_entity_runnable_avg(u64 now,
 
 		sa->runnable_avg_sum = decay_load(sa->runnable_avg_sum,
 						  periods + 1);
-		sa->runnable_avg_period = decay_load(sa->runnable_avg_period,
-						     periods + 1);
+		sa->avg_period = decay_load(sa->avg_period, periods + 1);
 
 		/* Efficiently calculate \sum (1..n_period) 1024*y^i */
-		runnable_contrib = __compute_runnable_contrib(periods);
+		contrib = __compute_load_contrib(periods);
 		if (runnable)
-			sa->runnable_avg_sum += runnable_contrib;
-		sa->runnable_avg_period += runnable_contrib;
+			sa->runnable_avg_sum += contrib;
+		sa->avg_period += contrib;
 	}
 
 	/* Remainder of delta accrued against u_0` */
 	if (runnable)
 		sa->runnable_avg_sum += delta;
-	sa->runnable_avg_period += delta;
+	sa->avg_period += delta;
 
 	return decayed;
 }
@@ -2361,7 +2361,7 @@ static inline u64 __synchronize_entity_decay(struct sched_entity *se)
 	if (!decays)
 		return 0;
 
-	se->avg.load_avg_contrib = decay_load(se->avg.load_avg_contrib, decays);
+	se->avg.runnable_load_avg_contrib = decay_load(se->avg.runnable_load_avg_contrib, decays);
 	se->avg.decay_count = 0;
 
 	return decays;
@@ -2374,7 +2374,7 @@ static inline void __update_cfs_rq_tg_load_contrib(struct cfs_rq *cfs_rq,
 	struct task_group *tg = cfs_rq->tg;
 	long tg_contrib;
 
-	tg_contrib = cfs_rq->runnable_load_avg + cfs_rq->blocked_load_avg;
+	tg_contrib = cfs_rq->runnable_load_avg + cfs_rq->blocked_runnable_load_avg;
 	tg_contrib -= cfs_rq->tg_load_contrib;
 
 	if (force_update || abs(tg_contrib) > cfs_rq->tg_load_contrib / 8) {
@@ -2384,18 +2384,18 @@ static inline void __update_cfs_rq_tg_load_contrib(struct cfs_rq *cfs_rq,
 }
 
 /*
- * Aggregate cfs_rq runnable averages into an equivalent task_group
+ * Aggregate cfs_rq load averages into an equivalent task_group
  * representation for computing load contributions.
  */
 static inline void __update_tg_runnable_avg(struct sched_avg *sa,
-						  struct cfs_rq *cfs_rq)
+				       struct cfs_rq *cfs_rq)
 {
 	struct task_group *tg = cfs_rq->tg;
 	long contrib;
 
 	/* The fraction of a cpu used by this cfs_rq */
 	contrib = div_u64((u64)sa->runnable_avg_sum << NICE_0_SHIFT,
-			  sa->runnable_avg_period + 1);
+			  sa->avg_period + 1);
 	contrib -= cfs_rq->tg_runnable_contrib;
 
 	if (abs(contrib) > cfs_rq->tg_runnable_contrib / 64) {
@@ -2413,7 +2413,7 @@ static inline void __update_group_entity_contrib(struct sched_entity *se)
 	u64 contrib;
 
 	contrib = cfs_rq->tg_load_contrib * tg->shares;
-	se->avg.load_avg_contrib = div_u64(contrib,
+	se->avg.runnable_load_avg_contrib = div_u64(contrib,
 				     atomic_long_read(&tg->load_avg) + 1);
 
 	/*
@@ -2441,8 +2441,8 @@ static inline void __update_group_entity_contrib(struct sched_entity *se)
 	 */
 	runnable_avg = atomic_read(&tg->runnable_avg);
 	if (runnable_avg < NICE_0_LOAD) {
-		se->avg.load_avg_contrib *= runnable_avg;
-		se->avg.load_avg_contrib >>= NICE_0_SHIFT;
+		se->avg.runnable_load_avg_contrib *= runnable_avg;
+		se->avg.runnable_load_avg_contrib >>= NICE_0_SHIFT;
 	}
 }
 
@@ -2460,14 +2460,20 @@ static inline void __update_task_entity_contrib(struct sched_entity *se)
 
 	/* avoid overflowing a 32-bit type w/ SCHED_LOAD_SCALE */
 	contrib = se->avg.runnable_avg_sum * scale_load_down(se->load.weight);
-	contrib /= (se->avg.runnable_avg_period + 1);
-	se->avg.load_avg_contrib = scale_load(contrib);
+	contrib /= (se->avg.avg_period + 1);
+	se->avg.runnable_load_avg_contrib = scale_load(contrib);
 }
 
+struct contrib {
+	long runnable;
+	long running;
+};
+
 /* Compute the current contribution to load_avg by se, return any delta */
-static long __update_entity_load_avg_contrib(struct sched_entity *se)
+static void __update_entity_load_avg_contrib(struct sched_entity *se,
+		                                      struct contrib *delta)
 {
-	long old_contrib = se->avg.load_avg_contrib;
+	long old_contrib = se->avg.runnable_load_avg_contrib;
 
 	if (entity_is_task(se)) {
 		__update_task_entity_contrib(se);
@@ -2476,26 +2482,26 @@ static long __update_entity_load_avg_contrib(struct sched_entity *se)
 		__update_group_entity_contrib(se);
 	}
 
-	return se->avg.load_avg_contrib - old_contrib;
+	delta->runnable = se->avg.runnable_load_avg_contrib - old_contrib;
 }
 
 static inline void subtract_blocked_load_contrib(struct cfs_rq *cfs_rq,
 						 long load_contrib)
 {
-	if (likely(load_contrib < cfs_rq->blocked_load_avg))
-		cfs_rq->blocked_load_avg -= load_contrib;
+	if (likely(load_contrib < cfs_rq->blocked_runnable_load_avg))
+		cfs_rq->blocked_runnable_load_avg -= load_contrib;
 	else
-		cfs_rq->blocked_load_avg = 0;
+		cfs_rq->blocked_runnable_load_avg = 0;
 }
 
 static inline u64 cfs_rq_clock_task(struct cfs_rq *cfs_rq);
 
-/* Update a sched_entity's runnable average */
+/* Update a sched_entity's load average */
 static inline void update_entity_load_avg(struct sched_entity *se,
 					  int update_cfs_rq)
 {
 	struct cfs_rq *cfs_rq = cfs_rq_of(se);
-	long contrib_delta;
+	struct contrib contrib_delta;
 	u64 now;
 
 	/*
@@ -2507,18 +2513,18 @@ static inline void update_entity_load_avg(struct sched_entity *se,
 	else
 		now = cfs_rq_clock_task(group_cfs_rq(se));
 
-	if (!__update_entity_runnable_avg(now, &se->avg, se->on_rq))
+	if (!__update_entity_load_avg(now, &se->avg, se->on_rq))
 		return;
 
-	contrib_delta = __update_entity_load_avg_contrib(se);
+	__update_entity_load_avg_contrib(se, &contrib_delta);
 
 	if (!update_cfs_rq)
 		return;
 
 	if (se->on_rq)
-		cfs_rq->runnable_load_avg += contrib_delta;
+		cfs_rq->runnable_load_avg += contrib_delta.runnable;
 	else
-		subtract_blocked_load_contrib(cfs_rq, -contrib_delta);
+		subtract_blocked_load_contrib(cfs_rq, -contrib_delta.runnable);
 }
 
 /*
@@ -2534,14 +2540,14 @@ static void update_cfs_rq_blocked_load(struct cfs_rq *cfs_rq, int force_update)
 	if (!decays && !force_update)
 		return;
 
-	if (atomic_long_read(&cfs_rq->removed_load)) {
-		unsigned long removed_load;
-		removed_load = atomic_long_xchg(&cfs_rq->removed_load, 0);
-		subtract_blocked_load_contrib(cfs_rq, removed_load);
+	if (atomic_long_read(&cfs_rq->removed_runnable_load)) {
+		unsigned long removed_runnable_load;
+		removed_runnable_load = atomic_long_xchg(&cfs_rq->removed_runnable_load, 0);
+		subtract_blocked_load_contrib(cfs_rq, removed_runnable_load);
 	}
 
 	if (decays) {
-		cfs_rq->blocked_load_avg = decay_load(cfs_rq->blocked_load_avg,
+		cfs_rq->blocked_runnable_load_avg = decay_load(cfs_rq->blocked_runnable_load_avg,
 						      decays);
 		atomic64_add(decays, &cfs_rq->decay_counter);
 		cfs_rq->last_decay = now;
@@ -2562,10 +2568,10 @@ static inline void enqueue_entity_load_avg(struct cfs_rq *cfs_rq,
 	 *
 	 * Newly forked tasks are enqueued with se->avg.decay_count == 0, they
 	 * are seen by enqueue_entity_load_avg() as a migration with an already
-	 * constructed load_avg_contrib.
+	 * constructed runnable_load_avg_contrib.
 	 */
 	if (unlikely(se->avg.decay_count <= 0)) {
-		se->avg.last_runnable_update = rq_clock_task(rq_of(cfs_rq));
+		se->avg.last_update = rq_clock_task(rq_of(cfs_rq));
 		if (se->avg.decay_count) {
 			/*
 			 * In a wake-up migration we have to approximate the
@@ -2575,7 +2581,7 @@ static inline void enqueue_entity_load_avg(struct cfs_rq *cfs_rq,
 			 * approximate this using our carried decays, which are
 			 * explicitly atomically readable.
 			 */
-			se->avg.last_runnable_update -= (-se->avg.decay_count)
+			se->avg.last_update -= (-se->avg.decay_count)
 							<< 20;
 			update_entity_load_avg(se, 0);
 			/* Indicate that we're now synchronized and on-rq */
@@ -2588,11 +2594,11 @@ static inline void enqueue_entity_load_avg(struct cfs_rq *cfs_rq,
 
 	/* migrated tasks did not contribute to our blocked load */
 	if (wakeup) {
-		subtract_blocked_load_contrib(cfs_rq, se->avg.load_avg_contrib);
+		subtract_blocked_load_contrib(cfs_rq, se->avg.runnable_load_avg_contrib);
 		update_entity_load_avg(se, 0);
 	}
 
-	cfs_rq->runnable_load_avg += se->avg.load_avg_contrib;
+	cfs_rq->runnable_load_avg += se->avg.runnable_load_avg_contrib;
 	/* we force update consideration on load-balancer moves */
 	update_cfs_rq_blocked_load(cfs_rq, !wakeup);
 }
@@ -2600,7 +2606,7 @@ static inline void enqueue_entity_load_avg(struct cfs_rq *cfs_rq,
 /*
  * Remove se's load from this cfs_rq child load-average, if the entity is
  * transitioning to a blocked state we track its projected decay using
- * blocked_load_avg.
+ * blocked_runnable_load_avg.
  */
 static inline void dequeue_entity_load_avg(struct cfs_rq *cfs_rq,
 						  struct sched_entity *se,
@@ -2610,9 +2616,9 @@ static inline void dequeue_entity_load_avg(struct cfs_rq *cfs_rq,
 	/* we force update consideration on load-balancer moves */
 	update_cfs_rq_blocked_load(cfs_rq, !sleep);
 
-	cfs_rq->runnable_load_avg -= se->avg.load_avg_contrib;
+	cfs_rq->runnable_load_avg -= se->avg.runnable_load_avg_contrib;
 	if (sleep) {
-		cfs_rq->blocked_load_avg += se->avg.load_avg_contrib;
+		cfs_rq->blocked_runnable_load_avg += se->avg.runnable_load_avg_contrib;
 		se->avg.decay_count = atomic64_read(&cfs_rq->decay_counter);
 	} /* migrations, e.g. sleep=0 leave decay_count == 0 */
 }
@@ -3058,7 +3064,7 @@ entity_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr, int queued)
 	update_curr(cfs_rq);
 
 	/*
-	 * Ensure that runnable average is periodically updated.
+	 * Ensure that load average is periodically updated.
 	 */
 	update_entity_load_avg(curr, 1);
 	update_cfs_rq_blocked_load(cfs_rq, 1);
@@ -3341,7 +3347,7 @@ static void throttle_cfs_rq(struct cfs_rq *cfs_rq)
 
 	se = cfs_rq->tg->se[cpu_of(rq_of(cfs_rq))];
 
-	/* freeze hierarchy runnable averages while throttled */
+	/* freeze hierarchy load averages while throttled */
 	rcu_read_lock();
 	walk_tg_tree_from(cfs_rq->tg, tg_throttle_down, tg_nop, (void *)rq);
 	rcu_read_unlock();
@@ -4595,8 +4601,8 @@ migrate_task_rq_fair(struct task_struct *p, int next_cpu)
 	 */
 	if (se->avg.decay_count) {
 		se->avg.decay_count = -__synchronize_entity_decay(se);
-		atomic_long_add(se->avg.load_avg_contrib,
-						&cfs_rq->removed_load);
+		atomic_long_add(se->avg.runnable_load_avg_contrib,
+						&cfs_rq->removed_runnable_load);
 	}
 
 	/* We have migrated, no longer consider this task hot */
@@ -5517,7 +5523,7 @@ static void update_cfs_rq_h_load(struct cfs_rq *cfs_rq)
 
 	while ((se = cfs_rq->h_load_next) != NULL) {
 		load = cfs_rq->h_load;
-		load = div64_ul(load * se->avg.load_avg_contrib,
+		load = div64_ul(load * se->avg.runnable_load_avg_contrib,
 				cfs_rq->runnable_load_avg + 1);
 		cfs_rq = group_cfs_rq(se);
 		cfs_rq->h_load = load;
@@ -5530,7 +5536,7 @@ static unsigned long task_h_load(struct task_struct *p)
 	struct cfs_rq *cfs_rq = task_cfs_rq(p);
 
 	update_cfs_rq_h_load(cfs_rq);
-	return div64_ul(p->se.avg.load_avg_contrib * cfs_rq->h_load,
+	return div64_ul(p->se.avg.runnable_load_avg_contrib * cfs_rq->h_load,
 			cfs_rq->runnable_load_avg + 1);
 }
 #else
@@ -5540,7 +5546,7 @@ static inline void update_blocked_averages(int cpu)
 
 static unsigned long task_h_load(struct task_struct *p)
 {
-	return p->se.avg.load_avg_contrib;
+	return p->se.avg.runnable_load_avg_contrib;
 }
 #endif
 
@@ -7495,7 +7501,7 @@ static void switched_from_fair(struct rq *rq, struct task_struct *p)
 	*/
 	if (se->avg.decay_count) {
 		__synchronize_entity_decay(se);
-		subtract_blocked_load_contrib(cfs_rq, se->avg.load_avg_contrib);
+		subtract_blocked_load_contrib(cfs_rq, se->avg.runnable_load_avg_contrib);
 	}
 #endif
 }
@@ -7554,7 +7560,7 @@ void init_cfs_rq(struct cfs_rq *cfs_rq)
 #endif
 #ifdef CONFIG_SMP
 	atomic64_set(&cfs_rq->decay_counter, 1);
-	atomic_long_set(&cfs_rq->removed_load, 0);
+	atomic_long_set(&cfs_rq->removed_runnable_load, 0);
 #endif
 }
 
@@ -7606,7 +7612,7 @@ static void task_move_group_fair(struct task_struct *p, int on_rq)
 		 * decay.
 		 */
 		se->avg.decay_count = atomic64_read(&cfs_rq->decay_counter);
-		cfs_rq->blocked_load_avg += se->avg.load_avg_contrib;
+		cfs_rq->blocked_runnable_load_avg += se->avg.runnable_load_avg_contrib;
 #endif
 	}
 }
