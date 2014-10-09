@@ -1068,15 +1068,15 @@ struct load_weight {
 };
 
 struct sched_avg {
+	u64 last_update;
+	s64 decay_count;
+	unsigned long runnable_load_avg_contrib, running_load_avg_contrib;
 	/*
 	 * These sums represent an infinite geometric series and so are bound
 	 * above by 1024/(1-y).  Thus we only need a u32 to store them for all
 	 * choices of y < 1-2^(-32)*1024.
 	 */
-	u32 runnable_avg_sum, avg_period;
-	u64 last_update;
-	s64 decay_count;
-	unsigned long runnable_load_avg_contrib;
+	u32 runnable_avg_sum, running_avg_sum, avg_period;
 };
 
 #ifdef CONFIG_SCHEDSTATS
