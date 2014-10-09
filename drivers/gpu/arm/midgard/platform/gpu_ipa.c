@@ -227,6 +227,22 @@ int gpu_ipa_dvfs_max_unlock(void)
 	return 0;
 }
 
+int gpu_ipa_dvfs_level_to_freq(int level)
+{
+	struct kbase_device *kbdev = pkbdev;
+	struct exynos_context *platform = (struct exynos_context *)kbdev->platform_context;
+
+	return platform->table[level].clock;
+}
+
+int get_ipa_dvfs_num_opps(void)
+{
+	struct kbase_device *kbdev = pkbdev;
+	struct exynos_context *platform = (struct exynos_context *)kbdev->platform_context;
+
+	return platform->table_size;
+}
+
 int get_ipa_dvfs_max_freq(void)
 {
 	struct kbase_device *kbdev = pkbdev;

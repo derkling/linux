@@ -79,6 +79,12 @@ config CPU_THERMAL
 
 	  If you want this support, you should say Y here.
 
+config GPU_THERMAL
+	bool "Mali gpu cooling support"
+	help
+	  This implements a Mali gpu cooling device using the legacy
+	  IPA interface to the Mali driver.
+
 config THERMAL_EMULATION
 	bool "Thermal emulation mode support"
 	help
