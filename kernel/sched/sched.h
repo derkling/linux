@@ -337,10 +337,10 @@ struct cfs_rq {
 	 * the FAIR_GROUP_SCHED case).
 	 */
 	unsigned long runnable_load_avg, blocked_runnable_load_avg;
-	unsigned long running_load_avg;
+	unsigned long running_load_avg, blocked_running_load_avg;
 	atomic64_t decay_counter;
 	u64 last_decay;
-	atomic_long_t removed_runnable_load;
+	atomic_long_t removed_runnable_load, removed_running_load;
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	/* Required to track per-cpu representation of a task_group */

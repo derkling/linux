@@ -214,6 +214,8 @@ void print_cfs_rq(struct seq_file *m, int cpu, struct cfs_rq *cfs_rq)
 			cfs_rq->running_load_avg);
 	SEQ_printf(m, "  .%-30s: %ld\n", "blocked_runnable_load_avg",
 			cfs_rq->blocked_runnable_load_avg);
+	SEQ_printf(m, "  .%-30s: %ld\n", "blocked_running_load_avg",
+			cfs_rq->blocked_running_load_avg);
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	SEQ_printf(m, "  .%-30s: %ld\n", "tg_load_contrib",
 			cfs_rq->tg_load_contrib);
