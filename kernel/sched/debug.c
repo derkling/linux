@@ -210,6 +210,8 @@ void print_cfs_rq(struct seq_file *m, int cpu, struct cfs_rq *cfs_rq)
 #ifdef CONFIG_SMP
 	SEQ_printf(m, "  .%-30s: %ld\n", "runnable_load_avg",
 			cfs_rq->runnable_load_avg);
+	SEQ_printf(m, "  .%-30s: %ld\n", "running_load_avg",
+			cfs_rq->running_load_avg);
 	SEQ_printf(m, "  .%-30s: %ld\n", "blocked_runnable_load_avg",
 			cfs_rq->blocked_runnable_load_avg);
 #ifdef CONFIG_FAIR_GROUP_SCHED
@@ -628,8 +630,10 @@ void proc_sched_show_task(struct task_struct *p, struct seq_file *m)
 	P(se.load.weight);
 #ifdef CONFIG_SMP
 	P(se.avg.runnable_avg_sum);
+	P(se.avg.running_avg_sum);
 	P(se.avg.avg_period);
 	P(se.avg.runnable_load_avg_contrib);
+	P(se.avg.running_load_avg_contrib);
 	P(se.avg.decay_count);
 #endif
 	P(policy);
