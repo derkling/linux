@@ -95,8 +95,8 @@ struct ipa_config {
 };
 
 static struct ipa_config default_config = {
-	.control_temp = 81,
-	.temp_threshold = 30,
+	.control_temp = 100,
+	.temp_threshold = 5,
 	.enabled = 1,
 	.tdp = 3500,
 	.boost = 1,
