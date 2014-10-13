@@ -2556,6 +2556,26 @@ static inline void update_entity_load_avg(struct sched_entity *se,
 		contrib_delta.running = -contrib_delta.running;
 		subtract_blocked_load_contrib(cfs_rq, &contrib_delta);
 	}
+
+	trace_printk("uela: rq_of(cfs_rq)->cpu=%d tgid=%d rla=%lu bla=%lu "
+	             "uua=%lu bua=%lu se->avg.rbl_lac=%lu "
+		     "se->avg.rng_lac=%lu",
+		     rq_of(cfs_rq)->cpu,
+		     cfs_rq->tg->css.cgroup->id,
+		     cfs_rq->runnable_load_avg,
+		     cfs_rq->blocked_runnable_load_avg,
+		     cfs_rq->running_load_avg,
+		     cfs_rq->blocked_running_load_avg,
+		     se->avg.runnable_load_avg_contrib,
+		     se->avg.running_load_avg_contrib);
+
+	if (se->parent)
+		trace_printk("uela: rq_of(cfs_rq)->cpu=%d "
+		             "se->parent->avg.rbl_lac=%lu "
+		             "se->parent->avg.rng_lac=%lu",
+			     rq_of(cfs_rq)->cpu,
+			     se->parent->avg.runnable_load_avg_contrib,
+			     se->parent->avg.running_load_avg_contrib);
 }
 
 /*
@@ -2638,6 +2658,26 @@ static inline void enqueue_entity_load_avg(struct cfs_rq *cfs_rq,
 	cfs_rq->running_load_avg += se->avg.running_load_avg_contrib;
 	/* we force update consideration on load-balancer moves */
 	update_cfs_rq_blocked_load(cfs_rq, !wakeup);
+
+	trace_printk("eela: rq_of(cfs_rq)->cpu=%d tgid=%d rla=%lu bla=%lu "
+	             "uua=%lu bua=%lu se->avg.rbl_lac=%lu "
+		     "se->avg.rng_lac=%lu",
+		     rq_of(cfs_rq)->cpu,
+		     cfs_rq->tg->css.cgroup->id,
+		     cfs_rq->runnable_load_avg,
+		     cfs_rq->blocked_runnable_load_avg,
+		     cfs_rq->running_load_avg,
+		     cfs_rq->blocked_running_load_avg,
+		     se->avg.runnable_load_avg_contrib,
+		     se->avg.running_load_avg_contrib);
+
+	if (se->parent)
+		trace_printk("eela: rq_of(cfs_rq)->cpu=%d "
+		             "se->parent->avg.rbl_lac=%lu "
+		             "se->parent->avg.rng_lac=%lu",
+			     rq_of(cfs_rq)->cpu,
+			     se->parent->avg.runnable_load_avg_contrib,
+			     se->parent->avg.running_load_avg_contrib);
 }
 
 /*
@@ -2660,6 +2700,26 @@ static inline void dequeue_entity_load_avg(struct cfs_rq *cfs_rq,
 		cfs_rq->blocked_running_load_avg += se->avg.running_load_avg_contrib;
 		se->avg.decay_count = atomic64_read(&cfs_rq->decay_counter);
 	} /* migrations, e.g. sleep=0 leave decay_count == 0 */
+
+	trace_printk("dela: rq_of(cfs_rq)->cpu=%d tgid=%d rla=%lu bla=%lu "
+	             "uua=%lu bua=%lu se->avg.rbl_lac=%lu "
+		     "se->avg.rng_lac=%lu",
+		     rq_of(cfs_rq)->cpu,
+		     cfs_rq->tg->css.cgroup->id,
+		     cfs_rq->runnable_load_avg,
+		     cfs_rq->blocked_runnable_load_avg,
+		     cfs_rq->running_load_avg,
+		     cfs_rq->blocked_running_load_avg,
+		     se->avg.runnable_load_avg_contrib,
+		     se->avg.running_load_avg_contrib);
+
+	if (se->parent)
+		trace_printk("dela: rq_of(cfs_rq)->cpu=%d "
+		             "se->parent->avg.rbl_lac=%lu "
+		             "se->parent->avg.rng_lac=%lu",
+			     rq_of(cfs_rq)->cpu,
+			     se->parent->avg.runnable_load_avg_contrib,
+			     se->parent->avg.running_load_avg_contrib);
 }
 
 /*
