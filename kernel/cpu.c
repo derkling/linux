@@ -365,6 +365,12 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen, bool cpu_clear)
 
 	cpu_hotplug_begin();
 
+	if (cpu_clear) {
+		/* Mark the CPU as asleep */
+		err = __stop_machine(make_cpu_clear, &tcd_param, cpumask_of(cpu));
+		goto out_release;
+	}
+
 	err = __cpu_notify(CPU_DOWN_PREPARE | mod, hcpu, -1, &nr_calls);
 	if (err) {
 		nr_calls--;
