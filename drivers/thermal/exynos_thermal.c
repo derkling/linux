@@ -38,6 +38,7 @@
 #include <linux/thermal.h>
 #include <linux/cpufreq.h>
 #include <linux/cpu_cooling.h>
+#include <linux/gpu_cooling.h>
 #include <linux/of.h>
 #include <linux/delay.h>
 #include <linux/suspend.h>
@@ -407,73 +408,81 @@ static int exynos_get_crit_temp(struct thermal_zone_device *thermal,
 	return ret;
 }
 
+#define A15_TRIP 0
+#define GPU_TRIP 1
+#define A7_TRIP 2
+
+/*
+ * Warning: This *must* be the same as the one defined in
+ * cpu_cooling.c .  Otherwise nasal demons may be summonned.
+ */
+struct cpufreq_cooling_device {
+	int id;
+	struct thermal_cooling_device *cool_dev;
+	unsigned int cpufreq_state;
+	unsigned int cpufreq_val;
+	unsigned int max_level;
+	unsigned int *freq_table;	/* In descending order */
+	struct cpumask allowed_cpus;
+	struct list_head node;
+	u32 last_load;
+	u64 time_in_idle[NR_CPUS];
+	u64 time_in_idle_timestamp[NR_CPUS];
+	struct power_table *dyn_power_table;
+	int dyn_power_table_entries;
+	struct device *cpu_dev;
+	get_static_t plat_get_static_power;
+};
+
 /* Bind callback functions for thermal zone */
 static int exynos_bind(struct thermal_zone_device *thermal,
 			struct thermal_cooling_device *cdev)
 {
-	int ret = 0, i, tab_size, level = THERMAL_CSTATE_INVALID;
-#ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
-	int cluster_idx = 0;
-#endif
-	struct freq_clip_table *tab_ptr, *clip_data;
-	struct thermal_sensor_conf *data = th_zone->sensor_conf;
+	int ret = 0, i, trip;
 	enum thermal_trip_type type = 0;
 
-	tab_ptr = (struct freq_clip_table *)data->cooling_data.freq_data;
-	tab_size = data->cooling_data.freq_clip_count;
-
-	if (tab_ptr == NULL || tab_size == 0)
-		return -EINVAL;
-
-	/* find the cooling device registered*/
+	/* Make sure this is one of the cdevs we care for */
 	for (i = 0; i < th_zone->cool_dev_size; i++)
-		if (cdev == th_zone->cool_dev[i]) {
-#ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
-			cluster_idx = i;
-#endif
+		if (cdev == th_zone->cool_dev[i])
 			break;
-		}
 
 	/* No matching cooling device */
 	if (i == th_zone->cool_dev_size)
 		return 0;
 
-	/* Bind the thermal zone to the cpufreq cooling device */
-	for (i = 0; i < tab_size; i++) {
-		clip_data = (struct freq_clip_table *)&(tab_ptr[i]);
-#ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
-		if (cluster_idx == CA7)
-			level = cpufreq_cooling_get_level(CA7_POLICY_CORE, clip_data->freq_clip_max_kfc);
-		else if (cluster_idx == CA15)
-			level = cpufreq_cooling_get_level(CA15_POLICY_CORE, clip_data->freq_clip_max);
-#else
-		level = cpufreq_cooling_get_level(CS_POLICY_CORE, clip_data->freq_clip_max);
-#endif
-		if (level == THERMAL_CSTATE_INVALID) {
-			unsigned long max_state;
-			cdev->ops->get_max_state(cdev, &max_state);
-			level = max_state;
-		}
+	if (!strcmp(cdev->type, "gpu-cooling")) {
+		trip = GPU_TRIP;
+	} else {
+		struct cpumask *cdev_cpumask;
 
-		if (level == THERMAL_CSTATE_INVALID) {
+		BUG_ON(strncmp(cdev->type, "thermal-cpufreq-", strlen("thermal-cpufreq-")));
+
+		cdev_cpumask = &((struct cpufreq_cooling_device *)cdev->devdata)->allowed_cpus;
+		if (cpumask_equal(cdev_cpumask, &mp_cluster_cpus[CA15]))
+			trip = A15_TRIP;
+		else if (cpumask_equal(cdev_cpumask, &mp_cluster_cpus[CA7]))
+			trip = A7_TRIP;
+		else
+			BUG();
+	}
+
+	/* Bind the thermal zone to the cpufreq cooling device */
+	exynos_get_trip_type(th_zone->therm_dev, trip, &type);
+	switch (type) {
+	case THERMAL_TRIP_ACTIVE:
+	case THERMAL_TRIP_PASSIVE:
+		ret = thermal_zone_bind_cooling_device(thermal, trip, cdev,
+						THERMAL_NO_LIMIT,
+						THERMAL_NO_LIMIT);
+		if (ret) {
+			pr_err("error binding cdev to trip %d\n", trip);
 			/* thermal->cooling_dev_en = false; */
-			return 0;
-		}
-		exynos_get_trip_type(th_zone->therm_dev, i, &type);
-		switch (type) {
-		case THERMAL_TRIP_ACTIVE:
-		case THERMAL_TRIP_PASSIVE:
-			if (thermal_zone_bind_cooling_device(thermal, i, cdev,
-								level, 0)) {
-				pr_err("error binding cdev inst %d\n", i);
-				thermal->cooling_dev_en = false;
-				ret = -EINVAL;
-			}
-			th_zone->bind = true;
-			break;
-		default:
 			ret = -EINVAL;
 		}
+		th_zone->bind = true;
+		break;
+	default:
+		ret = -EINVAL;
 	}
 
 	return ret;
@@ -659,25 +668,6 @@ static int exynos_set_emul_temp(struct thermal_zone_device *thermal,
 	return ret;
 }
 
-/* Get the temperature trend */
-static int exynos_get_trend(struct thermal_zone_device *thermal,
-			int trip, enum thermal_trend *trend)
-{
-	int ret;
-	unsigned long trip_temp;
-
-	ret = exynos_get_trip_temp(thermal, trip, &trip_temp);
-	if (ret < 0)
-		return ret;
-
-	if (thermal->temperature >= trip_temp)
-		*trend = THERMAL_TREND_RAISE_FULL;
-	else
-		*trend = THERMAL_TREND_DROP_FULL;
-
-	return 0;
-}
-
 #if defined(CONFIG_SOC_EXYNOS5430) || defined(CONFIG_SOC_EXYNOS5422)
 static int __ref exynos_throttle_cpu_hotplug(struct thermal_zone_device *thermal)
 {
@@ -727,7 +717,6 @@ static struct thermal_zone_device_ops const exynos_dev_ops = {
 	.unbind = exynos_unbind,
 	.get_temp = exynos_get_temp,
 	.set_emul_temp = exynos_set_emul_temp,
-	.get_trend = exynos_get_trend,
 	.get_mode = exynos_get_mode,
 	.set_mode = exynos_set_mode,
 	.get_trip_type = exynos_get_trip_type,
@@ -1661,9 +1650,10 @@ static struct exynos_tmu_platform_data const exynos5_tmu_data = {
 	.threshold_falling = 2,
 	.trigger_levels[0] = 67,
 	.trigger_levels[1] = 77,
+	.trigger_levels[2] = 80,
 	.trigger_level0_en = 1,
 	.trigger_level1_en = 1,
-	.trigger_level2_en = 0,
+	.trigger_level2_en = 1,
 	.trigger_level3_en = 0,
 	.trigger_level4_en = 0,
 	.trigger_level5_en = 0,
@@ -1696,8 +1686,19 @@ static struct exynos_tmu_platform_data const exynos5_tmu_data = {
 		.mask_val_kfc = &mp_cluster_cpus[CA7],
 #endif
 	},
-	.size[THERMAL_TRIP_PASSIVE] = 2,
-	.freq_tab_count = 2,
+	.freq_tab[2] = {
+		.freq_clip_max = 1900 * 1000,
+#ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
+		.freq_clip_max_kfc = 1200 * 1000,
+#endif
+		.temp_level = 80,
+#ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
+		.mask_val = &mp_cluster_cpus[CA15],
+		.mask_val_kfc = &mp_cluster_cpus[CA7],
+#endif
+	},
+	.size[THERMAL_TRIP_PASSIVE] = 3,
+	.freq_tab_count = 1,
 	.type = SOC_ARCH_EXYNOS,
 	.clock_count = 2,
 	.clk_name[0] = "tmu",
