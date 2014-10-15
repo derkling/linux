@@ -155,7 +155,7 @@ static struct arbiter_data
 	.initialised = false,
 };
 
-static void setup_cpusmasks(struct cluster_stats *cl_stats)
+void setup_cpusmasks(struct cluster_stats *cl_stats)
 {
 	if (!zalloc_cpumask_var(&cl_stats[CA15].mask, GFP_KERNEL))
 		pr_warn("unable to allocate cpumask");

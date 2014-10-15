@@ -37,6 +37,7 @@
 #include <net/genetlink.h>
 
 #include "thermal_core.h"
+#include "../cpufreq/cpu_load_metric.h"
 
 MODULE_AUTHOR("Zhang Rui");
 MODULE_DESCRIPTION("Generic thermal management sysfs support");
@@ -443,12 +444,7 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 	for (count = 0; count < tz->trips; count++)
 		handle_thermal_trip(tz, count);
 
-	/*
-	 * Alright, we handled this trip successfully.
-	 * So, start monitoring again.
-	 */
-	monitor_thermal_zone(tz);
-
+	trace_cpu_gpu_stats();
 }
 EXPORT_SYMBOL_GPL(thermal_zone_device_update);
 

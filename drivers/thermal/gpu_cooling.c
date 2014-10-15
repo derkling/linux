@@ -77,6 +77,10 @@ static int mali_set_cur_state(struct thermal_cooling_device *cdev,
 		panic("Failure clamping cpu freq to %d: %d\n", gpu_freq, ret);
 
 	gpu_cooling->cur_state = state;
+
+	trace_printk("gpu_out_freq: frequency=%d\n",
+		gpu_freq);
+
 	return ret;
 }
 
