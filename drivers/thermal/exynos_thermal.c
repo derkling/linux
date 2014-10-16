@@ -618,29 +618,6 @@ static void exynos_check_mif_noti_state(int temp)
 	}
 }
 
-static void exynos_check_gpu_noti_state(int temp)
-{
-	enum gpu_noti_state_t cur_state;
-
-	/* check current temperature state */
-	if (temp >= GPU_TH_TEMP5)
-		cur_state = GPU_TRIPPING;
-	else if (temp >= GPU_TH_TEMP4 && temp < GPU_TH_TEMP5)
-		cur_state = GPU_THROTTLING4;
-	else if (temp >= GPU_TH_TEMP3 && temp < GPU_TH_TEMP4)
-		cur_state = GPU_THROTTLING3;
-	else if (temp >= GPU_TH_TEMP2 && temp < GPU_TH_TEMP3)
-		cur_state = GPU_THROTTLING2;
-	else if (temp >= GPU_TH_TEMP1 && temp < GPU_TH_TEMP2)
-		cur_state = GPU_THROTTLING1;
-	else if (temp > COLD_TEMP && temp < GPU_TH_TEMP1)
-		cur_state = GPU_NORMAL;
-	else
-		cur_state = GPU_COLD;
-
-	exynos_gpu_call_notifier(cur_state);
-}
-
 /* Get temperature callback functions for thermal zone */
 static int exynos_get_temp(struct thermal_zone_device *thermal,
 			unsigned long *temp)
@@ -1278,7 +1255,6 @@ static int exynos_tmu_read(struct exynos_tmu_data *data)
 	}
 	exynos_check_tmu_noti_state(min, max);
 	exynos_check_mif_noti_state(max);
-	exynos_check_gpu_noti_state(gpu_temp);
 
 	clk_disable(data->clk[0]);
 	clk_disable(data->clk[1]);
