@@ -246,7 +246,6 @@ static get_static_t mp_plat_static_func[CA_END] = {
 
 static enum tmu_noti_state_t tmu_old_state = TMU_NORMAL;
 static enum gpu_noti_state_t gpu_old_state = GPU_NORMAL;
-static enum mif_noti_state_t mif_old_state = MIF_TH_LV1;
 static bool is_suspending;
 static bool is_cpu_hotplugged_out;
 
@@ -598,24 +597,6 @@ static void exynos_check_tmu_noti_state(int min_temp, int max_temp)
 		cur_state = TMU_COLD;
 
 	exynos_tmu_call_notifier(cur_state, max_temp);
-}
-
-static void exynos_check_mif_noti_state(int temp)
-{
-	enum mif_noti_state_t cur_state;
-
-	/* check current temperature state */
-	if (temp < MIF_TH_TEMP1)
-		cur_state = MIF_TH_LV1;
-	else if (temp >= MIF_TH_TEMP1 && temp < MIF_TH_TEMP2)
-		cur_state = MIF_TH_LV2;
-	else
-		cur_state = MIF_TH_LV3;
-
-	if (cur_state != mif_old_state) {
-		blocking_notifier_call_chain(&exynos_tmu_notifier, cur_state, &mif_old_state);
-		mif_old_state = cur_state;
-	}
 }
 
 /* Get temperature callback functions for thermal zone */
@@ -1254,7 +1235,6 @@ static int exynos_tmu_read(struct exynos_tmu_data *data)
 
 	}
 	exynos_check_tmu_noti_state(min, max);
-	exynos_check_mif_noti_state(max);
 
 	clk_disable(data->clk[0]);
 	clk_disable(data->clk[1]);
