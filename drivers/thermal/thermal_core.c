@@ -367,6 +367,10 @@ static void handle_thermal_trip(struct thermal_zone_device *tz, int trip)
 		handle_non_critical_trips(tz, trip, type);
 }
 
+#define FRAC_BITS 10
+#define int_to_frac(x) ((x) << FRAC_BITS)
+#define frac_to_int(x) ((x) >> FRAC_BITS)
+
 /**
  * thermal_zone_get_temp() - returns its the temperature of thermal zone
  * @tz: a valid pointer to a struct thermal_zone_device
@@ -379,7 +383,7 @@ static void handle_thermal_trip(struct thermal_zone_device *tz, int trip)
  */
 int thermal_zone_get_temp(struct thermal_zone_device *tz, unsigned long *temp)
 {
-	int ret = -EINVAL;
+	int ret = -EINVAL, delta;
 #ifdef CONFIG_THERMAL_EMULATION
 	int count;
 	unsigned long crit_temp = -1UL;
@@ -411,6 +415,18 @@ int thermal_zone_get_temp(struct thermal_zone_device *tz, unsigned long *temp)
 		*temp = tz->emul_temperature;
 skip_emul:
 #endif
+
+	if (!tz->last_temperature)
+		tz->last_temperature = *temp;
+
+	delta = *temp - tz->last_temperature;
+	if ((tz->beta_smooth_temp > 0) && (delta > tz->huge_temperature_delta))
+	     *temp = tz->last_temperature + frac_to_int(tz->beta_smooth_temp * delta);
+
+	*temp = (tz->alpha_smooth_temp * *temp) +
+		((int_to_frac(1) - tz->alpha_smooth_temp) * tz->last_temperature);
+	*temp = frac_to_int(*temp);
+
 	mutex_unlock(&tz->lock);
 exit:
 	return ret;
@@ -1697,6 +1713,16 @@ struct thermal_zone_device *thermal_zone_device_register(const char *type,
 	result = device_create_file(&tz->device, &dev_attr_policy);
 	if (result)
 		goto unregister;
+
+	/*
+	 * We calculated that alpha = 0.55 and beta = 0.1 was a good
+	 * estimator.  In 10-bit fixed-point arithmetic, that's alpha
+	 * = 0.55 * 1024 = 563 and beta = 0.1 * 1024 = 102.
+	 */
+	BUILD_BUG_ON(FRAC_BITS != 10);
+	tz->alpha_smooth_temp = 563;
+	tz->beta_smooth_temp = 102;
+	tz->huge_temperature_delta = 10000; /* milicelsius */
 
 	/* Update 'this' zone's governor information */
 	mutex_lock(&thermal_governor_lock);
