@@ -27,6 +27,7 @@
 
 #include <linux/module.h>
 #include <linux/device.h>
+#include <linux/debugfs.h>
 #include <linux/err.h>
 #include <linux/slab.h>
 #include <linux/kdev_t.h>
@@ -774,6 +775,32 @@ emul_temp_store(struct device *dev, struct device_attribute *attr,
 }
 static DEVICE_ATTR(emul_temp, S_IWUSR, NULL, emul_temp_store);
 #endif/*CONFIG_THERMAL_EMULATION*/
+
+#define create_debugfs_entry(name) \
+	dentry_f = debugfs_create_u32( #name, S_IWUSR | S_IRUGO, \
+				filter_d, &tz->name); \
+	if (IS_ERR_OR_NULL(dentry_f)) {					\
+		pr_warn("Unabel to create debugfsfile: " #name "\n");	\
+		return;							\
+	}
+
+/* XXX Rewrite this using the thermal sysfs interface. */
+static void create_filter_debugfs(struct thermal_zone_device *tz)
+{
+	struct dentry *filter_d;
+	struct dentry *dentry_f;
+
+	filter_d = debugfs_create_dir("thermal_lpf_filter", NULL);
+	if (IS_ERR_OR_NULL(filter_d)) {
+		pr_warn("unable to create debugfs directory for the LPF filter\n");
+		return;
+	}
+
+	create_debugfs_entry(alpha_smooth_temp);
+	create_debugfs_entry(beta_smooth_temp);
+	create_debugfs_entry(huge_temperature_delta);
+}
+#undef create_debugfs_entry
 
 static DEVICE_ATTR(type, 0444, type_show, NULL);
 static DEVICE_ATTR(temp, 0444, temp_show, NULL);
@@ -1723,6 +1750,8 @@ struct thermal_zone_device *thermal_zone_device_register(const char *type,
 	tz->alpha_smooth_temp = 563;
 	tz->beta_smooth_temp = 102;
 	tz->huge_temperature_delta = 10000; /* milicelsius */
+
+	create_filter_debugfs(tz);
 
 	/* Update 'this' zone's governor information */
 	mutex_lock(&thermal_governor_lock);
