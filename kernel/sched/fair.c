@@ -2306,11 +2306,13 @@ struct hmp_global_attr {
 #define HMP_DATA_SYSFS_MAX 8
 
 struct hmp_data_struct {
+	int multiplier; /* used to scale the time delta */
 	struct attribute_group attr_group;
 	struct attribute *attributes[HMP_DATA_SYSFS_MAX + 1];
 	struct hmp_global_attr attr[HMP_DATA_SYSFS_MAX];
 } hmp_data;
 
+static u64 hmp_variable_scale_convert(u64 delta);
 #endif /* CONFIG_SCHED_HMP */
 
 /* We can represent the historical contribution to runnable average as the
@@ -2350,6 +2352,9 @@ static __always_inline int __update_entity_runnable_avg(u64 now,
 	int delta_w, decayed = 0;
 
 	delta = now - sa->last_runnable_update;
+#ifdef CONFIG_SCHED_HMP
+	delta = hmp_variable_scale_convert(delta);
+#endif
 	/*
 	 * This should only happen when time goes backwards, which it
 	 * unfortunately does during sched clock init when we swap over to TSC.
@@ -5046,6 +5051,52 @@ static inline void hmp_next_down_delay(struct sched_entity *se, int cpu)
 }
 
 /*
+ * Heterogenous multiprocessor (HMP) optimizations
+ *
+ * These functions allow to change the growing speed of the load_avg_ratio
+ * by default it goes from 0 to 0.5 in LOAD_AVG_PERIOD = 32ms
+ * This can now be changed with /sys/kernel/hmp/load_avg_period_ms.
+ *
+ * These functions also allow to change the up and down threshold of HMP
+ * using /sys/kernel/hmp/{up,down}_threshold.
+ * Both must be between 0 and 1023. The threshold that is compared
+ * to the load_avg_ratio is up_threshold/1024 and down_threshold/1024.
+ *
+ * For instance, if load_avg_period = 64 and up_threshold = 512, an idle
+ * task with a load of 0 will reach the threshold after 64ms of busy loop.
+ *
+ * Changing load_avg_periods_ms has the same effect than changing the
+ * default scaling factor Y=1002/1024 in the load_avg_ratio computation to
+ * (1002/1024.0)^(LOAD_AVG_PERIOD/load_avg_period_ms), but the last one
+ * could trigger overflows.
+ * For instance, with Y = 1023/1024 in __update_task_entity_contrib()
+ * "contrib = se->avg.runnable_avg_sum * scale_load_down(se->load.weight);"
+ * could be overflowed for a weight > 2^12 even is the load_avg_contrib
+ * should still be a 32bits result. This would not happen by multiplicating
+ * delta time by 1/22 and setting load_avg_period_ms = 706.
+ */
+
+/*
+ * By scaling the delta time it end-up increasing or decrease the
+ * growing speed of the per entity load_avg_ratio
+ * The scale factor hmp_data.multiplier is a fixed point
+ * number: (32-HMP_VARIABLE_SCALE_SHIFT).HMP_VARIABLE_SCALE_SHIFT
+ */
+static inline u64 hmp_variable_scale_convert(u64 delta)
+{
+#ifdef CONFIG_HMP_VARIABLE_SCALE
+	u64 high = delta >> 32ULL;
+	u64 low = delta & 0xffffffffULL;
+	low *= hmp_data.multiplier;
+	high *= hmp_data.multiplier;
+	return (low >> HMP_VARIABLE_SCALE_SHIFT)
+			+ (high << (32ULL - HMP_VARIABLE_SCALE_SHIFT));
+#else
+	return delta;
+#endif
+}
+
+/*
  * Show HMP sysfs attribute
  */
 static ssize_t hmp_show(struct kobject *kobj,
@@ -5193,6 +5244,18 @@ static int hmp_attr_init(void)
 		hmp_theshold_from_sysfs,
 		NULL,
 		0);
+#ifdef CONFIG_HMP_VARIABLE_SCALE
+	/* by default load_avg_period_ms == LOAD_AVG_PERIOD
+	 * meaning no change
+	 */
+	hmp_data.multiplier = hmp_period_tofrom_sysfs(LOAD_AVG_PERIOD);
+	hmp_attr_add("load_avg_period_ms",
+		&hmp_data.multiplier,
+		hmp_period_tofrom_sysfs,
+		hmp_period_tofrom_sysfs,
+		NULL,
+		0);
+#endif
 #ifdef CONFIG_SCHED_HMP_LITTLE_PACKING
 	hmp_attr_add("packing_enable",
 		&hmp_packing_enabled,
