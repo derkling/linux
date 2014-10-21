@@ -8509,6 +8509,8 @@ static void run_rebalance_domains(struct softirq_action *h)
 	enum cpu_idle_type idle = this_rq->idle_balance ?
 						CPU_IDLE : CPU_NOT_IDLE;
 
+	hmp_force_up_migration();
+
 	rebalance_domains(this_rq, idle);
 
 	/*
