@@ -4385,7 +4385,7 @@ static unsigned long target_load(int cpu, int type)
 	return max(rq->cpu_load[type-1], total);
 }
 
-static unsigned long capacity_of(int cpu)
+unsigned long capacity_of(int cpu)
 {
 	return cpu_rq(cpu)->cpu_capacity;
 }
@@ -4609,7 +4609,7 @@ static int __get_cpu_usage(int cpu, int delta)
 	return sum;
 }
 
-static int get_cpu_usage(int cpu)
+int get_cpu_usage(int cpu)
 {
 	return __get_cpu_usage(cpu, 0);
 }
