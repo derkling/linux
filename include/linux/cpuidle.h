@@ -63,6 +63,7 @@ struct cpuidle_state {
 struct cpuidle_device_kobj;
 struct cpuidle_state_kobj;
 struct cpuidle_driver_kobj;
+struct cpuidle_stats_kobj;
 
 struct cpuidle_device {
 	unsigned int		registered:1;
@@ -75,7 +76,12 @@ struct cpuidle_device {
 	struct cpuidle_state_kobj *kobjs[CPUIDLE_STATE_MAX];
 	struct cpuidle_driver_kobj *kobj_driver;
 	struct cpuidle_device_kobj *kobj_dev;
+	struct cpuidle_stats_kobj  *kobj_stats;
 	struct list_head 	device_list;
+
+	atomic_t right_estimate;
+	atomic_t under_estimate;
+	atomic_t over_estimate;
 
 #ifdef CONFIG_ARCH_NEEDS_CPU_IDLE_COUPLED
 	int			safe_state_index;
