@@ -8630,6 +8630,18 @@ static inline int nohz_kick_needed(struct rq *rq)
 	if (time_before(now, nohz.next_balance))
 		return 0;
 
+#ifdef CONFIG_SCHED_HMP
+	/*
+	 * Bail out if there are no nohz CPUs in our
+	 * HMP domain, since we will move tasks between
+	 * domains through wakeup and force balancing
+	 * as necessary based upon task load.
+	 */
+	if (cpumask_first_and(nohz.idle_cpus_mask,
+			&((struct hmp_domain *)hmp_cpu_domain(cpu))->cpus) >= nr_cpu_ids)
+		return 0;
+#endif
+
 	if (rq->nr_running >= 2)
 		goto need_kick;
 
