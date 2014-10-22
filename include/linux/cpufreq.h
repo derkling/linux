@@ -116,6 +116,9 @@ struct cpufreq_policy {
 
 	/* For cpufreq driver's internal use */
 	void			*driver_data;
+
+	/* For cpufreq governor's internal use */
+	void			*gov_data;
 };
 
 /* Only for ACPI */
