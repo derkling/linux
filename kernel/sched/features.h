@@ -84,3 +84,9 @@ SCHED_FEAT(NUMA_RESIST_LOWER, false)
  * decisions optimizing for energy efficiency.
  */
 SCHED_FEAT(ENERGY_AWARE, false)
+
+/*
+ * Scheduler-driven CPU frequency selection aimed to save energy based on
+ * load tracking
+ */
+SCHED_FEAT(SCHED_ENERGY_FREQ, false)
