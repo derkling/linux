@@ -6243,6 +6243,10 @@ sd_init(struct sched_domain_topology_level *tl, int cpu)
 		sd->idle_idx = 1;
 	}
 
+#ifdef CONFIG_DISABLE_CPU_SCHED_DOMAIN_BALANCE
+	sd->flags &= ~SD_LOAD_BALANCE;
+#endif
+
 	sd->private = &tl->data;
 
 	return sd;
