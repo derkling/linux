@@ -4207,6 +4207,9 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &p->se;
+	struct cpumask update_cpus;
+
+	cpumask_clear(&update_cpus);
 
 	for_each_sched_entity(se) {
 		if (se->on_rq)
@@ -4236,12 +4239,27 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 		update_cfs_shares(cfs_rq);
 		update_entity_load_avg(se, 1);
+		/* track cpus that need to be re-evaluated */
+		cpumask_set_cpu(cpu_of(rq_of(cfs_rq)), &update_cpus);
 	}
 
+	/* !CONFIG_FAIR_GROUP_SCHED */
 	if (!se) {
 		update_rq_runnable_avg(rq, rq->nr_running);
 		add_nr_running(rq, 1);
+
+		/*
+		 * FIXME for !CONFIG_FAIR_GROUP_SCHED it might be nice to
+		 * typedef update_cpus into an int and skip all of the cpumask
+		 * stuff
+		 */
+		cpumask_set_cpu(cpu_of(rq), &update_cpus);
 	}
+
+	if (energy_aware())
+		if (!cpumask_empty(&update_cpus))
+			arch_eval_cpu_freq(&update_cpus);
+
 	hrtick_update(rq);
 }
 
@@ -4257,6 +4275,9 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &p->se;
 	int task_sleep = flags & DEQUEUE_SLEEP;
+	struct cpumask update_cpus;
+
+	cpumask_clear(&update_cpus);
 
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
@@ -4297,12 +4318,27 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 		update_cfs_shares(cfs_rq);
 		update_entity_load_avg(se, 1);
+		/* track runqueues/cpus that need to be re-evaluated */
+		cpumask_set_cpu(cpu_of(rq_of(cfs_rq)), &update_cpus);
 	}
 
+	/* !CONFIG_FAIR_GROUP_SCHED */
 	if (!se) {
 		sub_nr_running(rq, 1);
 		update_rq_runnable_avg(rq, 1);
+
+		/*
+		 * FIXME for !CONFIG_FAIR_GROUP_SCHED it might be nice to
+		 * typedef update_cpus into an int and skip all of the cpumask
+		 * stuff
+		 */
+		cpumask_set_cpu(cpu_of(rq), &update_cpus);
 	}
+
+	if (energy_aware())
+		if (!cpumask_empty(&update_cpus))
+			arch_eval_cpu_freq(&update_cpus);
+
 	hrtick_update(rq);
 }
 
@@ -7779,6 +7815,9 @@ static void run_rebalance_domains(struct softirq_action *h)
 	 * stopped.
 	 */
 	nohz_idle_balance(this_rq, idle);
+
+	if (energy_aware())
+		arch_scale_cpu_freq();
 }
 
 /*
