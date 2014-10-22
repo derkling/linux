@@ -1403,6 +1403,12 @@ unsigned long arch_scale_cpu_capacity(struct sched_domain *sd, int cpu)
 }
 #endif
 
+#ifdef CONFIG_CPU_FREQ_GOV_SCHED_CFS
+void gov_cfs_update_cpu(int cpu);
+#else
+static inline void gov_cfs_update_cpu(int cpu) {}
+#endif
+
 static inline void sched_rt_avg_update(struct rq *rq, u64 rt_delta)
 {
 	rq->rt_avg += rt_delta * arch_scale_freq_capacity(NULL, cpu_of(rq));
