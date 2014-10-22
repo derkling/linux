@@ -57,21 +57,30 @@ of the SMP domain will span the entire machine, with each group having the
 cpumask of a node. Or, you could do multi-level NUMA or Opteron, for example,
 might have just one domain covering its one NUMA level.
 
-The implementor should read comments in include/linux/sched.h:
-struct sched_domain fields, SD_FLAG_*, SD_*_INIT to get an idea of
-the specifics and what to tune.
+The implementor should read comments in include/linux/sched.h (struct
+sched_domain fields and SD_* defines) to get an idea of the specifics and
+what to tune.
 
-Architectures may retain the regular override the default SD_*_INIT flags
-while using the generic domain builder in kernel/sched/core.c if they wish to
-retain the traditional SMT->SMP->NUMA topology (or some subset of that). This
-can be done by #define'ing ARCH_HASH_SCHED_TUNE.
+There is a default topology table definition (see sd_init() in kernel/sched/
+core.c) that can be used by platforms that don't want more levels than the SMT,
+MC, CPU and NUMA ones. This table can be overwritten by an arch which either
+wants to add a new level where a load balance makes sense or wants to change
+the flags configuration of some levels. Only flags that describe topology can
+be set by an architecture. The current allowed topology flags are:
 
-Alternatively, the architecture may completely override the generic domain
-builder by #define'ing ARCH_HASH_SCHED_DOMAIN, and exporting your
-arch_init_sched_domains function. This function will attach domains to all
-CPUs using cpu_attach_domain.
+ SD_SHARE_CPUCAPACITY     - describes SMT topologies
+ SD_SHARE_PKG_RESOURCES   - describes shared caches
+ SD_NUMA                  - describes NUMA topologies
+ SD_SHARE_POWERDOMAIN     - describes shared power domain
+ SD_ASYM_PACKING          - describes SMT quirks
+
+Each level must be a subset on the next one. The build sequence of the
+sched_domain will take care of removing useless levels, like those with just
+1 CPU and those with the same CPU span and no more relevant information for
+load balancing than their children.
 
 The sched-domains debugging infrastructure can be enabled by enabling
 CONFIG_SCHED_DEBUG. This enables an error checking parse of the sched domains
 which should catch most possible errors (described above). It also prints out
-the domain structure in a visual format.
+the domain structure in a visual format. Additional information can also be
+gathered at runtime by looking at /proc/sys/kernel/sched_domain/*.
