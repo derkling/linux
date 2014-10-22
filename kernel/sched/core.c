@@ -3348,6 +3348,8 @@ static void __setscheduler_params(struct task_struct *p,
 	set_load_weight(p);
 }
 
+extern struct cpumask hmp_slow_cpu_mask;
+
 /* Actually do priority change: must hold pi & rq lock. */
 static void __setscheduler(struct rq *rq, struct task_struct *p,
 			   const struct sched_attr *attr)
