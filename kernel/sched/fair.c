@@ -4337,6 +4337,11 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		    cpu_overutilized(rq->cpu))
 			rq->rd->overutilized = true;
 	}
+
+	if(sched_energy_freq())
+		cpufreq_cfs_update_cpu(cpu_of(rq),
+				rq->cfs.utilization_load_avg);
+
 	hrtick_update(rq);
 }
 
@@ -4398,6 +4403,11 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		sub_nr_running(rq, 1);
 		update_rq_runnable_avg(rq, 1);
 	}
+
+	if(sched_energy_freq())
+		cpufreq_cfs_update_cpu(cpu_of(rq),
+				rq->cfs.utilization_load_avg);
+
 	hrtick_update(rq);
 }
 
@@ -8541,6 +8551,10 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 
 	if (!rq->rd->overutilized && cpu_overutilized(task_cpu(curr)))
 		rq->rd->overutilized = true;
+
+	if(sched_energy_freq())
+		cpufreq_cfs_update_cpu(cpu_of(rq),
+				rq->cfs.utilization_load_avg);
 }
 
 /*
