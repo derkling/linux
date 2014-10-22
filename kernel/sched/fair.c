@@ -1108,7 +1108,6 @@ bool should_numa_migrate_memory(struct task_struct *p, struct page * page,
 static unsigned long weighted_cpuload(const int cpu);
 static unsigned long source_load(int cpu, int type);
 static unsigned long target_load(int cpu, int type);
-static unsigned long capacity_of(int cpu);
 static long effective_load(struct task_group *tg, int cpu, long wl, long wg);
 
 /* Cached statistics for all CPUs within a node */
@@ -2260,6 +2259,11 @@ static inline void account_numa_dequeue(struct rq *rq, struct task_struct *p)
 {
 }
 #endif /* CONFIG_NUMA_BALANCING */
+
+#ifdef CONFIG_SMP
+unsigned long capacity_of(int cpu);
+//unsigned long usage_util_of(int cpu);
+#endif /* CONFIG_SMP */
 
 static void
 account_entity_enqueue(struct cfs_rq *cfs_rq, struct sched_entity *se)
@@ -4340,7 +4344,7 @@ static unsigned long target_load(int cpu, int type)
 	return max(rq->cpu_load[type-1], total);
 }
 
-static unsigned long capacity_of(int cpu)
+unsigned long capacity_of(int cpu)
 {
 	return cpu_rq(cpu)->cpu_capacity;
 }
@@ -4780,7 +4784,7 @@ done:
  * Without capping the usage, a group could be seen as overloaded (CPU0 usage
  * at 121% + CPU1 usage at 80%) whereas CPU1 has 20% of available capacity/
  */
-static int get_cpu_usage(int cpu)
+int get_cpu_usage(int cpu)
 {
 	unsigned long usage = cpu_rq(cpu)->cfs.utilization_load_avg;
 	unsigned long capacity = capacity_orig_of(cpu);
