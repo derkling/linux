@@ -4727,6 +4727,9 @@ static int __cpuinit workqueue_cpu_up_callback(struct notifier_block *nfb,
 		break;
 
 	case CPU_DOWN_FAILED:
+		if (cpu_asleep(cpu))
+			break;
+	case CPU_POPULATE:
 	case CPU_ONLINE:
 		mutex_lock(&wq_pool_mutex);
 
