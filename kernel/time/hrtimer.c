@@ -1674,7 +1674,7 @@ static void migrate_hrtimers(int scpu)
 	struct hrtimer_cpu_base *old_base, *new_base;
 	int i;
 
-	BUG_ON(cpu_online(scpu));
+	BUG_ON(cpu_online(scpu) && !cpu_asleep(scpu));
 	tick_cancel_sched_timer(scpu);
 
 	local_irq_disable();
@@ -1721,11 +1721,10 @@ static int hrtimer_cpu_notify(struct notifier_block *self,
 		break;
 	case CPU_DEAD:
 	case CPU_DEAD_FROZEN:
-	{
 		clockevents_notify(CLOCK_EVT_NOTIFY_CPU_DEAD, &scpu);
+	case CPU_CLEAN:
 		migrate_hrtimers(scpu);
 		break;
-	}
 #endif
 
 	default:
