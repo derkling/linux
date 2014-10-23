@@ -62,6 +62,7 @@ hotplug_cfd(struct notifier_block *nfb, unsigned long action, void *hcpu)
 		break;
 
 	case CPU_DYING:
+	case CPU_CLEANING:
 	case CPU_DYING_FROZEN:
 		/*
 		 * The IPIs for the smp-call-function callbacks queued by other
