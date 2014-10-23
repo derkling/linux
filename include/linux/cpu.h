@@ -91,6 +91,10 @@ enum {
 					* Called on the new cpu, just before
 					* enabling interrupts. Must not sleep,
 					* must not fail */
+#define CPU_POPULATE		0x000B /* CPU (unsigned)v could be populated */
+#define CPU_CLEANING		0x000C /* CPU (unsigned)v soon clean,
+					* interrupts disabled */
+#define CPU_CLEAN		0x000D /* CPU (unsigned)v clean */
 
 /* Used for CPU hotplug events occurring while tasks are frozen due to a suspend
  * operation in progress
