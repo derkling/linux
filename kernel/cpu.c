@@ -481,6 +481,7 @@ int __ref hotplug_cpu_unclear(unsigned int cpu)
 	cpu_hotplug_begin();
 
 	set_cpu_asleep((long)cpu, false);
+	smp_wmb();
 	cpu_notify_nofail(CPU_POPULATE, hcpu);
 	smp_send_reschedule(cpu);
 

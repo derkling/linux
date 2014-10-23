@@ -4926,6 +4926,8 @@ void clear_cpu(unsigned int cpu)
 	set_cpu_asleep(cpu, true);
 	raw_spin_unlock_irqrestore(&rq->lock, flags);
 
+	smp_wmb();
+
 	/* Migrate IRQs */
 	migrate_irqs();
 
