@@ -1615,7 +1615,7 @@ static void migrate_timers(int cpu)
 	struct tvec_base *new_base;
 	int i;
 
-	BUG_ON(cpu_online(cpu));
+	BUG_ON(cpu_online(cpu) && !cpu_asleep(cpu));
 	old_base = per_cpu(tvec_bases, cpu);
 	new_base = get_cpu_var(tvec_bases);
 	/*
@@ -1657,6 +1657,7 @@ static int timer_cpu_notify(struct notifier_block *self,
 		break;
 #ifdef CONFIG_HOTPLUG_CPU
 	case CPU_DEAD:
+	case CPU_CLEAN:
 	case CPU_DEAD_FROZEN:
 		migrate_timers(cpu);
 		break;
