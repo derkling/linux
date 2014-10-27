@@ -411,6 +411,7 @@ static int exynos_get_crit_temp(struct thermal_zone_device *thermal,
 #define A15_TRIP 0
 #define GPU_TRIP 1
 #define A7_TRIP 2
+#define A15_CAP_TRIP 3
 
 /*
  * Warning: This *must* be the same as the one defined in
@@ -458,12 +459,18 @@ static int exynos_bind(struct thermal_zone_device *thermal,
 		BUG_ON(strncmp(cdev->type, "thermal-cpufreq-", strlen("thermal-cpufreq-")));
 
 		cdev_cpumask = &((struct cpufreq_cooling_device *)cdev->devdata)->allowed_cpus;
-		if (cpumask_equal(cdev_cpumask, &mp_cluster_cpus[CA15]))
+		if (cpumask_equal(cdev_cpumask, &mp_cluster_cpus[CA15])) {
 			trip = A15_TRIP;
-		else if (cpumask_equal(cdev_cpumask, &mp_cluster_cpus[CA7]))
+			ret = thermal_zone_bind_cooling_device(thermal,
+							A15_CAP_TRIP, cdev,
+							THERMAL_NO_LIMIT, 11);
+			if (ret)
+				panic("failed to bind to cap trip point\n");
+		} else if (cpumask_equal(cdev_cpumask, &mp_cluster_cpus[CA7])) {
 			trip = A7_TRIP;
-		else
+		} else {
 			BUG();
+		}
 	}
 
 	/* Bind the thermal zone to the cpufreq cooling device */
@@ -1651,10 +1658,11 @@ static struct exynos_tmu_platform_data const exynos5_tmu_data = {
 	.trigger_levels[0] = 67,
 	.trigger_levels[1] = 77,
 	.trigger_levels[2] = 80,
+	.trigger_levels[3] = 90,
 	.trigger_level0_en = 1,
 	.trigger_level1_en = 1,
 	.trigger_level2_en = 1,
-	.trigger_level3_en = 0,
+	.trigger_level3_en = 1,
 	.trigger_level4_en = 0,
 	.trigger_level5_en = 0,
 	.trigger_level6_en = 0,
@@ -1697,7 +1705,18 @@ static struct exynos_tmu_platform_data const exynos5_tmu_data = {
 		.mask_val_kfc = &mp_cluster_cpus[CA7],
 #endif
 	},
-	.size[THERMAL_TRIP_PASSIVE] = 3,
+	.freq_tab[3] = {
+		.freq_clip_max = 1900 * 1000,
+#ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
+		.freq_clip_max_kfc = 1200 * 1000,
+#endif
+		.temp_level = 80,
+#ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
+		.mask_val = &mp_cluster_cpus[CA15],
+		.mask_val_kfc = &mp_cluster_cpus[CA7],
+#endif
+	},
+	.size[THERMAL_TRIP_PASSIVE] = 4,
 	.freq_tab_count = 1,
 	.type = SOC_ARCH_EXYNOS,
 	.clock_count = 2,
