@@ -4472,9 +4472,15 @@ static void rebind_workers(struct worker_pool *pool)
 	 * of all workers first and then clear UNBOUND.  As we're called
 	 * from CPU_ONLINE, the following shouldn't fail.
 	 */
-	for_each_pool_worker(worker, pool)
+	for_each_pool_worker(worker, pool) {
 		WARN_ON_ONCE(set_cpus_allowed_ptr(worker->task,
 						  pool->attrs->cpumask) < 0);
+		printk("rebind B kworker[%s, %s] affinity mask: 0x%X, pool_mask: 0x%X\n",
+				worker->task->comm,
+				worker->desc,
+				worker->task->cpus_allowed,
+				*pool->attrs->cpumask);
+	}
 
 	spin_lock_irq(&pool->lock);
 	pool->flags &= ~POOL_DISASSOCIATED;
@@ -4544,9 +4550,15 @@ static void restore_unbound_workers_cpumask(struct worker_pool *pool, int cpu)
 		return;
 
 	/* as we're called from CPU_ONLINE, the following shouldn't fail */
-	for_each_pool_worker(worker, pool)
+	for_each_pool_worker(worker, pool) {
 		WARN_ON_ONCE(set_cpus_allowed_ptr(worker->task,
 						  pool->attrs->cpumask) < 0);
+		printk("restore U kworker[%s, %s] affinity mask: 0x%X, pool_mask: 0x%X\n",
+				worker->task->comm,
+				worker->desc,
+				worker->task->cpus_allowed,
+				*pool->attrs->cpumask);
+	}
 }
 
 /*
