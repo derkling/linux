@@ -417,9 +417,12 @@ out_release:
 
 int __ref hotplug_cpu_clear(unsigned int cpu)
 {
-	int err;
+	int err = 0;
 
 	cpu_maps_update_begin();
+
+	if (cpu_asleep(cpu))
+		goto out;
 
 	if (cpu_hotplug_disabled) {
 		err = -EBUSY;
@@ -444,6 +447,9 @@ int __ref hotplug_cpu_unclear(unsigned int cpu)
 		err = -EBUSY;
 		goto out;
 	}
+
+	if (!cpu_asleep(cpu))
+		goto out;
 
 	cpu_hotplug_begin();
 
