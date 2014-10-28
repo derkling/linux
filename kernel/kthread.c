@@ -332,10 +332,14 @@ static void __kthread_bind(struct task_struct *p, unsigned int cpu, long state)
 		WARN_ON(1);
 		return;
 	}
+
+	trace_printk("binding kthread[%s] to CPU%d\n", p->comm, cpu);
 	printk("binding kthread[%s] to CPU%d\n", p->comm, cpu);
+
 	/* It's safe because the task is inactive. */
 	do_set_cpus_allowed(p, cpumask_of(cpu));
 	p->flags |= PF_NO_SETAFFINITY;
+
 }
 
 /**
@@ -391,7 +395,10 @@ static void __kthread_unpark(struct task_struct *k, struct kthread *kthread)
 	 * which might be about to be cleared.
 	 */
 	if (test_and_clear_bit(KTHREAD_IS_PARKED, &kthread->flags)) {
+
+		trace_printk("unparking kthread[%s]\n", k->comm);
 		printk("unparking kthread[%s]\n", k->comm);
+
 		if (test_bit(KTHREAD_IS_PER_CPU, &kthread->flags))
 			__kthread_bind(k, kthread->cpu, TASK_PARKED);
 		wake_up_state(k, TASK_PARKED);
@@ -440,6 +447,7 @@ int kthread_park(struct task_struct *k)
 			}
 		}
 		ret = 0;
+		trace_printk("parking kthread[%s]\n", k->comm);
 		printk("parking kthread[%s]\n", k->comm);
 	}
 	return ret;
