@@ -403,6 +403,7 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen, bool cpu_clear)
 			cpu_relax();
 		cpu_notify_nofail(CPU_DOWN_FAILED | mod, hcpu);
 		cpu_notify_nofail(CPU_CLEAN, hcpu);
+		smpboot_park_threads(cpu);
 		goto out_release;
 	}
 
@@ -488,6 +489,7 @@ int __ref hotplug_cpu_unclear(unsigned int cpu)
 
 	set_cpu_asleep((long)cpu, false);
 	smp_wmb();
+	smpboot_unpark_threads(cpu);
 	cpu_notify_nofail(CPU_POPULATE, hcpu);
 	smp_send_reschedule(cpu);
 
