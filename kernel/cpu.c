@@ -464,6 +464,7 @@ int __ref hotplug_cpu_clear(unsigned int cpu)
 
 	err = _cpu_down(cpu, 0, true);
 
+	printk("CPU%d cleared\n", cpu);
 out:
 	cpu_maps_update_done();
 	return err;
@@ -495,6 +496,7 @@ int __ref hotplug_cpu_unclear(unsigned int cpu)
 
 	cpu_hotplug_done();
 
+	printk("CPU%d populated\n", cpu);
 out:
 	cpu_maps_update_done();
 	return err;
