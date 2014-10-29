@@ -4904,6 +4904,7 @@ static void migrate_tasks(unsigned int dead_cpu)
 
 		__migrate_task(next, dead_cpu, dest_cpu);
 
+		printk("Migrated [%s] to CPU%d\n", next->comm, dest_cpu);
 		WARN(!next->mm, "Migrating kernel task [%s] from CPU%d to CPU%d\n",
 				next->comm, dead_cpu, dest_cpu);
 
