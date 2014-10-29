@@ -6875,6 +6875,8 @@ static int num_cpus_frozen;	/* used to mark begin/end of suspend/resume */
 static int cpuset_cpu_active(struct notifier_block *nfb, unsigned long action,
 			     void *hcpu)
 {
+	long cpu = (long )hcpu;
+
 	switch (action) {
 	case CPU_ONLINE_FROZEN:
 	case CPU_DOWN_FAILED_FROZEN:
@@ -6899,6 +6901,8 @@ static int cpuset_cpu_active(struct notifier_block *nfb, unsigned long action,
 
 	case CPU_ONLINE:
 	case CPU_DOWN_FAILED:
+		if (cpu_asleep(cpu))
+			break;
 		cpuset_update_active_cpus(true);
 		break;
 	default:
@@ -6912,7 +6916,12 @@ static int cpuset_cpu_inactive(struct notifier_block *nfb, unsigned long action,
 {
 	switch (action) {
 	case CPU_DOWN_PREPARE:
-		cpuset_update_active_cpus(false);
+		// This could be avoided just on lwhp if we add a specific
+		// flag to the event which marks a lwhp on flight...
+		// ... but it requires a lot of refactoring on all other
+		// notifiers, thus simply commented for the time being.
+		// NOTE: full hotplug is broken with this patch!
+		// cpuset_update_active_cpus(false);
 		break;
 	case CPU_DOWN_PREPARE_FROZEN:
 		num_cpus_frozen++;
