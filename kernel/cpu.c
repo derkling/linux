@@ -90,22 +90,32 @@ void get_online_cpus(void)
 	if (cpu_hotplug.active_writer == current)
 		return;
 	cpuhp_lock_acquire_read();
+
+	printk("[%s] hp locking...\n", current->comm);
 	mutex_lock(&cpu_hotplug.lock);
+	printk("[%s] hp locked\n", current->comm);
 	cpu_hotplug.refcount++;
 	mutex_unlock(&cpu_hotplug.lock);
-
+	printk("[%s] hp unlocked, refcount: %d, got CPUs\n", current->comm);
 }
 EXPORT_SYMBOL_GPL(get_online_cpus);
 
 void put_online_cpus(void)
 {
+
+	printk("[%s] putting CPUs...\n", current->comm);
+
 	if (cpu_hotplug.active_writer == current)
 		return;
+
+	printk("[%s] hp locking...\n", current->comm);
 	if (!mutex_trylock(&cpu_hotplug.lock)) {
 		atomic_inc(&cpu_hotplug.puts_pending);
 		cpuhp_lock_release();
 		return;
 	}
+
+	printk("[%s] hp locked\n", current->comm);
 
 	if (WARN_ON(!cpu_hotplug.refcount))
 		cpu_hotplug.refcount++; /* try to fix things up */
@@ -113,6 +123,8 @@ void put_online_cpus(void)
 	if (!--cpu_hotplug.refcount && unlikely(cpu_hotplug.active_writer))
 		wake_up_process(cpu_hotplug.active_writer);
 	mutex_unlock(&cpu_hotplug.lock);
+
+	printk("[%s] hp unlocked, refcount: %d, put CPUs\n", current->comm);
 	cpuhp_lock_release();
 
 }
@@ -146,25 +158,34 @@ void cpu_hotplug_begin(void)
 
 	cpuhp_lock_acquire();
 	for (;;) {
+
+		printk("[%s] hp locking...\n", current->comm);
 		mutex_lock(&cpu_hotplug.lock);
 		if (atomic_read(&cpu_hotplug.puts_pending)) {
 			int delta;
 
 			delta = atomic_xchg(&cpu_hotplug.puts_pending, 0);
 			cpu_hotplug.refcount -= delta;
+			printk("Pending hotplug, updated refcount: %d\n",
+					cpu_hotplug.refcount);
 		}
 		if (likely(!cpu_hotplug.refcount))
 			break;
+		printk("[%s] refcounts: %d, trylater!\n",
+				current->comm, cpu_hotplug.refcount);
 		__set_current_state(TASK_UNINTERRUPTIBLE);
 		mutex_unlock(&cpu_hotplug.lock);
 		schedule();
 	}
+
+	printk("[%s] hp locked\n", current->comm);
 }
 
 void cpu_hotplug_done(void)
 {
 	cpu_hotplug.active_writer = NULL;
 	mutex_unlock(&cpu_hotplug.lock);
+	printk("[%s] hp unlocked\n", current->comm);
 	cpuhp_lock_release();
 }
 
