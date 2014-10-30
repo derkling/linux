@@ -368,17 +368,7 @@ static int exynos_set_mode(struct thermal_zone_device *thermal,
 static int exynos_get_trip_type(struct thermal_zone_device *thermal, int trip,
 				 enum thermal_trip_type *type)
 {
-	unsigned int cur_zone;
-	cur_zone = GET_ZONE(trip);
-
-	if (cur_zone >= MONITOR_ZONE && cur_zone < WARN_ZONE)
-		*type = THERMAL_TRIP_ACTIVE;
-	else if (cur_zone >= WARN_ZONE && cur_zone < PANIC_ZONE)
-		*type = THERMAL_TRIP_PASSIVE;
-	else if (cur_zone >= PANIC_ZONE)
-		*type = THERMAL_TRIP_CRITICAL;
-	else
-		return -EINVAL;
+	*type = THERMAL_TRIP_PASSIVE;
 
 	return 0;
 }
