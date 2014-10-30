@@ -401,6 +401,7 @@ static int exynos_get_crit_temp(struct thermal_zone_device *thermal,
 #define GPU_TRIP 1
 #define A7_TRIP 2
 #define A15_CAP_TRIP 3
+#define GPU_CAP_TRIP 4
 
 /*
  * Warning: This *must* be the same as the one defined in
@@ -442,6 +443,11 @@ static int exynos_bind(struct thermal_zone_device *thermal,
 
 	if (!strcmp(cdev->type, "gpu-cooling")) {
 		trip = GPU_TRIP;
+		ret = thermal_zone_bind_cooling_device(thermal,
+						       GPU_CAP_TRIP, cdev,
+						       THERMAL_NO_LIMIT, 4);
+		if (ret)
+			panic("failed to bind gpu cap trip point\n");
 	} else {
 		struct cpumask *cdev_cpumask;
 
@@ -1609,7 +1615,7 @@ static struct exynos_tmu_platform_data const exynos5_tmu_data = {
 	.trigger_level1_en = 1,
 	.trigger_level2_en = 1,
 	.trigger_level3_en = 1,
-	.trigger_level4_en = 0,
+	.trigger_level4_en = 1,
 	.trigger_level5_en = 0,
 	.trigger_level6_en = 0,
 	.trigger_level7_en = 0,
@@ -1634,7 +1640,7 @@ static struct exynos_tmu_platform_data const exynos5_tmu_data = {
 #ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
 		.freq_clip_max_kfc = 1200 * 1000,
 #endif
-		.temp_level = 77,
+		.temp_level = 73,
 #ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
 		.mask_val = &mp_cluster_cpus[CA15],
 		.mask_val_kfc = &mp_cluster_cpus[CA7],
@@ -1662,7 +1668,18 @@ static struct exynos_tmu_platform_data const exynos5_tmu_data = {
 		.mask_val_kfc = &mp_cluster_cpus[CA7],
 #endif
 	},
-	.size[THERMAL_TRIP_PASSIVE] = 4,
+	.freq_tab[4] = {
+		.freq_clip_max = 1900 * 1000,
+#ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
+		.freq_clip_max_kfc = 1200 * 1000,
+#endif
+		.temp_level = 77,
+#ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
+		.mask_val = &mp_cluster_cpus[CA15],
+		.mask_val_kfc = &mp_cluster_cpus[CA7],
+#endif
+	},
+	.size[THERMAL_TRIP_PASSIVE] = 5,
 	.freq_tab_count = 1,
 	.type = SOC_ARCH_EXYNOS,
 	.clock_count = 2,
