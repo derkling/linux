@@ -4866,6 +4866,7 @@ static void migrate_tasks(unsigned int dead_cpu)
 
 		if (cpu_asleep(dead_cpu) && !next->mm) {
 			++kthreads;
+			pr_debug("Skipping kthread #%d [%s]...\n", kthreads, next->comm);
 			continue;
 		}
 
