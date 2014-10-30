@@ -4892,12 +4892,13 @@ void clear_cpu(unsigned int cpu)
 
 	BUG_ON(cpu != smp_processor_id());
 
-	raw_spin_lock_irqsave(&rq->lock, flags);
-
-	/* Mark the CPU as asleep and migrate tasks */
+	/* Mark the CPU as asleep and flush pending TTWU */
 	set_cpu_asleep(cpu, true);
-	migrate_tasks(cpu);
+	sched_ttwu_pending();
 
+	/* Migrate all tasks */
+	raw_spin_lock_irqsave(&rq->lock, flags);
+	migrate_tasks(cpu);
 	raw_spin_unlock_irqrestore(&rq->lock, flags);
 
 	/* Migrate IRQs */
