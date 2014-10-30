@@ -4831,6 +4831,7 @@ static void migrate_tasks(unsigned int dead_cpu)
 {
 	struct rq *rq = cpu_rq(dead_cpu);
 	struct task_struct *next, *stop = rq->stop;
+	unsigned int kthreads = 0;
 	int dest_cpu;
 
 	/*
@@ -4856,16 +4857,24 @@ static void migrate_tasks(unsigned int dead_cpu)
 		 * There's this thread running, bail when that's the only
 		 * remaining thread.
 		 */
-		if (rq->nr_running == 1)
+		if ((rq->nr_running - kthreads) == 1)
 			break;
 
 		next = pick_next_task(rq, &fake_task);
 		BUG_ON(!next);
 		next->sched_class->put_prev_task(rq, next);
 
+		if (cpu_asleep(dead_cpu) && !next->mm) {
+			++kthreads;
+			continue;
+		}
+
 		/* Find suitable destination for @next, with force if needed. */
 		dest_cpu = select_fallback_rq(dead_cpu, next);
 		raw_spin_unlock(&rq->lock);
+
+		WARN(!next->mm, "Migrating kernel task [%s] from CPU%d to CPU%d\n",
+				next->comm, dead_cpu, dest_cpu);
 
 		__migrate_task(next, dead_cpu, dest_cpu);
 
