@@ -2325,10 +2325,10 @@ static __always_inline int __update_entity_load_avg(u64 now,
 		 * period and accrue it.
 		 */
 		delta_w = 1024 - delta_w;
-		if (runnable)
+		if (runnable) {
 			sa->runnable_avg_sum += delta_w;
-		if (running)
 			sa->running_avg_sum += delta_w;
+		}
 		sa->avg_period += delta_w;
 
 		delta -= delta_w;
@@ -2345,18 +2345,18 @@ static __always_inline int __update_entity_load_avg(u64 now,
 
 		/* Efficiently calculate \sum (1..n_period) 1024*y^i */
 		contrib = __compute_load_contrib(periods);
-		if (runnable)
+		if (runnable) {
 			sa->runnable_avg_sum += contrib;
-		if (running)
 			sa->running_avg_sum += contrib;
+		}
 		sa->avg_period += contrib;
 	}
 
 	/* Remainder of delta accrued against u_0` */
-	if (runnable)
+	if (runnable) {
 		sa->runnable_avg_sum += delta;
-	if (running)
 		sa->running_avg_sum += delta;
+	}
 	sa->avg_period += delta;
 
 	return decayed;
