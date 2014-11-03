@@ -5544,17 +5544,22 @@ static inline unsigned int hmp_offload_down(int cpu, struct sched_entity *se)
 	/* Is there an idle CPU in the current domain */
 	min_usage = hmp_domain_min_load(hmp_cpu_domain(cpu), NULL, NULL);
 	if (min_usage == 0) {
+		trace_sched_hmp_offload_abort(cpu, min_usage, "load");
 		return NR_CPUS;
 	}
 
 	/* Is the task alone on the cpu? */
 	if (cpu_rq(cpu)->cfs.h_nr_running < 2) {
+		trace_sched_hmp_offload_abort(cpu,
+			cpu_rq(cpu)->cfs.h_nr_running, "nr_running");
 		return NR_CPUS;
 	}
 
 	/* Is the task actually starving? */
 	/* >=25% ratio running/runnable = starving */
 	if (hmp_task_starvation(se) > 768) {
+		trace_sched_hmp_offload_abort(cpu, hmp_task_starvation(se),
+			"starvation");
 		return NR_CPUS;
 	}
 
@@ -5562,8 +5567,11 @@ static inline unsigned int hmp_offload_down(int cpu, struct sched_entity *se)
 	min_usage = hmp_domain_min_load(hmp_slower_domain(cpu), &dest_cpu,
 			tsk_cpus_allowed(task_of(se)));
 
-	if (min_usage == 0)
+	if (min_usage == 0) {
+		trace_sched_hmp_offload_succeed(cpu, dest_cpu);
 		return dest_cpu;
+	} else
+		trace_sched_hmp_offload_abort(cpu,min_usage,"slowdomain");
 
 	return NR_CPUS;
 }
@@ -5678,6 +5686,7 @@ unlock:
 
 	if (hmp_up_migration(prev_cpu, &new_cpu, &p->se)) {
 		hmp_next_up_delay(&p->se, new_cpu);
+		trace_sched_hmp_migrate(p, new_cpu, HMP_MIGRATE_WAKEUP);
 		return new_cpu;
 	}
 	if (hmp_down_migration(prev_cpu, &p->se)) {
@@ -5692,6 +5701,7 @@ unlock:
 		 */
 		if (new_cpu < NR_CPUS && new_cpu != prev_cpu) {
 			hmp_next_down_delay(&p->se, new_cpu);
+			trace_sched_hmp_migrate(p, new_cpu, HMP_MIGRATE_WAKEUP);
 			return new_cpu;
 		}
 	}
@@ -9088,6 +9098,7 @@ static void hmp_force_up_migration(int this_cpu)
 		p = task_of(curr);
 		if (hmp_up_migration(cpu, &target_cpu, curr)) {
 			if (use_idle_pull) {
+				trace_sched_hmp_migrate(p, target_cpu, HMP_MIGRATE_FORCED_IDLE_PULL);
 				target->wake_for_idle_pull = 1;
 				raw_spin_unlock_irqrestore(&target->lock, flags);
 				smp_send_reschedule(target_cpu);
@@ -9097,6 +9108,7 @@ static void hmp_force_up_migration(int this_cpu)
 				target->push_cpu = target_cpu;
 				target->migrate_task = p;
 				got_target = 1;
+				trace_sched_hmp_migrate(p, target->push_cpu, HMP_MIGRATE_FORCE);
 				hmp_next_up_delay(&p->se, target->push_cpu);
 			}
 		}
@@ -9113,6 +9125,7 @@ static void hmp_force_up_migration(int this_cpu)
 				get_task_struct(p);
 				target->migrate_task = p;
 				got_target = 1;
+				trace_sched_hmp_migrate(p, target->push_cpu, HMP_MIGRATE_OFFLOAD);
 				hmp_next_down_delay(&p->se, target->push_cpu);
 			}
 		}
@@ -9123,6 +9136,7 @@ static void hmp_force_up_migration(int this_cpu)
 		 */
 		if (got_target) {
 			if (!task_running(target, p)) {
+				trace_sched_hmp_migrate_force_running(p, 0);
 				hmp_migrate_runnable_task(target);
 			} else {
 				target->active_balance = 1;
@@ -9211,6 +9225,7 @@ static unsigned int hmp_idle_pull(int this_cpu)
 		get_task_struct(p);
 		target->push_cpu = this_cpu;
 		target->migrate_task = p;
+		trace_sched_hmp_migrate(p, target->push_cpu, HMP_MIGRATE_IDLE_PULL);
 		hmp_next_up_delay(&p->se, target->push_cpu);
 		/*
 		 * if the task isn't running move it right away.
@@ -9218,6 +9233,7 @@ static unsigned int hmp_idle_pull(int this_cpu)
 		 * the CPU stopper do its job.
 		 */
 		if (!task_running(target, p)) {
+			trace_sched_hmp_migrate_idle_running(p, 0);
 			hmp_migrate_runnable_task(target);
 		} else {
 			target->active_balance = 1;
