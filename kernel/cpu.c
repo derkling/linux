@@ -341,6 +341,8 @@ static int __ref make_cpu_clear(void *_param)
 	unsigned int cpu = (long)param->hcpu;
 	clear_cpu(cpu);
 	cpu_notify_nofail(CPU_CLEANING, param->hcpu);
+	/* Park the stopper thread */
+	kthread_park(current);
 	return 0;
 }
 
@@ -390,6 +392,9 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen, bool cpu_clear)
 	/* Lightway hotplug: just clear the target CPU */
 	if (cpu_clear) {
 		err = __stop_machine(make_cpu_clear, &tcd_param, cpumask_of(cpu));
+		 /* Wait for the stop thread to go away. */
+		while (!asleep_idle_cpu(cpu, false))
+			cpu_relax();
 		cpu_notify_nofail(CPU_DOWN_FAILED | mod, hcpu);
 		cpu_notify_nofail(CPU_CLEAN, hcpu);
 		goto out_release;

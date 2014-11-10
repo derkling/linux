@@ -3169,13 +3169,7 @@ int task_prio(const struct task_struct *p)
 	return p->prio - MAX_RT_PRIO;
 }
 
-/**
- * idle_cpu - is a given cpu idle currently?
- * @cpu: the processor in question.
- *
- * Return: 1 if the CPU is currently idle. 0 otherwise.
- */
-int idle_cpu(int cpu)
+int asleep_idle_cpu(int cpu, bool asleep_as_busy)
 {
 	struct rq *rq = cpu_rq(cpu);
 
@@ -3190,10 +3184,21 @@ int idle_cpu(int cpu)
 		return 0;
 #endif
 
-	if (cpu_asleep(cpu))
+	if (asleep_as_busy && cpu_asleep(cpu))
 		return 0;
 
 	return 1;
+}
+
+/**
+ * idle_cpu - is a given cpu idle currently?
+ * @cpu: the processor in question.
+ *
+ * Return: 1 if the CPU is currently idle. 0 otherwise.
+ */
+int idle_cpu(int cpu)
+{
+	return asleep_idle_cpu(cpu, true);
 }
 
 /**
