@@ -959,6 +959,10 @@ void add_timer_on(struct timer_list *timer, int cpu)
 	struct tvec_base *base = per_cpu(tvec_bases, cpu);
 	unsigned long flags;
 
+	WARN(cpu_asleep(cpu),
+		"lwhp: adding timer on asleep CPU [%d]\n",
+		cpu);
+
 	timer_stats_timer_set_start_info(timer);
 	BUG_ON(timer_pending(timer) || !timer->function);
 	spin_lock_irqsave(&base->lock, flags);
