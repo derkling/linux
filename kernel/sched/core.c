@@ -5285,6 +5285,7 @@ migration_call(struct notifier_block *nfb, unsigned long action, void *hcpu)
 	switch (action & ~CPU_TASKS_FROZEN) {
 
 	case CPU_UP_PREPARE:
+	case CPU_POPULATE:
 		rq->calc_load_update = calc_load_update;
 		break;
 
@@ -5314,6 +5315,7 @@ migration_call(struct notifier_block *nfb, unsigned long action, void *hcpu)
 		break;
 
 	case CPU_DEAD:
+	case CPU_CLEAN:
 		calc_load_migrate(rq);
 		break;
 #endif
