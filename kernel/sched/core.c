@@ -1012,6 +1012,10 @@ void set_task_cpu(struct task_struct *p, unsigned int new_cpu)
 #endif
 #endif
 
+	WARN(cpu_asleep(new_cpu),
+		"lwhp: moving task [%s] on asleep CPU [%d]\n",
+		p->comm, new_cpu);
+
 	trace_sched_migrate_task(p, new_cpu);
 
 	if (task_cpu(p) != new_cpu) {
