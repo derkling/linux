@@ -1276,6 +1276,9 @@ static int vmstat_cpuup_callback(struct notifier_block *nfb,
 		start_cpu_timer(cpu);
 		node_set_state(cpu_to_node(cpu), N_CPU);
 		break;
+	case CPU_POPULATE:
+		start_cpu_timer(cpu);
+		break;
 	case CPU_DOWN_PREPARE:
 	case CPU_DOWN_PREPARE_FROZEN:
 		cancel_delayed_work_sync(&per_cpu(vmstat_work, cpu));
@@ -1283,6 +1286,8 @@ static int vmstat_cpuup_callback(struct notifier_block *nfb,
 		break;
 	case CPU_DOWN_FAILED:
 	case CPU_DOWN_FAILED_FROZEN:
+		if (cpu_asleep(cpu))
+			break;
 		start_cpu_timer(cpu);
 		break;
 	case CPU_DEAD:
