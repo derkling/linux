@@ -4916,12 +4916,9 @@ void clear_cpu(unsigned int cpu)
 
 	BUG_ON(cpu != smp_processor_id());
 
-	set_cpu_asleep(cpu, true);
-	sched_ttwu_pending();
-
-	/* Mark the CPU as asleep and migrate tasks */
+	/* Mark the CPU as asleep */
 	raw_spin_lock_irqsave(&rq->lock, flags);
-	migrate_tasks(cpu);
+	set_cpu_asleep(cpu, true);
 	raw_spin_unlock_irqrestore(&rq->lock, flags);
 
 	/* Migrate IRQs */
@@ -5170,10 +5167,11 @@ migration_call(struct notifier_block *nfb, unsigned long action, void *hcpu)
 
 #ifdef CONFIG_HOTPLUG_CPU
 	case CPU_DYING:
+	case CPU_CLEANING:
 		sched_ttwu_pending();
 		/* Update our root-domain */
 		raw_spin_lock_irqsave(&rq->lock, flags);
-		if (rq->rd) {
+		if (rq->rd && !cpu_asleep(cpu)) {
 			BUG_ON(!cpumask_test_cpu(cpu, rq->rd->span));
 			set_rq_offline(rq);
 		}
