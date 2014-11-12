@@ -28,6 +28,42 @@ EXPORT_SYMBOL_GPL(cpu_subsys);
 static DEFINE_PER_CPU(struct device *, cpu_sys_devices);
 
 #ifdef CONFIG_HOTPLUG_CPU
+
+static ssize_t clear_show(struct device *dev,
+			      struct device_attribute *attr,
+			      char *buf)
+{
+	struct cpu *cpu = container_of(dev, struct cpu, dev);
+	int cpuid = cpu->dev.id;
+	ssize_t rc;
+
+	rc = sprintf(buf, "%u\n", !!cpu_asleep(cpuid));
+	return rc;
+}
+
+extern int hotplug_cpu_clear(unsigned int cpu);
+extern int hotplug_cpu_unclear(unsigned int cpu);
+
+static ssize_t clear_store(struct device *dev, struct device_attribute *attr,
+			    const char *buf, size_t count)
+{
+	bool val;
+	int ret;
+
+	ret = strtobool(buf, &val);
+	if (ret < 0)
+		return ret;
+
+	ret = lock_device_hotplug_sysfs();
+	if (ret)
+		return ret;
+
+	ret = val ? hotplug_cpu_clear(dev->id) : hotplug_cpu_unclear(dev->id);
+	unlock_device_hotplug();
+	return ret < 0 ? ret : count;
+}
+static DEVICE_ATTR(clear, 0644, clear_show, clear_store);
+
 static void change_cpu_under_node(struct cpu *cpu,
 			unsigned int from_nid, unsigned int to_nid)
 {
@@ -95,6 +131,8 @@ static void __cpuinit register_cpu_control(struct cpu *cpu)
 void unregister_cpu(struct cpu *cpu)
 {
 	int logical_cpu = cpu->dev.id;
+
+	device_remove_file(&cpu->dev, &dev_attr_clear);
 
 	unregister_cpu_under_node(logical_cpu, cpu_to_node(logical_cpu));
 
@@ -337,6 +375,9 @@ int __cpuinit register_cpu(struct cpu *cpu, int num)
 		error = device_create_file(&cpu->dev,
 					   &dev_attr_crash_notes_size);
 #endif
+	if (!error)
+		device_create_file(&cpu->dev, &dev_attr_clear);
+
 	return error;
 }
 
