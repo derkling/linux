@@ -1449,6 +1449,10 @@ static void __queue_delayed_work(int cpu, struct workqueue_struct *wq,
 	WARN_ON_ONCE(timer_pending(timer));
 	WARN_ON_ONCE(!list_empty(&work->entry));
 
+	WARN(cpu_asleep(cpu),
+		"lwhp: queuing delayed work on asleep CPU [%d]\n",
+		cpu);
+
 	/*
 	 * If @delay is 0, queue @dwork->work immediately.  This is for
 	 * both optimization and correctness.  The earliest @timer can
