@@ -558,13 +558,17 @@ int get_nohz_timer_target(void)
 	int cpu = smp_processor_id();
 	int i;
 	struct sched_domain *sd;
+	struct cpumask sd_span;
 
 	rcu_read_lock();
 	for_each_domain(cpu, sd) {
 		for_each_cpu(i, sched_domain_span(sd)) {
-			if (!idle_cpu(i)) {
-				cpu = i;
-				goto unlock;
+			cpumask_andnot(&sd_span, sched_domain_span(sd), cpu_asleep_mask);
+			for_each_cpu(i, &sd_span) {
+				if (!idle_cpu(i)) {
+					cpu = i;
+					goto unlock;
+				}
 			}
 		}
 	}
@@ -1194,6 +1198,8 @@ static int select_fallback_rq(int cpu, struct task_struct *p)
 				continue;
 			if (!cpu_active(dest_cpu))
 				continue;
+			if (cpu_asleep(dest_cpu))
+				continue;
 			if (cpumask_test_cpu(dest_cpu, tsk_cpus_allowed(p)))
 				return dest_cpu;
 		}
@@ -1205,6 +1211,8 @@ static int select_fallback_rq(int cpu, struct task_struct *p)
 			if (!cpu_online(dest_cpu))
 				continue;
 			if (!cpu_active(dest_cpu))
+				continue;
+			if (cpu_asleep(dest_cpu))
 				continue;
 			goto out;
 		}
@@ -1283,6 +1291,7 @@ ttwu_stat(struct task_struct *p, int cpu, int wake_flags)
 
 #ifdef CONFIG_SMP
 	int this_cpu = smp_processor_id();
+	struct cpumask sd_span;
 
 	if (cpu == this_cpu) {
 		schedstat_inc(rq, ttwu_local);
@@ -1293,7 +1302,8 @@ ttwu_stat(struct task_struct *p, int cpu, int wake_flags)
 		schedstat_inc(p, se.statistics.nr_wakeups_remote);
 		rcu_read_lock();
 		for_each_domain(this_cpu, sd) {
-			if (cpumask_test_cpu(cpu, sched_domain_span(sd))) {
+			cpumask_andnot(&sd_span, sched_domain_span(sd), cpu_asleep_mask);
+			if (cpumask_test_cpu(cpu, &sd_span)) {
 				schedstat_inc(sd, ttwu_wake_remote);
 				break;
 			}
@@ -2684,7 +2694,7 @@ void sched_exec(void)
 	if (dest_cpu == smp_processor_id())
 		goto unlock;
 
-	if (likely(cpu_active(dest_cpu))) {
+	if (likely(cpu_active(dest_cpu) && !cpu_asleep(dest_cpu))) {
 		struct migration_arg arg = { p, dest_cpu };
 
 		raw_spin_unlock_irqrestore(&p->pi_lock, flags);
@@ -3826,6 +3836,9 @@ int idle_cpu(int cpu)
 	if (!llist_empty(&rq->wake_list))
 		return 0;
 #endif
+
+	if (cpu_asleep(cpu))
+		return 0;
 
 	return 1;
 }
