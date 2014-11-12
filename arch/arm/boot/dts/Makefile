@@ -203,6 +203,9 @@ dtb-$(CONFIG_ARCH_VEXPRESS) += vexpress-v2p-ca5s.dtb \
 	vexpress-v2p-ca9.dtb \
 	vexpress-v2p-ca15-tc1.dtb \
 	vexpress-v2p-ca15_a7.dtb \
+	vexpress-v2p-ca15-tc2_a15only.dtb \
+	vexpress-v2p-ca15-tc2_a7bootcluster.dtb \
+	vexpress-v2p-ca15-tc2_a7only.dtb \
 	rtsm_ve-cortex_a9x2.dtb \
 	rtsm_ve-cortex_a9x4.dtb \
 	rtsm_ve-cortex_a15x1.dtb \
