@@ -1343,6 +1343,7 @@ static int __cpuinit cpuup_callback(struct notifier_block *nfb,
 		break;
 	case CPU_ONLINE:
 	case CPU_ONLINE_FROZEN:
+	case CPU_POPULATE:
 		start_cpu_timer(cpu);
 		break;
 #ifdef CONFIG_HOTPLUG_CPU
@@ -1360,6 +1361,8 @@ static int __cpuinit cpuup_callback(struct notifier_block *nfb,
   		break;
   	case CPU_DOWN_FAILED:
   	case CPU_DOWN_FAILED_FROZEN:
+		if (cpu_asleep(cpu))
+			break;
 		start_cpu_timer(cpu);
   		break;
 	case CPU_DEAD:

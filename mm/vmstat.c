@@ -1267,6 +1267,9 @@ static int __cpuinit vmstat_cpuup_callback(struct notifier_block *nfb,
 		setup_cpu_timer(cpu);
 		node_set_state(cpu_to_node(cpu), N_CPU);
 		break;
+	case CPU_POPULATE:
+		setup_cpu_timer(cpu);
+		break;
 	case CPU_DOWN_PREPARE:
 	case CPU_DOWN_PREPARE_FROZEN:
 		if (!cpumask_test_cpu(cpu, &vmstat_off_cpus)) {
@@ -1276,6 +1279,8 @@ static int __cpuinit vmstat_cpuup_callback(struct notifier_block *nfb,
 		break;
 	case CPU_DOWN_FAILED:
 	case CPU_DOWN_FAILED_FROZEN:
+		if (cpu_asleep(cpu))
+			break;
 		setup_cpu_timer(cpu);
 		break;
 	case CPU_DEAD:
