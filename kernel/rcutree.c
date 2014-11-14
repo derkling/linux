@@ -3083,6 +3083,10 @@ static int __cpuinit rcu_cpu_notify(struct notifier_block *self,
 		rcu_prepare_cpu(cpu);
 		rcu_prepare_kthreads(cpu);
 		break;
+	case CPU_POPULATE:
+		rcu_prepare_cpu(cpu);
+		rcu_prepare_kthreads(cpu);
+		/* forward to CPU_ONLINE */
 	case CPU_ONLINE:
 	case CPU_DOWN_FAILED:
 		rcu_boost_kthread_setaffinity(rnp, -1);
@@ -3092,6 +3096,7 @@ static int __cpuinit rcu_cpu_notify(struct notifier_block *self,
 		break;
 	case CPU_DYING:
 	case CPU_DYING_FROZEN:
+	case CPU_CLEANING:
 		for_each_rcu_flavor(rsp)
 			rcu_cleanup_dying_cpu(rsp);
 		break;
@@ -3099,6 +3104,7 @@ static int __cpuinit rcu_cpu_notify(struct notifier_block *self,
 	case CPU_DEAD_FROZEN:
 	case CPU_UP_CANCELED:
 	case CPU_UP_CANCELED_FROZEN:
+	case CPU_CLEAN:
 		for_each_rcu_flavor(rsp)
 			rcu_cleanup_dead_cpu(cpu, rsp);
 		break;
