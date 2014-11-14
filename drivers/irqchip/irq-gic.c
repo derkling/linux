@@ -607,6 +607,8 @@ static void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 	/* Convert our logical CPU mask into a physical one. */
 	for_each_cpu(cpu, mask) {
 		trace_arm_ipi_send(irq, cpu);
+		WARN(cpu_asleep(cpu),
+				"Send IPI to asleep CPU%d\n", cpu);
 		map |= gic_cpu_map[cpu];
 	}
 
