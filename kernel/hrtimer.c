@@ -1731,8 +1731,10 @@ static void migrate_hrtimers(int scpu)
 	struct hrtimer_cpu_base *old_base, *new_base;
 	int i;
 
-	BUG_ON(cpu_online(scpu));
-	tick_cancel_sched_timer(scpu);
+	BUG_ON(cpu_online(scpu) && !cpu_asleep(scpu));
+
+	if (!cpu_asleep(scpu))
+		tick_cancel_sched_timer(scpu);
 
 	local_irq_disable();
 	old_base = &per_cpu(hrtimer_bases, scpu);
@@ -1783,6 +1785,9 @@ static int __cpuinit hrtimer_cpu_notify(struct notifier_block *self,
 		migrate_hrtimers(scpu);
 		break;
 	}
+	case CPU_CLEAN:
+		migrate_hrtimers(scpu);
+		break;
 #endif
 
 	default:
