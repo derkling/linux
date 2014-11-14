@@ -651,6 +651,7 @@ static ktime_t tick_nohz_stop_sched_tick(struct tick_sched *ts,
 			ts->last_tick = hrtimer_get_expires(&ts->sched_timer);
 			ts->tick_stopped = 1;
 			trace_tick_stop(1, " ");
+			trace_printk("CPU%d\n", smp_processor_id());
 		}
 
 		/*
@@ -818,6 +819,9 @@ void tick_nohz_idle_enter(void)
 	ts->inidle = 1;
 	__tick_nohz_idle_enter(ts);
 
+	trace_printk("CPU%d, inidle: %d\n",
+			smp_processor_id(), ts->inidle);
+
 	local_irq_enable();
 }
 EXPORT_SYMBOL_GPL(tick_nohz_idle_enter);
@@ -854,8 +858,11 @@ ktime_t tick_nohz_get_sleep_length(void)
 
 static void tick_nohz_restart(struct tick_sched *ts, ktime_t now)
 {
+	int cpu = smp_processor_id();
 	hrtimer_cancel(&ts->sched_timer);
 	hrtimer_set_expires(&ts->sched_timer, ts->last_tick);
+
+	trace_printk("CPU%d\n", smp_processor_id());
 
 	while (1) {
 		/* Forward the time to expire in the future */
@@ -931,6 +938,7 @@ void tick_nohz_idle_exit(void)
 
 	local_irq_disable();
 
+	trace_printk("CPU%d, inidle: %d\n", cpu, ts->inidle);
 	WARN_ON_ONCE(!ts->inidle);
 
 	ts->inidle = 0;
