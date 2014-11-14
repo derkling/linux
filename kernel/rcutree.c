@@ -177,8 +177,10 @@ void rcu_sched_qs(int cpu)
 {
 	struct rcu_data *rdp = &per_cpu(rcu_sched_data, cpu);
 
-	if (rdp->passed_quiesce == 0)
+	if (rdp->passed_quiesce == 0) {
 		trace_rcu_grace_period("rcu_sched", rdp->gpnum, "cpuqs");
+		trace_printk("CPU%d, marked quiescent", cpu);
+	}
 	rdp->passed_quiesce = 1;
 }
 
@@ -186,8 +188,10 @@ void rcu_bh_qs(int cpu)
 {
 	struct rcu_data *rdp = &per_cpu(rcu_bh_data, cpu);
 
-	if (rdp->passed_quiesce == 0)
+	if (rdp->passed_quiesce == 0) {
 		trace_rcu_grace_period("rcu_bh", rdp->gpnum, "cpuqs");
+		trace_printk("CPU%d, marked quiescent", cpu);
+	}
 	rdp->passed_quiesce = 1;
 }
 
@@ -956,14 +960,19 @@ static void check_cpu_stall(struct rcu_state *rsp, struct rcu_data *rdp)
 	if (rcu_gp_in_progress(rsp) &&
 	    (ACCESS_ONCE(rnp->qsmask) & rdp->grpmask) && ULONG_CMP_GE(j, js)) {
 
+		trace_printk("cpu stalled");
+
 		/* We haven't checked in, so go dump stack. */
 		print_cpu_stall(rsp);
 
 	} else if (rcu_gp_in_progress(rsp) &&
 		   ULONG_CMP_GE(j, js + RCU_STALL_RAT_DELAY)) {
 
+		trace_printk("other cpu stalled");
+
 		/* They had a few time units to dump stack, so complain. */
 		print_other_cpu_stall(rsp);
+
 	}
 }
 
@@ -1416,6 +1425,7 @@ static int rcu_gp_init(struct rcu_state *rsp)
 	/* Advance to a new grace period and initialize state. */
 	rsp->gpnum++;
 	trace_rcu_grace_period(rsp->name, rsp->gpnum, "start");
+	trace_printk("gp %lu start", rsp->gpnum);
 	record_gp_stall_check_time(rsp);
 	raw_spin_unlock_irq(&rnp->lock);
 
@@ -1948,6 +1958,7 @@ static void rcu_cleanup_dying_cpu(struct rcu_state *rsp)
 	trace_rcu_grace_period(rsp->name,
 			       rnp->gpnum + 1 - !!(rnp->qsmask & mask),
 			       "cpuofl");
+	trace_printk("cleaning...");
 }
 
 /*
@@ -1965,6 +1976,9 @@ static void rcu_cleanup_dead_cpu(int cpu, struct rcu_state *rsp)
 	struct rcu_data *rdp = per_cpu_ptr(rsp->rda, cpu);
 	struct rcu_node *rnp = rdp->mynode;  /* Outgoing CPU's rdp & rnp. */
 
+	printk(KERN_WARNING "CPU%d, RCU cleanup\n", cpu);
+	trace_printk("CPU%d, cleanup", cpu);
+
 	/* Adjust any no-longer-needed kthreads. */
 	rcu_boost_kthread_setaffinity(rnp, -1);
 
@@ -1977,6 +1991,8 @@ static void rcu_cleanup_dead_cpu(int cpu, struct rcu_state *rsp)
 	/* Orphan the dead CPU's callbacks, and adopt them if appropriate. */
 	rcu_send_cbs_to_orphanage(cpu, rsp, rnp, rdp);
 	rcu_adopt_orphan_cbs(rsp);
+
+	printk(KERN_WARNING "orphaned\n");
 
 	/* Remove the outgoing CPU from the masks in the rcu_node hierarchy. */
 	mask = rdp->grpmask;	/* rnp->grplo is constant. */
@@ -2017,6 +2033,9 @@ static void rcu_cleanup_dead_cpu(int cpu, struct rcu_state *rsp)
 	/* Disallow further callbacks on this CPU. */
 	rdp->nxttail[RCU_NEXT_TAIL] = NULL;
 	mutex_unlock(&rsp->onoff_mutex);
+
+	trace_printk("cleaned");
+	printk(KERN_WARNING "cleaned");
 }
 
 #else /* #ifdef CONFIG_HOTPLUG_CPU */
@@ -2048,6 +2067,7 @@ static void rcu_do_batch(struct rcu_state *rsp, struct rcu_data *rdp)
 		trace_rcu_batch_end(rsp->name, 0, !!ACCESS_ONCE(rdp->nxtlist),
 				    need_resched(), is_idle_task(current),
 				    rcu_is_callbacks_kthread());
+		trace_printk("no callbacks ready");
 		return;
 	}
 
@@ -2067,6 +2087,8 @@ static void rcu_do_batch(struct rcu_state *rsp, struct rcu_data *rdp)
 		if (rdp->nxttail[i] == rdp->nxttail[RCU_DONE_TAIL])
 			rdp->nxttail[i] = &rdp->nxtlist;
 	local_irq_restore(flags);
+
+	trace_printk("invoke callbacks...");
 
 	/* Invoke callbacks. */
 	count = count_lazy = 0;
@@ -2088,6 +2110,7 @@ static void rcu_do_batch(struct rcu_state *rsp, struct rcu_data *rdp)
 	trace_rcu_batch_end(rsp->name, count, !!list, need_resched(),
 			    is_idle_task(current),
 			    rcu_is_callbacks_kthread());
+	trace_printk("batch end, count: %ld", count);
 
 	/* Update count, and requeue any remaining callbacks. */
 	if (list != NULL) {
@@ -2134,6 +2157,7 @@ static void rcu_do_batch(struct rcu_state *rsp, struct rcu_data *rdp)
  */
 void rcu_check_callbacks(int cpu, int user)
 {
+	trace_printk("START, CPU%d, user: %d", cpu, user);
 	trace_rcu_utilization("Start scheduler-tick");
 	increment_cpu_stall_ticks();
 	if (user || rcu_is_cpu_rrupt_from_idle()) {
@@ -2150,6 +2174,8 @@ void rcu_check_callbacks(int cpu, int user)
 		 * at least not while the corresponding CPU is online.
 		 */
 
+		trace_printk("QS");
+
 		rcu_sched_qs(cpu);
 		rcu_bh_qs(cpu);
 
@@ -2162,12 +2188,15 @@ void rcu_check_callbacks(int cpu, int user)
 		 * critical section, so note it.
 		 */
 
+		trace_printk("!softirq");
+
 		rcu_bh_qs(cpu);
 	}
 	rcu_preempt_check_callbacks(cpu);
 	if (rcu_pending(cpu))
 		invoke_rcu_core();
 	trace_rcu_utilization("End scheduler-tick");
+	trace_printk("END, CPU%d", cpu);
 }
 
 /*
@@ -2302,9 +2331,11 @@ static void rcu_process_callbacks(struct softirq_action *unused)
 	if (cpu_is_offline(smp_processor_id()))
 		return;
 	trace_rcu_utilization("Start RCU core");
+	trace_printk("core START");
 	for_each_rcu_flavor(rsp)
 		__rcu_process_callbacks(rsp);
 	trace_rcu_utilization("End RCU core");
+	trace_printk("core END");
 }
 
 /*
@@ -2316,8 +2347,10 @@ static void rcu_process_callbacks(struct softirq_action *unused)
  */
 static void invoke_rcu_callbacks(struct rcu_state *rsp, struct rcu_data *rdp)
 {
-	if (unlikely(!ACCESS_ONCE(rcu_scheduler_fully_active)))
+	if (unlikely(!ACCESS_ONCE(rcu_scheduler_fully_active))) {
+		trace_printk("rcu_scheduler is fully active");
 		return;
+	}
 	if (likely(!rsp->boost)) {
 		rcu_do_batch(rsp, rdp);
 		return;

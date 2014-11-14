@@ -169,8 +169,10 @@ static void rcu_preempt_qs(int cpu)
 {
 	struct rcu_data *rdp = &per_cpu(rcu_preempt_data, cpu);
 
-	if (rdp->passed_quiesce == 0)
+	if (rdp->passed_quiesce == 0) {
 		trace_rcu_grace_period("rcu_preempt", rdp->gpnum, "cpuqs");
+		trace_printk("CPU%d, marked quiescent", cpu);
+	}
 	rdp->passed_quiesce = 1;
 	current->rcu_read_unlock_special &= ~RCU_READ_UNLOCK_NEED_QS;
 }
@@ -1482,6 +1484,7 @@ static int __init rcu_spawn_kthreads(void)
 }
 early_initcall(rcu_spawn_kthreads);
 
+#error CONFIG_RCU_BOOST, lwhp requires it being disabled
 static void __cpuinit rcu_prepare_kthreads(int cpu)
 {
 	struct rcu_data *rdp = per_cpu_ptr(rcu_state->rda, cpu);
