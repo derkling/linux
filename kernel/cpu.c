@@ -361,6 +361,7 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen, bool cpu_clear)
 	check_for_tasks(cpu);
 
 out_release:
+	trace_printk("CPU%d cleared ----------------", cpu);
 	cpu_hotplug_done();
 	if (!err && !cpu_clear)
 		cpu_notify_nofail(CPU_POST_DEAD | mod, hcpu);
@@ -410,6 +411,7 @@ int __ref hotplug_cpu_unclear(unsigned int cpu)
 	cpu_notify_nofail(CPU_POPULATE, hcpu);
 	smp_send_reschedule(cpu);
 
+	trace_printk("CPU%d populated ++++++++++++++++", cpu);
 	cpu_hotplug_done();
 
 out:
