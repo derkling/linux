@@ -85,6 +85,8 @@ static void tick_do_update_jiffies64(ktime_t now)
 		tick_next_period = ktime_add(last_jiffies_update, tick_period);
 	}
 	write_sequnlock(&jiffies_lock);
+
+	trace_printk("return");
 }
 
 /*
@@ -108,6 +110,8 @@ static void tick_sched_do_timer(ktime_t now)
 {
 	int cpu = smp_processor_id();
 
+	trace_printk("CUP%d", cpu);
+
 #ifdef CONFIG_NO_HZ_COMMON
 	/*
 	 * Check if the do_timer duty was dropped. We don't care about
@@ -119,6 +123,9 @@ static void tick_sched_do_timer(ktime_t now)
 	if (unlikely(tick_do_timer_cpu == TICK_DO_TIMER_NONE)
 	    && !tick_nohz_full_cpu(cpu))
 		tick_do_timer_cpu = cpu;
+
+	trace_printk("do_timer: %d, nohz_full(%d): %d",
+			tick_do_timer_cpu, cpu, tick_do_timer_cpu);
 #endif
 
 	/* Check, if the jiffies need an update */
@@ -141,6 +148,7 @@ static void tick_sched_handle(struct tick_sched *ts, struct pt_regs *regs)
 		touch_softlockup_watchdog();
 		if (is_idle_task(current))
 			ts->idle_jiffies++;
+		trace_printk("tick stopped, wdg touched");
 	}
 #endif
 	update_process_times(user_mode(regs));

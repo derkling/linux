@@ -139,6 +139,7 @@ static void __touch_watchdog(void)
 void touch_softlockup_watchdog(void)
 {
 	__this_cpu_write(watchdog_touch_ts, 0);
+	trace_printk("touched");
 }
 EXPORT_SYMBOL(touch_softlockup_watchdog);
 

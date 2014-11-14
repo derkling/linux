@@ -1505,6 +1505,8 @@ void hrtimer_run_queues(void)
 	if (hrtimer_hres_active())
 		return;
 
+	trace_printk("HRes timers NOT actives");
+
 	for (index = 0; index < HRTIMER_MAX_CLOCK_BASES; index++) {
 		base = &cpu_base->clock_base[index];
 		if (!timerqueue_getnext(&base->active))
