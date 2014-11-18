@@ -3682,21 +3682,23 @@ static int wake_affine(struct sched_domain *sd, struct task_struct *p, int sync)
 }
 
 /*
- * find_idlest_group finds and returns the least busy CPU group within the
- * domain.
+ * find_target_group finds and returns the least busy/most energy-efficient
+ * CPU group within the domain.
  */
 static struct sched_group *
-find_idlest_group(struct sched_domain *sd, struct task_struct *p,
+find_target_group(struct sched_domain *sd, struct task_struct *p,
 		  int this_cpu, int load_idx)
 {
-	struct sched_group *idlest = NULL, *group = sd->groups;
+	struct sched_group *idlest = NULL, *group = sd->groups, *energy = NULL;
 	unsigned long min_load = ULONG_MAX, this_load = 0;
 	int imbalance = 100 + (sd->imbalance_pct-100)/2;
+	int local_nrg = 0, min_nrg = INT_MAX;
 
 	do {
-		unsigned long load, avg_load;
+		unsigned long load, avg_load, util, probe_util = UINT_MAX;
 		int local_group;
 		int i;
+		int probe_cpu, nrg_diff;
 
 		/* Skip over this group if it has no CPUs allowed */
 		if (!cpumask_intersects(sched_group_cpus(group),
@@ -3708,27 +3710,65 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 
 		/* Tally up the load of all CPUs in the group */
 		avg_load = 0;
+		probe_cpu = cpumask_first(sched_group_cpus(group));
 
 		for_each_cpu(i, sched_group_cpus(group)) {
+			/*
+			 * For energy-aware scheduling we don't currently support
+			 * load_idx != 0. If we have such a load_idx it is better
+			 * to holler!
+			 */
+			WARN_ON(load_idx != 0);
+
 			/* Bias balancing toward cpus of our domain */
-			if (local_group)
+			if (local_group) {
 				load = source_load(i, load_idx);
-			else
+				util = get_cpu_usage(i);
+			} else {
 				load = target_load(i, load_idx);
+				util = get_cpu_usage(i);
+			}
 
 			avg_load += load;
+
+			if (util < probe_util) {
+				probe_util = util;
+				probe_cpu = i;
+			}
 		}
 
 		/* Adjust by relative CPU capacity of the group */
 		avg_load = (avg_load * SCHED_CAPACITY_SCALE) / group->sgc->capacity;
 
+		/*
+		 * Sample energy diff on probe_cpu.
+		 * Finding the optimum cpu requires testing all cpus which is
+		 * expensive.
+		 */
+
+		nrg_diff = energy_diff_task(probe_cpu, p);
+
 		if (local_group) {
 			this_load = avg_load;
-		} else if (avg_load < min_load) {
-			min_load = avg_load;
-			idlest = group;
+			local_nrg = nrg_diff;
+		} else {
+			if (avg_load < min_load) {
+				min_load = avg_load;
+				idlest = group;
+			}
+
+			if (nrg_diff < min_nrg) {
+				min_nrg = nrg_diff;
+				energy = group;
+			}
 		}
 	} while (group = group->next, group != sd->groups);
+
+	if (energy_aware()) {
+		if (energy && min_nrg < local_nrg)
+			return energy;
+		return NULL;
+	}
 
 	if (!idlest || 100*this_load < imbalance*min_load)
 		return NULL;
@@ -3736,24 +3776,34 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 }
 
 /*
- * find_idlest_cpu - find the idlest cpu among the cpus in group.
+ * find_target_cpu - find the target cpu among the cpus in group.
  */
 static int
-find_idlest_cpu(struct sched_group *group, struct task_struct *p, int this_cpu)
+find_target_cpu(struct sched_group *group, struct task_struct *p, int this_cpu)
 {
 	unsigned long load, min_load = ULONG_MAX;
+	int min_nrg = INT_MAX, nrg, least_nrg = -1;
 	int idlest = -1;
 	int i;
 
 	/* Traverse only the allowed CPUs */
 	for_each_cpu_and(i, sched_group_cpus(group), tsk_cpus_allowed(p)) {
 		load = weighted_cpuload(i);
+		nrg = energy_diff_task(i, p);
 
 		if (load < min_load || (load == min_load && i == this_cpu)) {
 			min_load = load;
 			idlest = i;
 		}
+
+		if (nrg < min_nrg) {
+			min_nrg = nrg;
+			least_nrg = i;
+		}
 	}
+
+	if (least_nrg >= 0)
+		return least_nrg;
 
 	return idlest;
 }
@@ -3906,13 +3956,13 @@ select_task_rq_fair(struct task_struct *p, int sd_flag, int wake_flags)
 		if (sd_flag & SD_BALANCE_WAKE)
 			load_idx = sd->wake_idx;
 
-		group = find_idlest_group(sd, p, cpu, load_idx);
+		group = find_target_group(sd, p, cpu, load_idx);
 		if (!group) {
 			sd = sd->child;
 			continue;
 		}
 
-		new_cpu = find_idlest_cpu(group, p, cpu);
+		new_cpu = find_target_cpu(group, p, cpu);
 		if (new_cpu == -1 || new_cpu == cpu) {
 			/* Now try balancing at a lower domain level of cpu */
 			sd = sd->child;
