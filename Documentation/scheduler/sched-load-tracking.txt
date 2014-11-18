@@ -20,7 +20,7 @@ taskgroup) as well as a per cfs-rq values for load based on runnable
 and running time.
 
 The CFS scheduling class maps those values to load and utilization values
-for sched entity and cfs-rq (cpu).
+for sched entity and cfs-rq.
 
 This documents defines the related concepts involved and maps those
 definitions to functions and data of the CFS scheduling class.
@@ -37,33 +37,31 @@ definitions to functions and data of the CFS scheduling class.
 
 - running/runnable/blocked (sleeping):
 
-  A running task is the currently executing task, a runnable task can run
-  once the currently executing task has relinquished the cpu and a
-  blocked task is currently waiting on the availability of an event or a
-  resource. The term 'runnable' stands for all tasks which are currently
-  on the run queue but also includes the running task.
+  These terms refer to task states. A running task is the currently
+  executing task and is not on the run queue. A runnable task is either
+  running or is on the run queue and can run once the currently running
+  task has relinquished the cpu. A blocked task is currently waiting on
+  the availability of an event or a resource.
 
-    time(runnable) = time(running) + time(waiting to run)
+    time(runnable) = time(running) + time(on run queue)
 
     time(total) = time(runnable) + time(blocked/sleeping)
 
 - cpu utilization:
 
   The amount of time a cpu is busy executing instructions over an
-  elapsed period of time. It is the quotient '(busy time)/period' and
-  therefore a value between 0 and 1.
-
-  To describe the busy time, the run time of the currently 'runnable'
-  task or the run time of the currently 'running' task could be used.
+  elapsed period of time 'busy time = time(running)'. It is the quotient
+  '(busy time)/period' and therefore a value between 0 and 1.
 
 - cpu load:
 
   A metric for task placement and load balancing. The metric can be
   defined as cpu utilization, derived from utilization but biased by
-  weighting tasks unequally, or something completely different.
+  weighting tasks unequally and based on time(runnable) as busy time
+  instead of time(running), or something completely different.
   Besides this definition, the cpu load will also depend on the
-  characteristic of the workload (cpu versus memory bound). We neglect
-  the effect of memory bound workloads for now.
+  characteristic of the workload (e.g. cpu versus memory bound).
+  We neglect the effect of memory bound workloads for now.
 
 - cpu capacity:
 
@@ -86,7 +84,8 @@ definitions to functions and data of the CFS scheduling class.
 3. Load Tracking with PELT
 ==========================
 
-for tasks:
+The following equations illustrate the calculation of the two different
+PELT signals for a task t.
 
 - cpu load (based on runnable time and weighted (with task priority):
 
@@ -96,7 +95,7 @@ for tasks:
   /* we don't use blocked load at the moment */
   cpu load = \sum_{t=t_1}^{t_n} contrib_runnable(t)
 
-- cpu load (based running time and un-weighted)
+- cpu load (based on running time and un-weighted)
 
   contrib_running(t) =
     1024 * running_avg_sum(t)/(running_avg_period(t) + 1)
@@ -145,7 +144,7 @@ rbl_avg_sum_se2(x) = (x<=load_avg_max_n) ? 0 : (usage(x)*(1-a**(x-load_avg_max_n
 
 rbl_avg_prd(x) = load_avg_max;
 
-rng_avg_sum_se1(x) = (x<=load_avg_max_n) ? (usage(x)*(1-a**x)/(1-a)) :
+rng_avg_sum_se1(x) = (x<=load_avg_max_n) ? (usage(x)*(1-a**x)/(1-a)) : \
 rng_avg_sum_se1(load_avg_max_n) - (usage(x)/2*(1-a**(x-load_avg_max_n))/(1-a));
 rng_avg_sum_se2(x) = (x<=load_avg_max_n) ? 0 : (usage(x)/2*(1-a**(x-load_avg_max_n))/(1-a));
 
@@ -175,69 +174,51 @@ relevant data from the CFS scheduler class.
 
 - per entity load tracking:
 
-  (a) weighted load contribution based on runnable time
+  (a) weighted load contribution based on time(runnable)
 
-	struct sched_entity {
-		...
-		struct sched_avg {
-			...
-			unsigned long runnable_load_avg_contrib;
-			...
-		}
-		...
-	}
+	sched_entity::sched_avg::runnable_load_avg_contrib
 
-  (b) un-weighted load contribution based on running time
+  (b) un-weighted load contribution based on time(running)
 
-	struct sched_entity {
-		...
-		struct sched_avg {
-			...
-			unsigned long running_load_avg_contrib;
-			...
-		}
-		...
-	}
+	sched_entity::sched_avg::running_load_avg_contrib
 
 - aggregated (onto the cfs_rq) per entity load tracking:
 
-  (c) weighted load contribution based on runnable time
+  (c) weighted load contribution based on time(runnable)
 
-	struct cfs_rq {
-		...
-		unsigned long runnable_load_avg;
-		...
-	}
+	cfs_rq::runnable_load_avg
 
   (d) weighted load contribution of blocked entities
 
-	struct cfs_rq {
-		...
-		unsigned long blocked_runnable_load_avg;
-		...
-	}
+	cfs_rq::blocked_runnable_load_avg
 
-  (e) un-weighted load contribution based on running time
+  (e) un-weighted load contribution based on time(running)
 
-	struct cfs_rq {
-		...
-		unsigned long running_load_avg;
-		...
-	}
+	cfs_rq::running_load_avg
 
   (f) un-weighted load contribution of blocked entities
 
-	struct cfs_rq {
-		...
-		unsigned long blocked_running_load_avg;
-		...
-	}
+	cfs_rq::blocked_running_load_avg
 
 
 6. How does CFS use Load Tracking
 =================================
 
-This paragraph maps the relevant PELT data to the load/utilization
+In the current CFS scheduler, cpu load is derived from utilization but
+biased by weighting tasks unequally and based on time(runnable) as busy
+time. This cpu load is used throughout the entire operating range of cpu
+utilization [0..1].
+
+With the integration of Energy-Aware Scheduling (EAS), the CFS scheduler
+now has two distinct operating ranges of cpu utilization.
+
+The first operating range with a cpu utilization of [0, <1] is where EAS
+performs task placement/load balancing based on cpu load which is derived
+from cpu utilization. The second operating range with a cpu utilization
+of [<1, 1] takes the cpu load which is already used in the current CFS
+scheduler.
+
+The following lists maps the relevant PELT data to the task/cpu load
 getter functions of the CFS sched class.
 
 - sched entity:
@@ -246,30 +227,25 @@ getter functions of the CFS sched class.
 
     (a) unsigned long task_h_load(struct task_struct *p)
 
-        returns (5.a)
+	if (CONFIG_FAIR_GROUP)
 
-  - taskgroup:
+	returns (sched_entity::sched_avg::runnable_load_avg_contrib *
+		 cfs_rq::h_load)/(cfs_rq::runnable_load_avg + 1)
 
-    (b) unsigned long task_h_load(struct task_struct *p)
+	else
 
-        uses (5.a)
+        returns sched_entity::sched_avg::runnable_load_avg_contrib
 
-- cfs_rq (cpu):
+- cfs_rq:
 
-    (c) unsigned long get_cpu_load(const int cpu)
+    (b) unsigned long get_cpu_load(const int cpu)
 
-        returns (5.c)
+        returns cfs_rq::runnable_load_avg
 
-    (d) unsigned long cpu_avg_load_per_task(int cpu)
+    (c) unsigned long cpu_avg_load_per_task(int cpu)
 
-        uses (5.a)
+        uses cfs_rq::runnable_load_avg
 
-    (e) unsigned long get_rq_runnable_load(struct rq *rq)
+    (d) unsigned long get_cpu_utilization(const int cpu)
 
-        returns (5.c) in case CONFIG_SMP is defined
-
-	[actually defined and used in kernel/sched/proc.c]
-
-    (e) unsigned long get_cpu_util(const int cpu)
-
-        returns (5.e)
+        returns cfs_rq::running_load_avg
