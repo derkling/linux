@@ -1030,6 +1030,9 @@ struct sched_avg {
 	 * running_avg_sum.
 	 */
 	u32 runnable_avg_sum, avg_period, running_avg_sum;
+
+	unsigned long last_wakeup_update;
+	u32 wakeup_avg_sum;
 };
 
 #ifdef CONFIG_SCHEDSTATS
