@@ -32,6 +32,7 @@ int gpu_ipa_dvfs_max_lock(int clock);
 int kbase_platform_dvfs_freq_to_power(int freq);
 int kbase_platform_dvfs_power_to_freq(int power);
 int gpu_ipa_dvfs_level_to_freq(int level);
+int gpu_ipa_dvfs_freq_to_level(int freq);
 int get_ipa_dvfs_num_opps(void);
 int get_ipa_dvfs_max_freq(void);
 
