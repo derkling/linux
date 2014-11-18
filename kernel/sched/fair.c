@@ -4828,6 +4828,7 @@ next:
 done:
 	return target;
 }
+
 /*
  * get_cpu_usage returns the amount of capacity of a CPU that is used by CFS
  * tasks. The unit of the return value must capacity so we can compare the
