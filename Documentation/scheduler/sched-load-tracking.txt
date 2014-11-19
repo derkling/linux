@@ -23,7 +23,8 @@ The CFS scheduling class maps those values to load and utilization values
 for sched entity and cfs-rq.
 
 This documents defines the related concepts involved and maps those
-definitions to functions and data of the CFS scheduling class.
+definitions to functions and data structures of the CFS scheduling
+class.
 
 
 2. Load Tracking Definitions
@@ -37,8 +38,8 @@ definitions to functions and data of the CFS scheduling class.
 
 - running/runnable/blocked (sleeping):
 
-  These terms refer to task states. A running task is the currently
-  executing task and is not on the run queue. A runnable task is either
+  These terms refer to task states. A running task is the task currently
+  being executed and it is not on the run queue. A runnable task is either
   running or is on the run queue and can run once the currently running
   task has relinquished the cpu. A blocked task is currently waiting for
   an event to occur.
@@ -51,7 +52,8 @@ definitions to functions and data of the CFS scheduling class.
 
   The amount of time a cpu is busy executing instructions over an
   elapsed period of time 'busy time = time(running)'. It is the quotient
-  '(busy time)/period' and therefore a value between 0 and 1.
+  '(busy time)/period' and therefore is unit-less and either expressed as
+  a fraction, a percentage or a value between 0 and 1.
 
 - cpu load:
 
@@ -69,6 +71,10 @@ definitions to functions and data of the CFS scheduling class.
 
   The relative (w.r.t. other cpus in the system) ability of a cpu to
   execute a workload.
+  A task with a utilization of 1 is using the entire cpu capacity, whereas
+  a task with a utilization of 0.5 is using half of the cpu capacity.
+  Cpu capacity is defined as being unit-less too to be able to compare it
+  with cpu utilization.
 
   XXX It is a metric to describe how much cpu utilization a cpu is able to
   hold. [We can only add this sentence (comparing cpu capacity with cpu
