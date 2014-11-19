@@ -40,8 +40,8 @@ definitions to functions and data of the CFS scheduling class.
   These terms refer to task states. A running task is the currently
   executing task and is not on the run queue. A runnable task is either
   running or is on the run queue and can run once the currently running
-  task has relinquished the cpu. A blocked task is currently waiting on
-  the availability of an event or a resource.
+  task has relinquished the cpu. A blocked task is currently waiting for
+  an event to occur.
 
     time(runnable) = time(running) + time(on run queue)
 
@@ -56,19 +56,21 @@ definitions to functions and data of the CFS scheduling class.
 - cpu load:
 
   A metric for task placement and load balancing. The metric can be
-  defined as cpu utilization, derived from utilization but biased by
+  defined as cpu utilization or derived from utilization but biased by
   weighting tasks unequally and based on time(runnable) as busy time
-  instead of time(running), or something completely different.
+  instead of time(running).
+  However, it can be defined as something completely different than cpu
+  utilization, e.g. the cpu run queue length.
   Besides this definition, the cpu load will also depend on the
   characteristic of the workload (e.g. cpu versus memory bound).
   We neglect the effect of memory bound workloads for now.
 
 - cpu capacity:
 
-  The relative (towards other cpus in the system) ability of a cpu to
+  The relative (w.r.t. other cpus in the system) ability of a cpu to
   execute a workload.
 
-  XXX It is a metric to describe how many cpu utilization a cpu is able to
+  XXX It is a metric to describe how much cpu utilization a cpu is able to
   hold. [We can only add this sentence (comparing cpu capacity with cpu
   utilization) if we introduce scale-invariance here. Cpu capacity is
   the bucket size and cpu utilization is the true volume taken up by the
@@ -86,6 +88,11 @@ definitions to functions and data of the CFS scheduling class.
 
 The following equations illustrate the calculation of the two different
 PELT signals for a task t.
+
+XXX For definitions of runnable_avg_sum(t), running_avg_sum(t) and
+runnable_avg_period(t) please refer to the PELT patch-set:
+KERNEL_GIT_SRC $ git log 9d85f21c94f7~1..f4e26b120b9d
+XXX
 
 - cpu load (based on runnable time and weighted (with task priority):
 
@@ -220,6 +227,29 @@ scheduler.
 
 The following lists maps the relevant PELT data to the task/cpu load
 getter functions of the CFS sched class.
+
+XXX transform it into something like:
+
+- get task load:
+
+	if (CONFIG_FAIR_GROUP)
+
+	returns (sched_entity::sched_avg::runnable_load_avg_contrib *
+		 cfs_rq::h_load)/(cfs_rq::runnable_load_avg + 1)
+
+	else
+
+        returns sched_entity::sched_avg::runnable_load_avg_contrib
+
+- get cpu load:
+
+        returns cfs_rq::runnable_load_avg
+
+- get task utilization:
+
+- get cpu utilization:
+
+XXX
 
 - sched entity:
 
