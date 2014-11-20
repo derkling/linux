@@ -553,6 +553,31 @@ TRACE_EVENT(sched_wake_idle_without_ipi,
 
 	TP_printk("cpu=%d", __entry->cpu)
 );
+
+TRACE_EVENT(sched_load_avg_sched_group,
+
+	TP_PROTO(const struct cpumask *cpus, unsigned long load,
+		 unsigned long utilization),
+
+	TP_ARGS(cpus, load, utilization),
+
+	TP_STRUCT__entry(
+		__bitmask( cpumask, 		num_possible_cpus()	)
+		__field(   unsigned long, 	load			)
+		__field(   unsigned long, 	utilization		)
+	),
+
+	TP_fast_assign(
+		__assign_bitmask(cpumask, cpumask_bits(cpus),
+				 num_possible_cpus());
+		__entry->load 		= load;
+		__entry->utilization 	= utilization;
+	),
+
+	TP_printk("cpus=%s load=%lu utilization=%lu", __get_bitmask(cpumask),
+		  __entry->load, __entry->utilization)
+);
+
 #endif /* _TRACE_SCHED_H */
 
 /* This part must be outside protection */
