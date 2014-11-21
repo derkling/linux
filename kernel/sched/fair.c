@@ -2290,6 +2290,21 @@ static u32 __compute_runnable_contrib(u64 n)
 }
 
 unsigned long __weak arch_scale_freq_capacity(struct sched_domain *sd, int cpu);
+unsigned long __weak arch_scale_cpu_capacity(struct sched_domain *sd, int cpu);
+
+static unsigned long contrib_scale_factor(int cpu)
+{
+	unsigned long scale_factor;
+
+	scale_factor = arch_scale_freq_capacity(NULL, cpu);
+	scale_factor *= arch_scale_cpu_capacity(NULL, cpu);
+	scale_factor >>= SCHED_CAPACITY_SHIFT;
+
+	return scale_factor;
+}
+
+#define scale_contrib(contrib, scale_factor) \
+	((contrib * scale_factor) >> SCHED_CAPACITY_SHIFT)
 
 /*
  * We can represent the historical contribution to runnable average as the
@@ -2327,7 +2342,7 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 	u64 delta, scaled_delta, periods;
 	u32 runnable_contrib, scaled_runnable_contrib;
 	int delta_w, scaled_delta_w, decayed = 0;
-	unsigned long scale_freq = arch_scale_freq_capacity(NULL, cpu);
+	unsigned long scale_factor;
 
 	delta = now - sa->last_runnable_update;
 	/*
@@ -2348,6 +2363,8 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 		return 0;
 	sa->last_runnable_update = now;
 
+	scale_factor = contrib_scale_factor(cpu);
+
 	/* delta_w is the amount already accumulated against our next period */
 	delta_w = sa->avg_period % 1024;
 	if (delta + delta_w >= 1024) {
@@ -2360,7 +2377,7 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 		 * period and accrue it.
 		 */
 		delta_w = 1024 - delta_w;
-		scaled_delta_w = (delta_w * scale_freq) >> SCHED_CAPACITY_SHIFT;
+		scaled_delta_w = scale_contrib(delta_w, scale_factor);
 
 		if (runnable)
 			sa->runnable_avg_sum += scaled_delta_w;
@@ -2383,8 +2400,8 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 
 		/* Efficiently calculate \sum (1..n_period) 1024*y^i */
 		runnable_contrib = __compute_runnable_contrib(periods);
-		scaled_runnable_contrib = (runnable_contrib * scale_freq)
-						>> SCHED_CAPACITY_SHIFT;
+		scaled_runnable_contrib =
+			scale_contrib(runnable_contrib, scale_factor);
 
 		if (runnable)
 			sa->runnable_avg_sum += scaled_runnable_contrib;
@@ -2394,7 +2411,7 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 	}
 
 	/* Remainder of delta accrued against u_0` */
-	scaled_delta = (delta * scale_freq) >> SCHED_CAPACITY_SHIFT;
+	scaled_delta = scale_contrib(delta, scale_factor);
 
 	if (runnable)
 		sa->runnable_avg_sum += scaled_delta;
