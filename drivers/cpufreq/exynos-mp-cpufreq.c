@@ -666,10 +666,10 @@ static int exynos_target(struct cpufreq_policy *policy,
 	struct cpufreq_frequency_table *freq_table = exynos_info[cur]->freq_table;
 	unsigned int index;
 	int ret = 0;
-#ifdef CONFIG_CPU_THERMAL_IPA_DEBUG
-	trace_printk("IPA:%s:%d Called by %x, with target_freq %d", __PRETTY_FUNCTION__, __LINE__,
-			(unsigned int) __builtin_return_address (0), target_freq);
-#endif
+//#ifdef CONFIG_CPU_THERMAL_IPA_DEBUG
+//	trace_printk("IPA:%s:%d Called by %x, with target_freq %d", __PRETTY_FUNCTION__, __LINE__,
+//			(unsigned int) __builtin_return_address (0), target_freq);
+//#endif
 	mutex_lock(&cpufreq_lock);
 
 	if (exynos_info[cur]->blocked)
@@ -698,9 +698,9 @@ static int exynos_target(struct cpufreq_policy *policy,
 		target_freq = min(g_clamp_cpufreqs[CA7], target_freq); /* add IPA clamp */
 	}
 
-#ifdef CONFIG_CPU_THERMAL_IPA_DEBUG
-	trace_printk("IPA:%s:%d will apply %d ", __PRETTY_FUNCTION__, __LINE__, target_freq);
-#endif
+//#ifdef CONFIG_CPU_THERMAL_IPA_DEBUG
+//	trace_printk("IPA:%s:%d will apply %d ", __PRETTY_FUNCTION__, __LINE__, target_freq);
+//#endif
 
 	if (cpufreq_frequency_table_target(policy, freq_table,
 				target_freq, relation, &index)) {

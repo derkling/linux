@@ -391,40 +391,40 @@ struct trace_data {
 #ifdef CONFIG_CPU_THERMAL_IPA_DEBUG
 static void print_trace(struct trace_data *td)
 {
-	trace_printk("gpu_freq_in=%d gpu_util=%d gpu_nutil=%d "
-		"a15_freq_in=%d a15_util=%d a15_nutil=%d "
-		"a7_freq_in=%d a7_util=%d a7_nutil=%d "
-		"Pgpu_in=%d Pa15_in=%d Pa7_in=%d Pcpu_in=%d Ptot_in=%d "
-		"Pgpu_out=%d Pa15_out=%d Pa7_out=%d Pcpu_out=%d Ptot_out=%d "
-		"t0=%d t1=%d t2=%d t3=%d t4=%d ap_temp=%d cp_temp=%d currT=%d deltaT=%d "
-		"gpu_freq_out=%d a15_freq_out=%d a7_freq_out=%d "
-		"gpu_freq_req=%d "
-		"a15_0_freq_in=%d "
-		"a15_1_freq_in=%d "
-		"a15_2_freq_in=%d "
-		"a15_3_freq_in=%d "
-		"a7_0_freq_in=%d "
-		"a7_1_freq_in=%d "
-		"a7_2_freq_in=%d "
-		"a7_3_freq_in=%d "
-		"Pgpu_req=%d Pa15_req=%d Pa7_req=%d Pcpu_req=%d Ptot_req=%d extra=%d\n",
-		td->gpu_freq_in, td->gpu_util, td->gpu_nutil,
-		td->a15_freq_in, td->a15_util, td->a15_nutil,
-		td->a7_freq_in, td->a7_util, td->a7_nutil,
-		td->Pgpu_in, td->Pa15_in, td->Pa7_in, td->Pcpu_in, td->Ptot_in,
-		td->Pgpu_out, td->Pa15_out, td->Pa7_out, td->Pcpu_out, td->Ptot_out,
-		td->t0, td->t1, td->t2, td->t3, td->t4, td->skin_temp, td->cp_temp, td->currT, td->deltaT,
-		td->gpu_freq_out, td->a15_freq_out, td->a7_freq_out,
-		td->gpu_freq_req,
-		td->a15_0_freq_in,
-		td->a15_1_freq_in,
-		td->a15_2_freq_in,
-		td->a15_3_freq_in,
-		td->a7_0_freq_in,
-		td->a7_1_freq_in,
-		td->a7_2_freq_in,
-		td->a7_3_freq_in,
-		td->Pgpu_req, td->Pa15_req, td->Pa7_req, td->Pcpu_req, td->Ptot_req, td->extra);
+//	trace_printk("gpu_freq_in=%d gpu_util=%d gpu_nutil=%d "
+//		"a15_freq_in=%d a15_util=%d a15_nutil=%d "
+//		"a7_freq_in=%d a7_util=%d a7_nutil=%d "
+//		"Pgpu_in=%d Pa15_in=%d Pa7_in=%d Pcpu_in=%d Ptot_in=%d "
+//		"Pgpu_out=%d Pa15_out=%d Pa7_out=%d Pcpu_out=%d Ptot_out=%d "
+//		"t0=%d t1=%d t2=%d t3=%d t4=%d ap_temp=%d cp_temp=%d currT=%d deltaT=%d "
+//		"gpu_freq_out=%d a15_freq_out=%d a7_freq_out=%d "
+//		"gpu_freq_req=%d "
+//		"a15_0_freq_in=%d "
+//		"a15_1_freq_in=%d "
+//		"a15_2_freq_in=%d "
+//		"a15_3_freq_in=%d "
+//		"a7_0_freq_in=%d "
+//		"a7_1_freq_in=%d "
+//		"a7_2_freq_in=%d "
+//		"a7_3_freq_in=%d "
+//		"Pgpu_req=%d Pa15_req=%d Pa7_req=%d Pcpu_req=%d Ptot_req=%d extra=%d\n",
+//		td->gpu_freq_in, td->gpu_util, td->gpu_nutil,
+//		td->a15_freq_in, td->a15_util, td->a15_nutil,
+//		td->a7_freq_in, td->a7_util, td->a7_nutil,
+//		td->Pgpu_in, td->Pa15_in, td->Pa7_in, td->Pcpu_in, td->Ptot_in,
+//		td->Pgpu_out, td->Pa15_out, td->Pa7_out, td->Pcpu_out, td->Ptot_out,
+//		td->t0, td->t1, td->t2, td->t3, td->t4, td->skin_temp, td->cp_temp, td->currT, td->deltaT,
+//		td->gpu_freq_out, td->a15_freq_out, td->a7_freq_out,
+//		td->gpu_freq_req,
+//		td->a15_0_freq_in,
+//		td->a15_1_freq_in,
+//		td->a15_2_freq_in,
+//		td->a15_3_freq_in,
+//		td->a7_0_freq_in,
+//		td->a7_1_freq_in,
+//		td->a7_2_freq_in,
+//		td->a7_3_freq_in,
+//		td->Pgpu_req, td->Pa15_req, td->Pa7_req, td->Pcpu_req, td->Ptot_req, td->extra);
 }
 
 static void print_only_temp_trace(int skin_temp)
@@ -590,10 +590,10 @@ static int F_ctlr(int curr)
 	if (out > config->soc_max_power)
 		out = config->soc_max_power;
 #ifdef CONFIG_CPU_THERMAL_IPA_DEBUG
-	trace_printk("curr=%d err=%d err_integral=%d p=%d i=%d d=%d out=%d\n",
-		     curr, frac_to_int(err), frac_to_int(ctlr->err_integral),
-		     (int) frac_to_int(p), (int) frac_to_int(i), (int) frac_to_int(d),
-		     (int) out);
+//	trace_printk("curr=%d err=%d err_integral=%d p=%d i=%d d=%d out=%d\n",
+//		     curr, frac_to_int(err), frac_to_int(ctlr->err_integral),
+//		     (int) frac_to_int(p), (int) frac_to_int(i), (int) frac_to_int(d),
+//		     (int) out);
 #endif
 	/* the casts here should be safe */
 	return (int)out;
