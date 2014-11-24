@@ -2440,7 +2440,8 @@ int ata_pci_sff_activate_host(struct ata_host *host,
 		int i;
 
 		rc = devm_request_irq(dev, pdev->irq, irq_handler,
-				      IRQF_SHARED, drv_name, host);
+				      IRQF_SHARED | IRQF_TIMINGS,
+				      drv_name, host);
 		if (rc)
 			goto out;
 
@@ -2452,7 +2453,8 @@ int ata_pci_sff_activate_host(struct ata_host *host,
 	} else if (legacy_mode) {
 		if (!ata_port_is_dummy(host->ports[0])) {
 			rc = devm_request_irq(dev, ATA_PRIMARY_IRQ(pdev),
-					      irq_handler, IRQF_SHARED,
+					      irq_handler,
+					      IRQF_SHARED | IRQF_TIMINGS,
 					      drv_name, host);
 			if (rc)
 				goto out;
@@ -2463,7 +2465,8 @@ int ata_pci_sff_activate_host(struct ata_host *host,
 
 		if (!ata_port_is_dummy(host->ports[1])) {
 			rc = devm_request_irq(dev, ATA_SECONDARY_IRQ(pdev),
-					      irq_handler, IRQF_SHARED,
+					      irq_handler,
+					      IRQF_SHARED | IRQF_TIMINGS,
 					      drv_name, host);
 			if (rc)
 				goto out;
