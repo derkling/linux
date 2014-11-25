@@ -602,6 +602,30 @@ TRACE_EVENT(sched_contrib_scale_factor,
 		  __entry->cpu_scale_factor)
 );
 
+/*
+ * Tracepoint for accounting sched averages for cpus.
+ */
+TRACE_EVENT(sched_load_avg_cpu,
+
+	TP_PROTO(int cpu, struct cfs_rq *cfs_rq),
+
+	TP_ARGS(cpu, cfs_rq),
+
+	TP_STRUCT__entry(
+		__field( int,	cpu				)
+		__field( unsigned long,	load			)
+		__field( unsigned long,	utilization		)
+	),
+
+	TP_fast_assign(
+		__entry->cpu			= cpu;
+		__entry->load			= cfs_rq->runnable_load_avg;
+		__entry->utilization		= cfs_rq->utilization_load_avg;
+	),
+
+	TP_printk("cpu=%d load=%lu utilization=%lu",
+		  __entry->cpu, __entry->load, __entry->utilization)
+);
 #endif /* _TRACE_SCHED_H */
 
 /* This part must be outside protection */
