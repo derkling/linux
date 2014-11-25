@@ -2483,6 +2483,9 @@ static unsigned long contrib_scale_factor(int cpu)
 	scale_factor *= arch_scale_cpu_capacity(NULL, cpu);
 	scale_factor >>= SCHED_CAPACITY_SHIFT;
 
+	trace_sched_contrib_scale_factor(cpu, arch_scale_freq_capacity(NULL, cpu),
+			                 arch_scale_cpu_capacity(NULL, cpu));
+
 	return scale_factor;
 }
 
@@ -2821,6 +2824,7 @@ static inline void update_entity_load_avg(struct sched_entity *se,
 	if (se->on_rq) {
 		cfs_rq->runnable_load_avg += contrib_delta;
 		cfs_rq->utilization_load_avg += utilization_delta;
+		trace_sched_load_avg_cpu(cpu, cfs_rq);
 	} else {
 		subtract_blocked_load_contrib(cfs_rq, -contrib_delta);
 		subtract_utilization_blocked_contrib(cfs_rq,
@@ -2909,6 +2913,7 @@ static inline void enqueue_entity_load_avg(struct cfs_rq *cfs_rq,
 
 	cfs_rq->runnable_load_avg += se->avg.load_avg_contrib;
 	cfs_rq->utilization_load_avg += se->avg.utilization_avg_contrib;
+	trace_sched_load_avg_cpu(cpu_of(rq_of(cfs_rq)), cfs_rq);
 	/* we force update consideration on load-balancer moves */
 	update_cfs_rq_blocked_load(cfs_rq, !wakeup);
 }
@@ -2928,6 +2933,7 @@ static inline void dequeue_entity_load_avg(struct cfs_rq *cfs_rq,
 
 	cfs_rq->runnable_load_avg -= se->avg.load_avg_contrib;
 	cfs_rq->utilization_load_avg -= se->avg.utilization_avg_contrib;
+	trace_sched_load_avg_cpu(cpu_of(rq_of(cfs_rq)), cfs_rq);
 	if (sleep) {
 		cfs_rq->blocked_load_avg += se->avg.load_avg_contrib;
 		cfs_rq->utilization_blocked_avg +=
@@ -6113,6 +6119,8 @@ static void update_cpu_capacity(struct sched_domain *sd, int cpu)
 	if (!capacity)
 		capacity = 1;
 
+	trace_sched_cpu_capacity(cpu, capacity, scale_rt_capacity(cpu));
+
 	cpu_rq(cpu)->cpu_capacity = capacity;
 	sdg->sgc->capacity = capacity;
 }
@@ -6453,6 +6461,10 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 
 		update_sg_lb_stats(env, sg, load_idx, local_group, sgs,
 						&overload);
+
+		trace_sched_load_avg_sched_group(sched_group_cpus(sg),
+						 sgs->group_load,
+						 sgs->group_usage);
 
 		if (local_group)
 			goto next_group;
