@@ -120,19 +120,50 @@ int cpuidle_enter_state(struct cpuidle_device *dev, struct cpuidle_driver *drv,
 
 	trace_cpu_idle_rcuidle(index, dev->cpu);
 
+	/*
+	 * Store the idle start time for this cpu, this information
+	 * will be used by cpuidle to measure how long the cpu has
+	 * been idle and by the scheduler to prevent to wake it up too
+	 * early
+	 */
 	target_state->idle_stamp = ktime_to_us(ktime_get());
 
+	/*
+	 * The enter the low level idle routine. This call will block
+	 * until an interrupt occurs meaning it is the end of the idle
+	 * period
+	 */
 	entered_state = target_state->enter(dev, drv, index);
 
+	/*
+	 * Measure as soon as possible the duration of the idle
+	 * period. It MUST be done before re-enabling the interrupt in
+	 * order to prevent to add in the idle time measurement the
+	 * interrupt handling duration
+	 */
 	diff = ktime_to_us(ktime_sub_us(ktime_get(), target_state->idle_stamp));
 
+	/*
+	 * Reset the idle time stamp as the scheduler thinks the cpu is idle
+	 * while it is in the process of waking up
+	 */
 	target_state->idle_stamp = 0;
 
 	trace_cpu_idle_rcuidle(PWR_EVENT_EXIT, dev->cpu);
 
+	/*
+	 * The cpuidle_enter_coupled uses the cpuidle_enter function.
+	 * Don't re-enable the interrupts and let the enter_coupled
+	 * function to wait for all cpus to sync and to enable the
+	 * interrupts again from there
+	 */
 	if (!cpuidle_state_is_coupled(dev, drv, entered_state))
 		local_irq_enable();
 
+	/*
+	 * The idle duration will be casted to an integer, prevent to
+	 * overflow by setting a boundary to INT_MAX
+	 */
 	if (diff > INT_MAX)
 		diff = INT_MAX;
 
