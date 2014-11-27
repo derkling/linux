@@ -626,6 +626,28 @@ TRACE_EVENT(sched_load_avg_cpu,
 	TP_printk("cpu=%d load=%lu utilization=%lu",
 		  __entry->cpu, __entry->load, __entry->utilization)
 );
+
+TRACE_EVENT(sched_cpu_capacity,
+
+	TP_PROTO(int cpu, unsigned long capacity, unsigned long rt_capacity),
+
+	TP_ARGS(cpu, capacity, rt_capacity),
+
+	TP_STRUCT__entry(
+		__field( int,	cpu				)
+		__field( unsigned long,	capacity		)
+		__field( unsigned long,	rt_capacity		)
+	),
+
+	TP_fast_assign(
+		__entry->cpu			= cpu;
+		__entry->capacity		= capacity;
+		__entry->rt_capacity		= rt_capacity;
+	),
+
+	TP_printk("cpu=%d capacity=%lu rt_capacity=%lu",
+		  __entry->cpu, __entry->capacity, __entry->rt_capacity)
+);
 #endif /* _TRACE_SCHED_H */
 
 /* This part must be outside protection */
