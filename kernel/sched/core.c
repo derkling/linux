@@ -1865,7 +1865,9 @@ prepare_task_switch(struct rq *rq, struct task_struct *prev,
 	trace_sched_switch(prev, next);
 	sched_info_switch(prev, next);
 
+	/* Trace last execution latency and cpu time */
 	if (prev != idle_task(smp_processor_id())) {
+		trace_sched_process_latency(prev);
 		sched_info_latency_track(prev);
 	}
 

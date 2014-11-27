@@ -306,6 +306,29 @@ TRACE_EVENT(sched_process_exec,
 );
 
 /*
+ * Tracepoint for latency:
+ */
+TRACE_EVENT(sched_process_latency,
+
+	TP_PROTO(struct task_struct *p),
+
+	TP_ARGS(p),
+
+	TP_STRUCT__entry(
+		__field( u64,	delay	)
+		__field( u64,	slice	)
+	),
+
+	TP_fast_assign(
+		__entry->delay	= p->sched_info.exec_delay;
+		__entry->slice	= p->sched_info.exec_slice;
+	),
+
+	TP_printk("delay=%llu slice=%llu",
+		  __entry->delay, __entry->slice)
+);
+
+/*
  * XXX the below sched_stat tracepoints only apply to SCHED_OTHER/BATCH/IDLE
  *     adding sched_stat support to SCHED_FIFO/RR would be welcome.
  */
