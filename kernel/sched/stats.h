@@ -88,6 +88,12 @@ static void sched_info_arrive(struct task_struct *t)
 		wait_end = cpu_clock(wkpu_cpu);
 	barrier();
 	t->sched_info.exec_delay = wait_end - t->sched_info.wait_start;
+	trace_printk("arrived: comm=%s pid=%d ws %llu we %llu d %llu es %llu",
+			t->comm, t->pid,
+			t->sched_info.wait_start,
+			wait_end,
+			t->sched_info.exec_delay,
+			t->sched_info.exec_start);
 
 	if (t->sched_info.last_queued)
 		delta = now - t->sched_info.last_queued;
@@ -106,9 +112,15 @@ static void sched_info_arrive(struct task_struct *t)
  */
 static inline void sched_info_queued(struct task_struct *t)
 {
+	if (t->sched_info.wait_start && t->state == TASK_RUNNING)
+		trace_printk("queued (M): comm=%s pid=%d ws %llu",
+				t->comm, t->pid, t->sched_info.wait_start);
+
 	if (!t->sched_info.wait_start) {
 		t->sched_info.wait_start = local_clock();
 		t->sched_info.wkup_cpu = smp_processor_id();
+		trace_printk("queued (W): comm=%s pid=%d ws %llu",
+				t->comm, t->pid, t->sched_info.wait_start);
 	}
 
 	if (unlikely(sched_info_on()))
@@ -130,6 +142,10 @@ static inline void sched_info_depart(struct task_struct *t)
 	u64 exec_end = local_clock();
 
 	t->sched_info.exec_slice = exec_end - t->sched_info.exec_start;
+	trace_printk("departed: comm=%s pid=%d nl %llu s %llu (%ld)",
+			t->comm, t->pid, exec_end,
+			t->sched_info.exec_slice,
+			t->state);
 	/* Reset {wait|exec}_start for next run to be accounted */
 	t->sched_info.wait_start = 0;
 	t->sched_info.exec_start = 0;
@@ -141,6 +157,8 @@ static inline void sched_info_depart(struct task_struct *t)
 	else if (t->on_rq) {
 		t->sched_info.wait_start = exec_end;
 		t->sched_info.wkup_cpu = smp_processor_id();
+		trace_printk("queued (C): comm=%s pid=%d ws %llu",
+				t->comm, t->pid, t->sched_info.wait_start);
 	}
 }
 
