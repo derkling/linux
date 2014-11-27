@@ -80,6 +80,14 @@ static inline void sched_info_dequeued(struct task_struct *t)
 static void sched_info_arrive(struct task_struct *t)
 {
 	unsigned long long now = task_rq(t)->clock, delta = 0;
+	int wkpu_cpu = t->sched_info.wkup_cpu;
+	u64 wait_end = local_clock();
+
+	t->sched_info.exec_start = wait_end;
+	if (wkpu_cpu != smp_processor_id())
+		wait_end = cpu_clock(wkpu_cpu);
+	barrier();
+	t->sched_info.exec_delay = wait_end - t->sched_info.wait_start;
 
 	if (t->sched_info.last_queued)
 		delta = now - t->sched_info.last_queued;
@@ -98,6 +106,11 @@ static void sched_info_arrive(struct task_struct *t)
  */
 static inline void sched_info_queued(struct task_struct *t)
 {
+	if (!t->sched_info.wait_start) {
+		t->sched_info.wait_start = local_clock();
+		t->sched_info.wkup_cpu = smp_processor_id();
+	}
+
 	if (unlikely(sched_info_on()))
 		if (!t->sched_info.last_queued)
 			t->sched_info.last_queued = task_rq(t)->clock;
@@ -114,11 +127,21 @@ static inline void sched_info_depart(struct task_struct *t)
 {
 	unsigned long long delta = task_rq(t)->clock -
 					t->sched_info.last_arrival;
+	u64 exec_end = local_clock();
+
+	t->sched_info.exec_slice = exec_end - t->sched_info.exec_start;
+	/* Reset {wait|exec}_start for next run to be accounted */
+	t->sched_info.wait_start = 0;
+	t->sched_info.exec_start = 0;
 
 	rq_sched_info_depart(task_rq(t), delta);
 
 	if (t->state == TASK_RUNNING)
 		sched_info_queued(t);
+	else if (t->on_rq) {
+		t->sched_info.wait_start = exec_end;
+		t->sched_info.wkup_cpu = smp_processor_id();
+	}
 }
 
 /*
@@ -148,11 +171,29 @@ sched_info_switch(struct task_struct *prev, struct task_struct *next)
 	if (unlikely(sched_info_on()))
 		__sched_info_switch(prev, next);
 }
+
+/*
+ * Called each time a task wakes-up to reset delay and slice counters for its
+ * next execution.
+ */
+static inline void
+__sched_info_latency_track(struct task_struct *prev)
+{
+	prev->sched_info.exec_delay = 0;
+	prev->sched_info.exec_slice = 0;
+}
+static inline void
+sched_info_latency_track(struct task_struct *prev)
+{
+	if (unlikely(sched_info_on()))
+		__sched_info_latency_track(prev);
+}
 #else
 #define sched_info_queued(t)			do { } while (0)
 #define sched_info_reset_dequeued(t)	do { } while (0)
 #define sched_info_dequeued(t)			do { } while (0)
 #define sched_info_switch(t, next)		do { } while (0)
+#define sched_info_latency_track(t)		do { } while (0)
 #endif /* CONFIG_SCHEDSTATS || CONFIG_TASK_DELAY_ACCT */
 
 /*
