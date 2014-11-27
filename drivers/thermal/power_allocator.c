@@ -218,7 +218,7 @@ static int allocate_power(struct thermal_zone_device *tz,
 
 	num_actors = 0;
 	list_for_each_entry(instance, &tz->thermal_instances, tz_node)
-		if ((instance->trip == TRIP_MAX_DESIRED_TEMPERATURE) &&
+		if ((instance->trip < 3) &&
 		    cdev_is_power_actor(instance->cdev))
 			num_actors++;
 
@@ -250,7 +250,7 @@ static int allocate_power(struct thermal_zone_device *tz,
 	list_for_each_entry(instance, &tz->thermal_instances, tz_node) {
 		struct thermal_cooling_device *cdev = instance->cdev;
 
-		if (instance->trip != TRIP_MAX_DESIRED_TEMPERATURE)
+		if (instance->trip >= 3)
 			continue;
 
 		if (!cdev_is_power_actor(cdev))
@@ -279,7 +279,7 @@ static int allocate_power(struct thermal_zone_device *tz,
 	total_granted_power = 0;
 	i = 0;
 	list_for_each_entry(instance, &tz->thermal_instances, tz_node) {
-		if (instance->trip != TRIP_MAX_DESIRED_TEMPERATURE)
+		if (instance->trip >= 3)
 			continue;
 
 		if (!cdev_is_power_actor(instance->cdev))
@@ -345,7 +345,7 @@ static void allow_maximum_power(struct thermal_zone_device *tz)
 	struct thermal_instance *instance;
 
 	list_for_each_entry(instance, &tz->thermal_instances, tz_node) {
-		if ((instance->trip != TRIP_MAX_DESIRED_TEMPERATURE) ||
+		if ((instance->trip >= 3) ||
 		    (!cdev_is_power_actor(instance->cdev)))
 			continue;
 
