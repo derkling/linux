@@ -4450,21 +4450,35 @@ find_idlest_cpu(struct sched_group *group, struct task_struct *p, int this_cpu)
 		if (idle_cpu(i)) {
 			struct rq *rq = cpu_rq(i);
 			struct cpuidle_state *idle = idle_get_state(rq);
-			if (idle && idle->exit_latency < min_exit_latency) {
+
+			if (idle) {
+				if (idle->exit_latency < min_exit_latency) {
+					/*
+					 * We give priority to a CPU
+					 * whose idle state has the
+					 * smallest exit latency
+					 * irrespective of any idle
+					 * timestamp.
+					 */
+					min_exit_latency = idle->exit_latency;
+					latest_idle_timestamp = idle->idle_stamp;
+					shallowest_idle_cpu = i;
+				} else if (idle->exit_latency == min_exit_latency &&
+					   idle->idle_stamp > latest_idle_timestamp) {
+					/*
+					 * If the CPU is in the same
+					 * idle state, choose the more
+					 * recent one as it might have
+					 * a warmer cache
+					 */
+					latest_idle_timestamp = idle->idle_stamp;
+					shallowest_idle_cpu = i;
+				}
+			} else if (rq->idle_stamp > latest_idle_timestamp) {
 				/*
-				 * We give priority to a CPU whose idle state
-				 * has the smallest exit latency irrespective
-				 * of any idle timestamp.
-				 */
-				min_exit_latency = idle->exit_latency;
-				latest_idle_timestamp = rq->idle_stamp;
-				shallowest_idle_cpu = i;
-			} else if ((!idle || idle->exit_latency == min_exit_latency) &&
-				   rq->idle_stamp > latest_idle_timestamp) {
-				/*
-				 * If equal or no active idle state, then
-				 * the most recently idled CPU might have
-				 * a warmer cache.
+				 * If no active idle state, then the
+				 * most recent idled CPU might have a
+				 * warmer cache
 				 */
 				latest_idle_timestamp = rq->idle_stamp;
 				shallowest_idle_cpu = i;
