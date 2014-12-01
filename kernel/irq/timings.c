@@ -12,9 +12,12 @@
 #include <linux/irq.h>
 #include <linux/ktime.h>
 #include <linux/list.h>
+#include <linux/math64.h>
 #include <linux/spinlock.h>
 
 #include "internals.h"
+
+#include <trace/events/irq.h>
 
 
 /*
@@ -261,4 +264,7 @@ void irqt_process(unsigned int irq, struct irqt_stat *s)
 		s->predictable = 0;
 		s->unpredictable++;
 	}
+
+	trace_irq_timings(irq, newX, div_u64(s->n_M2, n*(n-1)), s->n_mean/n,
+			 s->predictable, s->unpredictable);
 }
