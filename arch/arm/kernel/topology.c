@@ -62,9 +62,7 @@ struct cpu_efficiency {
  * Table of relative efficiency of each processors
  * The efficiency value must fit in 20bit and the final
  * cpu_scale value must be in the range
- *   0 < cpu_scale < 3*SCHED_CAPACITY_SCALE/2
- * in order to return at most 1 when DIV_ROUND_CLOSEST
- * is used to compute the capacity of a CPU.
+ *   0 < cpu_scale < SCHED_CAPACITY_SCALE.
  * Processors that are not defined in the table,
  * use the default SCHED_CAPACITY_SCALE value for cpu_scale.
  */
@@ -81,23 +79,16 @@ struct cpu_capacity {
 
 struct cpu_capacity *cpu_capacity;
 
-unsigned long middle_capacity = 1;
+static unsigned long max_cpu_perf;
 
 /*
  * Iterate all CPUs' descriptor in DT and compute the efficiency
- * (as per table_efficiency). Also calculate a middle efficiency
- * as close as possible to  (max{eff_i} - min{eff_i}) / 2
- * This is later used to scale the cpu_capacity field such that an
- * 'average' CPU is of middle capacity. Also see the comments near
- * table_efficiency[] and update_cpu_capacity().
+ * (as per table_efficiency). Calculate the max cpu performance too.
  */
 static void __init parse_dt_topology(void)
 {
 	struct cpu_efficiency *cpu_eff;
 	struct device_node *cn = NULL;
-	unsigned long min_capacity = (unsigned long)(-1);
-	unsigned long max_capacity = 0;
-	unsigned long capacity = 0;
 	int alloc_size, cpu = 0;
 
 	alloc_size = nr_cpu_ids * sizeof(struct cpu_capacity);
@@ -106,6 +97,7 @@ static void __init parse_dt_topology(void)
 	while ((cn = of_find_node_by_type(cn, "cpu"))) {
 		const u32 *rate, *reg;
 		int len;
+		unsigned long cpu_perf;
 
 		if (cpu >= num_possible_cpus())
 			break;
@@ -130,63 +122,48 @@ static void __init parse_dt_topology(void)
 			continue;
 		}
 
-		capacity = ((be32_to_cpup(rate)) >> 20) * cpu_eff->efficiency;
-
-		/* Save min capacity of the system */
-		if (capacity < min_capacity)
-			min_capacity = capacity;
-
-		/* Save max capacity of the system */
-		if (capacity > max_capacity)
-			max_capacity = capacity;
-
-		cpu_capacity[cpu].capacity = capacity;
+		cpu_perf = ((be32_to_cpup(rate)) >> 20) * cpu_eff->efficiency;
+		cpu_capacity[cpu].capacity = cpu_perf;
+		max_cpu_perf = max(max_cpu_perf, cpu_perf);
 		cpu_capacity[cpu++].hwid = be32_to_cpup(reg);
 	}
 
-	if (cpu < num_possible_cpus())
+	if (cpu < num_possible_cpus()) {
 		cpu_capacity[cpu].hwid = (unsigned long)(-1);
-
-	/* If min and max capacities are equals, we bypass the update of the
-	 * cpu_scale because all CPUs have the same capacity. Otherwise, we
-	 * compute a middle_capacity factor that will ensure that the capacity
-	 * of an 'average' CPU of the system will be as close as possible to
-	 * SCHED_CAPACITY_SCALE, which is the default value, but with the
-	 * constraint explained near table_efficiency[].
-	 */
-	if (min_capacity == max_capacity)
-		cpu_capacity[0].hwid = (unsigned long)(-1);
-	else if (4*max_capacity < (3*(max_capacity + min_capacity)))
-		middle_capacity = (min_capacity + max_capacity)
-				>> (SCHED_CAPACITY_SHIFT+1);
-	else
-		middle_capacity = ((max_capacity / 3)
-				>> (SCHED_CAPACITY_SHIFT-1)) + 1;
-
+		max_cpu_perf = 0;
+	}
 }
 
 /*
  * Look for a customed capacity of a CPU in the cpu_capacity table during the
  * boot. The update of all CPUs is in O(n^2) for heteregeneous system but the
- * function returns directly for SMP system.
+ * function returns directly for SMP system or if there is no complete set
+ * of cpu efficiency, clock frequency data for each cpu.
  */
 void update_cpu_capacity(unsigned int cpu, unsigned long hwid)
 {
 	unsigned int idx = 0;
+	unsigned long capacity = cpu_capacity[cpu].capacity;
 
 	/* look for the cpu's hwid in the cpu capacity table */
 	for (idx = 0; idx < num_possible_cpus(); idx++) {
 		if (cpu_capacity[idx].hwid == hwid)
 			break;
 
-		if (cpu_capacity[idx].hwid == -1)
+		if (cpu_capacity[idx].hwid == -1) {
+			cpu_capacity[idx].capacity = 0;
 			return;
+		}
 	}
 
-	if (idx == num_possible_cpus())
+	if (idx == num_possible_cpus() || !max_cpu_perf) {
+		cpu_capacity[idx].capacity = 0;
 		return;
+	}
 
-	set_capacity_scale(cpu, cpu_capacity[idx].capacity / middle_capacity);
+	capacity *= SCHED_CAPACITY_SCALE;
+	capacity /= max_cpu_perf;
+	set_capacity_scale(cpu, capacity);
 
 	printk(KERN_INFO "CPU%u: update cpu_capacity %lu\n",
 		cpu, arch_scale_cpu_capacity(NULL, cpu));
