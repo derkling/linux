@@ -307,6 +307,9 @@ static inline void adjust_jiffies(unsigned long val, struct cpufreq_freqs *ci)
 }
 #endif
 
+void __weak arch_scale_set_curr_freq(int cpu, unsigned long freq) {}
+
+void __weak arch_scale_set_max_freq(int cpu, unsigned long freq) {}
 
 void __cpufreq_notify_transition(struct cpufreq_policy *policy,
 		struct cpufreq_freqs *freqs, unsigned int state)
@@ -346,6 +349,7 @@ void __cpufreq_notify_transition(struct cpufreq_policy *policy,
 		pr_debug("FREQ: %lu - CPU: %lu", (unsigned long)freqs->new,
 			(unsigned long)freqs->cpu);
 		trace_cpu_frequency(freqs->new, freqs->cpu);
+		arch_scale_set_curr_freq(freqs->cpu, freqs->new);
 		srcu_notifier_call_chain(&cpufreq_transition_notifier_list,
 				CPUFREQ_POSTCHANGE, freqs);
 		if (likely(policy) && likely(policy->cpu == freqs->cpu))
@@ -1767,7 +1771,7 @@ EXPORT_SYMBOL(cpufreq_get_policy);
 static int __cpufreq_set_policy(struct cpufreq_policy *data,
 				struct cpufreq_policy *policy)
 {
-	int ret = 0, failed = 1;
+	int ret = 0, failed = 1, cpu;
 
 	pr_debug("setting new policy for CPU %u: %u - %u kHz\n", policy->cpu,
 		policy->min, policy->max);
@@ -1805,6 +1809,9 @@ static int __cpufreq_set_policy(struct cpufreq_policy *data,
 
 	data->min = policy->min;
 	data->max = policy->max;
+
+	for_each_cpu(cpu, policy->cpus)
+		arch_scale_set_max_freq(cpu, policy->max);
 
 	pr_debug("new min and max freqs are %u - %u kHz\n",
 					data->min, data->max);
