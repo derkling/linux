@@ -2517,6 +2517,20 @@ static u32 __compute_runnable_contrib(u64 n)
 	return contrib + runnable_avg_yN_sum[n];
 }
 
+static unsigned long contrib_scale_factor(int cpu)
+{
+	unsigned long scale_factor;
+
+	scale_factor = arch_scale_freq_capacity(NULL, cpu);
+	scale_factor *= arch_scale_cpu_capacity(NULL, cpu);
+	scale_factor >>= SCHED_CAPACITY_SHIFT;
+
+	return scale_factor;
+}
+
+#define scale_contrib(contrib, scale_factor) \
+	((contrib * scale_factor) >> SCHED_CAPACITY_SHIFT)
+
 /*
  * We can represent the historical contribution to runnable average as the
  * coefficients of a geometric series.  To do this we sub-divide our runnable
@@ -2553,8 +2567,7 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 	u64 delta, scaled_delta, periods;
 	u32 runnable_contrib, scaled_runnable_contrib;
 	int delta_w, scaled_delta_w, decayed = 0;
-	unsigned long scale_freq = arch_scale_freq_capacity(NULL, cpu);
-	unsigned long scale_cpu = arch_scale_cpu_capacity(NULL, cpu);
+	unsigned long scale_factor;
 
 	delta = now - sa->last_runnable_update;
 	/*
@@ -2575,6 +2588,8 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 		return 0;
 	sa->last_runnable_update = now;
 
+	scale_factor = contrib_scale_factor(cpu);
+
 	/* delta_w is the amount already accumulated against our next period */
 	delta_w = sa->avg_period % 1024;
 	if (delta + delta_w >= 1024) {
@@ -2587,14 +2602,10 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 		 * period and accrue it.
 		 */
 		delta_w = 1024 - delta_w;
-		scaled_delta_w = (delta_w * scale_freq) >> SCHED_CAPACITY_SHIFT;
+		scaled_delta_w = scale_contrib(delta_w, scale_factor);
 
 		if (runnable)
 			sa->runnable_avg_sum += scaled_delta_w;
-
-		scaled_delta_w *= scale_cpu;
-		scaled_delta_w >>= SCHED_CAPACITY_SHIFT;
-
 		if (running)
 			sa->running_avg_sum += scaled_delta_w;
 		sa->avg_period += delta_w;
@@ -2614,29 +2625,21 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 
 		/* Efficiently calculate \sum (1..n_period) 1024*y^i */
 		runnable_contrib = __compute_runnable_contrib(periods);
-		scaled_runnable_contrib = (runnable_contrib * scale_freq)
-						>> SCHED_CAPACITY_SHIFT;
+		scaled_runnable_contrib =
+			scale_contrib(runnable_contrib, scale_factor);
 
 		if (runnable)
 			sa->runnable_avg_sum += scaled_runnable_contrib;
-
-		scaled_runnable_contrib *= scale_cpu;
-		scaled_runnable_contrib >>= SCHED_CAPACITY_SHIFT;
-
 		if (running)
 			sa->running_avg_sum += scaled_runnable_contrib;
 		sa->avg_period += runnable_contrib;
 	}
 
 	/* Remainder of delta accrued against u_0` */
-	scaled_delta = (delta * scale_freq) >> SCHED_CAPACITY_SHIFT;
+	scaled_delta = scale_contrib(delta, scale_factor);
 
 	if (runnable)
 		sa->runnable_avg_sum += scaled_delta;
-
-	scaled_delta *= scale_cpu;
-	scaled_delta >>= SCHED_CAPACITY_SHIFT;
-
 	if (running)
 		sa->running_avg_sum += scaled_delta;
 	sa->avg_period += delta;
