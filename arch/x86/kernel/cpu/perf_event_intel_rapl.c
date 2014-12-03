@@ -530,7 +530,7 @@ static struct pmu rapl_pmu_class = {
 	.read		= rapl_pmu_event_read,
 };
 
-static void rapl_cpu_exit(int cpu)
+static int rapl_cpu_exit(unsigned int cpu)
 {
 	struct rapl_pmu *pmu = per_cpu(rapl_pmu, cpu);
 	int i, phys_id = topology_physical_package_id(cpu);
@@ -562,19 +562,21 @@ static void rapl_cpu_exit(int cpu)
 
 	/* cancel overflow polling timer for CPU */
 	rapl_stop_hrtimer(pmu);
+	return 0;
 }
 
-static void rapl_cpu_init(int cpu)
+static int rapl_cpu_init(unsigned int cpu)
 {
 	int i, phys_id = topology_physical_package_id(cpu);
 
 	/* check if phys_is is already covered */
 	for_each_cpu(i, &rapl_cpu_mask) {
 		if (phys_id == topology_physical_package_id(i))
-			return;
+			return 0;
 	}
 	/* was not found, so add it */
 	cpumask_set_cpu(cpu, &rapl_cpu_mask);
+	return 0;
 }
 
 static __init void rapl_hsw_server_quirk(void)
@@ -588,7 +590,7 @@ static __init void rapl_hsw_server_quirk(void)
 	rapl_hw_unit[RAPL_IDX_RAM_NRG_STAT] = 16;
 }
 
-static int rapl_cpu_prepare(int cpu)
+static int rapl_cpu_prepare(unsigned int cpu)
 {
 	struct rapl_pmu *pmu = per_cpu(rapl_pmu, cpu);
 	int phys_id = topology_physical_package_id(cpu);
@@ -632,16 +634,17 @@ static int rapl_cpu_prepare(int cpu)
 	return 0;
 }
 
-static void rapl_cpu_kfree(int cpu)
+static int rapl_cpu_kfree(unsigned int cpu)
 {
 	struct rapl_pmu *pmu = per_cpu(rapl_pmu_to_free, cpu);
 
 	kfree(pmu);
 
 	per_cpu(rapl_pmu_to_free, cpu) = NULL;
+	return 0;
 }
 
-static int rapl_cpu_dying(int cpu)
+static int rapl_cpu_dying(unsigned int cpu)
 {
 	struct rapl_pmu *pmu = per_cpu(rapl_pmu, cpu);
 
@@ -653,36 +656,6 @@ static int rapl_cpu_dying(int cpu)
 	per_cpu(rapl_pmu_to_free, cpu) = pmu;
 
 	return 0;
-}
-
-static int rapl_cpu_notifier(struct notifier_block *self,
-			     unsigned long action, void *hcpu)
-{
-	unsigned int cpu = (long)hcpu;
-
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_UP_PREPARE:
-		rapl_cpu_prepare(cpu);
-		break;
-	case CPU_STARTING:
-		rapl_cpu_init(cpu);
-		break;
-	case CPU_UP_CANCELED:
-	case CPU_DYING:
-		rapl_cpu_dying(cpu);
-		break;
-	case CPU_ONLINE:
-	case CPU_DEAD:
-		rapl_cpu_kfree(cpu);
-		break;
-	case CPU_DOWN_PREPARE:
-		rapl_cpu_exit(cpu);
-		break;
-	default:
-		break;
-	}
-
-	return NOTIFY_OK;
 }
 
 static int rapl_check_hw_unit(void)
@@ -707,7 +680,7 @@ static const struct x86_cpu_id rapl_cpu_match[] = {
 static int __init rapl_pmu_init(void)
 {
 	struct rapl_pmu *pmu;
-	int cpu, ret;
+	int ret;
 	struct x86_pmu_quirk *quirk;
 	int i;
 
@@ -756,23 +729,23 @@ static int __init rapl_pmu_init(void)
 	/* run cpu model quirks */
 	for (quirk = rapl_quirks; quirk; quirk = quirk->next)
 		quirk->func();
-	cpu_notifier_register_begin();
-
-	for_each_online_cpu(cpu) {
-		ret = rapl_cpu_prepare(cpu);
-		if (ret)
-			goto out;
-		rapl_cpu_init(cpu);
-	}
-
-	__perf_cpu_notifier(rapl_cpu_notifier);
 
 	ret = perf_pmu_register(&rapl_pmu_class, "power", -1);
 	if (WARN_ON(ret)) {
 		pr_info("RAPL PMU detected, registration failed (%d), RAPL PMU disabled\n", ret);
-		cpu_notifier_register_done();
 		return -1;
 	}
+
+	/*
+	 * Install callbacks. Core will call them for each online
+	 * cpu.
+	 */
+	cpuhp_setup_state(CPUHP_PERF_X86_RAPL_PREP,
+			  rapl_cpu_prepare, rapl_cpu_kfree);
+	cpuhp_setup_state(CPUHP_AP_PERF_X86_RAPL_STARTING,
+			  rapl_cpu_init, rapl_cpu_dying);
+	cpuhp_setup_state(CPUHP_PERF_X86_RAPL_ONLINE,
+			  rapl_cpu_kfree, rapl_cpu_exit);
 
 	pmu = __this_cpu_read(rapl_pmu);
 
@@ -788,9 +761,6 @@ static int __init rapl_pmu_init(void)
 				rapl_domain_names[i], rapl_hw_unit[i]);
 		}
 	}
-out:
-	cpu_notifier_register_done();
-
 	return 0;
 }
 device_initcall(rapl_pmu_init);
