@@ -779,8 +779,9 @@ static int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf)
 		for (j = 0; j < CA_END; j++) {
 			th_zone->cool_dev[count] = cpufreq_cooling_register(&mp_cluster_cpus[count]);
 			if (IS_ERR(th_zone->cool_dev[count])) {
-				pr_err("Failed to register cpufreq cooling device\n");
-				ret = -EINVAL;
+				ret = PTR_ERR(th_zone->cool_dev[count]);
+				if (ret != -EPROBE_DEFER)
+					pr_err("Failed to register cpufreq cooling device\n");
 				th_zone->cool_dev_size = count;
 				goto err_unregister;
 			}
@@ -1839,7 +1840,8 @@ static int exynos5_tmu_cpufreq_notifier(struct notifier_block *notifier, unsigne
 		ret = exynos_register_thermal(&exynos_sensor_conf);
 
 		if (ret) {
-			dev_err(&exynos_tmu_pdev->dev, "Failed to register thermal interface\n");
+			if (ret != -EPROBE_DEFER)
+				dev_err(&exynos_tmu_pdev->dev, "Failed to register thermal interface\n");
 			sysfs_remove_group(&exynos_tmu_pdev->dev.kobj, &exynos_thermal_sensor_attr_group);
 			unregister_pm_notifier(&exynos_pm_nb);
 #ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
