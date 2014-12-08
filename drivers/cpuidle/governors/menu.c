@@ -198,7 +198,7 @@ static u64 div_round64(u64 dividend, u32 divisor)
  * of points is below a threshold. If it is... then use the
  * average of these 8 points as the estimated value.
  */
-static void get_typical_interval(struct menu_device *data)
+static unsigned int get_typical_interval(struct menu_device *data)
 {
 	int i, divisor;
 	unsigned int max, thresh;
@@ -255,11 +255,8 @@ again:
 	if (likely(stddev <= ULONG_MAX)) {
 		stddev = int_sqrt(stddev);
 		if (((avg > stddev * 6) && (divisor * 4 >= INTERVALS * 3))
-							|| stddev <= 20) {
-			if (data->next_timer_us > avg)
-				data->predicted_us = avg;
-			return;
-		}
+							|| stddev <= 20)
+			return avg;
 	}
 
 	/*
@@ -272,7 +269,7 @@ again:
 	 * with sporadic activity with a bunch of short pauses.
 	 */
 	if ((divisor * 4) <= INTERVALS * 3)
-		return;
+		return 0;
 
 	thresh = max - 1;
 	goto again;
@@ -289,6 +286,7 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev,
 	struct menu_device *data = this_cpu_ptr(&menu_devices);
 	int i;
 	unsigned int interactivity_req;
+	unsigned int interactivity_overrride_us;
 	unsigned long nr_iowaiters, cpu_load;
 
 	if (data->needs_update) {
@@ -313,7 +311,10 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev,
 					 data->correction_factor[data->bucket],
 					 RESOLUTION * DECAY);
 
-	get_typical_interval(data);
+	interactivity_overrride_us = get_typical_interval(data);
+	if (interactivity_overrride_us &&
+	    data->next_timer_us > interactivity_overrride_us)
+		data->predicted_us = interactivity_overrride_us;
 
 	/*
 	 * Performance multiplier defines a minimum predicted idle
