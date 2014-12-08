@@ -782,7 +782,7 @@ static int acpi_idle_enter_simple(struct cpuidle_device *dev,
 	if ((cx->type != ACPI_STATE_C1) && (num_online_cpus() > 1) &&
 	    !pr->flags.has_cst &&
 	    !(acpi_gbl_FADT.flags & ACPI_FADT_C2_MP_SUPPORTED))
-		return acpi_idle_enter_c1(dev, drv, CPUIDLE_DRIVER_STATE_START);
+		return acpi_idle_enter_c1(dev, drv, 0);
 #endif
 
 	/*
@@ -830,7 +830,7 @@ static int acpi_idle_enter_bm(struct cpuidle_device *dev,
 	if ((cx->type != ACPI_STATE_C1) && (num_online_cpus() > 1) &&
 	    !pr->flags.has_cst &&
 	    !(acpi_gbl_FADT.flags & ACPI_FADT_C2_MP_SUPPORTED))
-		return acpi_idle_enter_c1(dev, drv, CPUIDLE_DRIVER_STATE_START);
+		return acpi_idle_enter_c1(dev, drv, 0);
 #endif
 
 	if (!cx->bm_sts_skip && acpi_idle_bm_check()) {
@@ -905,7 +905,7 @@ struct cpuidle_driver acpi_idle_driver = {
 static int acpi_processor_setup_cpuidle_cx(struct acpi_processor *pr,
 					   struct cpuidle_device *dev)
 {
-	int i, count = CPUIDLE_DRIVER_STATE_START;
+	int i, count = 0;
 	struct acpi_processor_cx *cx;
 
 	if (!pr->flags.power_setup_done)
@@ -950,7 +950,7 @@ static int acpi_processor_setup_cpuidle_cx(struct acpi_processor *pr,
  */
 static int acpi_processor_setup_cpuidle_states(struct acpi_processor *pr)
 {
-	int i, count = CPUIDLE_DRIVER_STATE_START;
+	int i, count = 0;
 	struct acpi_processor_cx *cx;
 	struct cpuidle_state *state;
 	struct cpuidle_driver *drv = &acpi_idle_driver;
