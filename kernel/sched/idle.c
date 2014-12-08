@@ -42,18 +42,6 @@ static int __init cpu_idle_nopoll_setup(char *__unused)
 __setup("hlt", cpu_idle_nopoll_setup);
 #endif
 
-static inline int cpu_idle_poll(void)
-{
-	rcu_idle_enter();
-	trace_cpu_idle_rcuidle(0, smp_processor_id());
-	local_irq_enable();
-	while (!tif_need_resched())
-		cpu_relax();
-	trace_cpu_idle_rcuidle(PWR_EVENT_EXIT, smp_processor_id());
-	rcu_idle_exit();
-	return 1;
-}
-
 /* Weak implementations for optional arch specific functions */
 void __weak arch_cpu_idle_prepare(void) { }
 void __weak arch_cpu_idle_enter(void) { }
@@ -63,6 +51,23 @@ void __weak arch_cpu_idle(void)
 {
 	cpu_idle_force_poll = 1;
 	local_irq_enable();
+}
+
+void __weak arch_cpu_idle_poll(void)
+{
+	local_irq_enable();
+	while (!tif_need_resched())
+		cpu_relax();
+}
+
+static inline int cpu_idle_poll(void)
+{
+	rcu_idle_enter();
+	trace_cpu_idle_rcuidle(0, smp_processor_id());
+	arch_cpu_idle_poll();
+	trace_cpu_idle_rcuidle(PWR_EVENT_EXIT, smp_processor_id());
+	rcu_idle_exit();
+	return 1;
 }
 
 /**
