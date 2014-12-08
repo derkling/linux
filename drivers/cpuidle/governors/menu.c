@@ -367,7 +367,7 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev,
 		data->needs_update = 0;
 	}
 
-	data->last_state_idx = CPUIDLE_DRIVER_STATE_START;
+	data->last_state_idx = 0;
 
 	/* determine the expected residency time, round up */
 	data->next_timer_us = next_timer_event;
