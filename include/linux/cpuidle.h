@@ -222,10 +222,4 @@ static inline int cpuidle_register_governor(struct cpuidle_governor *gov)
 {return 0;}
 #endif
 
-#ifdef CONFIG_ARCH_HAS_CPU_RELAX
-#define CPUIDLE_DRIVER_STATE_START	1
-#else
-#define CPUIDLE_DRIVER_STATE_START	0
-#endif
-
 #endif /* _LINUX_CPUIDLE_H */
