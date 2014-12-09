@@ -4492,7 +4492,15 @@ find_idlest_cpu(struct sched_group *group, struct task_struct *p, int this_cpu)
 		}
 	}
 
-	return shallowest_idle_cpu != -1 ? shallowest_idle_cpu : least_loaded_cpu;
+	/*
+	 * If there is a non idle cpu different from the current one,
+	 * let's use it if we want to save energy by not waking up an
+	 * idle cpu, otherwise let's use the shallowest idle cpu
+	 */
+	if (sched_feat(ENERGY_IDLE) && least_loaded_cpu != this_cpu)
+		return least_loaded_cpu;
+	else
+		return shallowest_idle_cpu != -1 ? shallowest_idle_cpu : least_loaded_cpu;
 }
 
 /*
