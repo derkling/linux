@@ -61,6 +61,11 @@ SCHED_FEAT(RT_RUNTIME_SHARE, true)
 SCHED_FEAT(LB_MIN, false)
 
 /*
+ * Apply energy saving agressive policy when idle
+ */
+SCHED_FEAT(ENERGY_IDLE, false)
+
+/*
  * Apply the automatic NUMA scheduling policy. Enabled automatically
  * at runtime if running on a NUMA machine. Can be controlled via
  * numa_balancing=
