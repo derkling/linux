@@ -4452,6 +4452,16 @@ find_idlest_cpu(struct sched_group *group, struct task_struct *p, int this_cpu)
 			struct cpuidle_state *idle = idle_get_state(rq);
 
 			if (idle) {
+
+				/*
+				 * When we want to save energy, exclude cpu which did not reach
+				 * the break even point in the idle state
+				 */
+				if (sched_feat(ENERGY_IDLE) &&
+				    ((ktime_to_us(ktime_get()) - idle->idle_stamp <
+				      idle->target_residency)))
+						continue;
+
 				if (idle->exit_latency < min_exit_latency) {
 					/*
 					 * We give priority to a CPU
