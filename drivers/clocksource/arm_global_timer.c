@@ -164,9 +164,9 @@ static irqreturn_t gt_clockevent_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static int gt_clockevents_init(struct clock_event_device *clk)
+static int gt_starting_cpu(unsigned int cpu)
 {
-	int cpu = smp_processor_id();
+	struct clock_event_device *clk = this_cpu_ptr(gt_evt);
 
 	clk->name = "arm_global_timer";
 	clk->features = CLOCK_EVT_FEAT_PERIODIC | CLOCK_EVT_FEAT_ONESHOT |
@@ -224,23 +224,13 @@ static void __init gt_clocksource_init(void)
 	clocksource_register_hz(&gt_clocksource, gt_clk_rate);
 }
 
-static int gt_cpu_notify(struct notifier_block *self, unsigned long action,
-			 void *hcpu)
+static int gt_dying_cpu(unsigned int cpu)
 {
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_STARTING:
-		gt_clockevents_init(this_cpu_ptr(gt_evt));
-		break;
-	case CPU_DYING:
-		gt_clockevents_stop(this_cpu_ptr(gt_evt));
-		break;
-	}
+	struct clock_event_device *clk = this_cpu_ptr(gt_evt);
 
-	return NOTIFY_OK;
+	gt_clockevents_stop(clk);
+	return 0;
 }
-static struct notifier_block gt_cpu_nb = {
-	.notifier_call = gt_cpu_notify,
-};
 
 static void __init global_timer_of_register(struct device_node *np)
 {
@@ -297,15 +287,13 @@ static void __init global_timer_of_register(struct device_node *np)
 		goto out_free;
 	}
 
-	err = register_cpu_notifier(&gt_cpu_nb);
-	if (err) {
-		pr_warn("global-timer: unable to register cpu notifier.\n");
-		goto out_irq;
-	}
-
-	/* Immediately configure the timer on the boot CPU */
+	/* Register and immediately configure the timer on the boot CPU */
 	gt_clocksource_init();
-	gt_clockevents_init(this_cpu_ptr(gt_evt));
+	err = cpuhp_setup_state(CPUHP_AP_ARM_GLOBAL_TIMER_STARTING,
+				gt_starting_cpu, gt_dying_cpu);
+	if (err)
+		/* XXX need to undo gt_clocksource_init() */
+		goto out_irq;
 
 	return;
 
