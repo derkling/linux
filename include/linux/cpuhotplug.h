@@ -46,6 +46,7 @@ enum cpuhp_state {
 	CPUHP_AP_METAG_TIMER_STARTING,		/* P: 0 S: arch_timer_starting_cpu T: NULL C: I */
 	CPUHP_AP_QCOM_TIMER_STARTING,		/* P: 0 S: msm_local_timer_starting_cpu T: msm_local_timer_dying_cpu C: I */
 	CPUHP_AP_ARMADA_TIMER_STARTING,		/* P: 0 S: armada_370_xp_timer_starting_cpu T: armada_370_xp_timer_dying_cpu C: I */
+	CPUHP_AP_MARCO_TIMER_STARTING,		/* P: 0 S: sirfsoc_local_timer_starting_cpu T: sirfsoc_local_timer_dying_cpu C: I */
 	CPUHP_AP_KVM_STARTING,			/* P: 0 S: kvm_starting_cpu T: kvm_dying_cpu C: P */
 	CPUHP_AP_NOTIFY_STARTING,	/* P: CPU_STARTING S: notify_starting T: NULL C: C */
 	CPUHP_AP_NOTIFY_DYING,		/* P: CPU_DYING S: NULL T: notify_dying C: C */

@@ -172,9 +172,9 @@ static struct irqaction sirfsoc_timer1_irq = {
 	.handler = sirfsoc_timer_interrupt,
 };
 
-static int sirfsoc_local_timer_setup(struct clock_event_device *ce)
+static int sirfsoc_local_timer_starting_cpu(unsigned int cpu)
 {
-	int cpu = smp_processor_id();
+	struct clock_event_device *ce = per_cpu_ptr(sirfsoc_clockevent, cpu);
 	struct irqaction *action;
 
 	if (cpu == 0)
@@ -203,50 +203,29 @@ static int sirfsoc_local_timer_setup(struct clock_event_device *ce)
 	return 0;
 }
 
-static void sirfsoc_local_timer_stop(struct clock_event_device *ce)
+static int sirfsoc_local_timer_dying_cpu(unsigned int cpu)
 {
-	int cpu = smp_processor_id();
-
 	sirfsoc_timer_count_disable(1);
 
 	if (cpu == 0)
 		remove_irq(sirfsoc_timer_irq.irq, &sirfsoc_timer_irq);
 	else
 		remove_irq(sirfsoc_timer1_irq.irq, &sirfsoc_timer1_irq);
+	return 0;
 }
-
-static int sirfsoc_cpu_notify(struct notifier_block *self,
-			      unsigned long action, void *hcpu)
-{
-	/*
-	 * Grab cpu pointer in each case to avoid spurious
-	 * preemptible warnings
-	 */
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_STARTING:
-		sirfsoc_local_timer_setup(this_cpu_ptr(sirfsoc_clockevent));
-		break;
-	case CPU_DYING:
-		sirfsoc_local_timer_stop(this_cpu_ptr(sirfsoc_clockevent));
-		break;
-	}
-
-	return NOTIFY_OK;
-}
-
-static struct notifier_block sirfsoc_cpu_nb = {
-	.notifier_call = sirfsoc_cpu_notify,
-};
 
 static void __init sirfsoc_clockevent_init(void)
 {
+	int err;
+
 	sirfsoc_clockevent = alloc_percpu(struct clock_event_device);
 	BUG_ON(!sirfsoc_clockevent);
 
-	BUG_ON(register_cpu_notifier(&sirfsoc_cpu_nb));
-
-	/* Immediately configure the timer on the boot CPU */
-	sirfsoc_local_timer_setup(this_cpu_ptr(sirfsoc_clockevent));
+	/* Register and immediately configure the timer on the boot CPU */
+	err = cpuhp_setup_state(CPUHP_AP_MARCO_TIMER_STARTING,
+				sirfsoc_local_timer_starting_cpu,
+				sirfsoc_local_timer_dying_cpu);
+	BUG_ON(err);
 }
 
 /* initialize the kernel jiffy timer source */
