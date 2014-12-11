@@ -976,23 +976,12 @@ static void cpu_init_hyp_mode(void *dummy)
 	kvm_arm_init_debug();
 }
 
-static int hyp_init_cpu_notify(struct notifier_block *self,
-			       unsigned long action, void *cpu)
+static int hyp_init_starting_cpu(unsigned int cpu)
 {
-	switch (action) {
-	case CPU_STARTING:
-	case CPU_STARTING_FROZEN:
-		if (__hyp_get_vectors() == hyp_default_vectors)
-			cpu_init_hyp_mode(NULL);
-		break;
-	}
-
-	return NOTIFY_OK;
+	if (__hyp_get_vectors() == hyp_default_vectors)
+		cpu_init_hyp_mode(NULL);
+	return 0;
 }
-
-static struct notifier_block hyp_init_cpu_nb = {
-	.notifier_call = hyp_init_cpu_notify,
-};
 
 #ifdef CONFIG_CPU_PM
 static int hyp_init_cpu_pm_notifier(struct notifier_block *self,
@@ -1105,7 +1094,12 @@ static int init_hyp_mode(void)
 	/*
 	 * Execute the init code on each CPU.
 	 */
-	on_each_cpu(cpu_init_hyp_mode, NULL, 1);
+	err = cpuhp_setup_state(CPUHP_AP_ARM_KVM_STARTING,
+				hyp_init_starting_cpu, NULL);
+	if (err) {
+		kvm_err("Cannot setup HYP hotplug callback (%d)\n", err);
+		goto out_free_context;
+	}
 
 	/*
 	 * Init HYP view of VGIC
@@ -1134,6 +1128,7 @@ out_free_context:
 	free_percpu(kvm_host_cpu_state);
 out_free_mappings:
 	free_hyp_pgds();
+	cpuhp_remove_state(CPUHP_AP_ARM_KVM_STARTING);
 out_free_stack_pages:
 	for_each_possible_cpu(cpu)
 		free_page(per_cpu(kvm_arm_hyp_stack_page, cpu));
@@ -1181,26 +1176,16 @@ int kvm_arch_init(void *opaque)
 		}
 	}
 
-	cpu_notifier_register_begin();
-
 	err = init_hyp_mode();
 	if (err)
 		goto out_err;
 
-	err = __register_cpu_notifier(&hyp_init_cpu_nb);
-	if (err) {
-		kvm_err("Cannot register HYP init CPU notifier (%d)\n", err);
-		goto out_err;
-	}
-
-	cpu_notifier_register_done();
 
 	hyp_cpu_pm_init();
 
 	kvm_coproc_table_init();
 	return 0;
 out_err:
-	cpu_notifier_register_done();
 	return err;
 }
 
