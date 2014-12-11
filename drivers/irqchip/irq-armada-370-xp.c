@@ -368,39 +368,21 @@ static void armada_mpic_send_doorbell(const struct cpumask *mask,
 	writel((map << 8) | irq, main_int_base +
 		ARMADA_370_XP_SW_TRIG_INT_OFFS);
 }
+#endif
 
-static int armada_xp_mpic_secondary_init(struct notifier_block *nfb,
-					 unsigned long action, void *hcpu)
+static int armada_xp_mpic_starting_cpu(unsigned int cpu)
 {
-	if (action == CPU_STARTING || action == CPU_STARTING_FROZEN) {
-		armada_xp_mpic_perf_init();
-		armada_xp_mpic_smp_cpu_init();
-	}
-
-	return NOTIFY_OK;
+	armada_xp_mpic_perf_init();
+	armada_xp_mpic_smp_cpu_init();
+	return 0;
 }
 
-static struct notifier_block armada_370_xp_mpic_cpu_notifier = {
-	.notifier_call = armada_xp_mpic_secondary_init,
-	.priority = 100,
-};
-
-static int mpic_cascaded_secondary_init(struct notifier_block *nfb,
-					unsigned long action, void *hcpu)
+static int mpic_cascaded_starting_cpu(unsigned int cpu)
 {
-	if (action == CPU_STARTING || action == CPU_STARTING_FROZEN) {
-		armada_xp_mpic_perf_init();
-		enable_percpu_irq(parent_irq, IRQ_TYPE_NONE);
-	}
-
-	return NOTIFY_OK;
+	armada_xp_mpic_perf_init();
+	enable_percpu_irq(parent_irq, IRQ_TYPE_NONE);
+	return 0;
 }
-
-static struct notifier_block mpic_cascaded_cpu_notifier = {
-	.notifier_call = mpic_cascaded_secondary_init,
-	.priority = 100,
-};
-#endif /* CONFIG_SMP */
 
 static const struct irq_domain_ops armada_370_xp_mpic_irq_ops = {
 	.map = armada_370_xp_mpic_irq_map,
@@ -607,10 +589,6 @@ static int __init armada_370_xp_mpic_of_init(struct device_node *node,
 
 	BUG_ON(!armada_370_xp_mpic_domain);
 
-	/* Setup for the boot CPU */
-	armada_xp_mpic_perf_init();
-	armada_xp_mpic_smp_cpu_init();
-
 	armada_370_xp_msi_init(node, main_int_res.start);
 
 	parent_irq = irq_of_parse_and_map(node, 0);
@@ -619,14 +597,14 @@ static int __init armada_370_xp_mpic_of_init(struct device_node *node,
 		set_handle_irq(armada_370_xp_handle_irq);
 #ifdef CONFIG_SMP
 		set_smp_cross_call(armada_mpic_send_doorbell);
-		register_cpu_notifier(&armada_370_xp_mpic_cpu_notifier);
 #endif
+		cpuhp_setup_state(CPUHP_AP_IRQ_ARMADA_XP_STARTING,
+				  armada_xp_mpic_starting_cpu, NULL);
 	} else {
-#ifdef CONFIG_SMP
-		register_cpu_notifier(&mpic_cascaded_cpu_notifier);
-#endif
 		irq_set_chained_handler(parent_irq,
 					armada_370_xp_mpic_handle_cascade_irq);
+		cpuhp_setup_state(CPUHP_AP_IRQ_ARMADA_CASC_STARTING,
+				  mpic_cascaded_starting_cpu, NULL);
 	}
 
 	register_syscore_ops(&armada_370_xp_mpic_syscore_ops);
