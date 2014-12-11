@@ -48,6 +48,7 @@ enum cpuhp_state {
 	CPUHP_AP_PERF_ARM_STARTING,		/* P: 0 S: arm_perf_starting_cpu T: NULL C: P */
 	CPUHP_AP_ARM_VFP_STARTING,		/* P: 0 S: vfp_starting_cpu T: vfp_dying_cpu C: P */
 	CPUHP_AP_ARM_L2X0_STARTING,		/* P: 0 S: l2c310_starting_cpu T: l2c310_dying_cpu C: I */
+	CPUHP_AP_ARM_TWD_STARTING,		/* P: 0 S: twd_timer_starting_cpu T: twd_timer_dying_cpu C: I */
 	CPUHP_AP_ARM_ARCH_TIMER_STARTING,	/* P: 0 S: arch_timer_starting_cpu T: arch_timer_dying_cpu C: I */
 	CPUHP_AP_ARM_GLOBAL_TIMER_STARTING,	/* P: 0 S: gt_starting_cpu T: gt_dying_cpu C: I */
 	CPUHP_AP_ARM_DUMMY_TIMER_STARTING,	/* P: 0 S: dummy_timer_starting_cpu T: NULL C: I */
