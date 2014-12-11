@@ -93,29 +93,21 @@ static struct syscore_ops ledtrig_cpu_syscore_ops = {
 	.resume		= ledtrig_cpu_syscore_resume,
 };
 
-static int ledtrig_cpu_notify(struct notifier_block *self,
-					   unsigned long action, void *hcpu)
+static int ledtrig_starting_cpu(unsigned int cpu)
 {
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_STARTING:
-		ledtrig_cpu(CPU_LED_START);
-		break;
-	case CPU_DYING:
-		ledtrig_cpu(CPU_LED_STOP);
-		break;
-	}
-
-	return NOTIFY_OK;
+	ledtrig_cpu(CPU_LED_START);
+	return 0;
 }
 
-
-static struct notifier_block ledtrig_cpu_nb = {
-	.notifier_call = ledtrig_cpu_notify,
-};
+static int ledtrig_dying_cpu(unsigned int cpu)
+{
+	ledtrig_cpu(CPU_LED_STOP);
+	return 0;
+}
 
 static int __init ledtrig_cpu_init(void)
 {
-	int cpu;
+	int cpu, err;
 
 	/* Supports up to 9999 cpu cores */
 	BUILD_BUG_ON(CONFIG_NR_CPUS > 9999);
@@ -134,7 +126,10 @@ static int __init ledtrig_cpu_init(void)
 	}
 
 	register_syscore_ops(&ledtrig_cpu_syscore_ops);
-	register_cpu_notifier(&ledtrig_cpu_nb);
+	err = cpuhp_setup_state(CPUHP_AP_LEDTRIG_STARTING,
+				ledtrig_starting_cpu, ledtrig_dying_cpu);
+	if (err)
+		return err;
 
 	pr_info("ledtrig-cpu: registered to indicate activity on CPUs\n");
 
@@ -146,7 +141,7 @@ static void __exit ledtrig_cpu_exit(void)
 {
 	int cpu;
 
-	unregister_cpu_notifier(&ledtrig_cpu_nb);
+	cpuhp_remove_state(CPUHP_AP_LEDTRIG_STARTING);
 
 	for_each_possible_cpu(cpu) {
 		struct led_trigger_cpu *trig = &per_cpu(cpu_trig, cpu);
