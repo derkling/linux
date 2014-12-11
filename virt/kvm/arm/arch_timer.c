@@ -354,26 +354,17 @@ u64 kvm_arm_timer_get_reg(struct kvm_vcpu *vcpu, u64 regid)
 	return (u64)-1;
 }
 
-static int kvm_timer_cpu_notify(struct notifier_block *self,
-				unsigned long action, void *cpu)
+static int kvm_timer_starting_cpu(unsigned int cpu)
 {
-	switch (action) {
-	case CPU_STARTING:
-	case CPU_STARTING_FROZEN:
-		kvm_timer_init_interrupt(NULL);
-		break;
-	case CPU_DYING:
-	case CPU_DYING_FROZEN:
-		disable_percpu_irq(host_vtimer_irq);
-		break;
-	}
-
-	return NOTIFY_OK;
+	kvm_timer_init_interrupt(NULL);
+	return 0;
 }
 
-static struct notifier_block kvm_timer_cpu_nb = {
-	.notifier_call = kvm_timer_cpu_notify,
-};
+static int kvm_timer_dying_cpu(unsigned int cpu)
+{
+	disable_percpu_irq(host_vtimer_irq);
+	return 0;
+}
 
 static const struct of_device_id arch_timer_of_match[] = {
 	{ .compatible	= "arm,armv7-timer",	},
@@ -414,12 +405,6 @@ int kvm_timer_hyp_init(void)
 
 	host_vtimer_irq = ppi;
 
-	err = __register_cpu_notifier(&kvm_timer_cpu_nb);
-	if (err) {
-		kvm_err("Cannot register timer CPU notifier\n");
-		goto out_free;
-	}
-
 	wqueue = create_singlethread_workqueue("kvm_arch_timer");
 	if (!wqueue) {
 		err = -ENOMEM;
@@ -427,9 +412,17 @@ int kvm_timer_hyp_init(void)
 	}
 
 	kvm_info("%s IRQ%d\n", np->name, ppi);
-	on_each_cpu(kvm_timer_init_interrupt, NULL, 1);
 
+	err = cpuhp_setup_state(CPUHP_AP_KVM_ARM_TIMER_STARTING,
+				kvm_timer_starting_cpu, kvm_timer_dying_cpu);
+	if (err) {
+		kvm_err("arch_timer: Cannot setup cpu hotplug callback\n");
+		goto out_destroy_wq;
+	}
 	goto out;
+
+out_destroy_wq:
+	destroy_workqueue(wqueue);
 out_free:
 	free_percpu_irq(ppi, kvm_get_running_vcpus());
 out:

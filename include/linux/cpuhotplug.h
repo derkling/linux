@@ -57,6 +57,7 @@ enum cpuhp_state {
 	CPUHP_AP_MIPS_GIC_TIMER_STARTING,	/* P: 0 S: gic_starting_cpu T: gic_dying_cpu C: I */
 	CPUHP_AP_KVM_STARTING,			/* P: 0 S: kvm_starting_cpu T: kvm_dying_cpu C: P */
 	CPUHP_AP_KVM_ARM_VGIC_STARTING,		/* P: 0 S: vgic_starting_cpu T: vgic_dying_cpu C: I */
+	CPUHP_AP_KVM_ARM_TIMER_STARTING,	/* P: 0 S: kvm_timer_starting_cpu T: kvm_timer_dying_cpu C: I */
 	CPUHP_AP_LEDTRIG_STARTING,		/* P: 0 S: ledtrig_starting_cpu T: ledtrig_dying_cpu C: I */
 	CPUHP_AP_NOTIFY_STARTING,	/* P: CPU_STARTING S: notify_starting T: NULL C: C */
 	CPUHP_AP_NOTIFY_DYING,		/* P: CPU_DYING S: NULL T: notify_dying C: C */
