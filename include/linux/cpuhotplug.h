@@ -44,6 +44,7 @@ enum cpuhp_state {
 	CPUHP_AP_PERF_X86_AMD_IBS_STARTING,	/* P: 20 S: x86_pmu_amd_ibs_starting_cpu T: x86_pmu_amd_ibs_dying_cpu C: I */
 	CPUHP_AP_PERF_X86_STARTING,		/* P: 20 S: x86_pmu_starting_cpu T: x86_pmu_dying_cpu C: I */
 	CPUHP_AP_PERF_XTENSA_STARTING,		/* P: 20 S: xtensa_pmu_setup T: NULL C: I */
+	CPUHP_AP_PERF_METAG_STARTING,		/* P: 0 S: metag_pmu_starting_cpu T: NULL C: I */
 	CPUHP_AP_PERF_ARM_STARTING,		/* P: 0 S: arm_perf_starting_cpu T: NULL C: P */
 	CPUHP_AP_ARM_VFP_STARTING,		/* P: 0 S: vfp_starting_cpu T: vfp_dying_cpu C: P */
 	CPUHP_AP_ARM_ARCH_TIMER_STARTING,	/* P: 0 S: arch_timer_starting_cpu T: arch_timer_dying_cpu C: I */
