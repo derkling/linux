@@ -6144,6 +6144,14 @@ static unsigned long task_h_load(struct task_struct *p)
 #else
 static inline void update_blocked_averages(int cpu)
 {
+	struct rq *rq = cpu_rq(cpu);
+	unsigned long flags;
+
+	raw_spin_lock_irqsave(&rq->lock, flags);
+	update_rq_clock(rq);
+	update_rq_runnable_avg(rq, rq->nr_running);
+	update_cfs_rq_blocked_load(&rq->cfs, 1);
+	raw_spin_unlock_irqrestore(&rq->lock, flags);
 }
 
 static unsigned long task_h_load(struct task_struct *p)
@@ -7483,6 +7491,9 @@ more_balance:
 	goto out;
 
 out_balanced:
+	/* We were unbalanced, so reset the balancing interval */
+	sd->balance_interval = sd->min_interval;
+
 	/*
 	 * We reach balance although we may have faced some affinity
 	 * constraints. Clear the imbalance flag if it was set.
@@ -8077,6 +8088,8 @@ static inline bool nohz_kick_needed(struct rq *rq)
 
 	if (time_before(now, nohz.next_balance))
 		return false;
+
+	return true;
 
 	if (rq->nr_running >= 2)
 		return true;
