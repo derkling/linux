@@ -367,6 +367,7 @@ struct tracer {
 						u32 mask, int set);
 	struct tracer		*next;
 	struct tracer_flags	*flags;
+	int			ref;
 	bool			print_max;
 	bool			enabled;
 #ifdef CONFIG_TRACER_MAX_TRACE
