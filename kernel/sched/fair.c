@@ -251,8 +251,10 @@ void update_packing_domain(int cpu)
 
 	if (sd) {
 		pcpu = cpumask_first(sched_group_cpus(sd->groups));
-		if (pcpu != cpu)
+		if (pcpu != cpu) {
+			id = per_cpu(sd_pack_buddy, pcpu).my_buddy;
 			goto end;
+		}
 	}
 
 	while (sd && (sd->flags & SD_LOAD_BALANCE)
@@ -7567,7 +7569,7 @@ more_balance:
 	goto out;
 
 out_balanced:
-	/* We were unbalanced, so reset the balancing interval */
+	/* We were balanced, so reset the balancing interval */
 	sd->balance_interval = sd->min_interval;
 
 	/*
