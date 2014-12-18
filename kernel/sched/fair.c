@@ -4583,6 +4583,17 @@ static long effective_load(struct task_group *tg, int cpu, long wl, long wg)
 #endif
 
 /*
+ * Returns the current capacity of cpu after applying both
+ * uarch and freq scaling.
+ */
+static unsigned long get_curr_capacity(int cpu)
+{
+	return cpu_rq(cpu)->cpu_capacity_orig *
+	       arch_scale_freq_capacity(NULL, cpu)
+	       >> SCHED_CAPACITY_SHIFT;
+}
+
+/*
  * get_cpu_usage returns the amount of capacity of a CPU that is used by CFS
  * tasks. The unit of the return value must capacity so we can compare the
  * usage with the capacity of the CPU that is available for CFS task (ie
@@ -4603,9 +4614,10 @@ static int get_cpu_usage(int cpu)
 {
 	unsigned long usage = cpu_rq(cpu)->cfs.utilization_load_avg;
 	unsigned long blocked = cpu_rq(cpu)->cfs.utilization_blocked_avg;
+	unsigned long curr_capacity = get_curr_capacity(cpu);
 
-	if (usage + blocked >= SCHED_LOAD_SCALE)
-		return capacity_orig_of(cpu);
+	if (usage + blocked >= curr_capacity)
+		return curr_capacity;
 
 	return usage + blocked;
 }
@@ -4693,17 +4705,6 @@ static void find_max_util(const struct cpumask *mask, int cpu, int util,
 
 		*max_util_aft = max(*max_util_aft, cpu_util);
 	}
-}
-
-/*
- * Returns the current capacity of cpu after applying both
- * uarch and freq scaling.
- */
-static unsigned long get_curr_capacity(int cpu)
-{
-	return cpu_rq(cpu)->cpu_capacity_orig *
-	       arch_scale_freq_capacity(NULL, cpu)
-	       >> SCHED_CAPACITY_SHIFT;
 }
 
 /*
