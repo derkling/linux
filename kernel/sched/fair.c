@@ -4707,6 +4707,118 @@ static void find_max_util(const struct cpumask *mask, int cpu, int util,
 	}
 }
 
+static inline unsigned long get_norm_cpu_usage(int cpu)
+{
+	unsigned long curr_capacity = get_curr_capacity(cpu);
+
+	return (get_cpu_usage(cpu) << SCHED_CAPACITY_SHIFT)/curr_capacity;
+}
+
+static unsigned get_group_max_usage(struct sched_group *sg)
+{
+	int i;
+	int max_usage = 0;
+
+	for_each_cpu(i, sched_group_cpus(sg))
+		max_usage = max(max_usage, get_cpu_usage(i));
+
+	return max_usage;
+}
+
+static unsigned get_group_max_norm_usage(struct sched_group *sg)
+{
+	int i;
+	unsigned long max_usage = 0;
+
+	for_each_cpu(i, sched_group_cpus(sg))
+		max_usage = max(max_usage, get_norm_cpu_usage(i));
+
+	return max_usage;
+}
+
+static unsigned get_group_norm_usage(struct sched_group *sg)
+{
+	int i;
+	unsigned long usage_sum = 0;
+
+	for_each_cpu(i, sched_group_cpus(sg))
+		usage_sum += get_norm_cpu_usage(i);
+
+	if (usage_sum > SCHED_CAPACITY_SCALE)
+		return SCHED_CAPACITY_SCALE;
+	return usage_sum;
+}
+
+
+/*
+ * sched_group_energy(): Returns absolute energy consumption of cpus belongning
+ * to the sched_group including shared resources shared only be members of the
+ * group. Iterates over all cpus in the hierarchy below the sched_group starting
+ * from the bottom working it's way up before going to the next cpu until all
+ * cpus are covered at all levels. The current implementation is likely to
+ * gather the same usage statistics multiple times. This can probably be done in
+ *  a smarter by more complex way.
+ */
+
+static unsigned int sched_group_energy(struct sched_group *sg_top)
+{
+	struct sched_domain *sd;
+	int cpu, total_energy = 0;
+	struct cpumask visit_cpus;
+	struct sched_group *sg;
+
+	cpumask_copy(&visit_cpus, sched_group_cpus(sg_top));
+
+	while (!cpumask_empty(&visit_cpus)) {
+		struct sched_group *sg_shared_cap = NULL;
+
+		cpu = cpumask_first(&visit_cpus);
+
+		/* Is the group utilization affected by cpus outside this sched_group? */
+		sd = highest_flag_domain(cpu, SD_SHARE_CAP_STATES);
+		if (sd && sd->parent)
+			sg_shared_cap = sd->parent->groups;
+
+		for_each_domain(cpu, sd) {
+			sg = sd->groups;
+
+			/* Has this sched_domain already been visited? */
+			if (sd->child && cpumask_first(sched_group_cpus(sg)) != cpu)
+				break;
+
+			do {
+				struct sched_group *sg_cap_util;
+				unsigned group_util;
+				int sg_busy_energy, sg_idle_energy;
+				int cap_idx;
+
+				if (sg_shared_cap && sg_shared_cap->group_weight >= sg->group_weight)
+					sg_cap_util = sg_shared_cap;
+				else
+					sg_cap_util = sg;
+
+				group_util = get_group_norm_usage(sg);
+				cap_idx = energy_match_cap(get_group_max_usage(sg_cap_util), sg->sge);
+				sg_busy_energy = (group_util * sg->sge->cap_states[cap_idx].power) >> SCHED_CAPACITY_SHIFT;
+				sg_idle_energy = ((SCHED_LOAD_SCALE-group_util) * sg->sge->idle_states[0].power) >> SCHED_CAPACITY_SHIFT;
+
+				total_energy += sg_busy_energy + sg_idle_energy;
+
+				if (!sd->child)
+					cpumask_xor(&visit_cpus, &visit_cpus, sched_group_cpus(sg));
+
+				if (cpumask_equal(sched_group_cpus(sg), sched_group_cpus(sg_top)))
+					goto next_cpu;
+
+			} while (sg = sg->next, sg != sd->groups);
+		}
+next_cpu:
+		continue;
+	}
+
+	return total_energy;
+}
+
 /*
  * Estimate the energy cost delta caused by adding/removing utilization (util)
  * from a specific cpu (cpu).
