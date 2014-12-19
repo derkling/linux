@@ -317,15 +317,17 @@ TRACE_EVENT(sched_process_latency,
 	TP_STRUCT__entry(
 		__field( u64,	delay	)
 		__field( u64,	slice	)
+		__field( u64,	ratio	)
 	),
 
 	TP_fast_assign(
 		__entry->delay	= p->sched_info.exec_delay;
 		__entry->slice	= p->sched_info.exec_slice;
+		__entry->ratio	= p->se.avg.load_avg_ratio;
 	),
 
-	TP_printk("delay=%llu slice=%llu",
-		  __entry->delay, __entry->slice)
+	TP_printk("delay=%llu slice=%llu ratio=%llu",
+		  __entry->delay, __entry->slice, __entry->ratio)
 );
 
 /*
