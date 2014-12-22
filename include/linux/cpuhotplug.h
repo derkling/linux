@@ -46,6 +46,7 @@ enum cpuhp_state {
 	CPUHP_AP_PERF_XTENSA_STARTING,		/* P: 20 S: xtensa_pmu_setup T: NULL C: I */
 	CPUHP_AP_PERF_METAG_STARTING,		/* P: 0 S: metag_pmu_starting_cpu T: NULL C: I */
 	CPUHP_AP_PERF_ARM_STARTING,		/* P: 0 S: arm_perf_starting_cpu T: NULL C: P */
+	CPUHP_AP_MIPS_OP_LOONGSON3_STARTING,	/* P: 0 S: loongson3_starting_cpu T: loongson3_dying_cpu C: P */
 	CPUHP_AP_ARM_VFP_STARTING,		/* P: 0 S: vfp_starting_cpu T: vfp_dying_cpu C: P */
 	CPUHP_AP_ARM_L2X0_STARTING,		/* P: 0 S: l2c310_starting_cpu T: l2c310_dying_cpu C: I */
 	CPUHP_AP_ARM_TWD_STARTING,		/* P: 0 S: twd_timer_starting_cpu T: twd_timer_dying_cpu C: I */
