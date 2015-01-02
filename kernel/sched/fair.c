@@ -6873,6 +6873,17 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 
 	sgs->group_no_capacity = group_is_overloaded(env, sgs);
 	sgs->group_type = group_classify(env, group, sgs);
+
+	struct energy_env eenv = {
+		.sg_top		= group,
+		.usage_delta	= 0,
+		.src_cpu	= -1,
+		.dst_cpu	= -1,
+	};
+
+	sched_group_energy(&eenv);
+
+	trace_printk("usglbs: sge: gf=%d gw=%d ge=%d ud=%d src=%d dst=%d", cpumask_first(sched_group_cpus(eenv.sg_top)), cpumask_weight(sched_group_cpus(eenv.sg_top)),eenv.energy, eenv.usage_delta, eenv.src_cpu, eenv.dst_cpu);
 }
 
 /**
