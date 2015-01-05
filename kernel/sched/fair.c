@@ -178,10 +178,6 @@ void sched_init_granularity(void)
 	update_sysctl();
 }
 
-static unsigned long capacity_orig_of(int cpu);
-static unsigned long capacity_of(int cpu);
-static int get_cpu_usage(int cpu);
-
 #ifdef CONFIG_SCHED_PACKING_TASKS
 struct sd_pack {
 	int  my_buddy; /* cpu on which tasks should be packed */
@@ -2710,6 +2706,8 @@ static u32 __compute_runnable_contrib(u64 n)
 }
 
 unsigned long __weak arch_scale_freq_capacity(struct sched_domain *sd, int cpu);
+void arch_eval_cpu_freq(struct cpumask *cpus);
+void arch_scale_cpu_freq(void);
 
 /*
  * We can represent the historical contribution to runnable average as the
@@ -4478,6 +4476,11 @@ static inline void hrtick_update(struct rq *rq)
 }
 #endif
 
+static inline bool energy_aware(void)
+{
+	return sched_feat(ENERGY_AWARE);
+}
+
 /*
  * The enqueue_task method is called before nr_running is
  * increased. Here we update the fair scheduling stats and
@@ -4488,6 +4491,9 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &p->se;
+	struct cpumask update_cpus;
+
+	cpumask_clear(&update_cpus);
 
 	for_each_sched_entity(se) {
 		if (se->on_rq)
@@ -4517,12 +4523,27 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 		update_cfs_shares(cfs_rq);
 		update_entity_load_avg(se, 1);
+		/* track cpus that need to be re-evaluated */
+		cpumask_set_cpu(cpu_of(rq_of(cfs_rq)), &update_cpus);
 	}
 
+	/* !CONFIG_FAIR_GROUP_SCHED */
 	if (!se) {
 		update_rq_runnable_avg(rq, rq->nr_running);
 		add_nr_running(rq, 1);
+
+		/*
+		 * FIXME for !CONFIG_FAIR_GROUP_SCHED it might be nice to
+		 * typedef update_cpus into an int and skip all of the cpumask
+		 * stuff
+		 */
+		cpumask_set_cpu(cpu_of(rq), &update_cpus);
 	}
+
+	if (energy_aware())
+		if (!cpumask_empty(&update_cpus))
+			arch_eval_cpu_freq(&update_cpus);
+
 	hrtick_update(rq);
 }
 
@@ -4538,6 +4559,9 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &p->se;
 	int task_sleep = flags & DEQUEUE_SLEEP;
+	struct cpumask update_cpus;
+
+	cpumask_clear(&update_cpus);
 
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
@@ -4578,12 +4602,27 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 		update_cfs_shares(cfs_rq);
 		update_entity_load_avg(se, 1);
+		/* track runqueues/cpus that need to be re-evaluated */
+		cpumask_set_cpu(cpu_of(rq_of(cfs_rq)), &update_cpus);
 	}
 
+	/* !CONFIG_FAIR_GROUP_SCHED */
 	if (!se) {
 		sub_nr_running(rq, 1);
 		update_rq_runnable_avg(rq, 1);
+
+		/*
+		 * FIXME for !CONFIG_FAIR_GROUP_SCHED it might be nice to
+		 * typedef update_cpus into an int and skip all of the cpumask
+		 * stuff
+		 */
+		cpumask_set_cpu(cpu_of(rq), &update_cpus);
 	}
+
+	if (energy_aware())
+		if (!cpumask_empty(&update_cpus))
+			arch_eval_cpu_freq(&update_cpus);
+
 	hrtick_update(rq);
 }
 
@@ -4628,12 +4667,12 @@ static unsigned long target_load(int cpu, int type)
 	return max(rq->cpu_load[type-1], total);
 }
 
-static unsigned long capacity_of(int cpu)
+unsigned long capacity_of(int cpu)
 {
 	return cpu_rq(cpu)->cpu_capacity;
 }
 
-static unsigned long capacity_orig_of(int cpu)
+unsigned long capacity_orig_of(int cpu)
 {
 	return cpu_rq(cpu)->cpu_capacity_orig;
 }
@@ -5081,7 +5120,7 @@ done:
  * Without capping the usage, a group could be seen as overloaded (CPU0 usage
  * at 121% + CPU1 usage at 80%) whereas CPU1 has 20% of available capacity/
  */
-static int get_cpu_usage(int cpu)
+int get_cpu_usage(int cpu)
 {
 	unsigned long usage = cpu_rq(cpu)->cfs.utilization_load_avg;
 	unsigned long capacity = capacity_orig_of(cpu);
@@ -6341,6 +6380,16 @@ static unsigned long default_scale_cpu_capacity(struct sched_domain *sd, int cpu
 unsigned long __weak arch_scale_cpu_capacity(struct sched_domain *sd, int cpu)
 {
 	return default_scale_cpu_capacity(sd, cpu);
+}
+
+void __weak arch_eval_cpu_freq(struct cpumask *cpus)
+{
+	return;
+}
+
+void __weak arch_scale_cpu_freq(void)
+{
+	return;
 }
 
 static unsigned long scale_rt_capacity(int cpu)
@@ -8234,6 +8283,9 @@ static void run_rebalance_domains(struct softirq_action *h)
 	 * stopped.
 	 */
 	nohz_idle_balance(this_rq, idle);
+
+	if (energy_aware())
+		arch_scale_cpu_freq();
 }
 
 /*

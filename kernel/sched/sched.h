@@ -332,6 +332,10 @@ struct cfs_bandwidth { };
 
 #endif	/* CONFIG_CGROUP_SCHED */
 
+extern unsigned long capacity_orig_of(int cpu);
+extern unsigned long capacity_of(int cpu);
+extern int get_cpu_usage(int cpu);
+
 /* CFS-related fields in a runqueue */
 struct cfs_rq {
 	struct load_weight load;
