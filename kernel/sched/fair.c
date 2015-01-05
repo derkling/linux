@@ -5132,6 +5132,8 @@ int get_cpu_usage(int cpu)
 
 	usage += cpu_rq(cpu)->cfs.utilization_blocked_avg;
 
+	trace_sched_cpu_usage(cpu, usage);
+
 	if (usage >= SCHED_LOAD_SCALE)
 		return capacity;
 
@@ -8139,6 +8141,7 @@ static void nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle)
 {
 	int this_cpu = this_rq->cpu;
 	struct rq *rq;
+	struct cpumask update_cpus;
 	int balance_cpu;
 
 	if (idle != CPU_IDLE ||
@@ -8169,6 +8172,13 @@ static void nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle)
 			update_idle_cpu_load(rq);
 			raw_spin_unlock_irq(&rq->lock);
 			rebalance_domains(rq, CPU_IDLE);
+
+			cpumask_clear(&update_cpus);
+			cpumask_set_cpu(balance_cpu, &update_cpus);
+
+			if (energy_aware())
+				arch_eval_cpu_freq(&update_cpus);
+
 		}
 
 		if (time_after(this_rq->next_balance, rq->next_balance))

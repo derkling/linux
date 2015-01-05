@@ -13,8 +13,8 @@
 #include "sched.h"
 
 #define THROTTLE_MSEC		50
-#define UP_THRESHOLD		80
-#define DOWN_THRESHOLD		20
+#define UP_THRESHOLD		60
+#define DOWN_THRESHOLD		30
 
 /**
  * em_data - per-policy data used by energy_mode
@@ -201,18 +201,19 @@ void arch_eval_cpu_freq(struct cpumask *update_cpus)
 		 * 	otherwise, stay at the same capacity state
 		 */
 		for_each_cpu(tmp, policy->cpus) {
-			util = get_cpu_usage(cpu);
-			if (util > max_util)
+			util = get_cpu_usage(tmp);
+			if (util > max_util) {
 				max_util = util;
+				cap = capacity_orig_of(tmp);
+			}
 		}
 
-		cap = capacity_of(cpu);
 		if (!cap) {
 			goto bail;
 		}
 
 		index = cpufreq_frequency_table_get_index(policy, policy->cur);
-		if (max_util > em->up_threshold[index]) {
+		if ((max_util * SCHED_CAPACITY_SCALE) > (em->up_threshold[index] * cap)) {
 			/* write em->target_freq with read lock held */
 			atomic_long_set(&em->target_freq, policy->max);
 			/*
@@ -220,7 +221,7 @@ void arch_eval_cpu_freq(struct cpumask *update_cpus)
 			 * hold the write lock?
 			 */
 			atomic_set(&em->need_wake_task, 1);
-		} else if (max_util < em->down_threshold[index]) {
+		} else if ((max_util * SCHED_CAPACITY_SCALE) < (em->down_threshold[index] * cap)) {
 			/* write em->target_freq with read lock held */
 			atomic_long_set(&em->target_freq, policy->cur - 1);
 			/*
