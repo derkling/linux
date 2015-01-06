@@ -4877,6 +4877,54 @@ next_cpu:
 	return total_energy;
 }
 
+static int energy_diff(struct energy_env *eenv)
+{
+	struct sched_domain *sd;
+	struct sched_group *sg;
+	int sd_cpu = -1, energy_before = 0, energy_after = 0;
+
+	struct energy_env eenv_before = {
+		.usage_delta	= 0,
+		.src_cpu	= eenv->src_cpu,
+		.dst_cpu	= eenv->dst_cpu,
+	};
+
+	if (eenv->src_cpu == eenv->dst_cpu)
+		return 0;
+
+	if (eenv->src_cpu != -1)
+		sd_cpu = eenv->src_cpu;
+	else if (eenv->dst_cpu != -1)
+		sd_cpu = eenv->dst_cpu;
+	else
+		return 0; /* Error */
+
+	sd = rcu_dereference(per_cpu(sd_ea, sd_cpu));
+
+	if (!sd)
+		return 0; /* Error */
+
+	sg = sd->groups;
+	do {
+		if (eenv->src_cpu != -1 && cpumask_test_cpu(eenv->src_cpu,
+							sched_group_cpus(sg))) {
+			eenv_before.sg_top = eenv->sg_top = sg;
+			energy_before += sched_group_energy(&eenv_before);
+			energy_after += sched_group_energy(eenv);
+			continue;
+		}
+
+		if (eenv->dst_cpu != -1	&& cpumask_test_cpu(eenv->dst_cpu,
+							sched_group_cpus(sg))) {
+			eenv_before.sg_top = eenv->sg_top = sg;
+			energy_before += sched_group_energy(&eenv_before);
+			energy_after += sched_group_energy(eenv);
+		}
+	} while (sg = sg->next, sg != sd->groups);
+
+	return energy_after-energy_before;
+}
+
 /*
  * Estimate the energy cost delta caused by adding/removing utilization (util)
  * from a specific cpu (cpu).
