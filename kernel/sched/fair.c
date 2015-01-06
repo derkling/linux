@@ -4802,6 +4802,8 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 
 				total_energy += sg_busy_energy + sg_idle_energy;
 
+				trace_printk("sge: gf=%d gw=%d cidx=%d gu=%d be=%d ie=%d", cpumask_first(sched_group_cpus(sg)), cpumask_weight(sched_group_cpus(sg)), cap_idx, group_util, sg_busy_energy, sg_idle_energy);
+
 				if (!sd->child)
 					cpumask_xor(&visit_cpus, &visit_cpus, sched_group_cpus(sg));
 
@@ -5176,10 +5178,13 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 		}
 	} while (sg = sg->next, sg != sd->groups);
 
+	trace_printk("eawc: sg_target: gf=%d gw=%d", cpumask_first(sched_group_cpus(sg_target)), cpumask_weight(sched_group_cpus(sg_target)));
+
 	/* Find cpu with sufficient capacity */
 	for_each_cpu_and(i, tsk_cpus_allowed(p), sched_group_cpus(sg_target)) {
 		int new_usage = get_cpu_usage(i) + task_utilization(p);
 
+		trace_printk("eawc: cpu=%d u=%d c=%lu t=%d nr=%d", i, get_cpu_usage(i), capacity_curr_of(i), task_utilization(p), cpu_rq(i)->nr_running);
 		if (new_usage >	capacity_orig_of(i))
 			continue;
 
@@ -5194,6 +5199,8 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 			target_cpu = i;
 	}
 
+	trace_printk("eawc: pcpu=%d tcpu=%d", task_cpu(p), target_cpu);
+
 	if (target_cpu != task_cpu(p)) {
 		struct energy_env eenv = {
 			.usage_delta	= task_utilization(p),
@@ -5204,6 +5211,8 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 		/* Not enough spare capacity on previous cpu */
 		if (cpu_overutilized(task_cpu(p), sd))
 			return target_cpu;
+
+		trace_printk("eawc: ediff=%d", energy_diff(&eenv));
 
 		if (energy_diff(&eenv) >= 0)
 			return task_cpu(p);
@@ -5259,6 +5268,7 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 		prev_cpu = cpu;
 
 	if (sd_flag & SD_BALANCE_WAKE) {
+		trace_printk("strqf: cpu=%d sis=%d eawc=%d", cpu, select_idle_sibling(p, prev_cpu), energy_aware_wake_cpu(p));
 		if (energy_aware()) {
 			new_cpu = energy_aware_wake_cpu(p);
 			goto unlock;
