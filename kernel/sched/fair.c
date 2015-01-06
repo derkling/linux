@@ -5387,6 +5387,35 @@ done:
 	return target;
 }
 
+static int energy_aware_wake_cpu(struct task_struct *p)
+{
+	struct sched_domain *sd;
+	struct sched_group *sg;
+	int i;
+
+	struct energy_env eenv = {
+		.usage_delta	= p->se.avg.utilization_avg_contrib,
+		.src_cpu	= -1,
+		.dst_cpu	= -1,
+	};
+
+	sd = rcu_dereference(per_cpu(sd_ea, task_cpu(p)));
+
+	if (!sd)
+		return -1;
+
+	for_each_lower_domain(sd) {
+		sg = sd->groups;
+		do {
+			eenv.sg_top = sg;
+			sched_group_energy(&eenv);
+			trace_printk("eawc: sge: gf=%d gw=%d ge=%d ud=%d src=%d dst=%d", cpumask_first(sched_group_cpus(eenv.sg_top)), cpumask_weight(sched_group_cpus(eenv.sg_top)),eenv.energy, eenv.usage_delta, eenv.src_cpu, eenv.dst_cpu);
+		} while (sg = sg->next, sg != sd->groups);
+	}
+
+	return 0;
+}
+
 /*
  * select_task_rq_fair: Select target runqueue for the waking task in domains
  * that have the 'sd_flag' flag set. In practice, this is SD_BALANCE_WAKE,
@@ -5437,6 +5466,7 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 		prev_cpu = cpu;
 
 	if (sd_flag & SD_BALANCE_WAKE) {
+		trace_printk("strqf: cpu=%d energy=%d", cpu, energy_aware_wake_cpu(p));
 		new_cpu = select_idle_sibling(p, prev_cpu);
 		goto unlock;
 	}
