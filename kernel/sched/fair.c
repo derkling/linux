@@ -4861,6 +4861,8 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 
 				total_energy += sg_busy_energy + sg_idle_energy;
 
+				trace_printk("sge: gf=%d gw=%d cidx=%d gu=%d be=%d ie=%d", cpumask_first(sched_group_cpus(sg)), cpumask_weight(sched_group_cpus(sg)), cap_idx, group_util, sg_busy_energy, sg_idle_energy);
+
 				if (!sd->child)
 					cpumask_xor(&visit_cpus, &visit_cpus, sched_group_cpus(sg));
 
@@ -5466,8 +5468,14 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 		prev_cpu = cpu;
 
 	if (sd_flag & SD_BALANCE_WAKE) {
-		trace_printk("strqf: cpu=%d energy=%d", cpu, energy_aware_wake_cpu(p));
+		//trace_printk("strqf: cpu=%d energy=%d", cpu, energy_aware_wake_cpu(p));
 		new_cpu = select_idle_sibling(p, prev_cpu);
+		struct energy_env eenv = {
+			.src_cpu	= prev_cpu,
+			.dst_cpu	= new_cpu,
+			.usage_delta	= p->se.avg.utilization_avg_contrib,
+		};
+		trace_printk("strqf: ediff=%d src=%d dst=%d ud=%d", energy_diff(&eenv), prev_cpu, new_cpu, eenv.usage_delta);
 		goto unlock;
 	}
 
@@ -6928,7 +6936,7 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 
 	sched_group_energy(&eenv);
 
-	trace_printk("usglbs: sge: gf=%d gw=%d ge=%d ud=%d src=%d dst=%d", cpumask_first(sched_group_cpus(eenv.sg_top)), cpumask_weight(sched_group_cpus(eenv.sg_top)),eenv.energy, eenv.usage_delta, eenv.src_cpu, eenv.dst_cpu);
+	//trace_printk("usglbs: sge: gf=%d gw=%d ge=%d ud=%d src=%d dst=%d", cpumask_first(sched_group_cpus(eenv.sg_top)), cpumask_weight(sched_group_cpus(eenv.sg_top)),eenv.energy, eenv.usage_delta, eenv.src_cpu, eenv.dst_cpu);
 }
 
 /**
