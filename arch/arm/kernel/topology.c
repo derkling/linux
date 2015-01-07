@@ -178,7 +178,7 @@ unsigned long arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
 	unsigned long curr = atomic_long_read(&per_cpu(cpu_curr_freq, cpu));
 	unsigned long max = atomic_long_read(&per_cpu(cpu_max_freq, cpu));
 
-	if (!max)
+	if (!curr || !max)
 		return SCHED_CAPACITY_SCALE;
 
 	return (curr * SCHED_CAPACITY_SCALE) / max;
