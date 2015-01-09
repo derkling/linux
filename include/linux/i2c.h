@@ -449,6 +449,40 @@ int i2c_recover_bus(struct i2c_adapter *adap);
 int i2c_generic_gpio_recovery(struct i2c_adapter *adap);
 int i2c_generic_scl_recovery(struct i2c_adapter *adap);
 
+/**
+ * struct i2c_adapter_quirks - describe flaws of an i2c adapter
+ * @flags: see I2C_ADAPTER_QUIRK_* for possible flags
+ * @max_num_msgs: maximum number of messages per transfer
+ * @max_write_len: maximum length of a write message
+ * @max_read_len: maximum length of a read message
+ * @max_comb_write_len: maximum length of a write in a combined message
+ * @max_comb_read_len: maximum length of a read in a combined message
+ *
+ * Note about combined messages: Some I2C controllers can only send one
+ * message per transfer, plus something called combined message or
+ * write-then-read. This is a (usually) small write message followed by
+ * a read message and barely enough to access register based slaves like
+ * EEPROMs. There is a flag to support this mode. It implies max_num_msg = 2
+ * and does the length checks with max_comb_*_len because combined message mode
+ * usually has its own limitations. Read/write flags of the messages are also
+ * checked to be proper. Because of HW implementation, some controllers can
+ * actually do write-then-anything. To support that, write-then-read has been
+ * broken out into write-first and read-second.
+ */
+struct i2c_adapter_quirks {
+	u64 flags;
+	int max_num_msgs;
+	u16 max_write_len;
+	u16 max_read_len;
+	u16 max_comb_write_len;
+	u16 max_comb_read_len;
+};
+
+#define I2C_ADAPTER_QUIRK_COMB_WRITE_FIRST	BIT(0)
+#define I2C_ADAPTER_QUIRK_COMB_READ_SECOND	BIT(1)
+#define I2C_ADAPTER_QUIRK_COMB_WRITE_THEN_READ	(I2C_ADAPTER_QUIRK_COMB_WRITE_FIRST | \
+						I2C_ADAPTER_QUIRK_COMB_READ_SECOND)
+
 /*
  * i2c_adapter is the structure used to identify a physical i2c bus along
  * with the access algorithms necessary to access it.
@@ -474,6 +508,7 @@ struct i2c_adapter {
 	struct list_head userspace_clients;
 
 	struct i2c_bus_recovery_info *bus_recovery_info;
+	const struct i2c_adapter_quirks *quirks;
 };
 #define to_i2c_adapter(d) container_of(d, struct i2c_adapter, dev)
 
