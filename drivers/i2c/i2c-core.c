@@ -1929,6 +1929,56 @@ module_exit(i2c_exit);
  * ----------------------------------------------------
  */
 
+/* Check if val is exceeding the quirk IFF quirk is non 0 */
+#define i2c_quirk_exceeded(val, quirk) ((quirk) && ((val) > (quirk)))
+
+static int i2c_quirk_error(struct i2c_adapter *adap, struct i2c_msg *msg, char *err_msg)
+{
+	dev_err(&adap->dev, "quirk: %s (addr 0x%04x, size %u)\n", err_msg, msg->addr, msg->len);
+	return -EOPNOTSUPP;
+}
+
+static int i2c_check_for_quirks(struct i2c_adapter *adap, struct i2c_msg *msgs, int num)
+{
+	const struct i2c_adapter_quirks *q = adap->quirks;
+	u16 max_read = q->max_read_len, max_write = q->max_write_len;
+	int max_num = q->max_num_msgs, i;
+
+	if (q->flags & I2C_ADAPTER_QUIRK_COMB_WRITE_THEN_READ)
+		max_num = 2;
+
+	if (i2c_quirk_exceeded(num, max_num))
+		return i2c_quirk_error(adap, &msgs[0], "too many messages");
+
+	if (num == 2 && q->flags & I2C_ADAPTER_QUIRK_COMB_WRITE_FIRST) {
+		if (msgs[0].flags & I2C_M_RD)
+			return i2c_quirk_error(adap, &msgs[0], "invalid first write msg");
+
+		max_write = q->max_comb_write_len;
+	}
+
+	if (num == 2 && q->flags & I2C_ADAPTER_QUIRK_COMB_READ_SECOND) {
+		if (!(msgs[1].flags & I2C_M_RD) || msgs[0].addr != msgs[1].addr)
+			return i2c_quirk_error(adap, &msgs[1], "invalid second read msg");
+
+		max_read = q->max_comb_read_len;
+	}
+
+	for (i = 0; i < num; i++) {
+		u16 len = msgs[i].len;
+
+		if (msgs[i].flags & I2C_M_RD) {
+			if (i2c_quirk_exceeded(len, max_read))
+				return i2c_quirk_error(adap, &msgs[i], "msg too long");
+		} else {
+			if (i2c_quirk_exceeded(len, max_write))
+				return i2c_quirk_error(adap, &msgs[i], "msg too long");
+		}
+	}
+
+	return 0;
+}
+
 /**
  * __i2c_transfer - unlocked flavor of i2c_transfer
  * @adap: Handle to I2C bus
@@ -1945,6 +1995,9 @@ int __i2c_transfer(struct i2c_adapter *adap, struct i2c_msg *msgs, int num)
 {
 	unsigned long orig_jiffies;
 	int ret, try;
+
+	if (adap->quirks && i2c_check_for_quirks(adap, msgs, num))
+		return -EOPNOTSUPP;
 
 	/* i2c_trace_msg gets enabled when tracepoint i2c_transfer gets
 	 * enabled.  This is an efficient way of keeping the for-loop from
