@@ -28,6 +28,7 @@ const struct cpumask *cpu_coregroup_mask(int cpu);
 
 static inline void init_cpu_topology(void) { }
 static inline void store_cpu_topology(unsigned int cpuid) { }
+static inline const struct cpumask *cpu_coregroup_mask(int cpu) { return cpu_possible_mask; }
 
 #endif
 
