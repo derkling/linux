@@ -821,4 +821,10 @@ static inline void irq_gc_lock(struct irq_chip_generic *gc) { }
 static inline void irq_gc_unlock(struct irq_chip_generic *gc) { }
 #endif
 
+#ifdef CONFIG_IRQ_TIMINGS
+extern u32 irqt_get_next_prediction(int cpu);
+#else
+static inline u32 irqt_get_next_prediction(int cpu) { return 0; }
+#endif
+
 #endif /* _LINUX_IRQ_H */

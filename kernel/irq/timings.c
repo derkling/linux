@@ -106,6 +106,34 @@ static void irqt_enqueue_prediction(ktime_t now, struct irqt_stat *s)
 	raw_spin_unlock(lock);
 }
 
+/**
+ * irqt_get_next_prediction - get relative time before next predicted IRQ
+ *
+ * @cpu: the CPU number for which a prediction is wanted
+ *
+ * This returns the relative time in microsecs before the next expected IRQ
+ * on given CPU, or zero if no prediction is available.  Those predictions
+ * are not guaranteed to be reliable, and guaranteed to fail from time to
+ * time i.e. when the predicted IRQ simply never comes, etc.
+ */
+u32 irqt_get_next_prediction(int cpu)
+{
+	raw_spinlock_t *lock = &per_cpu(irqt_predictions_lock, cpu);
+	struct list_head *head = &per_cpu(irqt_predictions, cpu);
+	unsigned long flags;
+	ktime_t now;
+	struct irqt_prediction *next;
+	u32 result;
+
+	raw_spin_lock_irqsave(lock, flags);
+	now = ktime_get();
+	irqt_purge(now, head);
+	next = list_first_entry_or_null(head, struct irqt_prediction, node);
+	result = next ? ktime_us_delta(next->time, now) : 0;
+	raw_spin_unlock_irqrestore(lock, flags);
+	return result;
+}
+
 /*
  * irqt_process - update timing interval statistics for the given IRQ
  *
