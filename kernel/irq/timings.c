@@ -11,6 +11,8 @@
 
 #include <linux/irq.h>
 #include <linux/ktime.h>
+#include <linux/list.h>
+#include <linux/spinlock.h>
 
 #include "internals.h"
 
@@ -23,6 +25,13 @@
  */
 #define IRQT_INTERVAL_WINDOW	3
 
+
+struct irqt_prediction {
+	struct list_head node;
+	ktime_t		 time;		/* expected occurrence time */
+	int		 cpu;		/* CPU for which this was queued for */
+};
+
 struct irqt_stat {
 	ktime_t		last_time;	/* previous IRQ occurrence */
 	u64		n_M2;		/* IRQ interval variance (n scaled) */
@@ -32,7 +41,70 @@ struct irqt_stat {
 	unsigned int	w_ptr;		/* current window pointer */
 	u32		predictable;	/* # of IRQs that were predictable */
 	u32		unpredictable;	/* # of IRQs that were not */
+	struct irqt_prediction prediction;
 };
+
+static DEFINE_PER_CPU(struct list_head, irqt_predictions);
+static DEFINE_PER_CPU(raw_spinlock_t, irqt_predictions_lock);
+
+void __init irqt_init(void)
+{
+	int cpu;
+
+	for_each_possible_cpu(cpu) {
+		INIT_LIST_HEAD(&per_cpu(irqt_predictions, cpu));
+		raw_spin_lock_init(&per_cpu(irqt_predictions_lock, cpu));
+	}
+}
+
+/*
+ * Purge past events.
+ * Caller must take care of locking.
+ */
+static void irqt_purge(ktime_t now, struct list_head *head)
+{
+	struct irqt_prediction *entry, *n;
+
+	list_for_each_entry_safe(entry, n, head, node) {
+		if (ktime_after(entry->time, now))
+			break;
+		list_del_init(&entry->node);
+	}
+}
+
+/*
+ * Enqueue the next predicted event for this IRQ on this CPU.
+ * We are in interrupt context with IRQs disabled.
+ */
+static void irqt_enqueue_prediction(ktime_t now, struct irqt_stat *s)
+{
+	int this_cpu = raw_smp_processor_id();
+	int prev_cpu = s->prediction.cpu;
+	struct list_head *head = &per_cpu(irqt_predictions, this_cpu);
+	u32 predicted_interval = s->n_mean / IRQT_INTERVAL_WINDOW;
+	struct irqt_prediction *list_entry, *new_entry;
+	raw_spinlock_t *lock;
+
+	if (unlikely(prev_cpu != this_cpu && prev_cpu != -1)) {
+		lock = &per_cpu(irqt_predictions_lock, prev_cpu);
+		raw_spin_lock(lock);
+		list_del_init(&s->prediction.node);
+		raw_spin_unlock(lock);
+	}
+		
+	lock = &per_cpu(irqt_predictions_lock, this_cpu);
+	raw_spin_lock(lock);
+	irqt_purge(now, head);
+	__list_del_entry(&s->prediction.node);
+	new_entry = &s->prediction;
+	new_entry->time = ktime_add_us(now, predicted_interval);
+	new_entry->cpu = this_cpu;
+	list_for_each_entry(list_entry, head, node)
+		if (ktime_after(new_entry->time, list_entry->time))
+			break;
+	list_add_tail(&new_entry->node, &list_entry->node);
+	raw_spin_unlock(lock);
+}
 
 /*
  * irqt_process - update timing interval statistics for the given IRQ
@@ -152,8 +224,12 @@ void irqt_process(unsigned int irq, struct irqt_stat *s)
 	 * 	n_mean/n * n_mean/n < n_M2/n / (n - 1)  -->
 	 * 	n_mean * n_mean * (n - 1) < n_M2 * n
 	 */
-	if ((u64)s->n_mean * s->n_mean * (n - 1) > s->n_M2 * n)
+	if ((u64)s->n_mean * s->n_mean * (n - 1) > s->n_M2 * n) {
 		s->predictable++;
-	else
+		if (s->predictable >= IRQT_INTERVAL_WINDOW)
+			irqt_enqueue_prediction(now, s);
+	} else {
+		s->predictable = 0;
 		s->unpredictable++;
+	}
 }

@@ -216,6 +216,7 @@ int __init early_irq_init(void)
 	int i, initcnt, node = first_online_node;
 	struct irq_desc *desc;
 
+	irqt_init();
 	init_irq_default_affinity();
 
 	/* Let arch update nr_irqs and return the nr of preallocated irqs */
@@ -254,6 +255,7 @@ int __init early_irq_init(void)
 	int count, i, node = first_online_node;
 	struct irq_desc *desc;
 
+	irqt_init();
 	init_irq_default_affinity();
 
 	printk(KERN_INFO "NR_IRQS:%d\n", NR_IRQS);
