@@ -4585,9 +4585,10 @@ static int get_cpu_usage(int cpu)
 {
 	unsigned long usage = cpu_rq(cpu)->cfs.utilization_load_avg;
 	unsigned long blocked = cpu_rq(cpu)->cfs.utilization_blocked_avg;
+	unsigned long curr_capacity = get_curr_capacity(cpu);
 
-	if (usage + blocked >= SCHED_LOAD_SCALE)
-		return capacity_orig_of(cpu);
+	if (usage + blocked >= curr_capacity)
+		return curr_capacity;
 
 	return usage + blocked;
 }
