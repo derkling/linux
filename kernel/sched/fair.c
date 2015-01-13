@@ -4565,6 +4565,17 @@ static long effective_load(struct task_group *tg, int cpu, long wl, long wg)
 #endif
 
 /*
+ * Returns the current capacity of cpu after applying both
+ * uarch and freq scaling.
+ */
+static unsigned long get_curr_capacity(int cpu)
+{
+	return cpu_rq(cpu)->cpu_capacity_orig *
+	       arch_scale_freq_capacity(NULL, cpu)
+	       >> SCHED_CAPACITY_SHIFT;
+}
+
+/*
  * get_cpu_usage returns the amount of capacity of a CPU that is used by CFS
  * tasks. The unit of the return value must capacity so we can compare the
  * usage with the capacity of the CPU that is available for CFS task (ie
