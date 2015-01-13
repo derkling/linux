@@ -5051,6 +5051,17 @@ static long effective_load(struct task_group *tg, int cpu, long wl, long wg)
 
 #endif
 
+/*
+ * Returns the current capacity of cpu after applying both
+ * cpu and freq scaling.
+ */
+static unsigned long capacity_curr_of(int cpu)
+{
+	return cpu_rq(cpu)->cpu_capacity_orig *
+	       arch_scale_freq_capacity(NULL, cpu)
+	       >> SCHED_CAPACITY_SHIFT;
+}
+
 static void record_wakee(struct task_struct *p)
 {
 	/*
