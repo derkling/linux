@@ -140,7 +140,8 @@ u32 irqt_get_next_prediction(int cpu)
  * @irq: the IRQ number
  * @stat: the corresponding IRQ timing stats record
  *
- * This is assumed to be called in IRQ context with IRQs turned off.
+ * This is assumed to be called in IRQ context with desc->lock held and
+ * IRQs turned off.
  */
 void irqt_process(unsigned int irq, struct irqt_stat *s)
 {

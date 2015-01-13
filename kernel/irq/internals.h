@@ -108,8 +108,15 @@ static inline void unregister_handler_proc(unsigned int irq,
 
 #ifdef CONFIG_IRQ_TIMINGS
 extern void __init irqt_init(void);
+extern void irqt_process(unsigned int irq, struct irqt_stat *s);
+static inline void irqt_event(int irq, struct irq_desc *desc)
+{
+	if (desc->irq_timings)
+		irqt_process(irq, desc->irq_timings);
+}
 #else
 static inline void irqt_init(void) { }
+static inline void irqt_event(int irq, struct irq_desc *desc) { }
 #endif
 
 extern int irq_select_affinity_usr(unsigned int irq, struct cpumask *mask);
@@ -199,6 +206,7 @@ static inline void kstat_incr_irqs_this_cpu(unsigned int irq, struct irq_desc *d
 {
 	__this_cpu_inc(*desc->kstat_irqs);
 	__this_cpu_inc(kstat.irqs_sum);
+	irqt_event(irq, desc);
 }
 
 #ifdef CONFIG_PM_SLEEP
