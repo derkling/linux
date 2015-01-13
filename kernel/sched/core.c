@@ -5719,7 +5719,8 @@ static int sd_degenerate(struct sched_domain *sd)
 			 SD_SHARE_CPUCAPACITY |
 			 SD_ASYM_CPUCAPACITY |
 			 SD_SHARE_PKG_RESOURCES |
-			 SD_SHARE_POWERDOMAIN)) {
+			 SD_SHARE_POWERDOMAIN |
+			 SD_SHARE_CAP_STATES)) {
 		if (sd->groups != sd->groups->next)
 			return 0;
 	}
@@ -5752,7 +5753,8 @@ sd_parent_degenerate(struct sched_domain *sd, struct sched_domain *parent)
 				SD_SHARE_CPUCAPACITY |
 				SD_SHARE_PKG_RESOURCES |
 				SD_PREFER_SIBLING |
-				SD_SHARE_POWERDOMAIN);
+				SD_SHARE_POWERDOMAIN |
+				SD_SHARE_CAP_STATES);
 		if (parent->groups->sge) {
 			parent->flags &= ~SD_LOAD_BALANCE;
 			return 0;
@@ -6439,6 +6441,7 @@ static int sched_domains_curr_level;
  *   SD_NUMA                - describes NUMA topologies
  *   SD_SHARE_POWERDOMAIN   - describes shared power domain
  *   SD_ASYM_CPUCAPACITY    - describes mixed capacity topologies
+ *   SD_SHARE_CAP_STATES    - describes shared capacity states
  *
  * Odd one out, which beside describing the topology has a quirk also
  * prescribes the desired behaviour that goes along with it:
@@ -6451,7 +6454,8 @@ static int sched_domains_curr_level;
 	 SD_NUMA |			\
 	 SD_ASYM_PACKING |		\
 	 SD_ASYM_CPUCAPACITY |		\
-	 SD_SHARE_POWERDOMAIN)
+	 SD_SHARE_POWERDOMAIN |		\
+	 SD_SHARE_CAP_STATES)
 
 static struct sched_domain *
 sd_init(struct sched_domain_topology_level *tl,
