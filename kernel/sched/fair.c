@@ -5073,6 +5073,90 @@ next:
 done:
 	return target;
 }
+
+static unsigned long group_max_capacity(struct sched_group *sg)
+{
+	int max_idx;
+
+	if (!sg->sge)
+		return 0;
+
+	max_idx = sg->sge->nr_cap_states-1;
+
+	return sg->sge->cap_states[max_idx].cap;
+}
+
+static inline unsigned long cpu_max_capacity(int cpu)
+{
+	return cpu_rq(cpu)->cpu_capacity_orig;
+}
+
+static inline unsigned long task_utilization(struct task_struct *p)
+{
+	return p->se.avg.utilization_avg_contrib;
+}
+
+static int cpu_overutilized(int cpu, struct sched_domain *sd)
+{
+	return (cpu_max_capacity(cpu) * 100) <
+				(get_cpu_usage(cpu) * sd->imbalance_pct);
+}
+
+static int energy_aware_wake_cpu(struct task_struct *p)
+{
+	struct sched_domain *sd;
+	struct sched_group *sg, *sg_target;
+	int target_max_cap = SCHED_CAPACITY_SCALE;
+	int target_cpu = task_cpu(p);
+	int i;
+
+	sd = rcu_dereference(per_cpu(sd_ea, task_cpu(p)));
+
+	if (!sd)
+		return -1;
+
+	sg = sd->groups;
+	sg_target = sg;
+	do {
+		int sg_max_capacity = group_max_capacity(sg);
+		if (sg_max_capacity >= task_utilization(p) &&
+				sg_max_capacity <= target_max_cap) {
+			sg_target = sg;
+			target_max_cap = sg_max_capacity;
+		}
+	} while (sg = sg->next, sg != sd->groups);
+
+	for_each_cpu_and(i, tsk_cpus_allowed(p), sched_group_cpus(sg_target)) {
+
+		if (task_utilization(p) > cpu_max_capacity(i))
+			continue;
+
+		if (get_cpu_usage(i) + task_utilization(p) <
+							get_curr_capacity(i)) {
+			target_cpu = i;
+			if (!cpu_rq(i)->nr_running)
+				break;
+		}
+	}
+
+	if (target_cpu != task_cpu(p)) {
+		struct energy_env eenv = {
+			.usage_delta	= task_utilization(p),
+			.src_cpu	= task_cpu(p),
+			.dst_cpu	= target_cpu,
+		};
+
+		/* Not enough spare capacity on previous cpu */
+		if (cpu_overutilized(task_cpu(p), sd))
+			return target_cpu;
+
+		if (energy_diff(&eenv) >= 0)
+			return task_cpu(p);
+	}
+
+	return target_cpu;
+}
+
 /*
  * select_task_rq_fair: Select target runqueue for the waking task in domains
  * that have the 'sd_flag' flag set. In practice, this is SD_BALANCE_WAKE,
@@ -5123,6 +5207,10 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 		prev_cpu = cpu;
 
 	if (sd_flag & SD_BALANCE_WAKE) {
+		if (energy_aware()) {
+			new_cpu = energy_aware_wake_cpu(p);
+			goto unlock;
+		}
 		new_cpu = select_idle_sibling(p, prev_cpu);
 		goto unlock;
 	}
