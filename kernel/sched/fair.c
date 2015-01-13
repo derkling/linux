@@ -4591,13 +4591,13 @@ static unsigned long capacity_curr_of(int cpu)
  * task (ie cpu_capacity).
  * cfs.utilization_load_avg is the sum of running time of runnable tasks on a
  * CPU. It represents the amount of utilization of a CPU in the range
- * [0..SCHED_LOAD_SCALE].  The usage of a CPU can't be higher than the full
+ * [0..capacity_curr]. The usage of a CPU can't be higher than the current
  * capacity of the CPU because it's about the running time on this CPU.
- * Nevertheless, cfs.utilization_load_avg can be higher than SCHED_LOAD_SCALE
+ * Nevertheless, cfs.utilization_load_avg can be higher than capacity_curr
  * because of unfortunate rounding in avg_period and running_load_avg or just
  * after migrating tasks until the average stabilizes with the new running
  * time. So we need to check that the usage stays into the range
- * [0..cpu_capacity_orig] and cap if necessary.
+ * [0..cpu_capacity_curr] and cap if necessary.
  * Without capping the usage, a group could be seen as overloaded (CPU0 usage
  * at 121% + CPU1 usage at 80%) whereas CPU1 has 20% of available capacity
  */
@@ -4605,9 +4605,10 @@ static int get_cpu_usage(int cpu)
 {
 	unsigned long usage = cpu_rq(cpu)->cfs.utilization_load_avg;
 	unsigned long blocked = cpu_rq(cpu)->cfs.utilization_blocked_avg;
+	unsigned long capacity_curr = capacity_curr_of(cpu);
 
-	if (usage + blocked >= SCHED_LOAD_SCALE)
-		return capacity_orig_of(cpu);
+	if (usage + blocked >= capacity_curr)
+		return capacity_curr;
 
 	return usage + blocked;
 }
