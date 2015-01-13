@@ -297,7 +297,8 @@ void store_cpu_topology(unsigned int cpuid)
 
 static inline int cpu_corepower_flags(void)
 {
-	int flags = SD_SHARE_PKG_RESOURCES  | SD_SHARE_POWERDOMAIN;
+	int flags = SD_SHARE_PKG_RESOURCES  | SD_SHARE_POWERDOMAIN | \
+		    SD_SHARE_CAP_STATES;
 
 	return big_little ? flags | SD_BALANCE_WAKE : flags;
 }
