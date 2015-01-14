@@ -4952,7 +4952,7 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 
 	for_each_cpu_and(i, tsk_cpus_allowed(p), sched_group_cpus(sg_target)) {
 
-		if (task_utilization(p) > cpu_max_capacity(i))
+		if (get_cpu_usage(i) + task_utilization(p) > cpu_max_capacity(i))
 			continue;
 
 		if (get_cpu_usage(i) + task_utilization(p) <
@@ -4961,6 +4961,9 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 			if (!cpu_rq(i)->nr_running)
 				break;
 		}
+
+		if (target_cpu == task_cpu(p))
+			target_cpu = i;
 	}
 
 	if (target_cpu != task_cpu(p)) {
