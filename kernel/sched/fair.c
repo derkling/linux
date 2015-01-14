@@ -5134,7 +5134,7 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 
 		trace_printk("eawc: cpu=%d u=%d c=%lu t=%d nr=%d", i, get_cpu_usage(i), get_curr_capacity(i), task_utilization(p), cpu_rq(i)->nr_running);
 
-		if (task_utilization(p) > cpu_max_capacity(i))
+		if (get_cpu_usage(i) + task_utilization(p) > cpu_max_capacity(i))
 			continue;
 
 		if (get_cpu_usage(i) + task_utilization(p) <
@@ -5143,6 +5143,9 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 			if (!cpu_rq(i)->nr_running)
 				break;
 		}
+
+		if (target_cpu == task_cpu(p))
+			target_cpu = i;
 	}
 
 	trace_printk("eawc: pcpu=%d tcpu=%d", task_cpu(p), target_cpu);
