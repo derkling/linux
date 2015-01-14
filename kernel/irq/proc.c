@@ -10,8 +10,10 @@
 #include <linux/gfp.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
+#include <linux/slab.h>
 #include <linux/interrupt.h>
 #include <linux/kernel_stat.h>
+#include <linux/uaccess.h>
 
 #include "internals.h"
 
@@ -266,6 +268,62 @@ static const struct file_operations irq_spurious_proc_fops = {
 	.release	= single_release,
 };
 
+static int irq_timings_proc_show(struct seq_file *m, void *v)
+{
+	struct irq_desc *desc = irq_to_desc((long) m->private);
+
+	seq_printf(m, "%d\n", desc->irq_timings ? 1 : 0);
+
+	return 0;
+}
+
+static int irq_timings_proc_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, irq_timings_proc_show, PDE_DATA(inode));
+}
+
+static ssize_t irq_timings_proc_write(struct file *file,
+		const char __user *buffer, size_t count, loff_t *pos)
+{
+	long enable;
+	int ret;
+	int irq = (int)(long)PDE_DATA(file_inode(file));
+	struct irq_desc *desc = irq_to_desc(irq);
+	char *buf;
+
+	buf = kzalloc(count, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	ret = -EFAULT;
+	if (copy_from_user(buf, buffer, count))
+		goto out;
+
+	ret = kstrtoul(buf, 0, &enable);
+	if (ret < 0)
+		goto out;
+
+ 	if (enable) {
+ 		ret = irqt_register(desc);
+ 	} else {
+ 		unsigned long flags;
+ 		raw_spin_lock_irqsave(&desc->lock, flags);
+ 		irqt_unregister(desc);
+ 		raw_spin_unlock_irqrestore(&desc->lock, flags);
+ 	}
+out:
+	kfree(buf);
+	return ret ? ret : count;
+}
+
+static const struct file_operations irq_timings_proc_fops = {
+	.open = irq_timings_proc_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+	.write = irq_timings_proc_write,
+};
+
 #define MAX_NAMELEN 128
 
 static int name_unique(unsigned int irq, struct irqaction *new_action)
@@ -341,6 +399,11 @@ void register_irq_proc(unsigned int irq, struct irq_desc *desc)
 
 	proc_create_data("spurious", 0444, desc->dir,
 			 &irq_spurious_proc_fops, (void *)(long)irq);
+#ifdef CONFIG_IRQ_TIMINGS
+	/* create /proc/irq/<irq>/timings */
+	proc_create_data("timings", 0644, desc->dir,
+			 &irq_timings_proc_fops, (void *)(long)irq);
+#endif
 }
 
 void unregister_irq_proc(unsigned int irq, struct irq_desc *desc)
@@ -356,7 +419,9 @@ void unregister_irq_proc(unsigned int irq, struct irq_desc *desc)
 	remove_proc_entry("node", desc->dir);
 #endif
 	remove_proc_entry("spurious", desc->dir);
-
+#ifdef CONFIG_IRQ_TIMING
+	remove_proc_entry("timing", desc->dir);
+#endif
 	memset(name, 0, MAX_NAMELEN);
 	sprintf(name, "%u", irq);
 	remove_proc_entry(name, root_irq_dir);
