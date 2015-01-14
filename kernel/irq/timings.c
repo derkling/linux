@@ -13,6 +13,7 @@
 #include <linux/ktime.h>
 #include <linux/list.h>
 #include <linux/math64.h>
+#include <linux/slab.h>
 #include <linux/spinlock.h>
 
 #include "internals.h"
@@ -267,4 +268,71 @@ void irqt_process(unsigned int irq, struct irqt_stat *s)
 
 	trace_irq_timings(irq, newX, div_u64(s->n_M2, n*(n-1)), s->n_mean/n,
 			 s->predictable, s->unpredictable);
+}
+
+/*
+ * Called from __setup_irq() after successful registration of a new action
+ * handler.
+ */
+int irqt_register(struct irq_desc *desc)
+{
+	struct irqt_stat *s;
+	unsigned long flags;
+	int ret;
+
+	if (desc->irq_timings)
+		return 0;
+
+	s = kzalloc(sizeof(*s), GFP_KERNEL);
+	if (!s)
+		return -ENOMEM;
+	INIT_LIST_HEAD(&s->prediction.node);
+	s->prediction.cpu = -1;
+
+	raw_spin_lock_irqsave(&desc->lock, flags);
+	if (desc->irq_timings) {
+		/* someone else raced ahead of us */
+		ret = 0;
+	} else if (!desc->action) {
+		/* unused IRQ? */
+		ret = -ENXIO;
+	} else if (irq_settings_is_per_cpu(desc)) {
+		/* we're not set for per-CPU accounting */
+		pr_warn("IRQ %d: can't do timing stats on per-CPU IRQs\n",
+			desc->action->irq);
+		ret = -ENOSYS;
+	} else {
+		desc->irq_timings = s;
+		s = NULL;
+		ret = 0;
+	}
+	raw_spin_unlock_irqrestore(&desc->lock, flags);
+	if (s)
+		kfree(s);
+	return ret;
+}
+
+/*
+ * Called from __free_irq() when there is no longer any handler attached
+ * to the IRQ descriptor. Must be called with desc->lock held.
+ */
+void irqt_unregister(struct irq_desc *desc)
+{
+	struct irqt_stat *s;
+	int cpu;
+	raw_spinlock_t *lock;
+
+	assert_raw_spin_locked(&desc->lock);
+	if (!desc->irq_timings)
+		return;
+	s = desc->irq_timings;
+	desc->irq_timings = NULL;
+	cpu = s->prediction.cpu;
+	if (cpu != -1) {
+		lock = &per_cpu(irqt_predictions_lock, cpu);
+		raw_spin_lock(lock);
+		__list_del_entry(&s->prediction.node);
+		raw_spin_unlock(lock);
+	}
+	kfree(s);
 }

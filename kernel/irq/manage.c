@@ -1229,6 +1229,9 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 	register_handler_proc(irq, new);
 	free_cpumask_var(mask);
 
+	if (new->flags & IRQF_TIMINGS)
+		irqt_register(desc);
+
 	return 0;
 
 mismatch:
@@ -1326,6 +1329,7 @@ static struct irqaction *__free_irq(unsigned int irq, void *dev_id)
 	if (!desc->action) {
 		irq_shutdown(desc);
 		irq_release_resources(desc);
+		irqt_unregister(desc);
 	}
 
 #ifdef CONFIG_SMP

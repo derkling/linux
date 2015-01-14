@@ -114,9 +114,13 @@ static inline void irqt_event(int irq, struct irq_desc *desc)
 	if (desc->irq_timings)
 		irqt_process(irq, desc->irq_timings);
 }
+extern int irqt_register(struct irq_desc *desc);
+extern void irqt_unregister(struct irq_desc *desc);
 #else
 static inline void irqt_init(void) { }
 static inline void irqt_event(int irq, struct irq_desc *desc) { }
+static inline int irqt_register(struct irq_desc *desc) { return 0; }
+static inline void irqt_unregister(struct irq_desc *desc) { }
 #endif
 
 extern int irq_select_affinity_usr(unsigned int irq, struct cpumask *mask);
