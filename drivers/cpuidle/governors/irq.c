@@ -20,7 +20,7 @@ static int select(struct cpuidle_driver *drv, struct cpuidle_device *dev,
 
 static struct cpuidle_governor irq_governor = {
 	.name   = "irq",
-	.rating = 10,
+	.rating = 30,
 	.select = select,
 	.owner  = THIS_MODULE,
 };
