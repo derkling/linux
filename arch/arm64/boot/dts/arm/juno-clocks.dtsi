@@ -42,3 +42,10 @@
 		clock-frequency = <533000000>;
 		clock-output-names = "faxi_clk";
 	};
+
+	scpi_clk: clk119mhz {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <119000000>;
+		clock-ouput-names = "hdlcd_clk";
+	};
