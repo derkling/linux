@@ -120,14 +120,14 @@ static void irqt_enqueue_prediction(ktime_t now, struct irqt_stat *s)
  * are not guaranteed to be reliable, and guaranteed to fail from time to
  * time i.e. when the predicted IRQ simply never comes, etc.
  */
-u32 irqt_get_next_prediction(int cpu)
+s64 irqt_get_next_prediction(int cpu)
 {
 	raw_spinlock_t *lock = &per_cpu(irqt_predictions_lock, cpu);
 	struct list_head *head = &per_cpu(irqt_predictions, cpu);
 	unsigned long flags;
 	ktime_t now;
 	struct irqt_prediction *next;
-	u32 result;
+	s64 result;
 
 	raw_spin_lock_irqsave(lock, flags);
 	now = ktime_get();
