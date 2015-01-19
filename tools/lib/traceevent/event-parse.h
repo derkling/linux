@@ -245,6 +245,12 @@ struct print_arg_hex {
 	struct print_arg	*size;
 };
 
+struct print_arg_int_array {
+	struct print_arg	*field;
+	struct print_arg	*size;
+	struct print_arg	*el_size;
+};
+
 struct print_arg_dynarray {
 	struct format_field	*field;
 	struct print_arg	*index;
@@ -273,6 +279,7 @@ enum print_arg_type {
 	PRINT_FLAGS,
 	PRINT_SYMBOL,
 	PRINT_HEX,
+	PRINT_INT_ARRAY,
 	PRINT_TYPE,
 	PRINT_STRING,
 	PRINT_BSTRING,
@@ -292,6 +299,7 @@ struct print_arg {
 		struct print_arg_flags		flags;
 		struct print_arg_symbol		symbol;
 		struct print_arg_hex		hex;
+		struct print_arg_int_array	int_array;
 		struct print_arg_func		func;
 		struct print_arg_string		string;
 		struct print_arg_bitmask	bitmask;
