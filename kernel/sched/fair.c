@@ -7003,6 +7003,37 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 	unsigned long busiest_load = 0, busiest_capacity = 1;
 	int i;
 
+	if (env->use_ea) {
+		struct rq *costliest = NULL;
+		unsigned long costliest_usage = 1024, costliest_energy = 1;
+
+		for_each_cpu_and(i, sched_group_cpus(group), env->cpus) {
+			unsigned long usage = get_cpu_usage(i);
+			struct rq *rq = cpu_rq(i);
+			struct sched_domain *sd = rcu_dereference(rq->sd);
+			struct energy_env eenv = {
+				.sg_top = sd->groups,
+				.usage_delta    = 0,
+				.src_cpu        = -1,
+				.dst_cpu        = -1,
+			};
+			unsigned long energy = sched_group_energy(&eenv);
+
+			/*
+			 * We're looking for the minimal cpu efficiency
+			 * min(u_i / e_i), crosswise multiplication leads to
+			 * u_i * e_j < u_j * e_i with j as previous minimum.
+			 */
+			if (usage * costliest_energy < costliest_usage * energy) {
+				costliest_usage = usage;
+				costliest_energy = energy;
+				costliest = rq;
+			}
+		}
+
+		return costliest;
+	}
+
 	for_each_cpu_and(i, sched_group_cpus(group), env->cpus) {
 		unsigned long capacity, wl;
 		enum fbq_type rt;
