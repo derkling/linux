@@ -7218,6 +7218,32 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 	unsigned long busiest_load = 0, busiest_capacity = 1;
 	int i;
 
+	if (sched_ea(env)) {
+		struct rq *costliest = NULL;
+		unsigned long costliest_usage = 0, costliest_energy = 1;
+
+		for_each_cpu_and(i, sched_group_cpus(group), env->cpus) {
+			unsigned long usage = get_cpu_usage(i);
+			struct rq *rq = cpu_rq(i);
+			struct sched_domain *sd = rcu_dereference_sched(rq->sd);
+			struct energy_env eenv = {
+				.sg_top = sd->groups,
+				.usage_delta    = 0,
+				.src_cpu        = -1,
+				.dst_cpu        = -1,
+			};
+			unsigned long energy = sched_group_energy(&eenv);
+
+			if (usage * costliest_energy > costliest_usage * energy) {
+				costliest_usage = usage;
+				costliest_energy = energy;
+				costliest = rq;
+			}
+		}
+
+		return costliest;
+	}
+
 	for_each_cpu_and(i, sched_group_cpus(group), env->cpus) {
 		unsigned long capacity, wl;
 		enum fbq_type rt;
