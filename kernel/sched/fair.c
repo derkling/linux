@@ -6713,6 +6713,16 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 
 		sgs->group_load += load;
 		sgs->group_usage += get_cpu_usage(i);
+
+		if (sched_ea(env)) {
+			unsigned long usage = get_cpu_usage(i);
+			unsigned long curr_capacity = capacity_curr_of(i);
+
+			/* if one cpu is over-utilized, bail out of ea */
+			if (usage >= curr_capacity)
+				env->use_ea = false;
+		}
+
 		sgs->sum_nr_running += rq->cfs.h_nr_running;
 
 		if (rq->nr_running > 1)
