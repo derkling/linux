@@ -6178,12 +6178,14 @@ struct sg_lb_stats {
  */
 struct sd_lb_stats {
 	struct sched_group *busiest;	/* Busiest group in this sd */
+	struct sched_group *costliest;	/* Least efficient group in this sd */
 	struct sched_group *local;	/* Local group in this sd */
 	unsigned long total_load;	/* Total load of all groups in sd */
 	unsigned long total_capacity;	/* Total capacity of all groups in sd */
 	unsigned long avg_load;	/* Average load across all groups in sd */
 
 	struct sg_lb_stats busiest_stat;/* Statistics of the busiest group */
+	struct sg_lb_stats costliest_stat;/* Statistics of the least efficient group */
 	struct sg_lb_stats local_stat;	/* Statistics of the local group */
 };
 
@@ -6204,6 +6206,9 @@ static inline void init_sd_lb_stats(struct sd_lb_stats *sds)
 			.avg_load = 0UL,
 			.sum_nr_running = 0,
 			.group_type = group_other,
+		},
+		.costliest_stat = {
+			.group_eff = ULONG_MAX,
 		},
 	};
 }
@@ -6569,6 +6574,17 @@ static bool update_sd_pick_busiest(struct lb_env *env,
 	return false;
 }
 
+static noinline bool update_sd_pick_costliest(struct sd_lb_stats *sds,
+					      struct sg_lb_stats *sgs)
+{
+	struct sg_lb_stats *costliest = &sds->costliest_stat;
+
+	if (sgs->group_eff < costliest->group_eff)
+		return true;
+
+	return false;
+}
+
 #ifdef CONFIG_NUMA_BALANCING
 static inline enum fbq_type fbq_classify_group(struct sg_lb_stats *sgs)
 {
@@ -6657,6 +6673,11 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 		if (update_sd_pick_busiest(env, sds, sg, sgs)) {
 			sds->busiest = sg;
 			sds->busiest_stat = *sgs;
+		}
+
+		if (env->use_ea && update_sd_pick_costliest(sds, sgs)) {
+			sds->costliest = sg;
+			sds->costliest_stat = *sgs;
 		}
 
 next_group:
