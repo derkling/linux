@@ -6518,6 +6518,10 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 		sgs->sum_weighted_load += weighted_cpuload(i);
 		if (idle_cpu(i))
 			sgs->idle_cpus++;
+
+		/* If cpu is over-utilized, bail out of ea */
+		if (env->use_ea && cpu_overutilized(i, env->sd))
+			env->use_ea = false;
 	}
 
 	/* Adjust by relative CPU capacity of the group */
