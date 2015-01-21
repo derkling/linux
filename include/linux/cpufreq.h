@@ -185,11 +185,33 @@ static inline void disable_cpufreq(void) { }
 #define CPUFREQ_RELATION_H 1  /* highest frequency below or at target */
 #define CPUFREQ_RELATION_C 2  /* closest frequency to target */
 
+#define to_attr(a) container_of(a, struct freq_attr, attr)
+
 struct freq_attr {
 	struct attribute attr;
 	ssize_t (*show)(struct cpufreq_policy *, char *);
 	ssize_t (*store)(struct cpufreq_policy *, const char *, size_t count);
+
+	/*
+	 * We shouldn't take policy->rwlock for governors as that causes ABBA
+	 * deadlocks. i.e. The same lock is taken while accessing value of
+	 * governor files and removing the governor directory completely.
+	 */
+	bool skip_lock;
 };
+
+/* Marks a group of attribute with skip-lock attribute */
+static inline void cpufreq_mark_attr_skip_lock(struct attribute_group *group)
+{
+	struct attribute *attr = *group->attrs;
+	struct freq_attr *fattr;
+
+	while (attr) {
+		fattr = to_attr(attr);
+		fattr->skip_lock = true;
+		attr++;
+	}
+}
 
 #define cpufreq_freq_attr_ro(_name)		\
 static struct freq_attr _name =			\
