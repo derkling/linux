@@ -384,6 +384,9 @@ static int cs_cpufreq_governor_dbs(struct cpufreq_policy *policy,
 
 static int __init cpufreq_gov_dbs_init(void)
 {
+	/* Mark the attribute with skip-lock set */
+	cpufreq_mark_attr_skip_lock(&cs_attr_group_gov_pol);
+
 	return cpufreq_register_governor(&cpufreq_gov_conservative);
 }
 

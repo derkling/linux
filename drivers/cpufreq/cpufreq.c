@@ -845,7 +845,6 @@ static struct attribute *default_attrs[] = {
 };
 
 #define to_policy(k) container_of(k, struct cpufreq_policy, kobj)
-#define to_attr(a) container_of(a, struct freq_attr, attr)
 
 static ssize_t show(struct kobject *kobj, struct attribute *attr, char *buf)
 {
@@ -853,14 +852,16 @@ static ssize_t show(struct kobject *kobj, struct attribute *attr, char *buf)
 	struct freq_attr *fattr = to_attr(attr);
 	ssize_t ret;
 
-	down_read(&policy->rwsem);
+	if (!fattr->skip_lock)
+		down_read(&policy->rwsem);
 
 	if (fattr->show)
 		ret = fattr->show(policy, buf);
 	else
 		ret = -EIO;
 
-	up_read(&policy->rwsem);
+	if (!fattr->skip_lock)
+		up_read(&policy->rwsem);
 
 	return ret;
 }
@@ -877,14 +878,17 @@ static ssize_t store(struct kobject *kobj, struct attribute *attr,
 	if (!cpu_online(policy->cpu))
 		goto unlock;
 
-	down_write(&policy->rwsem);
+	if (!fattr->skip_lock)
+		down_write(&policy->rwsem);
 
 	if (fattr->store)
 		ret = fattr->store(policy, buf, count);
 	else
 		ret = -EIO;
 
-	up_write(&policy->rwsem);
+	if (!fattr->skip_lock)
+		up_write(&policy->rwsem);
+
 unlock:
 	put_online_cpus();
 
