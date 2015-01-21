@@ -1,0 +1,93 @@
+==========================================
+ARM system suspend binding description
+==========================================
+
+==========================================
+1 - Introduction
+==========================================
+
+System Suspend(commonly known as Suspend to RAM) is a method to remove
+power from most parts of the machine aside from the RAM, which is required
+to restore the machine's state. Because of the large power savings, it is
+widely used in mobile systems like laptops, tablets and smartphones.
+
+Usually most mobile systems enter system suspend state aggressively when
+they are idle even for short time(in seconds) while others systems like
+laptops automatically enter this mode when they running on batteries and
+the lid is closed (and/or the user is inactive for some time(in minutes)).
+
+Most of the devices in the system are deactivated. Non-volatile memory
+(like disk drives, flash, memory card), graphics chips and even the CPU
+are usually deactivated. Only the RAM is powered to keep its contents. On
+resume, only those individual devices/CPUs need to be reinitialized and
+work continues relatively fast.
+
+It is highly hardware specific especially on ARM platforms. Hence we need
+device tree binding definition for ARM system suspend state which is the
+subject of this document in order to provide generic solution.
+
+===========================================
+2 - system suspend node
+===========================================
+
+The system suspend node represents the description of the mechanism to
+enter system suspend state and must be defined as follows:
+
+	- compatible
+		Usage: Required
+		Value type: <stringlist>
+		Definition: Must be "arm,system-suspend";
+
+	- entry-method
+		Value type: <stringlist>
+		Usage and definition depend on ARM architecture version.
+			# On ARM v8 64-bit this property is required and must
+			  be one of:
+			   - "arm,psci" (see bindings in [1])
+
+	- status:
+		Usage: Optional
+		Value type: <string>
+		Definition: A standard device tree property [2] that indicates
+			    the operational status of system suspend.
+			    If present, it shall be:
+			    "okay": to indicate it is operational.
+			    "disabled": to indicate that it has been disabled
+			                in firmware so it is not operational.
+			    By default, it's always enabled if not explicitly
+			    disabled.
+
+	In addition to the properties listed above, it may require additional
+	properties specifics to the entry-method defined, please refer to the
+	corresponding entry-method bindings documentation for details.
+	In the below example using "arm,psci" entry method,
+	"arm,psci-suspend-param" is a PSCI specific property.
+
+	The system suspend node's parent node must be the 'cpus' node.
+
+===========================================
+3 - Examples
+===========================================
+
+Example:
+cpus {
+	/* cpu-map, cpu and idle-states nodes */
+	....
+
+	system-suspend {
+		compatible = "arm,system-suspend";
+		entry-method = "arm,psci";
+		arm,psci-suspend-param = <0x1010000>;
+	};
+
+	....
+};
+===========================================
+4 - References
+===========================================
+
+[1] ARM Linux Kernel documentation - PSCI bindings
+    Documentation/devicetree/bindings/arm/psci.txt
+
+[2] ePAPR standard
+    https://www.power.org/documentation/epapr-version-1-1/
