@@ -6144,6 +6144,10 @@ static int detach_tasks(struct lb_env *env)
 			if (e_diff >= 0)
 				goto next;
 
+			trace_printk("sched_eas: sd=%d dst_cpu=%d src_cpu=%d p=%d ld_p=%lu ut_p=%lu e_diff=%d",
+				     env->sd->level, env->dst_cpu, env->src_cpu, p->pid,
+				     task_h_load(p), task_utilization(p), e_diff);
+
 			goto detach;
 		}
 
@@ -6154,6 +6158,10 @@ static int detach_tasks(struct lb_env *env)
 
 		if ((load / 2) > env->imbalance)
 			goto next;
+
+		trace_printk("sched_noeas: sd=%d dst_cpu=%d src_cpu=%d p=%d ld_p=%lu ut_p=%lu",
+			     env->sd->level, env->dst_cpu, env->src_cpu, p->pid,
+			     load, task_utilization(p));
 
 detach:
 		detach_task(p, env);
