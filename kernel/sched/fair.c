@@ -5178,13 +5178,13 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 		}
 	} while (sg = sg->next, sg != sd->groups);
 
-	trace_printk("eawc: sg_target: gf=%d gw=%d", cpumask_first(sched_group_cpus(sg_target)), cpumask_weight(sched_group_cpus(sg_target)));
+	trace_printk("eawc: sg_target: gf=%d gw=%d p=%d", cpumask_first(sched_group_cpus(sg_target)), cpumask_weight(sched_group_cpus(sg_target)), p->pid);
 
 	/* Find cpu with sufficient capacity */
 	for_each_cpu_and(i, tsk_cpus_allowed(p), sched_group_cpus(sg_target)) {
 		int new_usage = get_cpu_usage(i) + task_utilization(p);
 
-		trace_printk("eawc: cpu=%d u=%d c=%lu t=%d nr=%d", i, get_cpu_usage(i), capacity_curr_of(i), task_utilization(p), cpu_rq(i)->nr_running);
+		trace_printk("eawc: cpu=%d u=%d c=%lu t=%lu nr=%d", i, get_cpu_usage(i), capacity_curr_of(i), task_utilization(p), cpu_rq(i)->nr_running);
 		if (new_usage >	capacity_orig_of(i))
 			continue;
 
@@ -7389,6 +7389,8 @@ static int need_active_balance(struct lb_env *env)
 			return 1;
 	}
 
+	trace_printk("nab: cs=%lu cd=%lu nr=%d cos=%d cod=%d", capacity_of(env->src_cpu), capacity_of(env->dst_cpu), env->src_rq->cfs.h_nr_running, cpu_overutilized(env->src_cpu, env->sd), cpu_overutilized(env->dst_cpu, env->sd));
+
 	if ((capacity_of(env->src_cpu) < capacity_of(env->dst_cpu)) &&
 				env->src_rq->cfs.h_nr_running == 1 &&
 				cpu_overutilized(env->src_cpu, env->sd) &&
@@ -7485,12 +7487,14 @@ redo:
 		schedstat_inc(sd, lb_nobusyg[idle]);
 		goto out_balanced;
 	}
+	trace_printk("lb: fbg: bgf=%d bgw=%d i=%d", cpumask_first(sched_group_cpus(group)), cpumask_weight(sched_group_cpus(group)), env.idle);
 
 	busiest = find_busiest_queue(&env, group);
 	if (!busiest) {
 		schedstat_inc(sd, lb_nobusyq[idle]);
 		goto out_balanced;
 	}
+	trace_printk("lb: fbq: bc=%d i=%d", busiest->cpu, env.idle);
 
 	BUG_ON(busiest == env.dst_rq);
 
@@ -7637,6 +7641,8 @@ more_balance:
 				active_balance = 1;
 			}
 			raw_spin_unlock_irqrestore(&busiest->lock, flags);
+
+			trace_printk("lb: abs=%d abd=%d", env.src_cpu, env.dst_cpu);
 
 			if (active_balance) {
 				stop_one_cpu_nowait(cpu_of(busiest),
@@ -7889,6 +7895,7 @@ static int active_load_balance_cpu_stop(void *data)
 		schedstat_inc(sd, alb_count);
 
 		p = detach_one_task(&env);
+		if (p) trace_printk("albcs: s=%d d=%d t=%d", env.src_cpu, env.dst_cpu, p->pid);
 		if (p)
 			schedstat_inc(sd, alb_pushed);
 		else

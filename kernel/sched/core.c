@@ -2447,6 +2447,7 @@ void sched_exec(void)
 
 		raw_spin_unlock_irqrestore(&p->pi_lock, flags);
 		stop_one_cpu(task_cpu(p), migration_cpu_stop, &arg);
+		trace_printk("exec: p=%d dst_cp=%d", p->pid, dest_cpu);
 		return;
 	}
 unlock:
@@ -4799,6 +4800,7 @@ int set_cpus_allowed_ptr(struct task_struct *p, const struct cpumask *new_mask)
 		/* Need help from migration thread: drop lock and wait. */
 		task_rq_unlock(rq, p, &flags);
 		stop_one_cpu(cpu_of(rq), migration_cpu_stop, &arg);
+		trace_printk("scap: p=%d caf=%d caw=%d", p->pid, cpumask_first(new_mask), cpumask_weight(new_mask));
 		tlb_migrate_finish(p->mm);
 		return 0;
 	} else if (task_on_rq_queued(p))
