@@ -6134,6 +6134,12 @@ static int detach_tasks(struct lb_env *env)
 	if (!env->use_ea && env->imbalance <= 0)
 		return 0;
 
+	if (env->use_ea)
+		trace_printk("eas: sd=%d dst_cpu=%d src_cpu=%d ttvsg=%d",
+			     env->sd->level, env->dst_cpu, env->src_cpu, try_to_vac_sg);
+	else
+		trace_printk("noeas: sd=%d dst_cpu=%d src_cpu=%d", env->sd->level, env->dst_cpu, env->src_cpu);
+
 	while (!list_empty(tasks)) {
 		int reason = 0;
 		p = list_first_entry(tasks, struct task_struct, se.group_node);
@@ -6150,8 +6156,10 @@ static int detach_tasks(struct lb_env *env)
 			break;
 		}
 
-		if (!can_migrate_task(p, env, &reason))
+		if (!can_migrate_task(p, env, &reason)) {
+			trace_printk("pid=%d util=%lu reason=%d", p->pid, task_utilization(p), reason);
 			goto next;
+		}
 
 		if (env->use_ea) {
 			int util = task_utilization(p);
@@ -6163,6 +6171,9 @@ static int detach_tasks(struct lb_env *env)
 				.src_grp = NULL,
 			};
 			int e_diff = energy_diff(&eenv);
+
+			trace_printk("pid=%d util=%lu reason=%d e_diff=%d usage_det=%d",
+				     p->pid, task_utilization(p), reason, e_diff, usage_detached);
 
 			if (e_diff >= 0 && !try_to_vac_sg)
 				goto next;
@@ -6184,6 +6195,7 @@ static int detach_tasks(struct lb_env *env)
 		if ((load / 2) > env->imbalance)
 			goto next;
 
+		trace_printk("pid=%d util=%lu load=%lu", p->pid, task_utilization(p), load);
 detach:
 		detach_task(p, env);
 		list_add(&p->se.group_node, &env->tasks);
@@ -7059,6 +7071,48 @@ void fix_small_imbalance(struct lb_env *env, struct sd_lb_stats *sds)
 		env->imbalance = busiest->load_per_task;
 }
 
+__always_inline static void __trace_lb(const struct cpumask *mask, int dst_cpu)
+{
+	int cpu;
+
+	for_each_cpu(cpu, mask) {
+		unsigned long flags;
+		struct task_struct *p;
+		struct rq *rq = cpu_rq(cpu);
+
+		raw_spin_lock_irqsave(&rq->lock, flags);
+
+		trace_printk("cpu=%d usage=%d (%lu %lu %lu) nr_r=%d cfs_nr_r=%d",
+			     cpu, get_cpu_usage(cpu), rq->cfs.utilization_load_avg,
+			     rq->cfs.utilization_blocked_avg, capacity_curr_of(cpu),
+			     rq->nr_running, rq->cfs.nr_running);
+
+		lockdep_assert_held(&rq->lock);
+
+		list_for_each_entry(p, &rq->cfs_tasks, se.group_node) {
+			char *format = "";
+
+			if ((dst_cpu != -1) && !cpumask_test_cpu(dst_cpu, tsk_cpus_allowed(p)))
+				format = "a";
+			if ((dst_cpu != -1) && task_running(rq, p))
+				format = "r";
+			trace_printk("pid=%d util=%lu %s", p->pid, task_utilization(p), format);
+		}
+
+		raw_spin_unlock_irqrestore(&rq->lock, flags);
+	}
+}
+
+noinline static void trace_lb_dst(const struct cpumask *mask)
+{
+	__trace_lb(mask, -1);
+}
+
+noinline static void trace_lb_src(const struct cpumask *mask, int dst_cpu)
+{
+	__trace_lb(mask, dst_cpu);
+}
+
 /**
  * calculate_imbalance - Calculate the amount of imbalance present within the
  *			 groups of a given sched_domain during load balance.
@@ -7085,6 +7139,13 @@ static inline void calculate_imbalance(struct lb_env *env, struct sd_lb_stats *s
 		int e_diff = energy_diff(&eenv);
 
 		env->imbalance = (e_diff < 0) ? costliest->group_usage : 0;
+
+		trace_lb_dst(cpumask_of(env->dst_cpu));
+		trace_lb_src(sched_group_cpus(sds->costliest), env->dst_cpu);
+
+		trace_printk("sched_eas: sd=%d dst_cpu=%d src_grp=0x%lx e_diff=%d imb=%ld",
+			     env->sd->level, env->dst_cpu, *(sds->costliest->cpumask), e_diff,
+			     env->imbalance);
 
 		return;
 	}
@@ -7572,6 +7633,10 @@ more_balance:
 		 * moreover subsequent load balance cycles should correct the
 		 * excess load moved.
 		 */
+
+		trace_printk("%s dst_cpu=%d src_cpu=%d flags=0x%x imb=%ld cur_ld_moved=%d ld_moved=%d",
+			     env.sd->name, env.dst_cpu, env.src_cpu, env.flags, env.imbalance, cur_ld_moved, ld_moved);
+
 		if ((env.flags & LBF_DST_PINNED) && env.imbalance > 0) {
 
 			/* Prevent to re-select dst_cpu via env's cpus */
