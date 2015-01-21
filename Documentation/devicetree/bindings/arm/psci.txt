@@ -61,6 +61,14 @@ state nodes, as per bindings in [1]) must specify the following properties:
 		Definition: power_state parameter to pass to the PSCI
 			    suspend call.
 
+PSCI v0.2 and earlier versions don't have explicit operation for system
+suspend. However, one can implement system suspend using CPU_SUSPEND by
+ensuring every other core except the one executing the CPU_SUSPEND call
+has called into PSCI through a CPU_OFF call.
+
+In such cases, device tree nodes representing system suspend as per the
+bindings in [2] must specify the above "arm,psci-suspend-param" property.
+
 Example:
 
 Case 1: PSCI v0.1 only.
@@ -100,3 +108,6 @@ Case 3: PSCI v0.2 and PSCI v0.1.
 
 [1] Kernel documentation - ARM idle states bindings
     Documentation/devicetree/bindings/arm/idle-states.txt
+
+[2] Kernel documentation - ARM system suspend bindings
+    Documentation/devicetree/bindings/arm/system-suspend.txt
