@@ -3376,6 +3376,7 @@ entity_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr, int queued)
 	 * Update run-time statistics of the 'current'.
 	 */
 	update_curr(cfs_rq);
+	trace_printk("et: cpu=%d curr_u=%lu", rq_of(cfs_rq)->cpu, curr->avg.utilization_avg_contrib);
 
 	/*
 	 * Ensure that runnable average is periodically updated.
@@ -6721,6 +6722,9 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 
 		sgs->group_load += load;
 		sgs->group_usage += get_cpu_usage(i);
+
+		trace_printk("usglbs: cpu=%d cu=%d", i, get_cpu_usage(i));
+
 		sgs->sum_nr_running += rq->cfs.h_nr_running;
 
 		if (rq->nr_running > 1)
@@ -7389,7 +7393,7 @@ static int need_active_balance(struct lb_env *env)
 			return 1;
 	}
 
-	trace_printk("nab: cs=%lu cd=%lu nr=%d cos=%d cod=%d", capacity_of(env->src_cpu), capacity_of(env->dst_cpu), env->src_rq->cfs.h_nr_running, cpu_overutilized(env->src_cpu, env->sd), cpu_overutilized(env->dst_cpu, env->sd));
+	trace_printk("nab: cs=%lu cd=%lu nr=%d cos=%d cod=%d cus=%d cud=%d", capacity_of(env->src_cpu), capacity_of(env->dst_cpu), env->src_rq->cfs.h_nr_running, cpu_overutilized(env->src_cpu, env->sd), cpu_overutilized(env->dst_cpu, env->sd), get_cpu_usage(env->src_cpu), get_cpu_usage(env->dst_cpu));
 
 	if ((capacity_of(env->src_cpu) < capacity_of(env->dst_cpu)) &&
 				env->src_rq->cfs.h_nr_running == 1 &&
@@ -7397,7 +7401,7 @@ static int need_active_balance(struct lb_env *env)
 				!cpu_overutilized(env->dst_cpu, env->sd)) {
 			return 1;
 	}
-
+	trace_printk("nab: nrbf=%d cnt=%d", sd->nr_balance_failed, sd->cache_nice_tries+2);
 	return unlikely(sd->nr_balance_failed > sd->cache_nice_tries+2);
 }
 
