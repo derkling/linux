@@ -4762,6 +4762,7 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 {
 	struct sched_group *idlest = NULL, *group = sd->groups;
 	unsigned long min_load = ULONG_MAX, this_load = 0;
+	unsigned long this_cpu_cap = 0, idlest_cpu_cap = 0;
 	int load_idx = sd->forkexec_idx;
 	int imbalance = 100 + (sd->imbalance_pct-100)/2;
 
@@ -4769,7 +4770,7 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 		load_idx = sd->wake_idx;
 
 	do {
-		unsigned long load, avg_load;
+		unsigned long load, avg_load, cpu_capacity;
 		int local_group;
 		int i;
 
@@ -4783,6 +4784,7 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 
 		/* Tally up the load of all CPUs in the group */
 		avg_load = 0;
+		cpu_capacity = 0;
 
 		for_each_cpu(i, sched_group_cpus(group)) {
 			/* Bias balancing toward cpus of our domain */
@@ -4792,6 +4794,9 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 				load = target_load(i, load_idx);
 
 			avg_load += load;
+
+			if (cpu_capacity < capacity_of(i))
+				cpu_capacity = capacity_of(i);
 		}
 
 		/* Adjust by relative CPU capacity of the group */
@@ -4799,14 +4804,20 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 
 		if (local_group) {
 			this_load = avg_load;
+			this_cpu_cap = cpu_capacity;
 		} else if (avg_load < min_load) {
 			min_load = avg_load;
 			idlest = group;
+			idlest_cpu_cap = cpu_capacity;
 		}
 	} while (group = group->next, group != sd->groups);
 
-	if (!idlest || 100*this_load < imbalance*min_load)
+	if (!idlest)
 		return NULL;
+
+	if (100*this_load < imbalance*min_load && this_cpu_cap >= idlest_cpu_cap)
+		return NULL;
+
 	return idlest;
 }
 
