@@ -553,6 +553,49 @@ TRACE_EVENT(sched_wake_idle_without_ipi,
 
 	TP_printk("cpu=%d", __entry->cpu)
 );
+
+TRACE_EVENT(sched_group,
+
+	TP_PROTO(const struct cpumask *cpus_loc, unsigned long e_loc, unsigned long ld_loc,
+		 unsigned long ut_loc, const struct cpumask *cpus_rem, unsigned long e_rem,
+		 unsigned long ld_rem, unsigned long ut_rem, bool use_ea,
+		 enum cpu_idle_type idle),
+
+	TP_ARGS(cpus_loc, e_loc, ld_loc, ut_loc, cpus_rem, e_rem, ld_rem, ut_rem, use_ea, idle),
+
+	TP_STRUCT__entry(
+		__bitmask(cpumask_loc, num_possible_cpus())
+		__field(unsigned long, e_loc)
+		__field(unsigned long, ld_loc)
+		__field(unsigned long, ut_loc)
+		__bitmask(cpumask_rem, num_possible_cpus())
+		__field(unsigned long, e_rem)
+		__field(unsigned long, ld_rem)
+		__field(unsigned long, ut_rem)
+		__field(bool, use_ea)
+		__field(unsigned int, idle)
+	),
+
+	TP_fast_assign(
+		__assign_bitmask(cpumask_loc, cpumask_bits(cpus_loc),
+				 num_possible_cpus());
+		__entry->e_loc = e_loc;
+		__entry->ld_loc = ld_loc;
+		__entry->ut_loc = ut_loc;
+		__assign_bitmask(cpumask_rem, cpumask_bits(cpus_rem),
+				 num_possible_cpus());
+		__entry->e_rem = e_rem;
+		__entry->ld_rem = ld_rem;
+		__entry->ut_rem = ut_rem;
+		__entry->use_ea = use_ea;
+		__entry->idle = idle;
+	),
+
+	TP_printk("cpus_loc=%s e_loc=%lu ld_loc=%lu ut_loc=%lu cpus_rem=%s e_rem=%lu ld_rem=%lu ut_rem=%lu use_ea=%d idle=%d",
+		  __get_bitmask(cpumask_loc), __entry->e_loc, __entry->ld_loc, __entry->ut_loc,
+		  __get_bitmask(cpumask_rem), __entry->e_rem, __entry->ld_rem, __entry->ut_rem,
+		  __entry->use_ea, __entry->idle)
+);
 #endif /* _TRACE_SCHED_H */
 
 /* This part must be outside protection */
