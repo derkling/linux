@@ -7168,7 +7168,7 @@ static inline void calculate_imbalance(struct lb_env *env, struct sd_lb_stats *s
  */
 static struct sched_group *find_busiest_group(struct lb_env *env)
 {
-	struct sg_lb_stats *local, *busiest;
+	struct sg_lb_stats *local, *busiest, *costliest;
 	struct sd_lb_stats sds;
 
 	init_sd_lb_stats(&sds);
@@ -7180,9 +7180,18 @@ static struct sched_group *find_busiest_group(struct lb_env *env)
 	update_sd_lb_stats(env, &sds);
 	local = &sds.local_stat;
 	busiest = &sds.busiest_stat;
+	costliest = &sds.costliest_stat;
 
-	if (sched_ea(env))
+	if (sched_ea(env)) {
+		if (sds.local && sds.costliest) {
+			trace_sched_group(sched_group_cpus(sds.local), local->group_energy,
+					  local->group_load, local->group_usage,
+					  sched_group_cpus(sds.costliest), costliest->group_energy,
+					  costliest->group_load, costliest->group_usage,
+					  env->use_ea, env->idle);
+			}
 		return sds.costliest;
+	}
 
 	/* ASYM feature bypasses nice load balance check */
 	if ((env->idle == CPU_IDLE || env->idle == CPU_NEWLY_IDLE) &&
@@ -7247,6 +7256,13 @@ static struct sched_group *find_busiest_group(struct lb_env *env)
 force_balance:
 	/* Looks like there is an imbalance. Compute it */
 	calculate_imbalance(env, &sds);
+	if (sds.local && sds.busiest) {
+		trace_sched_group(sched_group_cpus(sds.local), local->group_energy,
+				  local->group_load, local->group_usage,
+				  sched_group_cpus(sds.busiest), busiest->group_energy,
+				  busiest->group_load, busiest->group_usage,
+				  env->use_ea, env->idle);
+	}
 	return sds.busiest;
 
 out_balanced:
