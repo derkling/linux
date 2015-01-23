@@ -6769,7 +6769,7 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 	sgs->group_no_capacity = group_is_overloaded(env, sgs);
 	sgs->group_type = group_classify(env, group, sgs);
 
-	if (sched_ea(env)) {
+	if (energy_aware()) {
 		struct energy_env eenv = {
 			.sg_top         = group,
 			.usage_delta    = 0,
