@@ -429,7 +429,7 @@ struct cpufreq_cooling_device {
 static int exynos_bind(struct thermal_zone_device *thermal,
 			struct thermal_cooling_device *cdev)
 {
-	int ret = 0, i, trip;
+	int ret = 0, i, trip, weight;
 	enum thermal_trip_type type = 0;
 
 	/* Make sure this is one of the cdevs we care for */
@@ -443,9 +443,11 @@ static int exynos_bind(struct thermal_zone_device *thermal,
 
 	if (!strcmp(cdev->type, "gpu-cooling")) {
 		trip = GPU_TRIP;
+		weight = GPU_ACTOR_WEIGHT;
 		ret = thermal_zone_bind_cooling_device(thermal,
 						       GPU_CAP_TRIP, cdev,
-						       THERMAL_NO_LIMIT, 4);
+						       THERMAL_NO_LIMIT, 4,
+						       weight);
 		if (ret)
 			panic("failed to bind gpu cap trip point\n");
 	} else {
@@ -456,13 +458,16 @@ static int exynos_bind(struct thermal_zone_device *thermal,
 		cdev_cpumask = &((struct cpufreq_cooling_device *)cdev->devdata)->allowed_cpus;
 		if (cpumask_equal(cdev_cpumask, &mp_cluster_cpus[CA15])) {
 			trip = A15_TRIP;
+			weight = mp_actor_weight[CA15];
 			ret = thermal_zone_bind_cooling_device(thermal,
 							A15_CAP_TRIP, cdev,
-							THERMAL_NO_LIMIT, 11);
+							THERMAL_NO_LIMIT, 11,
+				                        weight);
 			if (ret)
 				panic("failed to bind to cap trip point\n");
 		} else if (cpumask_equal(cdev_cpumask, &mp_cluster_cpus[CA7])) {
 			trip = A7_TRIP;
+			weight = mp_actor_weight[CA7];
 		} else {
 			BUG();
 		}
@@ -475,7 +480,7 @@ static int exynos_bind(struct thermal_zone_device *thermal,
 	case THERMAL_TRIP_PASSIVE:
 		ret = thermal_zone_bind_cooling_device(thermal, trip, cdev,
 						THERMAL_NO_LIMIT,
-						THERMAL_NO_LIMIT);
+						THERMAL_NO_LIMIT, weight);
 		if (ret) {
 			pr_err("error binding cdev to trip %d\n", trip);
 			/* thermal->cooling_dev_en = false; */
@@ -738,7 +743,6 @@ static struct thermal_zone_params exynos_tz_params = {
 	.k_po = 2800,
 	.k_pu = 1400,
 	.k_i = 2,
-	.num_tbps = 3,
 };
 
 /* Register with the in-kernel thermal management */
@@ -749,7 +753,6 @@ static int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf)
 	int i, j;
 #endif
 	struct cpumask mask_val;
-	struct thermal_bind_params *tbp;
 
 	if (!sensor_conf || !sensor_conf->read_temperature) {
 		pr_err("Temperature sensor not initialised\n");
@@ -759,12 +762,6 @@ static int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf)
 	th_zone = kzalloc(sizeof(struct exynos_thermal_zone), GFP_KERNEL);
 	if (!th_zone)
 		return -ENOMEM;
-
-	tbp = kcalloc(exynos_tz_params.num_tbps, sizeof(*tbp), GFP_KERNEL);
-	if (!tbp)
-		return -ENOMEM;
-
-	exynos_tz_params.tbp = tbp;
 
 	th_zone->sensor_conf = sensor_conf;
 	cpumask_clear(&mask_val);
@@ -788,8 +785,6 @@ static int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf)
 				th_zone->cool_dev_size = count;
 			}
 
-			tbp[j].cdev = th_zone->cool_dev[count];
-			tbp[j].weight = mp_actor_weight[j];
 			count++;
 		}
 	}
@@ -809,8 +804,6 @@ static int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf)
 	if (IS_ERR(th_zone->cool_dev[count]))
 		panic("Failed to register gpu cooling device\n");
 
-	tbp[2].cdev = th_zone->cool_dev[count];
-	tbp[2].weight = GPU_ACTOR_WEIGHT;
 	count++;
 
 	th_zone->cool_dev_size = count;
