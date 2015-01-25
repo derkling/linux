@@ -178,7 +178,6 @@ static int dove_thermal_exit(struct platform_device *pdev)
 		platform_get_drvdata(pdev);
 
 	thermal_zone_device_unregister(dove_thermal);
-	platform_set_drvdata(pdev, NULL);
 
 	return 0;
 }
@@ -191,7 +190,7 @@ static struct platform_driver dove_thermal_driver = {
 	.driver = {
 		.name = "dove_thermal",
 		.owner = THIS_MODULE,
-		.of_match_table = of_match_ptr(dove_thermal_id_table),
+		.of_match_table = dove_thermal_id_table,
 	},
 };
 

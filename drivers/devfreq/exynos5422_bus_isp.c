@@ -395,7 +395,7 @@ static int exynos5_devfreq_isp_target(struct device *dev,
 	struct platform_device *pdev = container_of(dev, struct platform_device, dev);
 	struct devfreq_data_isp *isp_data = platform_get_drvdata(pdev);
 	struct devfreq *devfreq_isp = isp_data->devfreq;
-	struct opp *target_opp;
+	struct dev_pm_opp *target_opp;
 	int target_idx, old_idx;
 	unsigned long target_volt;
 	unsigned long old_freq;
@@ -411,8 +411,8 @@ static int exynos5_devfreq_isp_target(struct device *dev,
 		goto out;
 	}
 
-	*target_freq = opp_get_freq(target_opp);
-	target_volt = opp_get_voltage(target_opp);
+	*target_freq = dev_pm_opp_get_freq(target_opp);
+	target_volt = dev_pm_opp_get_voltage(target_opp);
 #ifdef CONFIG_EXYNOS_THERMAL
 	target_volt = get_limit_voltage(target_volt, isp_data->volt_offset);
 #endif
@@ -496,7 +496,7 @@ static int exynos5_init_isp_table(struct device *dev)
 
 		exynos5_devfreq_isp_profile.freq_table[i] = freq;
 
-		ret = opp_add(dev, freq, volt);
+		ret = dev_pm_opp_add(dev, freq, volt);
 		if (ret) {
 			pr_err("DEVFREQ(ISP) : Failed to add opp entries %uKhz, %uV\n", freq, volt);
 			return ret;
@@ -581,7 +581,7 @@ static int exynos5_devfreq_isp_probe(struct platform_device *pdev)
 	int ret = 0;
 	struct devfreq_data_isp *data;
 	struct exynos_devfreq_platdata *plat_data;
-	struct opp *target_opp;
+	struct dev_pm_opp *target_opp;
 	unsigned long target_volt;
 
 	if (exynos5_devfreq_isp_init_clock()) {
@@ -624,7 +624,7 @@ static int exynos5_devfreq_isp_probe(struct platform_device *pdev)
 		goto err_inittable;
 	}
 
-	target_volt = opp_get_voltage(target_opp);
+	target_volt = dev_pm_opp_get_voltage(target_opp);
 #ifdef CONFIG_EXYNOS_THERMAL
 	target_volt = get_limit_voltage(target_volt, data->volt_offset);
 #endif

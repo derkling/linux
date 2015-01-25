@@ -439,7 +439,7 @@ static int exynos_bind(struct thermal_zone_device *thermal,
 		level = cpufreq_cooling_get_level(CS_POLICY_CORE, clip_data->freq_clip_max);
 #endif
 		if (level == THERMAL_CSTATE_INVALID) {
-			thermal->cooling_dev_en = false;
+			/* thermal->cooling_dev_en = false; */
 			return 0;
 		}
 		exynos_get_trip_type(th_zone->therm_dev, i, &type);
@@ -449,7 +449,7 @@ static int exynos_bind(struct thermal_zone_device *thermal,
 			if (thermal_zone_bind_cooling_device(thermal, i, cdev,
 								level, 0)) {
 				pr_err("error binding cdev inst %d\n", i);
-				thermal->cooling_dev_en = false;
+				/* thermal->cooling_dev_en = false; */
 				ret = -EINVAL;
 			}
 			th_zone->bind = true;
@@ -661,51 +661,8 @@ static int exynos_get_trend(struct thermal_zone_device *thermal,
 	return 0;
 }
 
-#if defined(CONFIG_SOC_EXYNOS5430) || defined(CONFIG_SOC_EXYNOS5422)
-static int __ref exynos_throttle_cpu_hotplug(struct thermal_zone_device *thermal)
-{
-	int ret = 0;
-	int cur_temp = 0;
-
-	if (!thermal->temperature)
-		return -EINVAL;
-
-	cur_temp = thermal->temperature / MCELSIUS;
-
-	if (is_cpu_hotplugged_out) {
-		if (cur_temp < CPU_HOTPLUG_IN_TEMP) {
-			/*
-			 * If current temperature is lower than low threshold,
-			 * call big_cores_hotplug(false) for hotplugged out cpus.
-			 */
-			ret = big_cores_hotplug(false);
-			if (ret)
-				pr_err("%s: failed big cores hotplug in\n",
-							__func__);
-			else
-				is_cpu_hotplugged_out = false;
-		}
-	} else {
-		if (cur_temp >= CPU_HOTPLUG_OUT_TEMP) {
-			/*
-			 * If current temperature is higher than high threshold,
-			 * call big_cores_hotplug(true) to hold temperature down.
-			 */
-			ret = big_cores_hotplug(true);
-			if (ret)
-				pr_err("%s: failed big cores hotplug out\n",
-							__func__);
-			else
-				is_cpu_hotplugged_out = true;
-		}
-	}
-
-	return ret;
-}
-#endif
-
 /* Operation callback functions for thermal zone */
-static struct thermal_zone_device_ops const exynos_dev_ops = {
+static struct thermal_zone_device_ops exynos_dev_ops = {
 	.bind = exynos_bind,
 	.unbind = exynos_unbind,
 	.get_temp = exynos_get_temp,
@@ -790,8 +747,9 @@ static int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf)
 		for (j = 0; j < CA_END; j++) {
 			th_zone->cool_dev[count] = cpufreq_cooling_register(&mp_cluster_cpus[count]);
 			if (IS_ERR(th_zone->cool_dev[count])) {
-				pr_err("Failed to register cpufreq cooling device\n");
-				ret = -EINVAL;
+				ret = PTR_ERR(th_zone->cool_dev[count]);
+				if (ret != -EPROBE_DEFER)
+					pr_err("Failed to register cpufreq cooling device\n");
 				th_zone->cool_dev_size = count;
 				goto err_unregister;
 			}
@@ -1393,7 +1351,8 @@ static struct exynos_tmu_platform_data const exynos4210_default_tmu_data = {
 #define EXYNOS4210_TMU_DRV_DATA (NULL)
 #endif
 
-#if defined(CONFIG_SOC_EXYNOS5250) || defined(CONFIG_SOC_EXYNOS4412)
+#if defined(CONFIG_SOC_EXYNOS5250) || defined(CONFIG_SOC_EXYNOS4412) || \
+	defined(CONFIG_SOC_EXYNOS4212)
 static struct exynos_tmu_platform_data const exynos_default_tmu_data = {
 	.threshold_falling = 10,
 	.trigger_levels[0] = 85,
@@ -1853,7 +1812,8 @@ static int exynos5_tmu_cpufreq_notifier(struct notifier_block *notifier, unsigne
 		ret = exynos_register_thermal(&exynos_sensor_conf);
 
 		if (ret) {
-			dev_err(&exynos_tmu_pdev->dev, "Failed to register thermal interface\n");
+			if (ret != -EPROBE_DEFER)
+				dev_err(&exynos_tmu_pdev->dev, "Failed to register thermal interface\n");
 			sysfs_remove_group(&exynos_tmu_pdev->dev.kobj, &exynos_thermal_sensor_attr_group);
 			unregister_pm_notifier(&exynos_pm_nb);
 #ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
