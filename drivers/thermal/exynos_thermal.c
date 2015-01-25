@@ -38,6 +38,7 @@
 #include <linux/thermal.h>
 #include <linux/cpufreq.h>
 #include <linux/cpu_cooling.h>
+#include <linux/gpu_cooling.h>
 #include <linux/of.h>
 #include <linux/delay.h>
 #include <linux/suspend.h>
@@ -49,6 +50,29 @@
 #ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
 static struct cpumask mp_cluster_cpus[CA_END];
 #endif
+static u32 mp_capacitance[CA_END] = {
+	[CA15] = 570,
+	[CA7] = 110,
+};
+
+#define GPU_ACTOR_WEIGHT (1 << 10)
+
+static u32 mp_actor_weight[CA_END] = {
+	[CA15] = 768,
+	[CA7] = 4 << 10,
+};
+
+static int empty_func(cpumask_t *cpumask, int interval, unsigned long voltage,
+                      u32 *power) {
+	*power = 0;
+	return 0;
+}
+
+/* Do one with a static function and the other one without it to test both behaviours */
+static get_static_t mp_plat_static_func[CA_END] = {
+	[CA15] = empty_func,
+	[CA7] = NULL,
+};
 
 /* Exynos generic registers */
 #define EXYNOS_TMU_REG_TRIMINFO			0x0
@@ -153,8 +177,8 @@ static struct cpumask mp_cluster_cpus[CA_END];
 #else
 #define PANIC_ZONE      			6
 #endif
-#define WARN_ZONE       			3
-#define MONITOR_ZONE    			2
+#define WARN_ZONE       			2
+#define MONITOR_ZONE    			1
 #define SAFE_ZONE       			1
 
 /* Rising, Falling interrupt bit number*/
@@ -222,7 +246,6 @@ static struct cpumask mp_cluster_cpus[CA_END];
 
 static enum tmu_noti_state_t tmu_old_state = TMU_NORMAL;
 static enum gpu_noti_state_t gpu_old_state = GPU_NORMAL;
-static enum mif_noti_state_t mif_old_state = MIF_TH_LV1;
 static bool is_suspending;
 static bool is_cpu_hotplugged_out;
 
@@ -345,17 +368,7 @@ static int exynos_set_mode(struct thermal_zone_device *thermal,
 static int exynos_get_trip_type(struct thermal_zone_device *thermal, int trip,
 				 enum thermal_trip_type *type)
 {
-	unsigned int cur_zone;
-	cur_zone = GET_ZONE(trip);
-
-	if (cur_zone >= MONITOR_ZONE && cur_zone < WARN_ZONE)
-		*type = THERMAL_TRIP_ACTIVE;
-	else if (cur_zone >= WARN_ZONE && cur_zone < PANIC_ZONE)
-		*type = THERMAL_TRIP_PASSIVE;
-	else if (cur_zone >= PANIC_ZONE)
-		*type = THERMAL_TRIP_CRITICAL;
-	else
-		return -EINVAL;
+	*type = THERMAL_TRIP_PASSIVE;
 
 	return 0;
 }
@@ -396,67 +409,99 @@ static int exynos_set_trip_temp(struct thermal_zone_device *thermal, int trip,
 	return 0;
 }
 
+#define A15_TRIP 0
+#define GPU_TRIP 1
+#define A7_TRIP 2
+#define A15_CAP_TRIP 3
+#define GPU_CAP_TRIP 4
+
+/*
+ * Warning: This *must* be the same as the one defined in
+ * cpu_cooling.c .  Otherwise nasal demons may be summonned.
+ */
+struct cpufreq_cooling_device {
+	int id;
+	struct thermal_cooling_device *cool_dev;
+	unsigned int cpufreq_state;
+	unsigned int cpufreq_val;
+	unsigned int max_level;
+	unsigned int *freq_table;	/* In descending order */
+	struct cpumask allowed_cpus;
+	struct list_head node;
+	u32 last_load;
+	u64 time_in_idle[NR_CPUS];
+	u64 time_in_idle_timestamp[NR_CPUS];
+	struct power_table *dyn_power_table;
+	int dyn_power_table_entries;
+	struct device *cpu_dev;
+	get_static_t plat_get_static_power;
+};
+
 /* Bind callback functions for thermal zone */
 static int exynos_bind(struct thermal_zone_device *thermal,
 			struct thermal_cooling_device *cdev)
 {
-	int ret = 0, i, tab_size, level = THERMAL_CSTATE_INVALID;
-#ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
-	int cluster_idx = 0;
-#endif
-	struct freq_clip_table *tab_ptr, *clip_data;
-	struct thermal_sensor_conf *data = th_zone->sensor_conf;
+	int ret = 0, i, trip, weight;
 	enum thermal_trip_type type = 0;
 
-	tab_ptr = (struct freq_clip_table *)data->cooling_data.freq_data;
-	tab_size = data->cooling_data.freq_clip_count;
-
-	if (tab_ptr == NULL || tab_size == 0)
-		return -EINVAL;
-
-	/* find the cooling device registered*/
+	/* Make sure this is one of the cdevs we care for */
 	for (i = 0; i < th_zone->cool_dev_size; i++)
-		if (cdev == th_zone->cool_dev[i]) {
-#ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
-			cluster_idx = i;
-#endif
+		if (cdev == th_zone->cool_dev[i])
 			break;
-		}
 
 	/* No matching cooling device */
 	if (i == th_zone->cool_dev_size)
 		return 0;
 
-	/* Bind the thermal zone to the cpufreq cooling device */
-	for (i = 0; i < tab_size; i++) {
-		clip_data = (struct freq_clip_table *)&(tab_ptr[i]);
-#ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
-		if (cluster_idx == CA7)
-			level = cpufreq_cooling_get_level(CA7_POLICY_CORE, clip_data->freq_clip_max_kfc);
-		else if (cluster_idx == CA15)
-			level = cpufreq_cooling_get_level(CA15_POLICY_CORE, clip_data->freq_clip_max);
-#else
-		level = cpufreq_cooling_get_level(CS_POLICY_CORE, clip_data->freq_clip_max);
-#endif
-		if (level == THERMAL_CSTATE_INVALID) {
-			/* thermal->cooling_dev_en = false; */
-			return 0;
+	if (!strcmp(cdev->type, "gpu-cooling")) {
+		trip = GPU_TRIP;
+		weight = GPU_ACTOR_WEIGHT;
+		ret = thermal_zone_bind_cooling_device(thermal,
+						       GPU_CAP_TRIP, cdev,
+						       THERMAL_NO_LIMIT, 4,
+						       weight);
+		if (ret)
+			panic("failed to bind gpu cap trip point\n");
+	} else {
+		struct cpumask *cdev_cpumask;
+
+		BUG_ON(strncmp(cdev->type, "thermal-cpufreq-", strlen("thermal-cpufreq-")));
+
+		cdev_cpumask = &((struct cpufreq_cooling_device *)cdev->devdata)->allowed_cpus;
+		if (cpumask_equal(cdev_cpumask, &mp_cluster_cpus[CA15])) {
+			trip = A15_TRIP;
+			weight = mp_actor_weight[CA15];
+			ret = thermal_zone_bind_cooling_device(thermal,
+							A15_CAP_TRIP, cdev,
+							THERMAL_NO_LIMIT, 11,
+				                        weight);
+			if (ret)
+				panic("failed to bind to cap trip point\n");
+		} else if (cpumask_equal(cdev_cpumask, &mp_cluster_cpus[CA7])) {
+			trip = A7_TRIP;
+			weight = mp_actor_weight[CA7];
+		} else {
+			BUG();
 		}
-		exynos_get_trip_type(th_zone->therm_dev, i, &type);
-		switch (type) {
-		case THERMAL_TRIP_ACTIVE:
-		case THERMAL_TRIP_PASSIVE:
-			if (thermal_zone_bind_cooling_device(thermal, i, cdev,
-								level, 0)) {
-				pr_err("error binding cdev inst %d\n", i);
-				/* thermal->cooling_dev_en = false; */
-				ret = -EINVAL;
-			}
-			th_zone->bind = true;
-			break;
-		default:
+	}
+
+	/* Bind the thermal zone to the cpufreq cooling device */
+	exynos_get_trip_type(th_zone->therm_dev, trip, &type);
+	switch (type) {
+	case THERMAL_TRIP_ACTIVE:
+	case THERMAL_TRIP_PASSIVE:
+		ret = thermal_zone_bind_cooling_device(thermal, trip, cdev,
+						THERMAL_NO_LIMIT,
+						THERMAL_NO_LIMIT, weight);
+		if (ret) {
+			pr_err("error binding cdev to trip %d\n", trip);
+			/* thermal->cooling_dev_en = false; */
 			ret = -EINVAL;
 		}
+		th_zone->bind = true;
+		break;
+	default:
+		ret = -EINVAL;
 	}
 
 	return ret;
@@ -567,47 +612,6 @@ static void exynos_check_tmu_noti_state(int min_temp, int max_temp)
 	exynos_tmu_call_notifier(cur_state, max_temp);
 }
 
-static void exynos_check_mif_noti_state(int temp)
-{
-	enum mif_noti_state_t cur_state;
-
-	/* check current temperature state */
-	if (temp < MIF_TH_TEMP1)
-		cur_state = MIF_TH_LV1;
-	else if (temp >= MIF_TH_TEMP1 && temp < MIF_TH_TEMP2)
-		cur_state = MIF_TH_LV2;
-	else
-		cur_state = MIF_TH_LV3;
-
-	if (cur_state != mif_old_state) {
-		blocking_notifier_call_chain(&exynos_tmu_notifier, cur_state, &mif_old_state);
-		mif_old_state = cur_state;
-	}
-}
-
-static void exynos_check_gpu_noti_state(int temp)
-{
-	enum gpu_noti_state_t cur_state;
-
-	/* check current temperature state */
-	if (temp >= GPU_TH_TEMP5)
-		cur_state = GPU_TRIPPING;
-	else if (temp >= GPU_TH_TEMP4 && temp < GPU_TH_TEMP5)
-		cur_state = GPU_THROTTLING4;
-	else if (temp >= GPU_TH_TEMP3 && temp < GPU_TH_TEMP4)
-		cur_state = GPU_THROTTLING3;
-	else if (temp >= GPU_TH_TEMP2 && temp < GPU_TH_TEMP3)
-		cur_state = GPU_THROTTLING2;
-	else if (temp >= GPU_TH_TEMP1 && temp < GPU_TH_TEMP2)
-		cur_state = GPU_THROTTLING1;
-	else if (temp > COLD_TEMP && temp < GPU_TH_TEMP1)
-		cur_state = GPU_NORMAL;
-	else
-		cur_state = GPU_COLD;
-
-	exynos_gpu_call_notifier(cur_state);
-}
-
 /* Get temperature callback functions for thermal zone */
 static int exynos_get_temp(struct thermal_zone_device *thermal,
 			unsigned long *temp)
@@ -642,32 +646,12 @@ static int exynos_set_emul_temp(struct thermal_zone_device *thermal,
 	return ret;
 }
 
-/* Get the temperature trend */
-static int exynos_get_trend(struct thermal_zone_device *thermal,
-			int trip, enum thermal_trend *trend)
-{
-	int ret;
-	unsigned long trip_temp;
-
-	ret = exynos_get_trip_temp(thermal, trip, &trip_temp);
-	if (ret < 0)
-		return ret;
-
-	if (thermal->temperature >= trip_temp)
-		*trend = THERMAL_TREND_RAISE_FULL;
-	else
-		*trend = THERMAL_TREND_DROP_FULL;
-
-	return 0;
-}
-
 /* Operation callback functions for thermal zone */
 static struct thermal_zone_device_ops exynos_dev_ops = {
 	.bind = exynos_bind,
 	.unbind = exynos_unbind,
 	.get_temp = exynos_get_temp,
 	.set_emul_temp = exynos_set_emul_temp,
-	.get_trend = exynos_get_trend,
 	.get_mode = exynos_get_mode,
 	.set_mode = exynos_set_mode,
 	.get_trip_type = exynos_get_trip_type,
@@ -719,6 +703,15 @@ static void exynos_report_trigger(void)
 	mutex_unlock(&th_zone->therm_dev->lock);
 }
 
+int build_dvfs_table(int cluster);
+
+static struct thermal_zone_params exynos_tz_params = {
+	.sustainable_power = 2500,
+	.k_po = 2800,
+	.k_pu = 1400,
+	.k_i = 2,
+};
+
 /* Register with the in-kernel thermal management */
 static int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf)
 {
@@ -745,14 +738,22 @@ static int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf)
 #ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
 	for (i = 0; i < EXYNOS_ZONE_COUNT; i++) {
 		for (j = 0; j < CA_END; j++) {
-			th_zone->cool_dev[count] = cpufreq_cooling_register(&mp_cluster_cpus[count]);
+			ret = build_dvfs_table(j);
+			if (WARN(ret, "Failed to build dvfs table\n"))
+				goto err_unregister;
+
+			th_zone->cool_dev[count] =
+				cpufreq_power_cooling_register(
+					&mp_cluster_cpus[count],
+					mp_capacitance[count],
+					mp_plat_static_func[count]);
 			if (IS_ERR(th_zone->cool_dev[count])) {
 				ret = PTR_ERR(th_zone->cool_dev[count]);
 				if (ret != -EPROBE_DEFER)
 					pr_err("Failed to register cpufreq cooling device\n");
 				th_zone->cool_dev_size = count;
-				goto err_unregister;
 			}
+
 			count++;
 		}
 	}
@@ -767,6 +768,13 @@ static int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf)
 		 }
 	}
 #endif
+
+	th_zone->cool_dev[count] = gpu_cooling_register();
+	if (IS_ERR(th_zone->cool_dev[count]))
+		panic("Failed to register gpu cooling device\n");
+
+	count++;
+
 	th_zone->cool_dev_size = count;
 
 	/* Make all trips writable */
@@ -775,7 +783,7 @@ static int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf)
 	th_zone->therm_dev = thermal_zone_device_register(sensor_conf->name,
 			th_zone->sensor_conf->trip_data.trip_count,
 			trip_writability, NULL, &exynos_dev_ops,
-			NULL, PASSIVE_INTERVAL, IDLE_INTERVAL);
+			&exynos_tz_params, PASSIVE_INTERVAL, IDLE_INTERVAL);
 
 	if (IS_ERR(th_zone->therm_dev)) {
 		pr_err("Failed to register thermal zone device\n");
@@ -1189,8 +1197,6 @@ static int exynos_tmu_read(struct exynos_tmu_data *data)
 
 	}
 	exynos_check_tmu_noti_state(min, max);
-	exynos_check_mif_noti_state(max);
-	exynos_check_gpu_noti_state(gpu_temp);
 
 	clk_disable(data->clk[0]);
 	clk_disable(data->clk[1]);
@@ -1274,19 +1280,6 @@ static void exynos_tmu_work(struct work_struct *work)
 		enable_irq(data->irq[i]);
 }
 
-static irqreturn_t exynos_tmu_irq(int irq, void *id)
-{
-	struct exynos_tmu_data *data = id;
-	int i;
-
-	pr_debug("[TMUIRQ] irq = %d\n", irq);
-
-	for (i = 0; i < EXYNOS_TMU_COUNT; i++)
-		disable_irq_nosync(data->irq[i]);
-	schedule_work(&data->irq_work);
-
-	return IRQ_HANDLED;
-}
 static struct thermal_sensor_conf exynos_sensor_conf = {
 	.name			= "exynos-therm",
 	.read_temperature	= (int (*)(void *))exynos_tmu_read,
@@ -1581,15 +1574,15 @@ static struct exynos_tmu_platform_data const exynos5430_tmu_data = {
 #if defined(CONFIG_SOC_EXYNOS5422)
 static struct exynos_tmu_platform_data const exynos5_tmu_data = {
 	.threshold_falling = 2,
-	.trigger_levels[0] = 95,
-	.trigger_levels[1] = 100,
-	.trigger_levels[2] = 105,
-	.trigger_levels[3] = 110,
+	.trigger_levels[0] = 67,
+	.trigger_levels[1] = 77,
+	.trigger_levels[2] = 80,
+	.trigger_levels[3] = 90,
 	.trigger_level0_en = 1,
 	.trigger_level1_en = 1,
 	.trigger_level2_en = 1,
 	.trigger_level3_en = 1,
-	.trigger_level4_en = 0,
+	.trigger_level4_en = 1,
 	.trigger_level5_en = 0,
 	.trigger_level6_en = 0,
 	.trigger_level7_en = 0,
@@ -1599,41 +1592,62 @@ static struct exynos_tmu_platform_data const exynos5_tmu_data = {
 	.cal_type = TYPE_ONE_POINT_TRIMMING,
 	.efuse_value = 55,
 	.freq_tab[0] = {
-		.freq_clip_max = 900 * 1000,
+		.freq_clip_max = 1900 * 1000,
 #ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
 		.freq_clip_max_kfc = 1500 * 1000,
 #endif
-		.temp_level = 95,
+		.temp_level = 67,
 #ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
 		.mask_val = &mp_cluster_cpus[CA15],
 		.mask_val_kfc = &mp_cluster_cpus[CA7],
 #endif
 	},
 	.freq_tab[1] = {
-		.freq_clip_max = 800 * 1000,
+		.freq_clip_max = 1900 * 1000,
 #ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
 		.freq_clip_max_kfc = 1200 * 1000,
 #endif
-		.temp_level = 100,
+		.temp_level = 73,
 #ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
 		.mask_val = &mp_cluster_cpus[CA15],
 		.mask_val_kfc = &mp_cluster_cpus[CA7],
 #endif
 	},
 	.freq_tab[2] = {
-		.freq_clip_max = 800 * 1000,
+		.freq_clip_max = 1900 * 1000,
 #ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
 		.freq_clip_max_kfc = 1200 * 1000,
 #endif
-		.temp_level = 105,
+		.temp_level = 80,
 #ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
 		.mask_val = &mp_cluster_cpus[CA15],
 		.mask_val_kfc = &mp_cluster_cpus[CA7],
 #endif
 	},
-	.size[THERMAL_TRIP_ACTIVE] = 1,
-	.size[THERMAL_TRIP_PASSIVE] = 2,
-	.freq_tab_count = 3,
+	.freq_tab[3] = {
+		.freq_clip_max = 1900 * 1000,
+#ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
+		.freq_clip_max_kfc = 1200 * 1000,
+#endif
+		.temp_level = 80,
+#ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
+		.mask_val = &mp_cluster_cpus[CA15],
+		.mask_val_kfc = &mp_cluster_cpus[CA7],
+#endif
+	},
+	.freq_tab[4] = {
+		.freq_clip_max = 1900 * 1000,
+#ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
+		.freq_clip_max_kfc = 1200 * 1000,
+#endif
+		.temp_level = 77,
+#ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
+		.mask_val = &mp_cluster_cpus[CA15],
+		.mask_val_kfc = &mp_cluster_cpus[CA7],
+#endif
+	},
+	.size[THERMAL_TRIP_PASSIVE] = 5,
+	.freq_tab_count = 1,
 	.type = SOC_ARCH_EXYNOS,
 	.clock_count = 2,
 	.clk_name[0] = "tmu",
@@ -1907,20 +1921,6 @@ static int exynos_tmu_probe(struct platform_device *pdev)
 	INIT_WORK(&data->irq_work, exynos_tmu_work);
 
 	for (i = 0; i < EXYNOS_TMU_COUNT; i++) {
-		data->irq[i] = platform_get_irq(pdev, i);
-		if (data->irq[i] < 0) {
-			ret = data->irq[i];
-			dev_err(&pdev->dev, "Failed to get platform irq\n");
-			goto err_get_irq;
-		}
-
-		ret = request_irq(data->irq[i], exynos_tmu_irq,
-				IRQF_TRIGGER_RISING, "exynos_tmu", data);
-		if (ret) {
-			dev_err(&pdev->dev, "Failed to request irq: %d\n", data->irq[i]);
-			goto err_request_irq;
-		}
-
 		data->mem[i] = platform_get_resource(pdev, IORESOURCE_MEM, i);
 		if (!data->mem[i]) {
 			ret = -ENOENT;
@@ -2068,8 +2068,6 @@ err_get_resource:
 		if (data->irq[i])
 			free_irq(data->irq[i], data);
 	}
-err_request_irq:
-err_get_irq:
 	kfree(data);
 
 	return ret;

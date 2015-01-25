@@ -27,6 +27,7 @@
 
 #include <linux/module.h>
 #include <linux/device.h>
+#include <linux/debugfs.h>
 #include <linux/err.h>
 #include <linux/slab.h>
 #include <linux/kdev_t.h>
@@ -43,6 +44,7 @@
 
 #include "thermal_core.h"
 #include "thermal_hwmon.h"
+#include "../cpufreq/cpu_load_metric.h"
 
 MODULE_AUTHOR("Zhang Rui");
 MODULE_DESCRIPTION("Generic thermal management sysfs support");
@@ -466,6 +468,10 @@ static void handle_thermal_trip(struct thermal_zone_device *tz, int trip)
 	monitor_thermal_zone(tz);
 }
 
+#define FRAC_BITS 10
+#define int_to_frac(x) ((x) << FRAC_BITS)
+#define frac_to_int(x) ((x) >> FRAC_BITS)
+
 /**
  * thermal_zone_get_temp() - returns its the temperature of thermal zone
  * @tz: a valid pointer to a struct thermal_zone_device
@@ -478,7 +484,7 @@ static void handle_thermal_trip(struct thermal_zone_device *tz, int trip)
  */
 int thermal_zone_get_temp(struct thermal_zone_device *tz, unsigned long *temp)
 {
-	int ret = -EINVAL;
+	int ret = -EINVAL, delta;
 #ifdef CONFIG_THERMAL_EMULATION
 	int count;
 	unsigned long crit_temp = -1UL;
@@ -510,6 +516,18 @@ int thermal_zone_get_temp(struct thermal_zone_device *tz, unsigned long *temp)
 		*temp = tz->emul_temperature;
 skip_emul:
 #endif
+
+	if (!tz->last_temperature)
+		tz->last_temperature = *temp;
+
+	delta = *temp - tz->last_temperature;
+	if ((tz->beta_smooth_temp > 0) && (delta > tz->huge_temperature_delta))
+	     *temp = tz->last_temperature + frac_to_int(tz->beta_smooth_temp * delta);
+
+	*temp = (tz->alpha_smooth_temp * *temp) +
+		((int_to_frac(1) - tz->alpha_smooth_temp) * tz->last_temperature);
+	*temp = frac_to_int(*temp);
+
 	mutex_unlock(&tz->lock);
 exit:
 	return ret;
@@ -549,6 +567,8 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 
 	for (count = 0; count < tz->trips; count++)
 		handle_thermal_trip(tz, count);
+
+	trace_cpu_gpu_stats();
 }
 EXPORT_SYMBOL_GPL(thermal_zone_device_update);
 
@@ -1031,6 +1051,32 @@ int power_actor_set_power(struct thermal_cooling_device *cdev,
 
 	return 0;
 }
+
+#define create_debugfs_entry(name) \
+	dentry_f = debugfs_create_u32( #name, S_IWUSR | S_IRUGO, \
+				filter_d, &tz->name); \
+	if (IS_ERR_OR_NULL(dentry_f)) {					\
+		pr_warn("Unabel to create debugfsfile: " #name "\n");	\
+		return;							\
+	}
+
+/* XXX Rewrite this using the thermal sysfs interface. */
+static void create_filter_debugfs(struct thermal_zone_device *tz)
+{
+	struct dentry *filter_d;
+	struct dentry *dentry_f;
+
+	filter_d = debugfs_create_dir("thermal_lpf_filter", NULL);
+	if (IS_ERR_OR_NULL(filter_d)) {
+		pr_warn("unable to create debugfs directory for the LPF filter\n");
+		return;
+	}
+
+	create_debugfs_entry(alpha_smooth_temp);
+	create_debugfs_entry(beta_smooth_temp);
+	create_debugfs_entry(huge_temperature_delta);
+}
+#undef create_debugfs_entry
 
 static DEVICE_ATTR(type, 0444, type_show, NULL);
 static DEVICE_ATTR(temp, 0444, temp_show, NULL);
@@ -1823,6 +1869,18 @@ struct thermal_zone_device *thermal_zone_device_register(const char *type,
 	result = create_power_allocator_tzp_attrs(&tz->device);
 	if (result)
 		goto unregister;
+
+	/*
+	 * We calculated that alpha = 0.55 and beta = 0.1 was a good
+	 * estimator.  In 10-bit fixed-point arithmetic, that's alpha
+	 * = 0.55 * 1024 = 563 and beta = 0.1 * 1024 = 102.
+	 */
+	BUILD_BUG_ON(FRAC_BITS != 10);
+	tz->alpha_smooth_temp = 563;
+	tz->beta_smooth_temp = 102;
+	tz->huge_temperature_delta = 10000; /* milicelsius */
+
+	create_filter_debugfs(tz);
 
 	/* Update 'this' zone's governor information */
 	mutex_lock(&thermal_governor_lock);

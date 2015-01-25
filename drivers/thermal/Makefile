@@ -20,6 +20,8 @@ obj-$(CONFIG_CPU_THERMAL_IPA)	+= ipa.o
 # cpufreq cooling
 thermal_sys-$(CONFIG_CPU_THERMAL)	+= cpu_cooling.o
 
+thermal_sys-$(CONFIG_GPU_THERMAL)	+= gpu_cooling.o
+
 # platform thermal drivers
 obj-$(CONFIG_SPEAR_THERMAL)	+= spear_thermal.o
 obj-$(CONFIG_RCAR_THERMAL)	+= rcar_thermal.o

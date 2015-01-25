@@ -33,5 +33,9 @@ void update_cpu_metric(int cpu, u64 now, u64 delta_idle, u64 delta_time, struct 
 
 void cpu_load_metric_get(int *load, int *freq);
 void get_cluster_stats(struct cluster_stats *clstats);
+void trace_cpu_gpu_stats(void);
+
+/* In ipa.c */
+void setup_cpusmasks(struct cluster_stats *cl_stats);
 
 #endif /* _DRIVERS_CPU_LOAD_METRIC_H */

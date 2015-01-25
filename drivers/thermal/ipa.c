@@ -95,8 +95,8 @@ struct ipa_config {
 };
 
 static struct ipa_config default_config = {
-	.control_temp = 81,
-	.temp_threshold = 30,
+	.control_temp = 100,
+	.temp_threshold = 5,
 	.enabled = 1,
 	.tdp = 3500,
 	.boost = 1,
@@ -155,7 +155,7 @@ static struct arbiter_data
 	.initialised = false,
 };
 
-static void setup_cpusmasks(struct cluster_stats *cl_stats)
+void setup_cpusmasks(struct cluster_stats *cl_stats)
 {
 	if (!zalloc_cpumask_var(&cl_stats[CA15].mask, GFP_KERNEL))
 		pr_warn("unable to allocate cpumask");
