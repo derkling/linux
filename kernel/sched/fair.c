@@ -6758,6 +6758,10 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 			};
 			unsigned long energy = sched_group_energy(&eenv);
 
+			if (rq->nr_running == 1 && capacity_orig_of(i) >=
+					capacity_orig_of(env->dst_cpu))
+				continue;
+
 			/*
 			 * We're looking for the minimal cpu efficiency
 			 * min(u_i / e_i), crosswise multiplication leads to
@@ -7176,7 +7180,8 @@ static int idle_balance(struct rq *this_rq)
 	 */
 	this_rq->idle_stamp = rq_clock(this_rq);
 
-	if (this_rq->avg_idle < sysctl_sched_migration_cost)
+	if (this_rq->avg_idle < sysctl_sched_migration_cost ||
+	    !energy_aware())
 		goto out;
 
 	/*
