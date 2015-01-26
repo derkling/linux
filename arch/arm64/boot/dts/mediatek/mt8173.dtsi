@@ -106,8 +106,7 @@
 		ranges;
 
 		sysirq: intpol-controller@10200620 {
-			compatible = "mediatek,mt8173-sysirq",
-					"mediatek,mt6577-sysirq";
+			compatible = "mediatek,mt8173-sysirq", "mediatek,mt6577-sysirq";
 			interrupt-controller;
 			#interrupt-cells = <3>;
 			interrupt-parent = <&gic>;
