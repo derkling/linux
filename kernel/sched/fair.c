@@ -7259,6 +7259,10 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 			};
 			unsigned long energy = sched_group_energy(&eenv);
 
+			if (rq->nr_running == 1 && capacity_orig_of(i) >=
+					capacity_orig_of(env->dst_cpu))
+				continue;
+
 			if (usage * costliest_energy > costliest_usage * energy) {
 				costliest_usage = usage;
 				costliest_energy = energy;
