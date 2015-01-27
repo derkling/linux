@@ -373,9 +373,9 @@ static struct capacity_state cap_states_cluster_a53[] = {
 static struct capacity_state cap_states_cluster_a57[] = {
         /* Power per cluster */
 	{ .cap = 418, .power = 25, },
-	{ .cap = 580, .power = 30, },
+	{ .cap = 581, .power = 30, },
 	{ .cap = 745, .power = 43, },
-	{ .cap = 883, .power = 47, },
+	{ .cap = 884, .power = 47, },
 	{ .cap = 1024, .power = 60, },
 };
 
@@ -415,9 +415,9 @@ static struct capacity_state cap_states_core_a53[] = {
 static struct capacity_state cap_states_core_a57[] = {
         /* Power per cpu */
 	{ .cap = 418, .power = 166, },
-	{ .cap = 580, .power = 252, },
+	{ .cap = 581, .power = 252, },
 	{ .cap = 745, .power = 358, },
-	{ .cap = 883, .power = 479, },
+	{ .cap = 884, .power = 479, },
 	{ .cap = 1024, .power = 615, },
 };
 
