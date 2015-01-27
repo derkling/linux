@@ -4729,6 +4729,7 @@ static int group_idle_state(struct sched_group *sg)
 	for_each_cpu(i, sched_group_cpus(sg)) {
 		int cpuidle_idx = idle_get_state_idx(cpu_rq(i));
 		int group_idx = cpuidle_idx - sge->idle_states_below + 1;
+		trace_printk("gis: gf=%d gw=%d cpu=%d gi=%d", cpumask_first(sched_group_cpus(sg)), cpumask_weight(sched_group_cpus(sg)), i, group_idx);
 
 		if (group_idx <= 0)
 			return 0;
@@ -4803,7 +4804,7 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 
 				total_energy += sg_busy_energy + sg_idle_energy;
 
-				trace_printk("sge: gf=%d gw=%d cidx=%d gu=%d be=%d ie=%d", cpumask_first(sched_group_cpus(sg)), cpumask_weight(sched_group_cpus(sg)), cap_idx, group_util, sg_busy_energy, sg_idle_energy);
+				trace_printk("sge: gf=%d gw=%d cidx=%d iidx=%d gu=%d be=%d ie=%d", cpumask_first(sched_group_cpus(sg)), cpumask_weight(sched_group_cpus(sg)), cap_idx, idle_idx, group_util, sg_busy_energy, sg_idle_energy);
 
 				if (!sd->child)
 					cpumask_xor(&visit_cpus, &visit_cpus, sched_group_cpus(sg));
