@@ -306,31 +306,6 @@ static void __init parse_dt_cpu_capacity(void)
 }
 
 /*
- * Look for a customed capacity of a CPU in the cpu_topo_data table during the
- * boot. The update of all CPUs is in O(n^2) for heteregeneous system but the
- * function returns directly for SMP system or if there is no complete set
- * of cpu efficiency, clock frequency data for each cpu.
- */
-static void update_cpu_capacity(unsigned int cpu)
-{
-	unsigned long capacity;
-
-	if (!cpu_capacity(cpu))
-		return;
-
-	if (!max_cpu_perf)
-		cpu_capacity(cpu) = 0;
-
-	capacity = cpu_capacity(cpu);
-	capacity *= SCHED_CAPACITY_SCALE;
-	capacity /= max_cpu_perf;
-	set_capacity_scale(cpu, capacity);
-
-	pr_info("CPU%d: update cpu_capacity %lu\n",
-		cpu, arch_scale_cpu_capacity(NULL, cpu));
-}
-
-/*
  * Scheduler load-tracking scale-invariance
  *
  * Provides the scheduler with a scale-invariance correction factor that
@@ -491,6 +466,31 @@ static struct sched_domain_topology_level arm64_topology[] = {
 	{ cpu_cpu_mask, 0, cpu_cluster_energy, SD_INIT_NAME(DIE) },
 	{ NULL, },
 };
+
+/*
+ * Look for a customed capacity of a CPU in the cpu_topo_data table during the
+ * boot. The update of all CPUs is in O(n^2) for heteregeneous system but the
+ * function returns directly for SMP system or if there is no complete set
+ * of cpu efficiency, clock frequency data for each cpu.
+ */
+static void update_cpu_capacity(unsigned int cpu)
+{
+	unsigned long capacity;
+	int max_cap_idx;
+
+	if (!cpu_capacity(cpu))
+		return;
+
+	if (!max_cpu_perf)
+		cpu_capacity(cpu) = 0;
+
+	max_cap_idx = cpu_core_energy(cpu)->nr_cap_states - 1;
+	capacity = cpu_core_energy(cpu)->cap_states[max_cap_idx].cap;
+	set_capacity_scale(cpu, capacity);
+
+	pr_info("CPU%d: update cpu_capacity %lu\n",
+		cpu, arch_scale_cpu_capacity(NULL, cpu));
+}
 
 static void update_siblings_masks(unsigned int cpuid)
 {
