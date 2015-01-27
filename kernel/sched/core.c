@@ -5050,7 +5050,7 @@ set_table_entry(struct ctl_table *entry,
 static struct ctl_table *
 sd_alloc_ctl_energy_table(struct sched_group_energy *sge)
 {
-	struct ctl_table *table = sd_alloc_ctl_entry(5);
+	struct ctl_table *table = sd_alloc_ctl_entry(6);
 
 	if (table == NULL)
 		return NULL;
@@ -5060,9 +5060,11 @@ sd_alloc_ctl_energy_table(struct sched_group_energy *sge)
 	set_table_entry(&table[1], "idle_states", &sge->idle_states[0].power,
 			sge->nr_idle_states*sizeof(struct idle_state), 0644,
 			proc_doulongvec_minmax, false);
-	set_table_entry(&table[2], "nr_cap_states", &sge->nr_cap_states,
+	set_table_entry(&table[2], "idle_states_below", &sge->idle_states_below,
 			sizeof(int), 0644, proc_dointvec_minmax, false);
-	set_table_entry(&table[3], "cap_states", &sge->cap_states[0].cap,
+	set_table_entry(&table[3], "nr_cap_states", &sge->nr_cap_states,
+			sizeof(int), 0644, proc_dointvec_minmax, false);
+	set_table_entry(&table[4], "cap_states", &sge->cap_states[0].cap,
 			sge->nr_cap_states*sizeof(struct capacity_state), 0644,
 			proc_doulongvec_minmax, false);
 
@@ -6081,6 +6083,7 @@ static void init_sched_energy(int cpu, struct sched_domain *sd,
 	struct sched_group_energy *energy = sg->sge;
 	sched_domain_energy_f fn = tl->energy;
 	struct cpumask *mask = sched_group_cpus(sg);
+	int idle_states_below = 0;
 
 	if (!fn || !fn(cpu))
 		return;
@@ -6088,9 +6091,20 @@ static void init_sched_energy(int cpu, struct sched_domain *sd,
 	if (cpumask_weight(mask) > 1)
 		check_sched_energy_data(cpu, fn, mask);
 
+	/* Figure out the number of true cpuidle states below current group */
+	sd = sd->child;
+	for_each_lower_domain(sd) {
+		idle_states_below += sd->groups->sge->nr_idle_states;
+
+		/* Disregard non-cpuidle 'active' idle states */
+		if (sd->child)
+			idle_states_below--;
+	}
+
 	energy->nr_idle_states = fn(cpu)->nr_idle_states;
 	memcpy(energy->idle_states, fn(cpu)->idle_states,
 	       energy->nr_idle_states*sizeof(struct idle_state));
+	energy->idle_states_below = idle_states_below;
 	energy->nr_cap_states = fn(cpu)->nr_cap_states;
 	memcpy(energy->cap_states, fn(cpu)->cap_states,
 	       energy->nr_cap_states*sizeof(struct capacity_state));
