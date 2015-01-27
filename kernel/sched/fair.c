@@ -4730,6 +4730,28 @@ static int find_new_capacity(struct energy_env *eenv,
 	return idx;
 }
 
+static int group_idle_state(struct sched_group *sg)
+{
+	struct sched_group_energy *sge = sg->sge;
+	int shallowest_state = sge->idle_states_below + sge->nr_idle_states;
+	int i;
+
+	for_each_cpu(i, sched_group_cpus(sg)) {
+		int cpuidle_idx = idle_get_state_idx(cpu_rq(i));
+		int group_idx = cpuidle_idx - sge->idle_states_below + 1;
+
+		if (group_idx <= 0)
+			return 0;
+
+		shallowest_state = min(shallowest_state, group_idx);
+	}
+
+	if (shallowest_state >= sge->nr_idle_states)
+		return sge->nr_idle_states - 1;
+
+	return shallowest_state;
+}
+
 /*
  * sched_group_energy(): Returns absolute energy consumption of cpus belonging
  * to the sched_group including shared resources shared only by members of the
@@ -4773,7 +4795,7 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 			do {
 				unsigned group_util;
 				int sg_busy_energy, sg_idle_energy;
-				int cap_idx;
+				int cap_idx, idle_idx;
 
 				if (sg_shared_cap && sg_shared_cap->group_weight >= sg->group_weight)
 					eenv->sg_cap = sg_shared_cap;
@@ -4781,11 +4803,13 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 					eenv->sg_cap = sg;
 
 				cap_idx = find_new_capacity(eenv, sg->sge);
+				idle_idx = group_idle_state(sg);
 				group_util = group_norm_usage(eenv, sg);
 				sg_busy_energy = (group_util * sg->sge->cap_states[cap_idx].power)
-										>> SCHED_CAPACITY_SHIFT;
-				sg_idle_energy = ((SCHED_LOAD_SCALE-group_util) * sg->sge->idle_states[0].power)
-										>> SCHED_CAPACITY_SHIFT;
+								>> SCHED_CAPACITY_SHIFT;
+				sg_idle_energy = ((SCHED_LOAD_SCALE-group_util)
+								* sg->sge->idle_states[idle_idx].power)
+								>> SCHED_CAPACITY_SHIFT;
 
 				total_energy += sg_busy_energy + sg_idle_energy;
 
