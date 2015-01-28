@@ -6094,12 +6094,12 @@ static int detach_tasks(struct lb_env *env)
 {
 	struct list_head *tasks = &env->src_rq->cfs_tasks;
 	struct task_struct *p;
-	unsigned long load;
+	unsigned long load = 0;
 	int detached = 0;
 
 	lockdep_assert_held(&env->src_rq->lock);
 
-	if (env->imbalance <= 0)
+	if (!env->use_ea && env->imbalance <= 0)
 		return 0;
 
 	while (!list_empty(tasks)) {
@@ -6120,6 +6120,20 @@ static int detach_tasks(struct lb_env *env)
 		if (!can_migrate_task(p, env))
 			goto next;
 
+		if (env->use_ea) {
+			struct energy_env eenv = {
+				.src_cpu = env->src_cpu,
+				.dst_cpu = env->dst_cpu,
+				.usage_delta = task_utilization(p),
+			};
+			int e_diff = energy_diff(&eenv);
+
+			if (e_diff >= 0)
+				goto next;
+
+			goto detach;
+		}
+
 		load = task_h_load(p);
 
 		if (sched_feat(LB_MIN) && load < 16 && !env->sd->nr_balance_failed)
@@ -6128,6 +6142,7 @@ static int detach_tasks(struct lb_env *env)
 		if ((load / 2) > env->imbalance)
 			goto next;
 
+detach:
 		detach_task(p, env);
 		list_add(&p->se.group_node, &env->tasks);
 
@@ -6148,7 +6163,7 @@ static int detach_tasks(struct lb_env *env)
 		 * We only want to steal up to the prescribed amount of
 		 * weighted load.
 		 */
-		if (env->imbalance <= 0)
+		if (!env->use_ea && env->imbalance <= 0)
 			break;
 
 		continue;
