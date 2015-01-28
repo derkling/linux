@@ -5536,6 +5536,7 @@ struct lb_env {
 	unsigned int		loop_max;
 
 	struct list_head	tasks;
+	bool                    use_ea;
 };
 
 /*
@@ -6911,6 +6912,7 @@ static int load_balance(int this_cpu, struct rq *this_rq,
 		.loop_break	= sched_nr_migrate_break,
 		.cpus		= cpus,
 		.tasks		= LIST_HEAD_INIT(env.tasks),
+		.use_ea		= (energy_aware() && sd->groups->sge) ? true : false,
 	};
 
 	/*
