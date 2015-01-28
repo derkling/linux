@@ -5833,6 +5833,7 @@ struct lb_env {
 
 	enum fbq_type		fbq_type;
 	struct list_head	tasks;
+	bool                    use_ea;
 };
 
 /*
@@ -6080,6 +6081,11 @@ static struct task_struct *detach_one_task(struct lb_env *env)
 }
 
 static const unsigned int sched_nr_migrate_break = 32;
+
+static inline bool sched_ea(struct lb_env *env)
+{
+	return (energy_aware() && env->use_ea);
+}
 
 /*
  * detach_tasks() -- tries to detach up to imbalance weighted load from
@@ -7352,6 +7358,7 @@ static int load_balance(int this_cpu, struct rq *this_rq,
 		.cpus		= cpus,
 		.fbq_type	= all,
 		.tasks		= LIST_HEAD_INIT(env.tasks),
+		.use_ea		= (energy_aware() && sd->groups->sge) ? true : false,
 	};
 
 	/*
