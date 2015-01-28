@@ -5510,6 +5510,8 @@ struct lb_env {
 	unsigned int		loop;
 	unsigned int		loop_break;
 	unsigned int		loop_max;
+
+	bool                    use_ea;
 };
 
 /*
@@ -6828,6 +6830,7 @@ static int load_balance(int this_cpu, struct rq *this_rq,
 		.idle		= idle,
 		.loop_break	= sched_nr_migrate_break,
 		.cpus		= cpus,
+		.use_ea		= (energy_aware() && sd->groups->sge) ? true : false,
 	};
 
 	/*
