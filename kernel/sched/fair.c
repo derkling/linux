@@ -5651,6 +5651,7 @@ struct lb_env {
 
 	enum fbq_type		fbq_type;
 	struct list_head	tasks;
+	bool                    use_ea;
 };
 
 /*
@@ -7126,6 +7127,7 @@ static int load_balance(int this_cpu, struct rq *this_rq,
 		.cpus		= cpus,
 		.fbq_type	= all,
 		.tasks		= LIST_HEAD_INIT(env.tasks),
+		.use_ea		= (energy_aware() && sd->groups->sge),
 	};
 
 	/*
