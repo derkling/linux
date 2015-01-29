@@ -6380,6 +6380,7 @@ struct sg_lb_stats {
 	unsigned long load_per_task;
 	unsigned long group_capacity;
 	unsigned long group_usage; /* Total usage of the group */
+	unsigned long group_energy;
 	unsigned long group_eff;
 	unsigned int sum_nr_running; /* Nr tasks running in the group */
 	unsigned int idle_cpus;
@@ -6771,10 +6772,10 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 			.src_cpu        = -1,
 			.dst_cpu        = -1,
 		};
-		unsigned long group_energy = sched_group_energy(&eenv);
+		sgs->group_energy = sched_group_energy(&eenv);
 
-		if (group_energy)
-			sgs->group_eff = 1024*sgs->group_usage/group_energy;
+		if (sgs->group_energy)
+			sgs->group_eff = 1024*sgs->group_usage/sgs->group_energy;
 		else
 			sgs->group_eff = ULONG_MAX;
 	}
