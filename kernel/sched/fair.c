@@ -2200,6 +2200,7 @@ static u32 __compute_runnable_contrib(u64 n)
 }
 
 unsigned long __weak arch_scale_freq_capacity(struct sched_domain *sd, int cpu);
+unsigned long __weak arch_scale_cpu_capacity(struct sched_domain *sd, int cpu);
 
 /*
  * We can represent the historical contribution to runnable average as the
@@ -2238,6 +2239,7 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 	u32 runnable_contrib, scaled_runnable_contrib;
 	int delta_w, scaled_delta_w, decayed = 0;
 	unsigned long scale_freq = arch_scale_freq_capacity(NULL, cpu);
+	unsigned long scale_cpu = arch_scale_cpu_capacity(NULL, cpu);
 
 	delta = now - sa->last_runnable_update;
 	/*
@@ -2274,6 +2276,10 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 
 		if (runnable)
 			sa->runnable_avg_sum += scaled_delta_w;
+
+		scaled_delta_w *= scale_cpu;
+		scaled_delta_w >>= SCHED_CAPACITY_SHIFT;
+
 		if (running)
 			sa->running_avg_sum += scaled_delta_w;
 		sa->avg_period += delta_w;
@@ -2298,6 +2304,10 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 
 		if (runnable)
 			sa->runnable_avg_sum += scaled_runnable_contrib;
+
+		scaled_runnable_contrib *= scale_cpu;
+		scaled_runnable_contrib >>= SCHED_CAPACITY_SHIFT;
+
 		if (running)
 			sa->running_avg_sum += scaled_runnable_contrib;
 		sa->avg_period += runnable_contrib;
@@ -2308,6 +2318,10 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 
 	if (runnable)
 		sa->runnable_avg_sum += scaled_delta;
+
+	scaled_delta *= scale_cpu;
+	scaled_delta >>= SCHED_CAPACITY_SHIFT;
+
 	if (running)
 		sa->running_avg_sum += scaled_delta;
 	sa->avg_period += delta;
@@ -5659,7 +5673,7 @@ unsigned long __weak arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
 
 static unsigned long default_scale_cpu_capacity(struct sched_domain *sd, int cpu)
 {
-	if ((sd->flags & SD_SHARE_CPUCAPACITY) && (sd->span_weight > 1))
+	if (sd && (sd->flags & SD_SHARE_CPUCAPACITY) && (sd->span_weight > 1))
 		return sd->smt_gain / sd->span_weight;
 
 	return SCHED_CAPACITY_SCALE;
