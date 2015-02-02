@@ -845,8 +845,6 @@ static int __init intel_idle_cpuidle_driver_init(void)
 
 	intel_idle_state_table_update();
 
-	drv->state_count = 1;
-
 	for (cstate = 0; cstate < CPUIDLE_STATE_MAX; ++cstate) {
 		int num_substates, mwait_hint, mwait_cstate;
 

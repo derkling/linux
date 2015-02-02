@@ -4968,21 +4968,45 @@ find_idlest_cpu(struct sched_group *group, struct task_struct *p, int this_cpu)
 		if (idle_cpu(i)) {
 			struct rq *rq = cpu_rq(i);
 			struct cpuidle_state *idle = idle_get_state(rq);
-			if (idle && idle->exit_latency < min_exit_latency) {
+
+			if (idle) {
+
 				/*
-				 * We give priority to a CPU whose idle state
-				 * has the smallest exit latency irrespective
-				 * of any idle timestamp.
+				 * When we want to save energy, exclude cpu which did not reach
+				 * the break even point in the idle state
 				 */
-				min_exit_latency = idle->exit_latency;
-				latest_idle_timestamp = rq->idle_stamp;
-				shallowest_idle_cpu = i;
-			} else if ((!idle || idle->exit_latency == min_exit_latency) &&
-				   rq->idle_stamp > latest_idle_timestamp) {
+				if (sched_feat(ENERGY_IDLE) &&
+				    ((ktime_to_us(ktime_get()) - idle->idle_stamp <
+				      idle->target_residency)))
+						continue;
+
+				if (idle->exit_latency < min_exit_latency) {
+					/*
+					 * We give priority to a CPU
+					 * whose idle state has the
+					 * smallest exit latency
+					 * irrespective of any idle
+					 * timestamp.
+					 */
+					min_exit_latency = idle->exit_latency;
+					latest_idle_timestamp = idle->idle_stamp;
+					shallowest_idle_cpu = i;
+				} else if (idle->exit_latency == min_exit_latency &&
+					   idle->idle_stamp > latest_idle_timestamp) {
+					/*
+					 * If the CPU is in the same
+					 * idle state, choose the more
+					 * recent one as it might have
+					 * a warmer cache
+					 */
+					latest_idle_timestamp = idle->idle_stamp;
+					shallowest_idle_cpu = i;
+				}
+			} else if (rq->idle_stamp > latest_idle_timestamp) {
 				/*
-				 * If equal or no active idle state, then
-				 * the most recently idled CPU might have
-				 * a warmer cache.
+				 * If no active idle state, then the
+				 * most recent idled CPU might have a
+				 * warmer cache
 				 */
 				latest_idle_timestamp = rq->idle_stamp;
 				shallowest_idle_cpu = i;
@@ -4996,7 +5020,15 @@ find_idlest_cpu(struct sched_group *group, struct task_struct *p, int this_cpu)
 		}
 	}
 
-	return shallowest_idle_cpu != -1 ? shallowest_idle_cpu : least_loaded_cpu;
+	/*
+	 * If there is a non idle cpu different from the current one,
+	 * let's use it if we want to save energy by not waking up an
+	 * idle cpu, otherwise let's use the shallowest idle cpu
+	 */
+	if (sched_feat(ENERGY_IDLE) && least_loaded_cpu != this_cpu)
+		return least_loaded_cpu;
+	else
+		return shallowest_idle_cpu != -1 ? shallowest_idle_cpu : least_loaded_cpu;
 }
 
 /*

@@ -14,11 +14,13 @@ struct module;
 struct irq_desc;
 struct irq_domain;
 struct pt_regs;
+struct irqt_stat;
 
 /**
  * struct irq_desc - interrupt descriptor
  * @irq_data:		per irq and chip data passed down to chip functions
  * @kstat_irqs:		irq stats per cpu
+ * @irq_timings:		irq occurrence timing statistics
  * @handle_irq:		highlevel irq-events handler
  * @preflow_handler:	handler called before the flow handler (currently used by sparc)
  * @action:		the irq action chain
@@ -49,6 +51,9 @@ struct pt_regs;
 struct irq_desc {
 	struct irq_data		irq_data;
 	unsigned int __percpu	*kstat_irqs;
+#ifdef CONFIG_IRQ_TIMINGS
+	struct irqt_stat *irq_timings;
+#endif
 	irq_flow_handler_t	handle_irq;
 #ifdef CONFIG_IRQ_PREFLOW_FASTEOI
 	irq_preflow_handler_t	preflow_handler;

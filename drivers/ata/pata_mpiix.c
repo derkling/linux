@@ -208,7 +208,7 @@ static int mpiix_init_one(struct pci_dev *dev, const struct pci_device_id *id)
 	ata_sff_std_ports(&ap->ioaddr);
 
 	/* activate host */
-	return ata_host_activate(host, irq, ata_sff_interrupt, IRQF_SHARED,
+	return ata_host_activate(host, irq, ata_sff_interrupt, IRQF_SHARED | IRQF_TIMINGS,
 				 &mpiix_sht);
 }
 

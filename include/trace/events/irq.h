@@ -84,6 +84,51 @@ TRACE_EVENT(irq_handler_exit,
 		  __entry->irq, __entry->ret ? "handled" : "unhandled")
 );
 
+#ifdef CONFIG_IRQ_TIMINGS
+/**
+ * irq_timings - provide updated IRQ timing statistics
+ * @irq: irq number
+ * @interval: time interval since last irq
+ * @variance: time interval variance
+ * @mean: mean interval
+ * @good: current count of predictable irqs
+ * @bad: current count of unpredictable irqs
+ *
+ * Note: variance is provided/listed before the mean value to help with
+ * alignment constraints on 64-bit values.
+ */
+TRACE_EVENT(irq_timings,
+
+	TP_PROTO(int irq, u32 interval, u64 variance, u32 mean,
+		 u32 good, u32 bad),
+
+	TP_ARGS(irq, interval, variance, mean, good, bad),
+
+	TP_STRUCT__entry(
+		__field(	int,	irq       )
+		__field(	u32,	interval  )
+		__field(	u64,	variance )
+		__field(	u32,	mean      )
+		__field(	u32,	good      )
+		__field(	u32,	bad       )
+	),
+
+	TP_fast_assign(
+		__entry->irq       = irq;
+		__entry->interval  = interval;
+		__entry->variance = variance;
+		__entry->mean      = mean;
+		__entry->good      = good;
+		__entry->bad       = bad;
+	),
+
+	TP_printk("irq=%d intv=%u mean=%u variance=%llu (%u vs %u)",
+		  __entry->irq, __entry->interval, __entry->mean,
+		  (unsigned long long)__entry->variance,
+		  __entry->good, __entry->bad)
+);
+#endif
+
 DECLARE_EVENT_CLASS(softirq,
 
 	TP_PROTO(unsigned int vec_nr),
