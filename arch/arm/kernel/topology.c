@@ -169,6 +169,39 @@ static void update_cpu_capacity(unsigned int cpu)
 		cpu, arch_scale_cpu_capacity(NULL, cpu));
 }
 
+/*
+ * Scheduler load-tracking scale-invariance
+ *
+ * Provides the scheduler with a scale-invariance correction factor that
+ * compensates for frequency scaling.
+ */
+
+static DEFINE_PER_CPU(atomic_long_t, cpu_curr_freq);
+static DEFINE_PER_CPU(atomic_long_t, cpu_max_freq);
+
+/* cpufreq callback function setting current cpu frequency */
+void arch_scale_set_curr_freq(int cpu, unsigned long freq)
+{
+	atomic_long_set(&per_cpu(cpu_curr_freq, cpu), freq);
+}
+
+/* cpufreq callback function setting max cpu frequency */
+void arch_scale_set_max_freq(int cpu, unsigned long freq)
+{
+	atomic_long_set(&per_cpu(cpu_max_freq, cpu), freq);
+}
+
+unsigned long arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
+{
+	unsigned long curr = atomic_long_read(&per_cpu(cpu_curr_freq, cpu));
+	unsigned long max = atomic_long_read(&per_cpu(cpu_max_freq, cpu));
+
+	if (!max)
+		return SCHED_CAPACITY_SCALE;
+
+	return (curr * SCHED_CAPACITY_SCALE) / max;
+}
+
 #else
 static inline void parse_dt_topology(void) {}
 static inline void update_cpu_capacity(unsigned int cpuid) {}
@@ -280,12 +313,56 @@ static inline int cpu_corepower_flags(void)
 	return SD_SHARE_PKG_RESOURCES  | SD_SHARE_POWERDOMAIN;
 }
 
+/*
+ * power threshold should be filled according to platform info that can come
+ * from DT as an example. For now use default table
+ */
+static int core_pack_threshold[8][2] = {
+     /* pack, perf */
+	{ 30, 100},
+	{ 30, 100},
+	{ 30, 100},
+	{ 30, 100},
+	{ 20, 100},
+	{ 20, 100},
+	{ 20, 100},
+	{ 20, 100},
+};
+
+static int cpu_core_th(int cpu, int index)
+{
+	if (cpu < 8)
+		return (core_pack_threshold[cpu][index] * 1024) / 100 ;
+
+	return 0;
+}
+
+static int cluster_pack_threshold[8][2] = {
+     /* pack, perf */
+	{ 0, 100},
+	{ 0, 100},
+	{ 0, 100},
+	{ 0, 100},
+	{ 50, 70},
+	{ 50, 70},
+	{ 50, 70},
+	{ 50, 70},
+};
+
+static int cpu_cluster_th(int cpu, int index)
+{
+	if (cpu < 8)
+		return (cluster_pack_threshold[cpu][index] * 1024) / 100;
+
+	return 0;
+}
+
 static struct sched_domain_topology_level arm_topology[] = {
 #ifdef CONFIG_SCHED_MC
-	{ cpu_corepower_mask, cpu_corepower_flags, SD_INIT_NAME(GMC) },
-	{ cpu_coregroup_mask, cpu_core_flags, SD_INIT_NAME(MC) },
+	{ cpu_corepower_mask, cpu_corepower_flags, cpu_core_th, SD_INIT_NAME(GMC) },
+	{ cpu_coregroup_mask, cpu_core_flags, cpu_core_th, SD_INIT_NAME(MC) },
 #endif
-	{ cpu_cpu_mask, SD_INIT_NAME(DIE) },
+	{ cpu_cpu_mask, NULL, cpu_cluster_th, SD_INIT_NAME(DIE) },
 	{ NULL, },
 };
 
