@@ -8,16 +8,12 @@
  * This code is licenced under the GPL.
  */
 
-#include <linux/clockchips.h>
 #include <linux/kernel.h>
 #include <linux/mutex.h>
-#include <linux/sched.h>
 #include <linux/notifier.h>
 #include <linux/pm_qos.h>
 #include <linux/cpu.h>
 #include <linux/cpuidle.h>
-#include <linux/ktime.h>
-#include <linux/hrtimer.h>
 #include <linux/module.h>
 #include <trace/events/power.h>
 
@@ -58,7 +54,7 @@ int cpuidle_play_dead(void)
 		return -ENODEV;
 
 	/* Find lowest-power state that supports long-term idle */
-	for (i = drv->state_count - 1; i >= CPUIDLE_DRIVER_STATE_START; i--)
+	for (i = drv->state_count - 1; i >= 0; i--)
 		if (drv->states[i].enter_dead)
 			return drv->states[i].enter_dead(dev, i);
 
@@ -81,24 +77,33 @@ void cpuidle_use_deepest_state(bool enable)
 }
 
 /**
- * cpuidle_find_deepest_state - Find the state of the greatest exit latency.
+ * cpuidle_find_state - Find an idle state given the constraints
+ *
  * @drv: cpuidle driver for a given CPU.
  * @dev: cpuidle device for a given CPU.
+ *
+ * Returns an index of the state fulfilling the time constraint passed as
+ * parameter, -1 otherwise
+ *
  */
-static int cpuidle_find_deepest_state(struct cpuidle_driver *drv,
-				      struct cpuidle_device *dev)
+int cpuidle_find_state(struct cpuidle_driver *drv, struct cpuidle_device *dev,
+		       unsigned int sleep_time, unsigned int latency_req)
 {
-	unsigned int latency_req = 0;
-	int i, ret = CPUIDLE_DRIVER_STATE_START - 1;
+	int i, ret = -1;
 
-	for (i = CPUIDLE_DRIVER_STATE_START; i < drv->state_count; i++) {
+	for (i = 0; i < drv->state_count; i++) {
 		struct cpuidle_state *s = &drv->states[i];
 		struct cpuidle_state_usage *su = &dev->states_usage[i];
 
-		if (s->disabled || su->disable || s->exit_latency <= latency_req)
+		if (s->disabled || su->disable)
 			continue;
 
-		latency_req = s->exit_latency;
+		if (s->target_residency > sleep_time)
+			continue;
+
+		if (s->exit_latency > latency_req)
+			continue;
+
 		ret = i;
 	}
 	return ret;
@@ -116,21 +121,54 @@ int cpuidle_enter_state(struct cpuidle_device *dev, struct cpuidle_driver *drv,
 	int entered_state;
 
 	struct cpuidle_state *target_state = &drv->states[index];
-	ktime_t time_start, time_end;
 	s64 diff;
 
 	trace_cpu_idle_rcuidle(index, dev->cpu);
-	time_start = ktime_get();
 
+	/*
+	 * Store the idle start time for this cpu, this information
+	 * will be used by cpuidle to measure how long the cpu has
+	 * been idle and by the scheduler to prevent to wake it up too
+	 * early
+	 */
+	target_state->idle_stamp = ktime_to_us(ktime_get());
+
+	/*
+	 * The enter the low level idle routine. This call will block
+	 * until an interrupt occurs meaning it is the end of the idle
+	 * period
+	 */
 	entered_state = target_state->enter(dev, drv, index);
 
-	time_end = ktime_get();
+	/*
+	 * Measure as soon as possible the duration of the idle
+	 * period. It MUST be done before re-enabling the interrupt in
+	 * order to prevent to add in the idle time measurement the
+	 * interrupt handling duration
+	 */
+	diff = ktime_to_us(ktime_sub_us(ktime_get(), target_state->idle_stamp));
+
+	/*
+	 * Reset the idle time stamp as the scheduler thinks the cpu is idle
+	 * while it is in the process of waking up
+	 */
+	target_state->idle_stamp = 0;
+
 	trace_cpu_idle_rcuidle(PWR_EVENT_EXIT, dev->cpu);
 
+	/*
+	 * The cpuidle_enter_coupled uses the cpuidle_enter function.
+	 * Don't re-enable the interrupts and let the enter_coupled
+	 * function to wait for all cpus to sync and to enable the
+	 * interrupts again from there
+	 */
 	if (!cpuidle_state_is_coupled(dev, drv, entered_state))
 		local_irq_enable();
 
-	diff = ktime_to_us(ktime_sub(time_end, time_start));
+	/*
+	 * The idle duration will be casted to an integer, prevent to
+	 * overflow by setting a boundary to INT_MAX
+	 */
 	if (diff > INT_MAX)
 		diff = INT_MAX;
 
@@ -143,6 +181,16 @@ int cpuidle_enter_state(struct cpuidle_device *dev, struct cpuidle_driver *drv,
 		 */
 		dev->states_usage[entered_state].time += dev->last_residency;
 		dev->states_usage[entered_state].usage++;
+		
+		if (diff < drv->states[entered_state].target_residency) {
+			atomic_inc(&dev->over_estimate);
+		} else if (entered_state < (drv->state_count - 1) &&
+			   diff >= 
+			   drv->states[entered_state + 1].target_residency) {
+			atomic_inc(&dev->under_estimate);
+		} else {
+			atomic_inc(&dev->right_estimate);
+		}
 	} else {
 		dev->last_residency = 0;
 	}
@@ -155,10 +203,13 @@ int cpuidle_enter_state(struct cpuidle_device *dev, struct cpuidle_driver *drv,
  *
  * @drv: the cpuidle driver
  * @dev: the cpuidle device
+ * @latency_req: the latency constraint when choosing an idle state
+ * @next_timer_event: the duration until the timer expires
  *
  * Returns the index of the idle state.
  */
-int cpuidle_select(struct cpuidle_driver *drv, struct cpuidle_device *dev)
+int cpuidle_select(struct cpuidle_driver *drv, struct cpuidle_device *dev,
+		   int latency_req, s64 next_timer_event)
 {
 	if (off || !initialized)
 		return -ENODEV;
@@ -167,9 +218,10 @@ int cpuidle_select(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 		return -EBUSY;
 
 	if (unlikely(use_deepest_state))
-		return cpuidle_find_deepest_state(drv, dev);
+		return cpuidle_find_state(drv, dev, UINT_MAX, UINT_MAX);
 
-	return cpuidle_curr_governor->select(drv, dev);
+	return cpuidle_curr_governor->select(drv, dev, latency_req,
+					     next_timer_event);
 }
 
 /**

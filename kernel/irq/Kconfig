@@ -100,4 +100,9 @@ config SPARSE_IRQ
 
 	  If you don't know what to do here, say N.
 
+# Support for IRQ timing stats and prediction, mainly for cpuidle usage
+config IRQ_TIMINGS
+	bool
+	default y
+
 endmenu

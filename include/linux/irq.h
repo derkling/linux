@@ -862,4 +862,10 @@ static inline u32 irq_reg_readl(struct irq_chip_generic *gc,
 		return readl(gc->reg_base + reg_offset);
 }
 
+#ifdef CONFIG_IRQ_TIMINGS
+extern s64 irqt_get_next_prediction(int cpu);
+#else
+static inline s64 irqt_get_next_prediction(int cpu) { return 0; }
+#endif
+
 #endif /* _LINUX_IRQ_H */

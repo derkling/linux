@@ -13,10 +13,6 @@
 #include <linux/kernel.h>
 #include <linux/cpuidle.h>
 #include <linux/pm_qos.h>
-#include <linux/time.h>
-#include <linux/ktime.h>
-#include <linux/hrtimer.h>
-#include <linux/tick.h>
 #include <linux/sched.h>
 #include <linux/math64.h>
 #include <linux/module.h>
@@ -188,12 +184,85 @@ static inline int performance_multiplier(unsigned long nr_iowaiters, unsigned lo
 
 static DEFINE_PER_CPU(struct menu_device, menu_devices);
 
-static void menu_update(struct cpuidle_driver *drv, struct cpuidle_device *dev);
 
 /* This implements DIV_ROUND_CLOSEST but avoids 64 bit division */
 static u64 div_round64(u64 dividend, u32 divisor)
 {
 	return div_u64(dividend + (divisor / 2), divisor);
+}
+
+/**
+ * menu_update - attempts to guess what happened after entry
+ * @drv: cpuidle driver containing state data
+ * @dev: the CPU
+ */
+static void menu_update(struct cpuidle_driver *drv, struct cpuidle_device *dev)
+{
+	struct menu_device *data = this_cpu_ptr(&menu_devices);
+	int last_idx = data->last_state_idx;
+	struct cpuidle_state *target = &drv->states[last_idx];
+	unsigned int measured_us;
+	unsigned int new_factor;
+
+	/*
+	 * Try to figure out how much time passed between entry to low
+	 * power state and occurrence of the wakeup event.
+	 *
+	 * If the entered idle state didn't support residency measurements,
+	 * we are basically lost in the dark how much time passed.
+	 * As a compromise, assume we slept for the whole expected time.
+	 *
+	 * Any measured amount of time will include the exit latency.
+	 * Since we are interested in when the wakeup begun, not when it
+	 * was completed, we must subtract the exit latency. However, if
+	 * the measured amount of time is less than the exit latency,
+	 * assume the state was never reached and the exit latency is 0.
+	 */
+	if (unlikely(target->flags & CPUIDLE_FLAG_TIME_INVALID)) {
+		/* Use timer value as is */
+		measured_us = data->next_timer_us;
+
+	} else {
+		/* Use measured value */
+		measured_us = cpuidle_get_last_residency(dev);
+
+		/* Deduct exit latency */
+		if (measured_us > target->exit_latency)
+			measured_us -= target->exit_latency;
+
+		/* Make sure our coefficients do not exceed unity */
+		if (measured_us > data->next_timer_us)
+			measured_us = data->next_timer_us;
+	}
+
+	/* Update our correction ratio */
+	new_factor = data->correction_factor[data->bucket];
+	new_factor -= new_factor / DECAY;
+
+	if (data->next_timer_us > 0 && measured_us < MAX_INTERESTING)
+		new_factor += RESOLUTION * measured_us / data->next_timer_us;
+	else
+		/*
+		 * we were idle so long that we count it as a perfect
+		 * prediction
+		 */
+		new_factor += RESOLUTION;
+
+	/*
+	 * We don't want 0 as factor; we always want at least
+	 * a tiny bit of estimated time. Fortunately, due to rounding,
+	 * new_factor will stay nonzero regardless of measured_us values
+	 * and the compiler can eliminate this test as long as DECAY > 1.
+	 */
+	if (DECAY == 1 && unlikely(new_factor == 0))
+		new_factor = 1;
+
+	data->correction_factor[data->bucket] = new_factor;
+
+	/* update the repeating-pattern data */
+	data->intervals[data->interval_ptr++] = measured_us;
+	if (data->interval_ptr >= INTERVALS)
+		data->interval_ptr = 0;
 }
 
 /*
@@ -202,7 +271,7 @@ static u64 div_round64(u64 dividend, u32 divisor)
  * of points is below a threshold. If it is... then use the
  * average of these 8 points as the estimated value.
  */
-static void get_typical_interval(struct menu_device *data)
+static unsigned int get_typical_interval(struct menu_device *data)
 {
 	int i, divisor;
 	unsigned int max, thresh;
@@ -259,11 +328,8 @@ again:
 	if (likely(stddev <= ULONG_MAX)) {
 		stddev = int_sqrt(stddev);
 		if (((avg > stddev * 6) && (divisor * 4 >= INTERVALS * 3))
-							|| stddev <= 20) {
-			if (data->next_timer_us > avg)
-				data->predicted_us = avg;
-			return;
-		}
+							|| stddev <= 20)
+			return avg;
 	}
 
 	/*
@@ -276,7 +342,7 @@ again:
 	 * with sporadic activity with a bunch of short pauses.
 	 */
 	if ((divisor * 4) <= INTERVALS * 3)
-		return;
+		return 0;
 
 	thresh = max - 1;
 	goto again;
@@ -287,12 +353,12 @@ again:
  * @drv: cpuidle driver containing state data
  * @dev: the CPU
  */
-static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev)
+static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev,
+		       int latency_req, s64 next_timer_event)
 {
 	struct menu_device *data = this_cpu_ptr(&menu_devices);
-	int latency_req = pm_qos_request(PM_QOS_CPU_DMA_LATENCY);
-	int i;
 	unsigned int interactivity_req;
+	unsigned int interactivity_overrride_us;
 	unsigned long nr_iowaiters, cpu_load;
 
 	if (data->needs_update) {
@@ -300,14 +366,10 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 		data->needs_update = 0;
 	}
 
-	data->last_state_idx = CPUIDLE_DRIVER_STATE_START - 1;
-
-	/* Special case when user has set very strict latency requirement */
-	if (unlikely(latency_req == 0))
-		return 0;
+	data->last_state_idx = 0;
 
 	/* determine the expected residency time, round up */
-	data->next_timer_us = ktime_to_us(tick_nohz_get_sleep_length());
+	data->next_timer_us = next_timer_event;
 
 	get_iowait_load(&nr_iowaiters, &cpu_load);
 	data->bucket = which_bucket(data->next_timer_us, nr_iowaiters);
@@ -321,7 +383,10 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 					 data->correction_factor[data->bucket],
 					 RESOLUTION * DECAY);
 
-	get_typical_interval(data);
+	interactivity_overrride_us = get_typical_interval(data);
+	if (interactivity_overrride_us &&
+	    data->next_timer_us > interactivity_overrride_us)
+		data->predicted_us = interactivity_overrride_us;
 
 	/*
 	 * Performance multiplier defines a minimum predicted idle
@@ -333,31 +398,11 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 		latency_req = interactivity_req;
 
 	/*
-	 * We want to default to C1 (hlt), not to busy polling
-	 * unless the timer is happening really really soon.
-	 */
-	if (data->next_timer_us > 5 &&
-	    !drv->states[CPUIDLE_DRIVER_STATE_START].disabled &&
-		dev->states_usage[CPUIDLE_DRIVER_STATE_START].disable == 0)
-		data->last_state_idx = CPUIDLE_DRIVER_STATE_START;
-
-	/*
 	 * Find the idle state with the lowest power while satisfying
 	 * our constraints.
 	 */
-	for (i = CPUIDLE_DRIVER_STATE_START; i < drv->state_count; i++) {
-		struct cpuidle_state *s = &drv->states[i];
-		struct cpuidle_state_usage *su = &dev->states_usage[i];
-
-		if (s->disabled || su->disable)
-			continue;
-		if (s->target_residency > data->predicted_us)
-			continue;
-		if (s->exit_latency > latency_req)
-			continue;
-
-		data->last_state_idx = i;
-	}
+	data->last_state_idx = cpuidle_find_state(drv, dev, data->predicted_us,
+						  latency_req);
 
 	return data->last_state_idx;
 }
@@ -374,77 +419,7 @@ static void menu_reflect(struct cpuidle_device *dev, int index)
 {
 	struct menu_device *data = this_cpu_ptr(&menu_devices);
 	data->last_state_idx = index;
-	if (index >= 0)
-		data->needs_update = 1;
-}
-
-/**
- * menu_update - attempts to guess what happened after entry
- * @drv: cpuidle driver containing state data
- * @dev: the CPU
- */
-static void menu_update(struct cpuidle_driver *drv, struct cpuidle_device *dev)
-{
-	struct menu_device *data = this_cpu_ptr(&menu_devices);
-	int last_idx = data->last_state_idx;
-	struct cpuidle_state *target = &drv->states[last_idx];
-	unsigned int measured_us;
-	unsigned int new_factor;
-
-	/*
-	 * Try to figure out how much time passed between entry to low
-	 * power state and occurrence of the wakeup event.
-	 *
-	 * If the entered idle state didn't support residency measurements,
-	 * we use them anyway if they are short, and if long,
-	 * truncate to the whole expected time.
-	 *
-	 * Any measured amount of time will include the exit latency.
-	 * Since we are interested in when the wakeup begun, not when it
-	 * was completed, we must subtract the exit latency. However, if
-	 * the measured amount of time is less than the exit latency,
-	 * assume the state was never reached and the exit latency is 0.
-	 */
-
-	/* measured value */
-	measured_us = cpuidle_get_last_residency(dev);
-
-	/* Deduct exit latency */
-	if (measured_us > target->exit_latency)
-		measured_us -= target->exit_latency;
-
-	/* Make sure our coefficients do not exceed unity */
-	if (measured_us > data->next_timer_us)
-		measured_us = data->next_timer_us;
-
-	/* Update our correction ratio */
-	new_factor = data->correction_factor[data->bucket];
-	new_factor -= new_factor / DECAY;
-
-	if (data->next_timer_us > 0 && measured_us < MAX_INTERESTING)
-		new_factor += RESOLUTION * measured_us / data->next_timer_us;
-	else
-		/*
-		 * we were idle so long that we count it as a perfect
-		 * prediction
-		 */
-		new_factor += RESOLUTION;
-
-	/*
-	 * We don't want 0 as factor; we always want at least
-	 * a tiny bit of estimated time. Fortunately, due to rounding,
-	 * new_factor will stay nonzero regardless of measured_us values
-	 * and the compiler can eliminate this test as long as DECAY > 1.
-	 */
-	if (DECAY == 1 && unlikely(new_factor == 0))
-		new_factor = 1;
-
-	data->correction_factor[data->bucket] = new_factor;
-
-	/* update the repeating-pattern data */
-	data->intervals[data->interval_ptr++] = measured_us;
-	if (data->interval_ptr >= INTERVALS)
-		data->interval_ptr = 0;
+	data->needs_update = 1;
 }
 
 /**
