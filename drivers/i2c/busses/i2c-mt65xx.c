@@ -64,8 +64,10 @@
 #define I2C_DEFAUT_SPEED		100000	/* hz */
 #define MAX_FS_MODE_SPEED		400000
 #define MAX_HS_MODE_SPEED		3400000
-#define MAX_DMA_TRANS_SIZE		255
-#define MAX_WRRD_TRANS_SIZE		31
+#define MAX_DMA_TRANS_SIZE_MT6577		255
+#define MAX_WRRD_TRANS_SIZE_MT6577		31
+#define MAX_DMA_TRANS_SIZE_MT8173		65535
+#define MAX_WRRD_TRANS_SIZE_MT8173		65535
 #define MAX_SAMPLE_CNT_DIV		8
 #define MAX_STEP_CNT_DIV		64
 #define MAX_HS_STEP_CNT_DIV		8
@@ -80,6 +82,7 @@
 
 #define COMPAT_MT6577			(0x1 << 0)
 #define COMPAT_MT6589			(0x1 << 1)
+#define COMPAT_MT8173			(0x1 << 2)
 
 #define I2C_DRV_NAME		"mt-i2c"
 
@@ -178,6 +181,7 @@ struct mtk_i2c {
 static const struct of_device_id mtk_i2c_of_match[] = {
 	{ .compatible = "mediatek,mt6577-i2c", .data = (void *)COMPAT_MT6577 },
 	{ .compatible = "mediatek,mt6589-i2c", .data = (void *)COMPAT_MT6589 },
+	{ .compatible = "mediatek,mt8173-i2c", .data = (void *)COMPAT_MT8173 },
 	{},
 };
 MODULE_DEVICE_TABLE(of, mtk_i2c_match);
@@ -248,7 +252,7 @@ static inline void mtk_i2c_init_hw(struct mtk_i2c *i2c)
 	else
 		i2c_writew(I2C_IO_CONFIG_OPEN_DRAIN, i2c, OFFSET_IO_CONFIG);
 
-	if (i2c->platform_compat & COMPAT_MT6577)
+	if (i2c->platform_compat & (COMPAT_MT6577 | COMPAT_MT8173))
 		i2c_writew(I2C_DCM_DISABLE, i2c, OFFSET_DCM_EN);
 
 	i2c_writew(i2c->timing_reg, i2c, OFFSET_TIMING);
@@ -378,8 +382,14 @@ static int mtk_i2c_do_transfer(struct mtk_i2c *i2c)
 
 	/* Set transfer and transaction len */
 	if (i2c->op == I2C_MASTER_WRRD) {
-		i2c_writew(i2c->msg_len | (i2c->msg_aux_len) << 8,
-			i2c, OFFSET_TRANSFER_LEN);
+		if (i2c->platform_compat & COMPAT_MT8173) {
+			i2c_writew(i2c->msg_len, i2c, OFFSET_TRANSFER_LEN);
+			i2c_writew(i2c->msg_aux_len, i2c,
+				OFFSET_TRANSFER_LEN_AUX);
+		} else {
+			i2c_writew(i2c->msg_len | (i2c->msg_aux_len) << 8,
+				i2c, OFFSET_TRANSFER_LEN);
+		}
 		i2c_writew(I2C_WRRD_TRANAC_VALUE, i2c, OFFSET_TRANSAC_LEN);
 	} else {
 		i2c_writew(i2c->msg_len, i2c, OFFSET_TRANSFER_LEN);
@@ -390,17 +400,17 @@ static int mtk_i2c_do_transfer(struct mtk_i2c *i2c)
 	if (i2c->op == I2C_MASTER_RD) {
 		i2c_writel_dma(I2C_DMA_INT_FLAG_NONE, i2c, OFFSET_INT_FLAG);
 		i2c_writel_dma(I2C_DMA_CON_RX, i2c, OFFSET_CON);
-		i2c_writel_dma((u32)i2c->msg_buf, i2c, OFFSET_RX_MEM_ADDR);
+		i2c_writel_dma((u32)i2c->dma_buf.paddr, i2c, OFFSET_RX_MEM_ADDR);
 		i2c_writel_dma(i2c->msg_len, i2c, OFFSET_RX_LEN);
 	} else if (i2c->op == I2C_MASTER_WR) {
 		i2c_writel_dma(I2C_DMA_INT_FLAG_NONE, i2c, OFFSET_INT_FLAG);
 		i2c_writel_dma(I2C_DMA_CON_TX, i2c, OFFSET_CON);
-		i2c_writel_dma((u32)i2c->msg_buf, i2c, OFFSET_TX_MEM_ADDR);
+		i2c_writel_dma((u32)i2c->dma_buf.paddr, i2c,OFFSET_TX_MEM_ADDR);
 		i2c_writel_dma(i2c->msg_len, i2c, OFFSET_TX_LEN);
 	} else {
 		i2c_writel_dma(I2C_DMA_CLR_FLAG, i2c, OFFSET_INT_FLAG);
 		i2c_writel_dma(I2C_DMA_CLR_FLAG, i2c, OFFSET_CON);
-		i2c_writel_dma((u32)i2c->msg_buf, i2c, OFFSET_TX_MEM_ADDR);
+		i2c_writel_dma((u32)i2c->dma_buf.paddr, i2c, OFFSET_TX_MEM_ADDR);
 		i2c_writel_dma((u32)i2c->dma_buf.paddr, i2c,
 			OFFSET_RX_MEM_ADDR);
 		i2c_writel_dma(i2c->msg_len, i2c, OFFSET_TX_LEN);
@@ -538,7 +548,7 @@ static inline u32 mtk_get_device_prop(struct platform_device *pdev)
 	const struct of_device_id *match;
 
 	match = of_match_node(mtk_i2c_of_match, pdev->dev.of_node);
-	return (u32)match->data;
+	return (unsigned long)(match->data);
 }
 
 static int mtk_i2c_parse_dt(struct device_node *np, struct mtk_i2c *i2c,
@@ -560,10 +570,19 @@ static int mtk_i2c_parse_dt(struct device_node *np, struct mtk_i2c *i2c,
 static const struct i2c_adapter_quirks mt6577_i2c_quirks = {
 	.flags = I2C_ADAPTER_QUIRK_COMB_WRITE_THEN_READ,
 	.max_num_msgs = 1,
-	.max_write_len = MAX_DMA_TRANS_SIZE,
-	.max_read_len = MAX_DMA_TRANS_SIZE,
-	.max_comb_write_len = MAX_DMA_TRANS_SIZE,
-	.max_comb_read_len = MAX_WRRD_TRANS_SIZE,
+	.max_write_len = MAX_DMA_TRANS_SIZE_MT6577,
+	.max_read_len = MAX_DMA_TRANS_SIZE_MT6577,
+	.max_comb_write_len = MAX_DMA_TRANS_SIZE_MT6577,
+	.max_comb_read_len = MAX_WRRD_TRANS_SIZE_MT6577,
+};
+
+static const struct i2c_adapter_quirks mt8173_i2c_quirks = {
+	.flags = I2C_ADAPTER_QUIRK_COMB_WRITE_THEN_READ,
+	.max_num_msgs = 1,
+	.max_write_len = MAX_DMA_TRANS_SIZE_MT8173,
+	.max_read_len = MAX_DMA_TRANS_SIZE_MT8173,
+	.max_comb_write_len = MAX_DMA_TRANS_SIZE_MT8173,
+	.max_comb_read_len = MAX_WRRD_TRANS_SIZE_MT8173,
 };
 
 static int mtk_i2c_probe(struct platform_device *pdev)
@@ -583,7 +602,8 @@ static int mtk_i2c_probe(struct platform_device *pdev)
 		return -EINVAL;
 
 	i2c->platform_compat = mtk_get_device_prop(pdev);
-	if (i2c->have_pmic && (i2c->platform_compat & COMPAT_MT6577))
+	if (i2c->have_pmic && (i2c->platform_compat &
+			(COMPAT_MT6577 | COMPAT_MT8173)))
 		return -EINVAL;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -615,7 +635,10 @@ static int mtk_i2c_probe(struct platform_device *pdev)
 	i2c->adap.dev.parent = &pdev->dev;
 	i2c->adap.owner = THIS_MODULE;
 	i2c->adap.algo = &mtk_i2c_algorithm;
-	i2c->adap.quirks = &mt6577_i2c_quirks;
+	if (i2c->platform_compat & COMPAT_MT8173)
+		i2c->adap.quirks = &mt8173_i2c_quirks;
+	else
+		i2c->adap.quirks = &mt6577_i2c_quirks;
 	i2c->adap.algo_data = NULL;
 	i2c->adap.timeout = 2 * HZ;
 	i2c->adap.retries = 1;
