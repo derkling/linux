@@ -352,13 +352,13 @@ EXPORT_SYMBOL_GPL(cpu_topology);
  */
 
 static struct idle_state idle_states_cluster_a53[] = {
-	{ .power = 16, .wu_energy = 0, },
-	{ .power = 39, .wu_energy = 0, },
+	{ .power = 16 },
+	{ .power = 39 },
 };
 
 static struct idle_state idle_states_cluster_a57[] = {
-	{ .power = 28, .wu_energy = 0, },
-	{ .power = 37, .wu_energy = 0, },
+	{ .power = 28 },
+	{ .power = 37 },
 };
 
 static struct capacity_state cap_states_cluster_a53[] = {
@@ -394,13 +394,13 @@ static struct sched_group_energy energy_cluster_a57 = {
 };
 
 static struct idle_state idle_states_core_a53[] = {
-	{ .power = 0, .wu_energy = 0, },
-	{ .power = 6, .wu_energy = 0, },
+	{ .power = 0 },
+	{ .power = 6 },
 };
 
 static struct idle_state idle_states_core_a57[] = {
-	{ .power = 0, .wu_energy = 0, },
-	{ .power = 6, .wu_energy = 0, },
+	{ .power = 0 },
+	{ .power = 6 },
 };
 
 static struct capacity_state cap_states_core_a53[] = {
