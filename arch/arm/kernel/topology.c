@@ -224,7 +224,7 @@ const struct cpumask *cpu_coregroup_mask(int cpu)
  */
 const struct cpumask *cpu_corepower_mask(int cpu)
 {
-	return &cpu_topology[cpu].core_sibling;
+	return &cpu_topology[cpu].thread_sibling;
 }
 
 static void update_siblings_masks(unsigned int cpuid)
@@ -319,11 +319,11 @@ static inline int cpu_corepower_flags(void)
  */
 static int core_pack_threshold[8][2] = {
      /* pack, perf */
+	{ 50, 100},
 	{ 30, 100},
 	{ 30, 100},
 	{ 30, 100},
-	{ 30, 100},
-	{ 30, 100},
+	{ 50, 100},
 };
 
 static int cpu_core_th(int cpu, int index)
