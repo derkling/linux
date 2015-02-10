@@ -808,6 +808,8 @@ static inline struct sched_domain *lowest_flag_domain(int cpu, int flag)
 
 unsigned long capacity_of(int cpu);
 int get_cpu_usage(int cpu);
+void arch_scale_cpu_freq(void);
+void arch_eval_cpu_freq(struct cpumask *update_cpus);
 
 DECLARE_PER_CPU(struct sched_domain *, sd_llc);
 DECLARE_PER_CPU(int, sd_llc_size);
