@@ -263,3 +263,9 @@ config ARM_PXA2xx_CPUFREQ
 	  This add the CPUFreq driver support for Intel PXA2xx SOCs.
 
 	  If in doubt, say N.
+
+config ARM_MTK_CPUFREQ
+	bool "Mediatek CPUFreq support"
+	depends on ARCH_MEDIATEK && CPUFREQ_DT && REGULATOR
+	help
+	  This adds the CPUFreq driver support for Mediatek SoCs.
