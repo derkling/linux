@@ -251,15 +251,128 @@ unsigned long arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
 struct cpu_topology cpu_topology[NR_CPUS];
 EXPORT_SYMBOL_GPL(cpu_topology);
 
+/*
+ * ARM JUNO specific energy cost model data. There are no unit requirements for
+ * the data. Data can be normalized to any reference point, but the
+ * normalization must be consistent. That is, one bogo-joule/watt must be the
+ * same quantity for all data, but we don't care what it is.
+ */
+
+static struct idle_state idle_states_cluster_a53[] = {
+	{ .power = 39 },
+	{ .power = 16 },
+};
+
+static struct idle_state idle_states_cluster_a57[] = {
+	{ .power = 37 },
+	{ .power = 28 },
+};
+
+static struct capacity_state cap_states_cluster_a53[] = {
+        /* Power per cluster */
+	{ .cap = 236, .power = 25, },
+	{ .cap = 302, .power = 30, },
+	{ .cap = 367, .power = 37, },
+	{ .cap = 407, .power = 44, },
+	{ .cap = 447, .power = 75, },
+};
+
+static struct capacity_state cap_states_cluster_a57[] = {
+        /* Power per cluster */
+	{ .cap = 418, .power = 25, },
+	{ .cap = 581, .power = 30, },
+	{ .cap = 744, .power = 43, },
+	{ .cap = 884, .power = 47, },
+	{ .cap = 1024, .power = 60, },
+};
+
+static struct sched_group_energy energy_cluster_a53 = {
+	.nr_idle_states = ARRAY_SIZE(idle_states_cluster_a53),
+	.idle_states    = idle_states_cluster_a53,
+	.nr_cap_states  = ARRAY_SIZE(cap_states_cluster_a53),
+	.cap_states     = cap_states_cluster_a53,
+};
+
+static struct sched_group_energy energy_cluster_a57 = {
+	.nr_idle_states = ARRAY_SIZE(idle_states_cluster_a57),
+	.idle_states    = idle_states_cluster_a57,
+	.nr_cap_states  = ARRAY_SIZE(cap_states_cluster_a57),
+	.cap_states     = cap_states_cluster_a57,
+};
+
+static struct idle_state idle_states_core_a53[] = {
+	{ .power = 6 },
+	{ .power = 0 },
+};
+
+static struct idle_state idle_states_core_a57[] = {
+	{ .power = 6 },
+	{ .power = 0 },
+};
+
+static struct capacity_state cap_states_core_a53[] = {
+        /* Power per cpu */
+	{ .cap = 236, .power = 33, },
+	{ .cap = 302, .power = 46, },
+	{ .cap = 368, .power = 62, },
+	{ .cap = 407, .power = 77, },
+	{ .cap = 447, .power = 83, },
+};
+
+static struct capacity_state cap_states_core_a57[] = {
+        /* Power per cpu */
+	{ .cap = 418, .power = 166, },
+	{ .cap = 581, .power = 252, },
+	{ .cap = 745, .power = 358, },
+	{ .cap = 884, .power = 479, },
+	{ .cap = 1024, .power = 615, },
+};
+
+static struct sched_group_energy energy_core_a53 = {
+	.nr_idle_states = ARRAY_SIZE(idle_states_core_a53),
+	.idle_states    = idle_states_core_a53,
+	.nr_cap_states  = ARRAY_SIZE(cap_states_core_a53),
+	.cap_states     = cap_states_core_a53,
+};
+
+static struct sched_group_energy energy_core_a57 = {
+	  .nr_idle_states = ARRAY_SIZE(idle_states_core_a57),
+	  .idle_states    = idle_states_core_a57,
+	  .nr_cap_states  = ARRAY_SIZE(cap_states_core_a57),
+	  .cap_states     = cap_states_core_a57,
+};
+
+/* sd energy functions */
+static inline const struct sched_group_energy *cpu_cluster_energy(int cpu)
+{
+	return cpu_topology[cpu].cluster_id ? &energy_cluster_a53 :
+			&energy_cluster_a57;
+}
+
 static inline const struct sched_group_energy *cpu_core_energy(int cpu)
 {
-	return NULL;
+	return cpu_topology[cpu].cluster_id ? &energy_core_a53 :
+			&energy_core_a57;
 }
 
 const struct cpumask *cpu_coregroup_mask(int cpu)
 {
 	return &cpu_topology[cpu].core_sibling;
 }
+
+static inline int cpu_corepower_flags(void)
+{
+	return SD_SHARE_PKG_RESOURCES  | SD_SHARE_POWERDOMAIN | \
+	       SD_SHARE_CAP_STATES;
+}
+
+static struct sched_domain_topology_level arm64_topology[] = {
+#ifdef CONFIG_SCHED_MC
+	{ cpu_coregroup_mask, cpu_corepower_flags, cpu_core_energy, SD_INIT_NAME(MC) },
+#endif
+	{ cpu_cpu_mask, 0, cpu_cluster_energy, SD_INIT_NAME(DIE) },
+	{ NULL, },
+};
 
 static void update_cpu_capacity(unsigned int cpu)
 {
@@ -378,6 +491,8 @@ void __init init_cpu_topology(void)
 	 */
 	if (parse_dt_topology())
 		reset_cpu_topology();
+	else
+		set_sched_topology(arm64_topology);
 
 	reset_cpu_capacity();
 }
