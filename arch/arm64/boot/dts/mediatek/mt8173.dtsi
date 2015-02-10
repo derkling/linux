@@ -51,6 +51,17 @@
 			device_type = "cpu";
 			compatible = "arm,cortex-a53";
 			reg = <0x000>;
+			clocks = <&infracfg INFRA_CA53SEL>, <&apmixedsys APMIXED_MAINPLL>;
+			clock-names = "cpu", "intermediate";
+			operating-points = <
+				1508000 1109000
+				1404000	1083000
+				1183000	1028000
+				1105000	1009000
+				1001000	 983000
+				 702000	 908000
+				 507000	 859000
+			>;
 		};
 
 		cpu1: cpu@1 {
@@ -65,6 +76,17 @@
 			compatible = "arm,cortex-a57";
 			reg = <0x100>;
 			enable-method = "psci";
+			clocks = <&infracfg INFRA_CA57SEL>, <&apmixedsys APMIXED_MAINPLL>;
+			clock-names = "cpu", "intermediate";
+			operating-points = <
+				1807000	1089000
+				1612000	1049000
+				1404000	1007000
+				1209000	 968000
+				1001000	 927000
+				 702000	 867000
+				 507000	 828000
+			>;
 		};
 
 		cpu3: cpu@101 {
