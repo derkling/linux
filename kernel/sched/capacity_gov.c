@@ -116,8 +116,10 @@ void arch_scale_cpu_freq(void)
 			continue;
 
 		em = policy->gov_data;
-		if (!em)
+		if (!em) {
+			cpufreq_cpu_put(policy);
 			continue;
+		}
 
 		/*
 		 * FIXME replace the atomic stuff by holding write-locks
@@ -176,7 +178,7 @@ void arch_eval_cpu_freq(struct cpumask *update_cpus)
 		}
 
 		if (!policy->gov_data)
-			return;
+			goto bail;
 
 		em = policy->gov_data;
 
