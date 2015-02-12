@@ -82,6 +82,7 @@ static int energy_model_thread(void *data)
 			continue;
 		}
 
+		trace_printk("ktrhread %d requested freq switch", em->task->pid);
 		ret = __cpufreq_driver_target(policy, atomic_read(&em->target_freq),
 				CPUFREQ_RELATION_H);
 		if (ret)
@@ -128,6 +129,7 @@ void arch_scale_cpu_freq(void)
 		 * in arch_eval_cpu_freq?
 		 */
 		if (atomic_read(&em->need_wake_task)) {
+			trace_printk("waking up kthread (%d)", em->task->pid);
 			em_wake_up_process(em->task);
 		}
 
@@ -204,19 +206,25 @@ void arch_eval_cpu_freq(struct cpumask *update_cpus)
 		 */
 		for_each_cpu(tmp, policy->cpus) {
 			util = get_cpu_usage(cpu);
+			trace_printk("cpu = %d util = %lu", tmp, util);
 			if (util > max_util)
 				max_util = util;
 		}
+		trace_printk("max_util = %lu", max_util);
 
 		cap = capacity_of(cpu);
 		if (!cap) {
 			goto bail;
 		}
+		trace_printk("cpu = %d cap = %lu", cpu, cap);
 
 		index = cpufreq_frequency_table_get_index(policy, policy->cur);
+		trace_printk("cpu = %d index = %d up_th = %u down_th = %u",
+			     cpu, index, em->up_threshold[index], em->down_threshold[index]);
 		if (max_util > em->up_threshold[index]) {
 			/* write em->target_freq with read lock held */
 			atomic_long_set(&em->target_freq, policy->max);
+			trace_printk("requesting transition to %u", policy->max);
 			/*
 			 * FIXME this is gross. convert arch_eval_cpu_freq to
 			 * hold the write lock?
@@ -225,6 +233,7 @@ void arch_eval_cpu_freq(struct cpumask *update_cpus)
 		} else if (max_util < em->down_threshold[index]) {
 			/* write em->target_freq with read lock held */
 			atomic_long_set(&em->target_freq, policy->cur - 1);
+			trace_printk("requesting transition to %u", policy->cur - 1);
 			/*
 			 * FIXME this is gross. convert arch_eval_cpu_freq to
 			 * hold the write lock?
