@@ -926,6 +926,7 @@ struct sched_group_energy {
 	unsigned int nr_cap_states;	/* number of capacity states */
 	struct capacity_state *cap_states; /* ptr to capacity state array */
 };
+extern int sched_get_power(cpumask_t *cpus, u32 *load);
 
 unsigned long capacity_curr_of(int cpu);
 

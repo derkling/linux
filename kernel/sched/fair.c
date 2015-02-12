@@ -4594,6 +4594,157 @@ static int group_idle_state(struct sched_group *sg)
 	return clamp_t(int, state, 0, sg->sge->nr_idle_states - 1);
 }
 
+#define SCHED_POWER_LOAD_MAX 100
+/*
+ * TODO: Compare max_load vs total_load
+ */
+static unsigned int get_group_load(struct sched_group *top,
+				   struct sched_group *sg, unsigned int *load)
+{
+	int cpu, load_idx = 0;
+	unsigned int total_load = 0, max_load = 0;
+
+	for_each_cpu(cpu, sched_group_cpus(top)) {
+		if (cpumask_test_cpu(cpu, sched_group_cpus(sg))) {
+			unsigned int load_val = load[load_idx];
+
+			max_load = max(max_load, load_val);
+			total_load += load[load_idx];
+		}
+		load_idx++;
+	}
+
+	if (total_load > SCHED_POWER_LOAD_MAX)
+		total_load = SCHED_POWER_LOAD_MAX;
+
+	return max_load;
+}
+
+static int get_group_idle_load(struct sched_group *top,
+			       struct sched_group *sg, unsigned int *load)
+{
+	return SCHED_POWER_LOAD_MAX - get_group_load(top, sg, load);
+}
+
+static int sg_current_capacity_idx(struct sched_group *sg, struct sched_group_energy *sge)
+{
+	int idx, cpu = cpumask_any(sched_group_cpus(sg));
+	unsigned long util = capacity_curr_of(cpu);
+
+	for (idx = 0; idx < sge->nr_cap_states; idx++) {
+		if (sge->cap_states[idx].cap >= util)
+			break;
+	}
+	return idx;
+}
+
+/* This function uses the utilization value in the cpufreq driver
+  *
+  *     sg_shared_cap -> [0, 1, 2, 3]-[5,6]
+  *                      |
+  *highest_flag_domain-> [0, 1]-[2, 3]
+  *                      |
+  *                      [0]-[1]-[2]-[3]
+  */
+static int sched_group_power(struct sched_group *top, unsigned int *load)
+{
+
+	struct cpumask visit_cpus;
+	int cpu, total_power = 0;
+
+	cpumask_copy(&visit_cpus, sched_group_cpus(top));
+
+	for_each_cpu(cpu, &visit_cpus) {
+		struct sched_domain *sd;
+		struct sched_group *sg_shared_cap = NULL;
+
+		sd = highest_flag_domain(cpu, SD_SHARE_CAP_STATES);
+		if (sd && sd->parent)
+			sg_shared_cap = sd->parent->groups;
+
+		for_each_domain(cpu, sd) {
+			struct sched_group *sg = sd->groups;
+
+			if (sd->child && cpumask_first(sched_group_cpus(sg)) != cpu)
+				break;
+
+			do {
+				unsigned int group_load, group_idle_load;
+				int sg_busy_power, sg_idle_power;
+				int cap_idx, idle_idx;
+
+				/*
+				 * The capacity index for a shared state should be indexed
+				 * by the current capacity of any of its cpus.
+				 */
+				if (sg_shared_cap && sg_shared_cap->group_weight >= sg->group_weight)
+					cap_idx = sg_current_capacity_idx(sg_shared_cap, sg->sge);
+				else
+					/* For a state that does not share cap, use utilzation */
+					cap_idx = sg_current_capacity_idx(sg, sg->sge);
+
+				group_load = get_group_load(top, sg, load);
+				group_idle_load = get_group_idle_load(top, sg, load);
+				sg_busy_power = group_load * sg->sge->cap_states[cap_idx].power;
+
+				//Why are idle states indexed at 0?
+				idle_idx = group_idle_state(sg);
+				sg_idle_power = group_idle_load * sg->sge->idle_states[0].power;
+				total_power += sg_busy_power + sg_idle_power;
+
+				if (!sd->child)
+					cpumask_xor(&visit_cpus, &visit_cpus, sched_group_cpus(sg));
+
+				if (cpumask_equal(sched_group_cpus(sg), sched_group_cpus(top)))
+					goto next_cpu_load;
+			} while (sg = sg->next, sg != sd->groups);
+		}
+	next_cpu_load:
+		continue;
+	}
+
+	return total_power;
+}
+
+/*
+ * sched_get_power: The function returns the power consumption of the
+ * cpus using the load provided. It uses the EAS energy model to
+ * calculate the power consumption.
+ */
+int sched_get_power(cpumask_t *cpus, u32 *load)
+{
+	cpumask_t visit_cpus;
+	int cpu, power = 0;
+
+	cpumask_copy(&visit_cpus, cpus);
+
+	for_each_cpu(cpu, &visit_cpus){
+		struct sched_domain *sd;
+		struct sched_group *sg = NULL;
+
+		/*
+		 * Find group in the highest domain that is a subset
+		 * of the cpus and contains 'cpu'.
+		 */
+		for_each_domain(cpu, sd) {
+			if (!cpumask_subset(sched_group_cpus(sd->groups),
+					    &visit_cpus))
+				break;
+			sg = sd->groups;
+		}
+
+		if (!sg)
+			goto error;
+
+		power += sched_group_power(sg, load);
+		cpumask_xor(&visit_cpus, &visit_cpus, sched_group_cpus(sg));
+	}
+
+	return power / SCHED_POWER_LOAD_MAX;
+error:
+	return -1;
+}
+
 /*
  * sched_group_energy(): Returns absolute energy consumption of cpus belonging
  * to the sched_group including shared resources shared only by members of the
