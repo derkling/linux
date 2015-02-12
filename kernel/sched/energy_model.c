@@ -247,6 +247,8 @@ static void em_start(struct cpufreq_policy *policy)
 	unsigned int capacity;
 	struct em_data *em;
 	struct cpufreq_frequency_table *pos;
+	struct sched_domain *sd;
+	struct sched_group_energy *sge = NULL;
 
 	/* prepare per-policy private data */
 	em = kzalloc(sizeof(*em), GFP_KERNEL);
@@ -265,16 +267,35 @@ static void em_start(struct cpufreq_policy *policy)
 	em->up_threshold = kcalloc(count, sizeof(unsigned int), GFP_KERNEL);
 	em->down_threshold = kcalloc(count, sizeof(unsigned int), GFP_KERNEL);
 
-	cpufreq_for_each_entry(pos, policy->freq_table) {
-		/* FIXME capacity below is not scaled for uarch */
-		capacity = pos->frequency * SCHED_CAPACITY_SCALE / policy->max;
+	for_each_domain(cpumask_first(policy->cpus), sd)
+		if (!sd->child) {
+#ifdef CONFIG_SCHED_DEBUG
+			pr_debug("%s: using %s sched_group_energy\n",
+				 __func__,
+				 sd->name);
+#endif
+			sge = sd->groups->sge;
+			break;
+		}
+
+	if (!sge) {
+		pr_debug("%s: failed to access sched_group_energy\n",
+			 __func__);
+		kfree(em->up_threshold);
+		kfree(em->down_threshold);
+		kfree(em);
+		return;
+	}
+
+	for (index = 0; index < sge->nr_cap_states; index++) {
+		/* capacity below is both freq and uarch scaled */
+		capacity = sge->cap_states[index].cap;
 		em->up_threshold[index] = capacity * UP_THRESHOLD / 100;
 		em->down_threshold[index] = capacity * DOWN_THRESHOLD / 100;
 		pr_debug("%s: cpu = %u index = %d capacity = %u up = %u down = %u\n",
 				__func__, cpumask_first(policy->cpus), index,
 				capacity, em->up_threshold[index],
 				em->down_threshold[index]);
-		index++;
 	}
 
 	/* init per-policy kthread */
