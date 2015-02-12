@@ -2559,6 +2559,7 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 	unsigned long scale_freq, scale_cpu;
 
 	delta = now - sa->last_update_time;
+
 	/*
 	 * This should only happen when time goes backwards, which it
 	 * unfortunately does during sched clock init when we swap over to TSC.
