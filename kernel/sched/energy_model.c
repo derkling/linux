@@ -71,7 +71,7 @@ static int energy_model_thread(void *data)
 
 	param.sched_priority = 0;
 	sched_setscheduler(current, SCHED_FIFO, &param);
-
+	sched_setaffinity(0, policy->related_cpus);
 
 	do {
 		down_write(&policy->rwsem);
