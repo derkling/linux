@@ -4595,8 +4595,87 @@ static int group_idle_state(struct sched_group *sg)
 }
 
 #define SCHED_POWER_LOAD_MAX 100
+#define SCHED_POWER_MIN_WIN 1000 //10ms
+
+/* We should be avoiding these per_cpu data structures
+ * this could end up in requiring a new structure which
+ * should be maintained by cpufreq_cooling_device
+ *
+ * struct time_keeper_for_sched_power {
+ * 	time_in_idle_time_stamp[cpu]
+ * 	time_in_idle[cpu]
+ * }
+ *
+ * this can then be passed to the sched_get_power
+ * but for now we will go the approach of per_cpu
+ * varaibles
+ */
+
+DEFINE_PER_CPU(u64, time_in_idle);
+DEFINE_PER_CPU(u64, time_in_idle_timestamp);
+DEFINE_PER_CPU(u32, cf_prev_load);
+
+static inline u64 spower_idle_time_jiffy(int cpu, u64 *wall) {
+	/* When tick_nohz is not enabled
+	 * TODO: Add implementation
+	 */
+	return -1ULL;
+}
+
+static u64 spower_cpu_idle_time(int cpu, u64 *now) {
+
+	int idle;
+	idle = get_cpu_idle_time_us(cpu, 0);
+
+	if (idle == -1ULL)
+		return spower_idle_time_jiffy(cpu, now);
+	idle += get_cpu_iowait_time_us(cpu, now);
+	return idle;
+}
+
+static unsigned int* sched_power_get_load_vector(struct cpumask *cpus) {
+
+	int cpu, index = 0;
+	unsigned int *load;
+	u64 now, now_idle, delta_time, delta_idle;
+
+	load = kcalloc(sizeof(*load), cpumask_weight(cpus), GFP_KERNEL);
+	if (!load)
+		return ERR_PTR(-ENOMEM);
+
+	now = ktime_to_us(ktime_get());
+
+	for_each_cpu(cpu, cpus) {
+
+		/* Maintian a granularity check, for successive calls to avoid spikes */
+		if (now - per_cpu(time_in_idle_timestamp, cpu) < SCHED_POWER_MIN_WIN) {
+			load[index] = per_cpu(cf_prev_load, cpu);
+			index++;
+			continue;
+		}
+
+		now_idle = spower_cpu_idle_time(cpu, &now);
+		delta_idle = now_idle - per_cpu(time_in_idle, cpu);
+		delta_time = now - per_cpu(time_in_idle_timestamp, cpu);
+		if (delta_time <= delta_idle)
+			load[index] = 0;
+		else
+			load[index] = div64_u64(100 * (delta_time - delta_idle),
+					        delta_time);
+
+		per_cpu(time_in_idle, cpu) = now_idle;
+		per_cpu(time_in_idle_timestamp, cpu) = now;
+		per_cpu(cf_prev_load, cpu) = load[index];
+		index++;
+	}
+
+	return load;
+}
+
 /*
- * TODO: Compare max_load vs total_load
+ * Get a scalar value of the load given the topmost
+ * group and the load vector for the cpus in the
+ * topmost group
  */
 static unsigned int get_group_load(struct sched_group *top,
 				   struct sched_group *sg, unsigned int *load)
@@ -4607,7 +4686,6 @@ static unsigned int get_group_load(struct sched_group *top,
 	for_each_cpu(cpu, sched_group_cpus(top)) {
 		if (cpumask_test_cpu(cpu, sched_group_cpus(sg))) {
 			unsigned int load_val = load[load_idx];
-
 			max_load = max(max_load, load_val);
 			total_load += load[load_idx];
 		}
@@ -4711,10 +4789,15 @@ static int sched_group_power(struct sched_group *top, unsigned int *load)
  * cpus using the load provided. It uses the EAS energy model to
  * calculate the power consumption.
  */
-int sched_get_power(cpumask_t *cpus, u32 *load)
+int sched_get_power(cpumask_t *cpus)
 {
 	cpumask_t visit_cpus;
 	int cpu, power = 0;
+	unsigned int *load;
+
+	load = sched_power_get_load_vector(cpus);
+	if (IS_ERR(load))
+		return 0;
 
 	cpumask_copy(&visit_cpus, cpus);
 
@@ -4740,8 +4823,10 @@ int sched_get_power(cpumask_t *cpus, u32 *load)
 		cpumask_xor(&visit_cpus, &visit_cpus, sched_group_cpus(sg));
 	}
 
+	kfree(load);
 	return power / SCHED_POWER_LOAD_MAX;
 error:
+	kfree(load);
 	return -1;
 }
 
