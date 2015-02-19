@@ -4678,10 +4678,11 @@ static unsigned int* sched_power_get_load_vector(struct cpumask *cpus) {
  * topmost group
  */
 static unsigned int get_group_load(struct sched_group *top,
-				   struct sched_group *sg, unsigned int *load)
+				   struct sched_group *sg, unsigned int *load,
+				   unsigned int method)
 {
 	int cpu, load_idx = 0;
-	unsigned int total_load = 0, max_load = 0;
+	unsigned int total_load = 0, max_load = 0, load_r = 0;
 
 	for_each_cpu(cpu, sched_group_cpus(top)) {
 		if (cpumask_test_cpu(cpu, sched_group_cpus(sg))) {
@@ -4695,13 +4696,20 @@ static unsigned int get_group_load(struct sched_group *top,
 	if (total_load > SCHED_POWER_LOAD_MAX)
 		total_load = SCHED_POWER_LOAD_MAX;
 
-	return max_load;
+	switch(method) {
+		default:
+			load_r = max_load;
+			break;
+	}
+
+	return load_r;
 }
 
 static int get_group_idle_load(struct sched_group *top,
-			       struct sched_group *sg, unsigned int *load)
+			       struct sched_group *sg, unsigned int *load,
+			       unsigned int method)
 {
-	return SCHED_POWER_LOAD_MAX - get_group_load(top, sg, load);
+	return SCHED_POWER_LOAD_MAX - get_group_load(top, sg, load, method);
 }
 
 static int sg_current_capacity_idx(struct sched_group *sg, struct sched_group_energy *sge)
@@ -4724,7 +4732,8 @@ static int sg_current_capacity_idx(struct sched_group *sg, struct sched_group_en
   *                      |
   *                      [0]-[1]-[2]-[3]
   */
-static int sched_group_power(struct sched_group *top, unsigned int *load)
+static int sched_group_power(struct sched_group *top, unsigned int *load,
+			     unsigned int method)
 {
 
 	struct cpumask visit_cpus;
@@ -4761,8 +4770,8 @@ static int sched_group_power(struct sched_group *top, unsigned int *load)
 					/* For a state that does not share cap, use utilzation */
 					cap_idx = sg_current_capacity_idx(sg, sg->sge);
 
-				group_load = get_group_load(top, sg, load);
-				group_idle_load = get_group_idle_load(top, sg, load);
+				group_load = get_group_load(top, sg, load, method);
+				group_idle_load = get_group_idle_load(top, sg, load, method);
 				sg_busy_power = group_load * sg->sge->cap_states[cap_idx].power;
 
 				//Why are idle states indexed at 0?
@@ -4789,7 +4798,7 @@ static int sched_group_power(struct sched_group *top, unsigned int *load)
  * cpus using the load provided. It uses the EAS energy model to
  * calculate the power consumption.
  */
-int sched_get_power(cpumask_t *cpus)
+int sched_get_power(cpumask_t *cpus, unsigned int method)
 {
 	cpumask_t visit_cpus;
 	int cpu, power = 0;
@@ -4819,7 +4828,7 @@ int sched_get_power(cpumask_t *cpus)
 		if (!sg)
 			goto error;
 
-		power += sched_group_power(sg, load);
+		power += sched_group_power(sg, load, method);
 		cpumask_xor(&visit_cpus, &visit_cpus, sched_group_cpus(sg));
 	}
 
