@@ -4825,6 +4825,8 @@ static int sched_group_power(struct sched_group *top, unsigned int *load,
 	return total_power;
 }
 
+static unsigned int sched_group_energy(struct energy_env *eenv);
+
 /*
  * sched_get_power: The function returns the power consumption of the
  * cpus using the load provided. It uses the EAS energy model to
@@ -4859,13 +4861,25 @@ int sched_get_power(cpumask_t *cpus, unsigned int method)
 
 		if (!sg)
 			goto error;
+		if (method == SCHED_POWER_METHOD_UTIL) {
+			struct energy_env eenv = {
+				.sg_top         = sg,
+				.usage_delta    = 0,
+				.src_cpu        = -1,
+				.dst_cpu        = -1,
+			};
+			power += sched_group_energy(&eenv);
+		} else
+			power += sched_group_power(sg, load, method);
 
-		power += sched_group_power(sg, load, method);
 		cpumask_xor(&visit_cpus, &visit_cpus, sched_group_cpus(sg));
 	}
 
 	kfree(load);
-	return power / SCHED_POWER_LOAD_MAX;
+	if (method == SCHED_POWER_METHOD_UTIL)
+		return power;
+	else
+		return power / SCHED_POWER_LOAD_MAX;
 error:
 	kfree(load);
 	return -1;
