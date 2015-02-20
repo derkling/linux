@@ -4599,6 +4599,23 @@ static int group_idle_state(struct sched_group *sg)
 #define SCHED_POWER_METHOD_MAX 0
 #define SCHED_POWER_METHOD_SUM 1
 #define SCHED_POWER_METHOD_MID 2
+#define SCHED_POWER_METHOD_UTIL 3
+
+unsigned int sched_group_norm_load(struct sched_group *sg)
+{
+	unsigned int usage_sum = 0;
+	int cpu;
+
+	for_each_cpu(cpu, sched_group_cpus(sg)) {
+		unsigned long capacity_curr = capacity_curr_of(cpu);
+		usage_sum += (get_cpu_usage(cpu) << SCHED_CAPACITY_SHIFT) / capacity_curr;
+	}
+
+	if (usage_sum > SCHED_CAPACITY_SCALE)
+		usage_sum = SCHED_CAPACITY_SCALE;
+
+	return	(usage_sum * SCHED_POWER_LOAD_MAX) >> SCHED_CAPACITY_SHIFT;
+}
 
 /* We should be avoiding these per_cpu data structures
  * this could end up in requiring a new structure which
@@ -4686,6 +4703,9 @@ static unsigned int get_group_load(struct sched_group *top,
 {
 	int cpu, load_idx = 0;
 	unsigned int total_load = 0, max_load = 0, load_r = 0;
+
+	if (method == SCHED_POWER_METHOD_UTIL)
+		return sched_group_norm_load(sg);
 
 	for_each_cpu(cpu, sched_group_cpus(top)) {
 		if (cpumask_test_cpu(cpu, sched_group_cpus(sg))) {
