@@ -31,6 +31,40 @@ TRACE_EVENT(sched_kthread_stop,
 );
 
 /*
+ * Tracepoint for scheduler power function
+ */
+TRACE_EVENT(sched_get_power,
+	TP_PROTO(const struct cpumask *cpus, unsigned long group_load,
+		 int energy_index, u32 dynamic_power, u32 idle_power, u32 total_power),
+
+	TP_ARGS(cpus, group_load, energy_index, dynamic_power, idle_power, total_power),
+
+	TP_STRUCT__entry(
+		__bitmask(cpumask, num_possible_cpus())
+		__field(unsigned long, group_load    )
+		__field(int,           energy_index  )
+		__field(u32,           dynamic_power )
+		__field(u32,           idle_power    )
+		__field(u32,           total_power  )
+	),
+
+	TP_fast_assign(
+		__assign_bitmask(cpumask, cpumask_bits(cpus),
+				num_possible_cpus());
+		__entry->group_load = group_load;
+		__entry->energy_index  = energy_index;
+		__entry->dynamic_power = dynamic_power;
+		__entry->idle_power = idle_power;
+		__entry->total_power = total_power;
+	),
+
+	TP_printk("cpus=%s group_load=%lu energy_index=%d dynamic_power=%d idle_power=%d total_power=%d",
+		__get_bitmask(cpumask),
+		__entry->group_load, __entry->energy_index,
+		__entry->dynamic_power, __entry->idle_power, __entry->total_power)
+);
+
+/*
  * Tracepoint for the return value of the kthread stopping:
  */
 TRACE_EVENT(sched_kthread_stop_ret,
