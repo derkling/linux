@@ -4596,6 +4596,7 @@ static int group_idle_state(struct sched_group *sg)
 
 #define SCHED_POWER_LOAD_MAX 100
 #define SCHED_POWER_MIN_WIN 1000 //10ms
+#define SCHED_POWER_METHOD_MAX 0
 
 /* We should be avoiding these per_cpu data structures
  * this could end up in requiring a new structure which
@@ -4697,6 +4698,9 @@ static unsigned int get_group_load(struct sched_group *top,
 		total_load = SCHED_POWER_LOAD_MAX;
 
 	switch(method) {
+		case SCHED_POWER_METHOD_MAX:
+			load_r = max_load;
+			break;
 		default:
 			load_r = max_load;
 			break;
