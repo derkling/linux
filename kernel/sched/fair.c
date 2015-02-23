@@ -8245,11 +8245,13 @@ static inline bool nohz_kick_needed(struct rq *rq)
 	if (time_before(now, nohz.next_balance))
 		return false;
 
-	sd = rcu_dereference(rq->sd);
-	if (rq->nr_running >= 2 && (!energy_aware() || cpu_overutilized(cpu, sd)))
-		return true;
-
 	rcu_read_lock();
+	sd = rcu_dereference(rq->sd);
+	if (rq->nr_running >= 2 && (!energy_aware() || cpu_overutilized(cpu, sd))) {
+		kick = true;
+		goto unlock;
+	}
+
 	sd = rcu_dereference(per_cpu(sd_busy, cpu));
 	if (sd && !energy_aware()) {
 		sgc = sd->groups->sgc;
