@@ -1432,6 +1432,16 @@ static inline bool energy_aware(void)
 	return sched_feat(ENERGY_AWARE);
 }
 
+static inline bool do_idle_balance(void)
+{
+	return sched_feat(IDLE_BALANCE);
+}
+
+static inline bool do_periodic_balance(void)
+{
+	return sched_feat(PERIODIC_BALANCE);
+}
+
 #ifdef CONFIG_SCHED_HRTICK
 
 /*

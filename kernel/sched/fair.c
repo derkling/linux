@@ -7827,8 +7827,10 @@ static int idle_balance(struct rq *this_rq)
 		int continue_balancing = 1;
 		u64 t0, domain_cost;
 
-		if (!(sd->flags & SD_LOAD_BALANCE))
+		if (!(sd->flags & SD_LOAD_BALANCE) || !do_idle_balance()) {
+			trace_printk("cpu: %d sd:%s not to be balanced", this_cpu, sd->name);
 			continue;
+		}
 
 		if (this_rq->avg_idle < curr_cost + sd->max_newidle_lb_cost) {
 			update_next_balance(sd, 0, &next_balance);
@@ -8197,8 +8199,10 @@ static void rebalance_domains(struct rq *rq, enum cpu_idle_type idle)
 		}
 		max_cost += sd->max_newidle_lb_cost;
 
-		if (!(sd->flags & SD_LOAD_BALANCE))
+		if (!(sd->flags & SD_LOAD_BALANCE) || !do_periodic_balance()) {
+			trace_printk("cpu: %d sd:%s not to be balanced", cpu, sd->name);
 			continue;
+		}
 
 		/*
 		 * Stop the load balance at this level. There is another
