@@ -2471,6 +2471,7 @@ static u32 __compute_runnable_contrib(u64 n)
 	return contrib + runnable_avg_yN_sum[n];
 }
 
+void __weak arch_scale_set_curr_freq(int cpu, unsigned long freq);
 unsigned long __weak arch_scale_freq_capacity(struct sched_domain *sd, int cpu);
 unsigned long __weak arch_scale_cpu_capacity(struct sched_domain *sd, int cpu);
 
@@ -4881,6 +4882,7 @@ static int energy_diff(struct energy_env *eenv)
 	struct sched_domain *sd;
 	struct sched_group *sg;
 	int sd_cpu = -1, energy_before = 0, energy_after = 0;
+	char buf[512];
 
 	struct energy_env eenv_before = {
 		.usage_delta	= 0,
@@ -4899,11 +4901,14 @@ static int energy_diff(struct energy_env *eenv)
 
 	sg = sd->groups;
 	do {
+		cpulist_scnprintf(buf, sizeof(buf), sched_group_cpus(sg));
+		trace_printk("evaluating sg: %s", buf);
 		if (eenv->src_cpu != -1 && cpumask_test_cpu(eenv->src_cpu,
 							sched_group_cpus(sg))) {
 			eenv_before.sg_top = eenv->sg_top = sg;
 			energy_before += sched_group_energy(&eenv_before);
 			energy_after += sched_group_energy(eenv);
+			trace_printk("energy_before: %d energy_after: %d", energy_before, energy_after);
 
 			/* src_cpu and dst_cpu may belong to the same group */
 			continue;
@@ -4914,6 +4919,7 @@ static int energy_diff(struct energy_env *eenv)
 			eenv_before.sg_top = eenv->sg_top = sg;
 			energy_before += sched_group_energy(&eenv_before);
 			energy_after += sched_group_energy(eenv);
+			trace_printk("energy_before: %d energy_after: %d", energy_before, energy_after);
 		}
 	} while (sg = sg->next, sg != sd->groups);
 
@@ -5197,6 +5203,7 @@ static inline unsigned long task_utilization(struct task_struct *p)
 
 static int cpu_overutilized(int cpu, struct sched_domain *sd)
 {
+	trace_printk("sd: %s imbalance_pct: %u", sd->name, sd->imbalance_pct);
 	return (capacity_orig_of(cpu) * 100) <
 				(get_cpu_usage(cpu) * sd->imbalance_pct);
 }
@@ -5208,8 +5215,10 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 	int target_max_cap = SCHED_CAPACITY_SCALE;
 	int target_cpu = task_cpu(p);
 	int i;
+	char buf[512];
 
 	sd = rcu_dereference(per_cpu(sd_ea, task_cpu(p)));
+	trace_printk("highest sd: %s", sd->name);
 
 	if (!sd)
 		return -1;
@@ -5226,6 +5235,9 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 			target_max_cap = sg_max_capacity;
 		}
 	} while (sg = sg->next, sg != sd->groups);
+
+	cpulist_scnprintf(buf, sizeof(buf), sched_group_cpus(sg_target));
+	trace_printk("sg_target: %s target_max_cap: %d", buf, target_max_cap);
 
 	/* Find cpu with sufficient capacity */
 	for_each_cpu_and(i, tsk_cpus_allowed(p), sched_group_cpus(sg_target)) {
@@ -5245,6 +5257,9 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 			target_cpu = i;
 	}
 
+	trace_printk("task_cpu: %d target_cpu: %d", task_cpu(p), target_cpu);
+	trace_printk("task_utilization: %lu target_cpu_usage: %d", task_utilization(p), get_cpu_usage(target_cpu));
+
 	if (target_cpu != task_cpu(p)) {
 		struct energy_env eenv = {
 			.usage_delta	= task_utilization(p),
@@ -5253,13 +5268,18 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 		};
 
 		/* Not enough spare capacity on previous cpu */
-		if (cpu_overutilized(task_cpu(p), sd))
+		if (cpu_overutilized(task_cpu(p), sd)) {
+			trace_printk("previous cpu overutilized return %d", target_cpu);
 			return target_cpu;
+		}
 
-		if (energy_diff(&eenv) >= 0)
+		if (energy_diff(&eenv) >= 0) {
+			trace_printk("energy diff positive return %d", task_cpu(p));
 			return task_cpu(p);
+		}
 	}
 
+	trace_printk("return %d", target_cpu);
 	return target_cpu;
 }
 
@@ -5284,6 +5304,9 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	int want_affine = 0;
 	int sync = wake_flags & WF_SYNC;
 
+	if (sd_flag & SD_BALANCE_FORK)
+		trace_printk("SD_BALANCE_FORK for task %d", p->pid);
+
 	if (sd_flag & SD_BALANCE_WAKE)
 		want_affine = cpumask_test_cpu(cpu, tsk_cpus_allowed(p));
 
@@ -5300,7 +5323,9 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 		    cpumask_test_cpu(prev_cpu, sched_domain_span(tmp))) {
 			affine_sd = tmp;
 			break;
-		}
+		} else
+			trace_printk("sd:%s not a valid SD_WAKE_AFFINE target (want_affine: %d)",
+				     tmp->name, want_affine);
 
 		if (tmp->flags & sd_flag)
 			sd = tmp;
@@ -5310,6 +5335,7 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 		prev_cpu = cpu;
 
 	if (sd_flag & SD_BALANCE_WAKE) {
+		trace_printk("SD_BALANCE_WAKE is set: %d for task: %d", sd_flag, p->pid);
 		if (energy_aware()) {
 			new_cpu = energy_aware_wake_cpu(p);
 			goto unlock;
@@ -5318,12 +5344,18 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 		goto unlock;
 	}
 
+	
 	while (sd) {
 		struct sched_group *group;
 		int weight;
+		char buf[512];
+
+		trace_printk("balancing at %s level", sd->name);
+		trace_printk("sd->flags: %d sd_flag: %d", sd->flags, sd_flag);
 
 		if (!(sd->flags & sd_flag)) {
 			sd = sd->child;
+			trace_printk("not to balance sd: %s", sd->name);
 			continue;
 		}
 
@@ -5333,12 +5365,17 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 			continue;
 		}
 
+		cpulist_scnprintf(buf, sizeof(buf), sched_group_cpus(group));
+		trace_printk("idlest group: %s", buf);
+
 		new_cpu = find_idlest_cpu(group, p, cpu);
 		if (new_cpu == -1 || new_cpu == cpu) {
 			/* Now try balancing at a lower domain level of cpu */
 			sd = sd->child;
 			continue;
 		}
+
+		trace_printk("idlest cpu: %d", new_cpu);
 
 		/* Now try balancing at a lower domain level of new_cpu */
 		cpu = new_cpu;
@@ -7784,6 +7821,7 @@ static int idle_balance(struct rq *this_rq)
 	u64 curr_cost = 0;
 
 	idle_enter_fair(this_rq);
+	trace_printk("idle balance cpu: %d", this_cpu);
 
 	/*
 	 * We must set idle_stamp _before_ calling idle_balance(), such that we
@@ -8123,6 +8161,7 @@ static void rebalance_domains(struct rq *rq, enum cpu_idle_type idle)
 	u64 max_cost = 0;
 
 	update_blocked_averages(cpu);
+	trace_printk("balancing cpu: %d", cpu);
 
 	rcu_read_lock();
 	for_each_domain(cpu, sd) {
