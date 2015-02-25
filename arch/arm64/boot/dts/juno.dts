@@ -220,7 +220,10 @@
 			frequency-range = <23750000 165000000>;
 			clock-output-names = "pxlclk0", "pxlclk1";
 		};
+	};
 
+	cpufreq {
+		compatible = "arm,scpi-cpufreq";
 	};
 
 	/include/ "juno-clocks.dtsi"
