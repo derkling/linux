@@ -59,6 +59,11 @@
 		interrupts = <0 85 4>;
 		clocks = <&oscclk3>;
 		clock-names = "pxlclk";
+		port {
+			hdlcd_output: endpoint {
+				remote-endpoint = <&sii9022_input>;
+			};
+		};
 	};
 
 	memory-controller@2a150000 {

@@ -217,9 +217,18 @@
 				#address-cells = <1>;
 				#size-cells = <0>;
 
-				dvi_i2c_slave: dvi-transmitter@39 {
+				dvi-transmitter@39 {
 					compatible = "sil,sii9022-tpi", "sil,sii9022";
 					reg = <0x39>;
+					port {
+						sii9022_input: endpoint@0 {
+							remote-endpoint = <&hdlcd_output>;
+						};
+
+						sii9022_output: endpoint@1 {
+							remote-endpoint = <&dvi_connector_output>;
+						};
+					};
 				};
 
 				dvi-transmitter@60 {
@@ -433,8 +442,14 @@
 			};
 
 			dvimode@0 {
-				compatible = "arm,vexpress-dvimode";
+				compatible = "arm,vexpress-dvimode","dvi-connector";
 				arm,vexpress-sysreg,func = <11 0>;
+				analog;
+				port {
+					dvi_connector_output: endpoint {
+						remote-endpoint = <&sii9022_output>;
+					};
+				};
 			};
 		};
 	};
