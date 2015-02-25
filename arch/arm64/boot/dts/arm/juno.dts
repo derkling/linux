@@ -11,7 +11,7 @@
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 
 / {
-	model = "ARM Juno development board (r0)";
+	model = "ARM Juno development board (r1)";
 	compatible = "arm,juno", "arm,vexpress";
 	interrupt-parent = <&gic>;
 	#address-cells = <2>;
@@ -98,6 +98,20 @@
 		      <0x00000008 0x80000000 0x1 0x80000000>;
 	};
 
+	timer@2a810000 {
+		compatible = "arm,armv7-timer-mem";
+		reg = <0x0 0x2a810000 0x0 0x10000>;
+		clock-frequency = <100000000>;
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+		frame@2a830000 {
+			frame-number = <1>;
+			interrupts = <0 60 4>;
+			reg = <0x0 0x2a830000 0x0 0x10000>;
+		};
+	};
+
 	gic: interrupt-controller@2c001000 {
 		compatible = "arm,gic-400", "arm,cortex-a15-gic";
 		reg = <0x0 0x2c010000 0 0x1000>,
@@ -108,6 +122,14 @@
 		#interrupt-cells = <3>;
 		interrupt-controller;
 		interrupts = <GIC_PPI 9 (GIC_CPU_MASK_SIMPLE(6) | IRQ_TYPE_LEVEL_HIGH)>;
+	};
+
+	msi0: msi@2c1c0000 {
+		compatible = "arm,gic-msi";
+		reg = <0x0 0x2c1c0000 0 0x10000
+		       0x0 0x2c1d0000 0 0x10000
+		       0x0 0x2c1e0000 0 0x10000
+		       0x0 0x2c1f0000 0 0x10000>;
 	};
 
 	timer {
@@ -154,6 +176,9 @@
 		interrupts = <GIC_SPI 93 IRQ_TYPE_LEVEL_HIGH>;
 		clocks = <&scpi_clk>;
 		clock-names = "pxlclk";
+
+		status = "disabled";
+
 		port {
 			hdlcd1_output: endpoint@0 {
 				remote-endpoint = <&tda998x_1_input>;
@@ -197,11 +222,11 @@
 			reg = <0x70>;
 			video-ports = <0x234501>;
 			port {
-				tda998x_0_input: endpoint {
+				tda998x_0_input: endpoint@0 {
 					remote-endpoint = <&hdlcd0_output>;
 				};
 
-				tda998x_0_output: endpoint {
+				tda998x_0_output: endpoint@1 {
 					remote-endpoint = <&hdmi0_connector_output>;
 				};
 			};
@@ -212,11 +237,11 @@
 			reg = <0x71>;
 			video-ports = <0x234501>;
 			port {
-				tda998x_1_input: endpoint {
+				tda998x_1_input: endpoint@0 {
 					remote-endpoint = <&hdlcd1_output>;
 				};
 
-				tda998x_1_output: endpoint {
+				tda998x_1_output: endpoint@1 {
 					remote-endpoint = <&hdmi1_connector_output>;
 				};
 			};
@@ -264,6 +289,28 @@
 				remote-endpoint = <&tda998x_1_output>;
 			};
 		};
+	};
+
+	pci0: pci@30000000 {
+		compatible = "arm,pcie-xr3";
+		device_type = "pci";
+		reg = <0 0x7ff30000 0 0x1000		/* config */
+		       0 0x7ff20000 0 0x10000		/* reset */
+		       0 0x40000000 0 0x10000000>;	/* ECAM */
+		bus-range = <0 255>;
+		linux,pci-domain = <0>;
+		#address-cells = <3>;
+		#size-cells = <2>;
+		ranges = <0x01000000 0x0 0x00000000 0x00 0x5ff00000 0x0 0x00100000
+			  0x02000000 0x0 0x00000000 0x00 0x50000000 0x0 0x0f000000
+		          0x42000000 0x0 0x20000000 0x40 0x00000000 0x0 0x80000000
+			  0x02000000 0x0 0xA0000000 0x40 0x80000000 0x0 0x80000000>;
+		#interrupt-cells = <1>;
+		interrupt-map-mask = <0 0 0 7>;
+		interrupt-map = <0 0 0 1 &gic 0 136 4
+			         0 0 0 2 &gic 0 137 4
+				 0 0 0 3 &gic 0 138 4
+				 0 0 0 4 &gic 0 139 4>;
 	};
 
 	smb {
