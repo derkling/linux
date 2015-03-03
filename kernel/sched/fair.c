@@ -7426,8 +7426,14 @@ more_balance:
 		 * We do not want newidle balance, which can be very
 		 * frequent, pollute the failure counter causing
 		 * excessive cache_hot migrations and active balances.
+		 *
+		 * We should increment the failure counter only when the
+		 * number of tasks running on the busisest CPU is > 1
+		 * Because only in such a case is the load balance a
+		 * failure. Failing to do so results in cache_hot
+		 * migrations of this lone task.
 		 */
-		if (idle != CPU_NEWLY_IDLE)
+		if (idle != CPU_NEWLY_IDLE && busiest->nr_running > 1)
 			sd->nr_balance_failed++;
 
 		if (need_active_balance(&env)) {
