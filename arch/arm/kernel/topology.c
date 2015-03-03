@@ -158,13 +158,21 @@ static void update_cpu_capacity(unsigned int cpu)
  * compensates for frequency scaling.
  */
 
-static DEFINE_PER_CPU(atomic_long_t, cpu_curr_freq);
+static DEFINE_PER_CPU(atomic_long_t, cpu_freq_capacity);
 static DEFINE_PER_CPU(atomic_long_t, cpu_max_freq);
 
 /* cpufreq callback function setting current cpu frequency */
 void arch_scale_set_curr_freq(int cpu, unsigned long freq)
 {
-	atomic_long_set(&per_cpu(cpu_curr_freq, cpu), freq);
+	unsigned long max = atomic_long_read(&per_cpu(cpu_max_freq, cpu));
+	unsigned long curr;
+
+	if (!max)
+		return;
+
+	curr = (freq * SCHED_CAPACITY_SCALE) / max;
+
+	atomic_long_set(&per_cpu(cpu_freq_capacity, cpu), curr);
 }
 
 /* cpufreq callback function setting max cpu frequency */
@@ -175,13 +183,12 @@ void arch_scale_set_max_freq(int cpu, unsigned long freq)
 
 unsigned long arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
 {
-	unsigned long curr = atomic_long_read(&per_cpu(cpu_curr_freq, cpu));
-	unsigned long max = atomic_long_read(&per_cpu(cpu_max_freq, cpu));
+	unsigned long curr = atomic_long_read(&per_cpu(cpu_freq_capacity, cpu));
 
-	if (!curr || !max)
+	if (!curr)
 		return SCHED_CAPACITY_SCALE;
 
-	return (curr * SCHED_CAPACITY_SCALE) / max;
+	return curr;
 }
 
 #else
