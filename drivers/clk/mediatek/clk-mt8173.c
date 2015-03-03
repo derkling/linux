@@ -20,6 +20,7 @@
 #include "clk-pll.h"
 #include "clk-gate.h"
 #include "clk-mt8173-pll.h"
+#include "clk-cpumux.h"
 
 #include <dt-bindings/clock/mt8173-clk.h>
 
@@ -665,6 +666,25 @@ static const char *rtc_parents[] __initconst = {
 		clk26m,
 		univpll3_d8};
 
+static const char *ca53_parents[] __initconst = {
+	"clk26m",
+	"armca7pll",
+	"mainpll",
+	"univpll"
+};
+
+static const char *ca57_parents[] __initconst = {
+	"clk26m",
+	"armca15pll",
+	"mainpll",
+	"univpll"
+};
+
+static struct mtk_mux cpu_muxes[] __initdata = {
+	MUX(INFRA_CA53SEL, "infra_ca53_sel", ca53_parents, 0x0000, 0, 2, INVALID_MUX_GATE_BIT),
+	MUX(INFRA_CA57SEL, "infra_ca57_sel", ca57_parents, 0x0000, 2, 2, INVALID_MUX_GATE_BIT),
+};
+
 static struct mtk_mux top_muxes[] __initdata = {
 	/* CLK_CFG_0 */
 	MUX(TOP_AXI_SEL, axi_sel, axi_parents,
@@ -995,6 +1015,9 @@ static void __init mtk_infrasys_init(struct device_node *node)
 
 	mtk_init_clk_gates(base, infra_clks, ARRAY_SIZE(infra_clks),
 						clk_data, &lock);
+
+	mtk_clk_register_cpumuxes(base, cpu_muxes, ARRAY_SIZE(cpu_muxes),
+				  clk_data, &lock);
 
 	r = of_clk_add_provider(node, of_clk_src_onecell_get, clk_data);
 	if (r)

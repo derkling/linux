@@ -1,0 +1,32 @@
+/*
+ * Copyright (c) 2015 Linaro Ltd.
+ * Author: Pi-Cheng Chen <pi-cheng.chen@linaro.org>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#ifndef __DRV_CLK_CPUMUX_H
+#define __DRV_CLK_CPUMUX_H
+
+#include <linux/regmap.h>
+
+struct mtk_clk_cpumux {
+	struct clk_hw	hw;
+	void __iomem	*reg;
+	spinlock_t	*lock;
+	u32		mask;
+	u8		shift;
+};
+
+int mtk_clk_register_cpumuxes(void __iomem *base, struct mtk_mux *clks, int num,
+			      struct clk_onecell_data *clk_data,
+			      spinlock_t *lock);
+
+#endif /* __DRV_CLK_CPUMUX_H */
