@@ -205,7 +205,7 @@ void arch_eval_cpu_freq(struct cpumask *update_cpus)
 		 * 	otherwise, stay at the same capacity state
 		 */
 		for_each_cpu(tmp, policy->cpus) {
-			util = get_cpu_usage(cpu);
+			util = get_cpu_usage(tmp);
 			trace_printk("cpu = %d util = %lu", tmp, util);
 			if (util > max_util)
 				max_util = util;
