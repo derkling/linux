@@ -201,11 +201,13 @@ static int __init bl_idle_init(void)
 	if (ret)
 		goto out_uninit_little;
 
+	dt_probe_idle_affinity(bl_idle_big_driver.cpumask);
 	/* Start at index 1, index 0 standard WFI */
 	ret = dt_init_idle_driver(&bl_idle_big_driver, bl_idle_state_match, 1);
 	if (ret < 0)
 		goto out_uninit_big;
 
+	dt_probe_idle_affinity(bl_idle_little_driver.cpumask);
 	/* Start at index 1, index 0 standard WFI */
 	ret = dt_init_idle_driver(&bl_idle_little_driver,
 				  bl_idle_state_match, 1);

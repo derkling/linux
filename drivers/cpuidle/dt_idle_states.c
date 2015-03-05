@@ -91,40 +91,87 @@ static int init_state_node(struct cpuidle_state *idle_state,
 	return 0;
 }
 
-/*
- * Check that the idle state is uniform across all CPUs in the CPUidle driver
- * cpumask
+/**
+ * dt_vet_idle_state_mask() - Vet cpumask for a specific idle state
+ *
+ * @state_node: device node of the idle state to be vetted
+ * @idx: idle state index in cpu-idle-states phandle
+ * @possible_mask: cpumask containing cpus to be vetted
+ *
+ * Function that vets and updates the possible_mask by checking if a
+ * specific idle state is valid on all cpus in the possible_mask. If an idle
+ * state for a specific cpu in the possible_mask is either missing or
+ * different from the state_node, the corresponding cpu is cleared from
+ * the possible_mask since this means that the cpu has different idle
+ * states from the first cpu in the possible_mask.
  */
-static bool idle_state_valid(struct device_node *state_node, unsigned int idx,
-			     const cpumask_t *cpumask)
+static void dt_vet_idle_state_mask(struct device_node *state_node,
+				   unsigned int idx,
+				   cpumask_t *possible_mask)
 {
 	int cpu;
 	struct device_node *cpu_node, *curr_state_node;
-	bool valid = true;
 
 	/*
 	 * Compare idle state phandles for index idx on all CPUs in the
-	 * CPUidle driver cpumask. Start from next logical cpu following
-	 * cpumask_first(cpumask) since that's the CPU state_node was
-	 * retrieved from. If a mismatch is found bail out straight
-	 * away since we certainly hit a firmware misconfiguration.
+	 * possible_mask. Start from next logical cpu following the first
+	 * cpu since that's the CPU state_node was retrieved from. If a
+	 * mismatch is found the mismatching cpu is removed from the
+	 * possible_mask in that it has an idle state that is not present
+	 * in the idle states list of the cpu we are vetting the affinity
+	 * for.
 	 */
-	for (cpu = cpumask_next(cpumask_first(cpumask), cpumask);
-	     cpu < nr_cpu_ids; cpu = cpumask_next(cpu, cpumask)) {
+	for (cpu = cpumask_next(cpumask_first(possible_mask), possible_mask);
+	     cpu < nr_cpu_ids; cpu = cpumask_next(cpu, possible_mask)) {
 		cpu_node = of_cpu_device_node_get(cpu);
 		curr_state_node = of_parse_phandle(cpu_node, "cpu-idle-states",
 						   idx);
 		if (state_node != curr_state_node)
-			valid = false;
+			cpumask_clear_cpu(cpu, possible_mask);
 
 		of_node_put(curr_state_node);
 		of_node_put(cpu_node);
-		if (!valid)
-			break;
 	}
 
-	return valid;
 }
+
+/**
+ * dt_probe_idle_affinity() - Parse the DT idle states and set the
+ *                            idle states affinity mask
+ * @possible_mask: Pointer to the affinity mask to be probed
+ *
+ * Function probes validity of the possible_mask by comparing
+ * the idle states for all cpus in the possible_mask to the idle
+ * states of the first cpu in the possible_mask. If idle states for a
+ * cpu in the possible_mask differ from the ones of the first cpu, the
+ * cpu in question is cleared in the possible_mask.
+ */
+void dt_probe_idle_affinity(cpumask_t *possible_mask)
+{
+	struct device_node *state_node, *cpu_node;
+	int i;
+
+	cpu_node = of_cpu_device_node_get(cpumask_first(possible_mask));
+	for (i = 0; ; i++) {
+		state_node = of_parse_phandle(cpu_node, "cpu-idle-states", i);
+		/*
+		 * cpus in the possible_mask can have more idle states than
+		 * the one we are checking against so even if
+		 * state_node == NULL we have to keep parsing so that we can
+		 * find a mismatch with other cpus in the mask and clear them
+		 * since they have different idle states.
+		 */
+		dt_vet_idle_state_mask(state_node, i, possible_mask);
+
+		if (!state_node)
+			break;
+
+		of_node_put(state_node);
+	}
+
+	of_node_put(cpu_node);
+}
+EXPORT_SYMBOL_GPL(dt_probe_idle_affinity);
 
 /**
  * dt_init_idle_driver() - Parse the DT idle states and initialize the
@@ -155,20 +202,20 @@ int dt_init_idle_driver(struct cpuidle_driver *drv,
 	struct cpuidle_state *idle_state;
 	struct device_node *state_node, *cpu_node;
 	int i, err = 0;
-	const cpumask_t *cpumask;
 	unsigned int state_idx = start_idx;
 
 	if (state_idx >= CPUIDLE_STATE_MAX)
 		return -EINVAL;
+
+	if (!drv->cpumask)
+		return -EINVAL;
 	/*
 	 * We get the idle states for the first logical cpu in the
-	 * driver mask (or cpu_possible_mask if the driver cpumask is not set)
-	 * and we check through idle_state_valid() if they are uniform
-	 * across CPUs, otherwise we hit a firmware misconfiguration.
+	 * driver mask. The driver mask must have been previously vetted
+	 * through dt_probe_idle_affinity to make sure all of the
+	 * cpus in the driver cpumask have common idle states.
 	 */
-	cpumask = drv->cpumask ? : cpu_possible_mask;
-	cpu_node = of_cpu_device_node_get(cpumask_first(cpumask));
-
+	cpu_node = of_cpu_device_node_get(cpumask_first(drv->cpumask));
 	for (i = 0; ; i++) {
 		state_node = of_parse_phandle(cpu_node, "cpu-idle-states", i);
 		if (!state_node)
@@ -176,13 +223,6 @@ int dt_init_idle_driver(struct cpuidle_driver *drv,
 
 		if (!of_device_is_available(state_node))
 			continue;
-
-		if (!idle_state_valid(state_node, i, cpumask)) {
-			pr_warn("%s idle state not valid, bailing out\n",
-				state_node->full_name);
-			err = -EINVAL;
-			break;
-		}
 
 		if (state_idx == CPUIDLE_STATE_MAX) {
 			pr_warn("State index reached static CPU idle driver states array size\n");
