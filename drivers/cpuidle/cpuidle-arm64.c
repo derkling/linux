@@ -58,9 +58,10 @@ static int arm64_enter_idle_state(struct cpuidle_device *dev,
 	return ret ? -1 : idx;
 }
 
-static struct cpuidle_driver arm64_idle_driver = {
-	.name = "arm64_idle",
-	.owner = THIS_MODULE,
+static void __init arm64_init_driver(struct cpuidle_driver *drv)
+{
+	drv->name = "arm64_idle";
+	drv->owner = THIS_MODULE;
 	/*
 	 * State at index 0 is standby wfi and considered standard
 	 * on all ARM platforms. If in some platforms simple wfi
@@ -68,15 +69,13 @@ static struct cpuidle_driver arm64_idle_driver = {
 	 * to work around this issue and allow installing a special
 	 * handler for idle state index 0.
 	 */
-	.states[0] = {
-		.enter                  = arm64_enter_idle_state,
-		.exit_latency           = 1,
-		.target_residency       = 1,
-		.power_usage		= UINT_MAX,
-		.name                   = "WFI",
-		.desc                   = "ARM64 WFI",
-	}
-};
+	drv->states[0].enter = arm64_enter_idle_state;
+	drv->states[0].exit_latency = 1;
+	drv->states[0].target_residency = 1;
+	drv->states[0].power_usage = UINT_MAX;
+	strncpy(drv->states[0].name, "WFI", CPUIDLE_NAME_LEN - 1);
+	strncpy(drv->states[0].desc, "ARM64 WFI", CPUIDLE_DESC_LEN - 1);
+}
 
 static const struct of_device_id arm64_idle_state_match[] __initconst = {
 	{ .compatible = "arm,idle-state",
@@ -84,63 +83,111 @@ static const struct of_device_id arm64_idle_state_match[] __initconst = {
 	{ },
 };
 
-/*
- * arm64_idle_init
- *
- * Registers the arm64 specific cpuidle driver with the cpuidle
- * framework. It relies on core code to parse the idle states
- * and initialize them using driver data structures accordingly.
- */
+#define ARM64_CPUIDLE_MAX_DRIVERS 4
+
 static int __init arm64_idle_init(void)
 {
-	int cpu, ret;
-	struct cpuidle_driver *drv = &arm64_idle_driver;
+	int cpu, ret, cnt = 0;
+	struct cpuidle_driver *drivers[ARM64_CPUIDLE_MAX_DRIVERS], *drv = NULL;
+	cpumask_var_t tmpmask;
 
-	drv->cpumask = kzalloc(cpumask_size(), GFP_KERNEL);
-	if (!drv->cpumask)
+	if (!alloc_cpumask_var(&tmpmask, GFP_KERNEL))
 		return -ENOMEM;
 
-	cpumask_copy(drv->cpumask, cpu_possible_mask);
+	cpumask_copy(tmpmask, cpu_possible_mask);
 
-	dt_probe_idle_affinity(drv->cpumask);
+	while (!cpumask_empty(tmpmask)) {
 
-	if (!cpumask_equal(drv->cpumask, cpu_possible_mask)) {
+		if (cnt == ARM64_CPUIDLE_MAX_DRIVERS) {
+			pr_warn("max number of idle drivers reached\n");
+			break;
+		}
+
+		if (!drv) {
+			drv = kzalloc(sizeof(*drv), GFP_KERNEL);
+			if (!drv) {
+				ret = -ENOMEM;
+				goto out_unregister;
+			}
+
+			drv->cpumask = kzalloc(cpumask_size(), GFP_KERNEL);
+			if (!drv->cpumask) {
+				ret = -ENOMEM;
+				goto out_driver;
+			}
+		}
+
 		/*
-		 * DT idle states are not uniform across all cpus, bail out
+		 * Initialize driver default idle states and common variables
 		 */
-		ret = -ENODEV;
-		goto out_mask;
-	}
-	/*
-	 * Initialize idle states data, starting at index 1.
-	 * This driver is DT only, if no DT idle states are detected (ret == 0)
-	 * let the driver initialization fail accordingly since there is no
-	 * reason to initialize the idle driver if only wfi is supported.
-	 */
-	ret = dt_init_idle_driver(drv, arm64_idle_state_match, 1);
-	if (ret <= 0) {
-		ret = ret ? : -ENODEV;
-		goto out_mask;
-	}
+		arm64_init_driver(drv);
 
-	/*
-	 * Call arch CPU operations in order to initialize
-	 * idle states suspend back-end specific data
-	 */
-	for_each_possible_cpu(cpu) {
-		ret = cpu_init_idle(cpu);
-		if (ret) {
-			pr_err("CPU %d failed to init idle CPU ops\n", cpu);
+		cpumask_copy(drv->cpumask, tmpmask);
+
+		dt_probe_idle_affinity(drv->cpumask);
+		/*
+		 * Remove the driver cpumask from the list of cpus
+		 * that are still to be probed for idle states detection
+		 */
+		cpumask_andnot(tmpmask, tmpmask, drv->cpumask);
+
+		/*
+		 * Initialize idle states data, starting at index 1.
+		 * These drivers are DT only, if no DT idle states are detected
+		 * (ret == 0) let the driver initialization fail accordingly
+		 * since there is no reason to initialize the idle driver if
+		 * only wfi is supported.
+		 */
+		ret = dt_init_idle_driver(drv, arm64_idle_state_match, 1);
+		if (ret <= 0) {
+			/*
+			 * Give other drivers a chance to init
+			 * even if for this cpumask no idle
+			 * states were detected
+			 */
+			if (!ret)
+				continue;
+
 			goto out_mask;
 		}
+
+		/*
+		 * Call arch CPU operations in order to initialize
+		 * idle states suspend back-end specific data
+		 */
+		for_each_cpu(cpu, drv->cpumask) {
+			ret = cpu_init_idle(cpu);
+			if (ret) {
+				pr_err("CPU %d failed to init idle CPU ops\n",
+				       cpu);
+				goto out_mask;
+			}
+		}
+
+		ret = cpuidle_register(drv, NULL);
+		if (ret)
+			goto out_mask;
+
+		drivers[cnt++] = drv;
+		drv = NULL;
 	}
 
-	ret = cpuidle_register(drv, NULL);
-	if (!ret)
-		return ret;
+	free_cpumask_var(tmpmask);
+	return 0;
 
- out_mask:
+out_mask:
 	kfree(drv->cpumask);
+out_driver:
+	kfree(drv);
+out_unregister:
+	while (--cnt >= 0) {
+		cpuidle_unregister(drivers[cnt]);
+		kfree(drivers[cnt]->cpumask);
+		kfree(drivers[cnt]);
+	}
+
+	free_cpumask_var(tmpmask);
+
 	return ret;
 }
 device_initcall(arm64_idle_init);
