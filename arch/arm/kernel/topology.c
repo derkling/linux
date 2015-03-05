@@ -12,6 +12,7 @@
  */
 
 #include <linux/cpu.h>
+#include <linux/cpufreq.h>
 #include <linux/cpumask.h>
 #include <linux/export.h>
 #include <linux/init.h>
@@ -171,6 +172,26 @@ void arch_scale_set_curr_freq(int cpu, unsigned long freq)
 void arch_scale_set_max_freq(int cpu, unsigned long freq)
 {
 	atomic_long_set(&per_cpu(cpu_max_freq, cpu), freq);
+}
+
+static inline const struct sched_group_energy *cpu_core_energy(int cpu);
+unsigned long arch_freq_to_capacity(int cpu, unsigned int freq)
+{
+	struct cpufreq_policy *policy;
+	const struct sched_group_energy *sge = NULL;
+	int index;
+
+	sge = cpu_core_energy(cpu);
+
+	policy = cpufreq_cpu_get(cpu);
+	if (IS_ERR_OR_NULL(policy))
+		return SCHED_CAPACITY_SCALE;
+
+	index = cpufreq_frequency_table_get_index(policy, freq);
+
+	cpufreq_cpu_put(policy);
+
+	return sge->cap_states[index].cap;
 }
 
 unsigned long arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
