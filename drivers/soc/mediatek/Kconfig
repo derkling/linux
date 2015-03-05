@@ -27,3 +27,10 @@ config MTK_SCPSYS
 	help
 	  Say yes here to add support for the MediaTek SCPSYS power domain
 	  driver.
+
+config MTK_SMI
+        bool
+	help
+	  Smi help enable/disable iommu in mt8173 and control the
+	  clock of each local arbiter.
+	  It should be true while MTK_IOMMU enable.
