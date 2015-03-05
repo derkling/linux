@@ -230,7 +230,7 @@ void arch_eval_cpu_freq(struct cpumask *update_cpus)
 			 * hold the write lock?
 			 */
 			atomic_set(&em->need_wake_task, 1);
-		} else if (max_util < em->down_threshold[index]) {
+		} else if (max_util < em->down_threshold[index] && index != 0) {
 			/* write em->target_freq with read lock held */
 			atomic_long_set(&em->target_freq, policy->cur - 1);
 			trace_printk("requesting transition to %u", policy->cur - 1);
