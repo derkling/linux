@@ -13,17 +13,17 @@
 #include "sched.h"
 
 #define THROTTLE_MSEC		50
-#define UP_THRESHOLD		80
-#define DOWN_THRESHOLD		20
+
+/*
+ * FIXME if we move to an arbitrator model then we can have a single thread for
+ * the whole system. This means that per-policy data can be removed and
+ * replaced with per-governor data.
+ */
 
 /**
  * em_data - per-policy data used by energy_mode
  * @throttle: bail if current time is less than than ktime_throttle.
  * 		    Derived from THROTTLE_MSEC
- * @up_threshold:   table of normalized capacity states to determine if cpu
- * 		    should run faster. Derived from UP_THRESHOLD
- * @down_threshold: table of normalized capacity states to determine if cpu
- * 		    should run slower. Derived from DOWN_THRESHOLD
  *
  * struct em_data is the per-policy energy_model-specific data structure. A
  * per-policy instance of it is created when the energy_model governor receives
@@ -36,8 +36,6 @@
 struct em_data {
 	/* per-policy throttling */
 	ktime_t throttle;
-	unsigned int *up_threshold;
-	unsigned int *down_threshold;
 	struct task_struct *task;
 	atomic_long_t target_freq;
 	atomic_t need_wake_task;
@@ -133,6 +131,7 @@ void arch_scale_cpu_freq(void)
 	}
 }
 
+#if 0
 /**
  * arch_eval_cpu_freq - scale cpu frequency based on CFS utilization
  * @update_cpus: mask of CPUs with updated utilization and capacity
@@ -238,7 +237,15 @@ bail:
 
 	return;
 }
+#else
+void cpufreq_cap_gov_request(int cpu, unsigned long wl, unsigned long cap);
+{
+	trace_printk("cpu %d, wl %lu, cap %lu");
+	return;
+}
+#endif
 
+#if 0
 void cpufreq_scale_busiest_rq(struct rq *rq)
 {
 	int cpu = cpu_of(rq);
@@ -250,6 +257,7 @@ void cpufreq_scale_busiest_rq(struct rq *rq)
 
 	return;
 }
+#endif
 
 static void em_start(struct cpufreq_policy *policy)
 {
@@ -270,23 +278,21 @@ static void em_start(struct cpufreq_policy *policy)
 	/* how many entries in the frequency table? */
 	cpufreq_for_each_entry(pos, policy->freq_table)
 		count++;
-
+#if 0
 	/* pre-compute thresholds */
 	em->up_threshold = kcalloc(count, sizeof(unsigned int), GFP_KERNEL);
 	em->down_threshold = kcalloc(count, sizeof(unsigned int), GFP_KERNEL);
-
+#endif
 	cpufreq_for_each_entry(pos, policy->freq_table) {
 		/* FIXME capacity below is not scaled for uarch */
 		capacity = pos->frequency * SCHED_CAPACITY_SCALE / policy->max;
-		em->up_threshold[index] = capacity * UP_THRESHOLD / 100;
-		em->down_threshold[index] = capacity * DOWN_THRESHOLD / 100;
-		pr_debug("%s: cpu = %u index = %d capacity = %u up = %u down = %u\n",
+		pr_debug("%s: cpu = %u index = %d capacity = %u \n",
 				__func__, cpumask_first(policy->cpus), index,
-				capacity, em->up_threshold[index],
-				em->down_threshold[index]);
+				capacity);
 		index++;
 	}
 
+	/* FIXME if we move to an arbitrator model then we will only want one thread? */
 	/* init per-policy kthread */
 	em->task = kthread_create(energy_model_thread, policy, "kenergy_model_task");
 	if (IS_ERR_OR_NULL(em->task))
@@ -303,8 +309,10 @@ static void em_stop(struct cpufreq_policy *policy)
 	kthread_stop(em->task);
 
 	/* replace with devm counterparts */
+#if 0
 	kfree(em->up_threshold);
 	kfree(em->down_threshold);
+#endif
 	kfree(em);
 }
 
