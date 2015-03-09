@@ -6514,7 +6514,7 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 		sgs->group_usage += get_cpu_usage(i);
 		sgs->sum_nr_running += rq->cfs.h_nr_running;
 
-		if (rq->nr_running > 1)
+		if (rq->nr_running > 1 || cpu_overutilized(i, env->sd))
 			*overload = true;
 
 #ifdef CONFIG_NUMA_BALANCING
