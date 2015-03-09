@@ -4793,6 +4793,8 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 				cap_idx = find_new_capacity(eenv, sg->sge);
 				idle_idx = group_idle_state(sg);
 				group_util = group_norm_usage(eenv, sg);
+
+				/* Optimize for group_util = 1024 and 0 here using if's */
 				sg_busy_energy = (group_util * sg->sge->cap_states[cap_idx].power)
 								>> SCHED_CAPACITY_SHIFT;
 				sg_idle_energy = ((SCHED_LOAD_SCALE-group_util)
@@ -5184,7 +5186,7 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 
 		if (new_usage <	capacity_curr_of(i)) {
 			target_cpu = i;
-			if (!cpu_rq(i)->nr_running)
+			if (cpu_rq(i)->nr_running)
 				break;
 		}
 
