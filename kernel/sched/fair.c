@@ -4970,8 +4970,9 @@ static int cpu_overutilized(int cpu, struct sched_domain *sd)
 static int energy_aware_wake_cpu(struct task_struct *p)
 {
 	struct sched_domain *sd;
-	struct sched_group *sg, *sg_target;
+	struct sched_group *sg, *sg_target, *biggest_sg;
 	int target_max_cap = SCHED_CAPACITY_SCALE;
+	int biggest_sg_cap = 0;
 	int target_cpu = task_cpu(p);
 	int i;
 
@@ -4981,7 +4982,9 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 		return -1;
 
 	sg = sd->groups;
-	sg_target = sg;
+	sg_target = NULL;
+	biggest_sg = sd->groups;
+
 	/* Find group with sufficient capacity */
 	do {
 		int sg_max_capacity = group_max_capacity(sg);
@@ -4991,7 +4994,22 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 			sg_target = sg;
 			target_max_cap = sg_max_capacity;
 		}
+
+		/* We need to ensure that we find a group even if the
+		 * the utilization exceeds any available capacity
+		 */
+
+		if (sg_max_capacity >= biggest_sg_cap) {
+			biggest_sg_cap = sg_max_capacity;
+			biggest_sg = sg;
+		}
+
 	} while (sg = sg->next, sg != sd->groups);
+
+	if (!sg_target) {
+		sg_target = biggest_sg;
+		target_max_cap = biggest_sg_cap;
+	}
 
 	/* Find cpu with sufficient capacity */
 	for_each_cpu_and(i, tsk_cpus_allowed(p), sched_group_cpus(sg_target)) {
