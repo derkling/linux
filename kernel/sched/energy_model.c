@@ -266,8 +266,6 @@ static void em_start(struct cpufreq_policy *policy)
 		return;
 	}
 
-	policy->gov_data = em;
-
 	/* how many entries in the frequency table? */
 	cpufreq_for_each_entry(pos, policy->freq_table)
 		count++;
@@ -314,6 +312,8 @@ static void em_start(struct cpufreq_policy *policy)
 	em->task = kthread_create(energy_model_thread, policy, "kenergy_model_task");
 	if (IS_ERR_OR_NULL(em->task))
 		pr_err("%s: failed to create kenergy_model_task thread\n", __func__);
+
+	policy->gov_data = em;
 }
 
 
@@ -322,6 +322,7 @@ static void em_stop(struct cpufreq_policy *policy)
 	struct em_data *em;
 
 	em = policy->gov_data;
+	policy->gov_data = NULL;
 
 	kthread_stop(em->task);
 
