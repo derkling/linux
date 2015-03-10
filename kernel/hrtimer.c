@@ -1059,6 +1059,13 @@ hrtimer_start(struct hrtimer *timer, ktime_t tim, const enum hrtimer_mode mode)
 }
 EXPORT_SYMBOL_GPL(hrtimer_start);
 
+int
+hrtimer_start_ilb(struct hrtimer *timer, ktime_t tim, const enum hrtimer_mode mode)
+{
+	return __hrtimer_start_range_ns(timer, tim, 0, mode, 0);
+}
+EXPORT_SYMBOL_GPL(hrtimer_start_ilb);
+
 
 /**
  * hrtimer_try_to_cancel - try to deactivate a timer
