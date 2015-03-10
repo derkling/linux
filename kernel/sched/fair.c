@@ -4882,7 +4882,7 @@ static int energy_diff(struct energy_env *eenv)
 	struct sched_domain *sd;
 	struct sched_group *sg;
 	int sd_cpu = -1, energy_before = 0, energy_after = 0;
-	char buf[512];
+	char buf[256];
 
 	struct energy_env eenv_before = {
 		.usage_delta	= 0,
@@ -4901,7 +4901,7 @@ static int energy_diff(struct energy_env *eenv)
 
 	sg = sd->groups;
 	do {
-		cpulist_scnprintf(buf, sizeof(buf), sched_group_cpus(sg));
+		snprintf(buf, sizeof(buf), "%*pbl", cpumask_pr_args(sched_group_cpus(sg)));
 		trace_printk("evaluating sg: %s", buf);
 		if (eenv->src_cpu != -1 && cpumask_test_cpu(eenv->src_cpu,
 							sched_group_cpus(sg))) {
@@ -5215,7 +5215,7 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 	int target_max_cap = SCHED_CAPACITY_SCALE;
 	int target_cpu = task_cpu(p);
 	int i;
-	char buf[512];
+	char buf[256];
 
 	sd = rcu_dereference(per_cpu(sd_ea, task_cpu(p)));
 	trace_printk("highest sd: %s", sd->name);
@@ -5236,7 +5236,7 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 		}
 	} while (sg = sg->next, sg != sd->groups);
 
-	cpulist_scnprintf(buf, sizeof(buf), sched_group_cpus(sg_target));
+	snprintf(buf, sizeof(buf), "%*pbl", cpumask_pr_args(sched_group_cpus(sg_target)));
 	trace_printk("sg_target: %s target_max_cap: %d", buf, target_max_cap);
 
 	/* Find cpu with sufficient capacity */
@@ -5348,7 +5348,7 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	while (sd) {
 		struct sched_group *group;
 		int weight;
-		char buf[512];
+		char buf[256];
 
 		trace_printk("balancing at %s level", sd->name);
 		trace_printk("sd->flags: %d sd_flag: %d", sd->flags, sd_flag);
@@ -5365,7 +5365,7 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 			continue;
 		}
 
-		cpulist_scnprintf(buf, sizeof(buf), sched_group_cpus(group));
+		snprintf(buf, sizeof(buf), "%*pbl", cpumask_pr_args(sched_group_cpus(group)));
 		trace_printk("idlest group: %s", buf);
 
 		new_cpu = find_idlest_cpu(group, p, cpu);
