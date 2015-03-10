@@ -4948,16 +4948,12 @@ done:
 	return target;
 }
 
+/* group_max_capacity is expected to return the higest capacity
+ * of the CPUs withtin the group
+ */
 static unsigned long group_max_capacity(struct sched_group *sg)
 {
-	int max_idx;
-
-	if (!sg->sge)
-		return 0;
-
-	max_idx = sg->sge->nr_cap_states-1;
-
-	return sg->sge->cap_states[max_idx].cap;
+	return capacity_curr_max(cpumask_first(sched_group_cpus(sg)));
 }
 
 static inline unsigned long task_utilization(struct task_struct *p)
