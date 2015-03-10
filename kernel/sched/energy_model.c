@@ -276,6 +276,7 @@ static void em_start(struct cpufreq_policy *policy)
 	em->up_threshold = kcalloc(count, sizeof(unsigned int), GFP_KERNEL);
 	em->down_threshold = kcalloc(count, sizeof(unsigned int), GFP_KERNEL);
 
+	rcu_read_lock();
 	for_each_domain(cpumask_first(policy->cpus), sd)
 		if (!sd->child) {
 #ifdef CONFIG_SCHED_DEBUG
@@ -293,6 +294,7 @@ static void em_start(struct cpufreq_policy *policy)
 		kfree(em->up_threshold);
 		kfree(em->down_threshold);
 		kfree(em);
+		rcu_read_unlock();
 		return;
 	}
 
@@ -306,6 +308,7 @@ static void em_start(struct cpufreq_policy *policy)
 				capacity, em->up_threshold[index],
 				em->down_threshold[index]);
 	}
+	rcu_read_unlock();
 
 	/* init per-policy kthread */
 	em->task = kthread_create(energy_model_thread, policy, "kenergy_model_task");
