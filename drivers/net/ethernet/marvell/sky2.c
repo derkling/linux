@@ -4823,8 +4823,11 @@ static struct net_device *sky2_init_netdev(struct sky2_hw *hw, unsigned port,
 	else {
 		memcpy_fromio(dev->dev_addr, hw->regs + B2_MAC_1 + port * 8,
 			      ETH_ALEN);
-		if (!is_valid_ether_addr(&dev->dev_addr[0]))
-			memcpy(dev->dev_addr, mac_address, ETH_ALEN);
+		if (!is_valid_ether_addr(&dev->dev_addr[0])) {
+			int i;
+			for (i = 0; i < ETH_ALEN; i++)
+				dev->dev_addr[i] = mac_address[i];
+		}
 	}
 
 	return dev;
