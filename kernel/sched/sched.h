@@ -590,6 +590,7 @@ struct rq {
 
 	unsigned long cpu_capacity;
 	unsigned long cpu_capacity_orig;
+	unsigned long cpu_capacity_curr_max;
 
 	unsigned char idle_balance;
 	/* For active balancing */

@@ -4207,7 +4207,7 @@ static unsigned long capacity_of(int cpu)
 
 static unsigned long capacity_orig_of(int cpu)
 {
-	return cpu_rq(cpu)->cpu_capacity_orig;
+	return cpu_rq(cpu)->cpu_capacity_curr_max;
 }
 
 static unsigned long cpu_avg_load_per_task(int cpu)
@@ -6344,10 +6344,13 @@ static void update_cpu_capacity(struct sched_domain *sd, int cpu)
 	else
 		capacity *= default_scale_cpu_capacity(sd, cpu);
 
+
 	capacity >>= SCHED_CAPACITY_SHIFT;
 
 	cpu_rq(cpu)->cpu_capacity_orig = capacity;
+	cpu_rq(cpu)->cpu_capacity_curr_max = capacity_curr_max(cpu);
 
+	capacity = cpu_rq(cpu)->cpu_capacity_curr_max;
 	capacity *= scale_rt_capacity(cpu);
 	capacity >>= SCHED_CAPACITY_SHIFT;
 
