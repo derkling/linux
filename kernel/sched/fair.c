@@ -6748,6 +6748,12 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 			sgs->group_type = group_overloaded;
 		}
 
+		if (sds->local && group_max_capacity(sg) < group_max_capacity(sds->local)
+		    && group_has_capacity(env, &sds->local_stat) &&  (sgs->sum_nr_running >= 1)) {
+			sgs->group_no_capacity = 1;
+			sgs->group_type = group_overloaded;
+		}
+
 		if (update_sd_pick_busiest(env, sds, sg, sgs)) {
 			sds->busiest = sg;
 			sds->busiest_stat = *sgs;
