@@ -4291,6 +4291,10 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		update_rq_runnable_avg(rq, rq->nr_running);
 		add_nr_running(rq, 1);
 	}
+
+	if(sched_energy_freq())
+		set_capacity(int cpu, enum sched_class, capacity constraint);
+
 	hrtick_update(rq);
 }
 
@@ -4352,6 +4356,10 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		sub_nr_running(rq, 1);
 		update_rq_runnable_avg(rq, 1);
 	}
+
+	if(sched_energy_freq())
+		set_capacity(int cpu, enum sched_class, capacity constraint);
+
 	hrtick_update(rq);
 }
 
@@ -8383,6 +8391,14 @@ static void run_rebalance_domains(struct softirq_action *h)
 	 * stopped.
 	 */
 	nohz_idle_balance(this_rq, idle);
+
+	/*
+	 * FIXME some platforms do not need this, but current CPUfreq locking
+	 * prevents us from changing cpu frequency rq locks held and interrupts
+	 * disabled
+	 */
+	if (sched_cap_gov() && cap_gov_needs_kick())
+		cap_gov_kick_thread();
 }
 
 /*
