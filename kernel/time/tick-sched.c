@@ -670,7 +670,7 @@ static ktime_t tick_nohz_stop_sched_tick(struct tick_sched *ts,
 		 * the scheduler tick in nohz_restart_sched_tick.
 		 */
 		if (!ts->tick_stopped) {
-			nohz_balance_enter_idle(cpu);
+			nohz_balance_enter_idle(cpu, time_delta);
 			calc_load_enter_idle();
 
 			ts->last_tick = hrtimer_get_expires(&ts->sched_timer);
@@ -900,6 +900,7 @@ static void tick_nohz_restart(struct tick_sched *ts, ktime_t now)
 static void tick_nohz_restart_sched_tick(struct tick_sched *ts, ktime_t now)
 {
 	/* Update jiffies first */
+	nohz_balance_exit_idle(smp_processor_id());
 	tick_do_update_jiffies64(now);
 	update_cpu_load_nohz();
 

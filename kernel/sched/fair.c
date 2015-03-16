@@ -2785,9 +2785,13 @@ static inline void subtract_blocked_load_contrib(struct cfs_rq *cfs_rq,
 		cfs_rq->blocked_load_avg = 0;
 }
 
+static inline void nohz_blocked_load_restore(struct cfs_rq *cfs_rq);
+
 static inline void subtract_utilization_blocked_contrib(struct cfs_rq *cfs_rq,
 						long utilization_contrib)
 {
+	nohz_blocked_load_restore(cfs_rq);
+
 	if (likely(utilization_contrib < cfs_rq->utilization_blocked_avg))
 		cfs_rq->utilization_blocked_avg -= utilization_contrib;
 	else
@@ -2842,6 +2846,8 @@ static void update_cfs_rq_blocked_load(struct cfs_rq *cfs_rq, int force_update)
 {
 	u64 now = cfs_rq_clock_task(cfs_rq) >> 20;
 	u64 decays;
+
+	nohz_blocked_load_restore(cfs_rq);
 
 	decays = now - cfs_rq->last_decay;
 	if (!decays && !force_update)
@@ -7951,7 +7957,7 @@ static void nohz_balancer_kick(void)
 	return;
 }
 
-static inline void nohz_balance_exit_idle(int cpu)
+static inline void nohz_balance_update_idle(int cpu)
 {
 	if (unlikely(test_bit(NOHZ_TICK_STOPPED, nohz_flags(cpu)))) {
 		/*
@@ -8000,16 +8006,50 @@ unlock:
 }
 
 /*
+ * Pre-decay (fudge) the blocked load tracking when entering nohz idle so the
+ * cpu doesn't appear full while sleeping for extended periods of time due to
+ * lack of updates. The current load is stored and swapped back in before
+ * anybody tries to update the fudged load. The rq lock must be held.
+ */
+static inline void nohz_blocked_load_predecay(struct cfs_rq *cfs_rq, u64 decays)
+{
+	unsigned long blocked_util;
+
+	blocked_util = cfs_rq->utilization_blocked_avg;
+	cfs_rq->utilization_nohz_blocked_avg = blocked_util;
+	cfs_rq->utilization_blocked_avg = decay_load(blocked_util, decays);
+}
+
+/*
+ * Swap pre-decayed blocked load with the non-decayed load at nohz idle exit so
+ * we can get a properly decayed blocked load. The rq lock must be held.
+ */
+static inline void nohz_blocked_load_restore(struct cfs_rq * cfs_rq)
+{
+	if (cfs_rq->utilization_nohz_blocked_avg) {
+		cfs_rq->utilization_blocked_avg =
+				cfs_rq->utilization_nohz_blocked_avg;
+		cfs_rq->utilization_nohz_blocked_avg = 0;
+	}
+}
+
+/*
  * This routine will record that the cpu is going idle with tick stopped.
  * This info will be used in performing idle load balancing in the future.
  */
-void nohz_balance_enter_idle(int cpu)
+void nohz_balance_enter_idle(int cpu, u64 time_delta)
 {
+	struct rq *rq = cpu_rq(cpu);
+
 	/*
 	 * If this cpu is going down, then nothing needs to be done.
 	 */
 	if (!cpu_active(cpu))
 		return;
+
+	raw_spin_lock(&rq->lock);
+	nohz_blocked_load_predecay(&cpu_rq(cpu)->cfs, time_delta >> 20);
+	raw_spin_unlock(&rq->lock);
 
 	if (test_bit(NOHZ_TICK_STOPPED, nohz_flags(cpu)))
 		return;
@@ -8025,12 +8065,25 @@ void nohz_balance_enter_idle(int cpu)
 	set_bit(NOHZ_TICK_STOPPED, nohz_flags(cpu));
 }
 
+/*
+ * This routine will restore blocked load when the cpu exiting idle and the
+ * tick is resumed. Delayable updates are in nohz_balance_update_idle()
+ */
+void nohz_balance_exit_idle(int cpu)
+{
+	struct rq *rq = cpu_rq(cpu);
+
+	raw_spin_lock(&rq->lock);
+	nohz_blocked_load_restore(&rq->cfs);
+	raw_spin_unlock(&rq->lock);
+}
+
 static int sched_ilb_notifier(struct notifier_block *nfb,
 					unsigned long action, void *hcpu)
 {
 	switch (action & ~CPU_TASKS_FROZEN) {
 	case CPU_DYING:
-		nohz_balance_exit_idle(smp_processor_id());
+		nohz_balance_update_idle(smp_processor_id());
 		return NOTIFY_OK;
 	default:
 		return NOTIFY_DONE;
@@ -8220,9 +8273,10 @@ static inline bool nohz_kick_needed(struct rq *rq)
        /*
 	* We may be recently in ticked or tickless idle mode. At the first
 	* busy tick after returning from idle, we will update the busy stats.
+	* The delayed update reduces nohz data update contention.
 	*/
 	set_cpu_sd_state_busy();
-	nohz_balance_exit_idle(cpu);
+	nohz_balance_update_idle(cpu);
 
 	/*
 	 * None are in tickless mode and hence no need for NOHZ idle load

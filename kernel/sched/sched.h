@@ -375,6 +375,7 @@ struct cfs_rq {
 	 */
 	unsigned long runnable_load_avg, blocked_load_avg;
 	unsigned long utilization_load_avg, utilization_blocked_avg;
+	unsigned long utilization_nohz_blocked_avg;
 	atomic64_t decay_counter;
 	u64 last_decay;
 	atomic_long_t removed_load, removed_utilization;
