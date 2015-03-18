@@ -3629,8 +3629,8 @@ static void hmp_cpu_keepalive_trigger(void)
 		keepalive->init = true;
 	}
 	if (ktime_to_ns(keepalive->delay))
-		hrtimer_start(&keepalive->timer,
-			keepalive->delay, HRTIMER_MODE_REL_PINNED);
+		__hrtimer_start_range_ns(&keepalive->timer,
+			keepalive->delay, 0, HRTIMER_MODE_REL_PINNED, 0);
 }
 
 static void hmp_cpu_keepalive_cancel(int cpu)
