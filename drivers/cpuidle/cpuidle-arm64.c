@@ -50,7 +50,11 @@ static int arm64_enter_idle_state(struct cpuidle_device *dev,
 		 * call the CPU ops suspend protocol with idle index as a
 		 * parameter.
 		 */
-		ret = cpu_suspend(idx);
+
+		cpu_do_idle();
+		ret = idx;
+		//work around temporarily
+		//ret = cpu_suspend(idx);
 
 		cpu_pm_exit();
 	}
