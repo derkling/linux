@@ -714,6 +714,13 @@ bool sched_can_stop_tick(void)
 	if (this_rq()->nr_running > 1)
 		return false;
 
+	/*
+	 * Disabling tick for active cpus means that CFS load tracking can't be
+	 * trusted anymore. Load values might be very out of date.
+	 */
+	if (energy_aware())
+		return false;
+
 	return true;
 }
 #endif /* CONFIG_NO_HZ_FULL */

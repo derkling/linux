@@ -4634,11 +4634,6 @@ static int get_cpu_usage(int cpu)
 }
 
 
-static inline bool energy_aware(void)
-{
-	return sched_feat(ENERGY_AWARE);
-}
-
 struct energy_env {
 	struct sched_group	*sg_top;
 	struct sched_group	*sg_cap;
