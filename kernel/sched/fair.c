@@ -2802,6 +2802,7 @@ static inline void update_entity_load_avg(struct sched_entity *se,
 	struct cfs_rq *cfs_rq = cfs_rq_of(se);
 	long contrib_delta, utilization_delta;
 	int cpu = cpu_of(rq_of(cfs_rq));
+	int cap;
 	u64 now;
 
 	/*
@@ -2834,6 +2835,10 @@ static inline void update_entity_load_avg(struct sched_entity *se,
 		subtract_utilization_blocked_contrib(cfs_rq,
 							-utilization_delta);
 	}
+
+	/* store updated per-cpu usage when update_cfs_rq is true */
+	cap = get_cpu_usage(cpu);
+	atomic_long_set(&per_cpu(usage, cpu), cap);
 
 	trace_sched_load_avg_cpu(cpu, cfs_rq);
 }
@@ -4301,7 +4306,8 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	}
 
 	if(sched_energy_freq())
-		set_capacity(int cpu, enum sched_class, capacity constraint);
+		set_capacity(cpu_of(rq), fair_sched_class,
+				get_cpu_usage(rq_of(cpu)));
 
 	hrtick_update(rq);
 }
