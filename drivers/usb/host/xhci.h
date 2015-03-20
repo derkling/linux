@@ -358,7 +358,7 @@ struct xhci_op_regs {
 /* wake on over-current (enable) */
 #define PORT_WKOC_E	(1 << 27)
 /* bits 28:29 reserved */
-/* true: device is non-removable - for USB 3.0 roothub emulation */
+/* true: device is removable - for USB 3.0 roothub emulation */
 #define PORT_DEV_REMOVE	(1 << 30)
 /* Initiate a warm port reset - complete when PORT_WRC is '1' */
 #define PORT_WR		(1 << 31)
@@ -1501,7 +1501,9 @@ struct xhci_hcd {
 	struct xhci_virt_device	*devs[MAX_HC_SLOTS];
 	/* For keeping track of bandwidth domains per roothub. */
 	struct xhci_root_port_bw_info	*rh_bw;
-
+#ifdef CONFIG_USB_XHCI_MTK
+	void *sch_ports;
+#endif
 	/* DMA pools */
 	struct dma_pool	*device_pool;
 	struct dma_pool	*segment_pool;
@@ -1560,6 +1562,7 @@ struct xhci_hcd {
 #define XHCI_SPURIOUS_WAKEUP	(1 << 18)
 /* For controllers with a broken beyond repair streams implementation */
 #define XHCI_BROKEN_STREAMS	(1 << 19)
+#define XHCI_MTK_HOST		(1 << 20)
 	unsigned int		num_active_eps;
 	unsigned int		limit_active_eps;
 	/* There are two roothubs to keep track of bus suspend info for */
@@ -1605,8 +1608,6 @@ static inline struct usb_hcd *xhci_to_hcd(struct xhci_hcd *xhci)
 	dev_warn(xhci_to_hcd(xhci)->self.controller , fmt , ## args)
 #define xhci_warn_ratelimited(xhci, fmt, args...) \
 	dev_warn_ratelimited(xhci_to_hcd(xhci)->self.controller , fmt , ## args)
-#define xhci_info(xhci, fmt, args...) \
-	dev_info(xhci_to_hcd(xhci)->self.controller , fmt , ## args)
 
 /*
  * Registers should always be accessed with double word or quad word accesses.
@@ -1714,7 +1715,8 @@ void xhci_free_stream_info(struct xhci_hcd *xhci,
 void xhci_setup_streams_ep_input_ctx(struct xhci_hcd *xhci,
 		struct xhci_ep_ctx *ep_ctx,
 		struct xhci_stream_info *stream_info);
-void xhci_setup_no_streams_ep_input_ctx(struct xhci_ep_ctx *ep_ctx,
+void xhci_setup_no_streams_ep_input_ctx(struct xhci_hcd *xhci,
+		struct xhci_ep_ctx *ep_ctx,
 		struct xhci_virt_ep *ep);
 void xhci_free_device_endpoint_resources(struct xhci_hcd *xhci,
 	struct xhci_virt_device *virt_dev, bool drop_control_ep);
@@ -1728,13 +1730,14 @@ struct xhci_ring *xhci_stream_id_to_ring(
 struct xhci_command *xhci_alloc_command(struct xhci_hcd *xhci,
 		bool allocate_in_ctx, bool allocate_completion,
 		gfp_t mem_flags);
-void xhci_urb_free_priv(struct urb_priv *urb_priv);
+void xhci_urb_free_priv(struct xhci_hcd *xhci, struct urb_priv *urb_priv);
 void xhci_free_command(struct xhci_hcd *xhci,
 		struct xhci_command *command);
 
 /* xHCI host controller glue */
 typedef void (*xhci_get_quirks_t)(struct device *, struct xhci_hcd *);
-int xhci_handshake(void __iomem *ptr, u32 mask, u32 done, int usec);
+int xhci_handshake(struct xhci_hcd *xhci, void __iomem *ptr,
+		u32 mask, u32 done, int usec);
 void xhci_quiesce(struct xhci_hcd *xhci);
 int xhci_halt(struct xhci_hcd *xhci);
 int xhci_reset(struct xhci_hcd *xhci);
@@ -1825,7 +1828,7 @@ void xhci_queue_new_dequeue_state(struct xhci_hcd *xhci,
 		unsigned int stream_id,
 		struct xhci_dequeue_state *deq_state);
 void xhci_cleanup_stalled_ring(struct xhci_hcd *xhci,
-		unsigned int ep_index, struct xhci_td *td);
+		struct usb_device *udev, unsigned int ep_index);
 void xhci_queue_config_ep_quirk(struct xhci_hcd *xhci,
 		unsigned int slot_id, unsigned int ep_index,
 		struct xhci_dequeue_state *deq_state);
@@ -1864,7 +1867,7 @@ int xhci_find_slot_id_by_port(struct usb_hcd *hcd, struct xhci_hcd *xhci,
 void xhci_ring_device(struct xhci_hcd *xhci, int slot_id);
 
 /* xHCI contexts */
-struct xhci_input_control_ctx *xhci_get_input_control_ctx(struct xhci_container_ctx *ctx);
+struct xhci_input_control_ctx *xhci_get_input_control_ctx(struct xhci_hcd *xhci, struct xhci_container_ctx *ctx);
 struct xhci_slot_ctx *xhci_get_slot_ctx(struct xhci_hcd *xhci, struct xhci_container_ctx *ctx);
 struct xhci_ep_ctx *xhci_get_ep_ctx(struct xhci_hcd *xhci, struct xhci_container_ctx *ctx, unsigned int ep_index);
 
