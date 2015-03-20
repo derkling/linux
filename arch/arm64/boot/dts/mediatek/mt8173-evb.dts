@@ -430,3 +430,7 @@
 	proc-supply = <&da9211_vcpu_reg>;
 	sram-supply = <&mt6397_vsramca7_reg>;
 };
+
+&u3phy {
+	p1-gpio = <&pio 130 0>;
+};
