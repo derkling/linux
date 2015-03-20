@@ -16,8 +16,14 @@
 #define UP_THRESHOLD		95
 #define THROTTLE_NSEC		50000000
 
+/* XXX always true, for now */
 static bool driver_might_sleep = true;
-//static DEFINE_PER_CPU(bool, cap_gov_need_wake_task);
+
+/*
+ * per-cpu pointer to atomic_t gov_data->cap_gov_wake_task
+ * used in scheduler hot paths {en,de}queueu, task_tick without having to
+ * access struct cpufreq_policy and struct gov_data
+ */
 static DEFINE_PER_CPU(atomic_t *, cap_gov_wake_task);
 
 /*
@@ -81,16 +87,9 @@ static int cap_gov_thread(void *data)
 
 	param.sched_priority = 0;
 	sched_setscheduler(current, SCHED_FIFO, &param);
-	sched_setaffinity(0, policy->related_cpus);
+	set_cpus_allowed_ptr(current, policy->related_cpus);
 
-	/*
-	 * FIXME why is it necessary to have need_wake_task?
-	 * OH! Cuz it sucks. That's why.
-	 * Looks like I walk every online cpu looking, fetch it's matching
-	 * gov_data and then check if the need_wake_task flag is set. IF so
-	 * then I kick the ktread, clear the flag and return. This is super
-	 * inefficient.
-	 */
+	/* main loop of the per-policy kthread */
 	do {
 		down_write(&policy->rwsem);
 		if (!atomic_read(&gd->need_wake_task))  {
@@ -109,7 +108,7 @@ static int cap_gov_thread(void *data)
 					__func__, ret);
 
 		/*gd->throttle = ktime_get();
-		gd->throttle = ktime_add_ns(gd->throttle, THROTTLE);*/
+		//gd->throttle = ktime_add_ns(gd->throttle, THROTTLE);*/
 		gd->throttle = ktime_add_ns(ktime_get(), THROTTLE_NS);
 		atomic_set(&gd->need_wake_task, 0);
 		up_write(&policy->rwsem);
@@ -128,13 +127,6 @@ static void cap_gov_wake_up_process(struct task_struct *task)
 	wake_up_process(task);
 }
 
-/*
-per-cpu pointer to gd->need_wake_task
-atomic_set(per_cpu(need_wake_task, cpu), 1);
-do the above from schedule() context, enqueue, dequeue, tick
-then only check it once below
-*/
-
 void cap_gov_kick_thread(int cpu)
 {
 	struct cpufreq_policy *policy;
@@ -151,6 +143,7 @@ void cap_gov_kick_thread(int cpu)
 		continue;
 	}
 
+	/* per-cpu access not needed here since we have gd */
 	if (atomic_read(&gd->need_wake_task)) {
 		trace_printk("waking up kthread (%d)", gd->task->pid);
 		cap_gov_wake_up_process(gd->task);
@@ -158,47 +151,6 @@ void cap_gov_kick_thread(int cpu)
 
 	cpufreq_cpu_put(policy);
 }
-
-#if 0
-//arch_scale_cpu_freq
-void cap_gov_kick_thread(void)
-{
-	struct cpufreq_policy *policy;
-	struct gov_data *gd;
-	int cpu;
-
-	/* FIXME
-	 * we do we walk each online cpu?
-	 * why can't this be targeted more precisely from the scheduler?
-	 * If rebalance_domains has a cpumask or a sched_group or something we
-	 * should at least be able to target this freq domain?
-	 * Can shared per-cpu data solve this problem? E.g. a pointer to the
-	 * task that needs to be kicked? Or a pointer to the policy?
-	 */
-	for_each_online_cpu(cpu) {
-		policy = cpufreq_cpu_get(cpu);
-		if (IS_ERR_OR_NULL(policy))
-			continue;
-
-		gd = policy->gov_data;
-		if (!gd) {
-			cpufreq_cpu_put(policy);
-			continue;
-		}
-
-		/*
-		 * FIXME replace the atomic stuff by holding write-locks
-		 * in arch_eval_cpu_freq?
-		 */
-		if (atomic_read(&gd->need_wake_task)) {
-			trace_printk("waking up kthread (%d)", gd->task->pid);
-			cap_gov_wake_up_process(gd->task);
-		}
-
-		cpufreq_cpu_put(policy);
-	}
-}
-#endif
 
 /**
  * cap_gov_select_freq - pick the next frequency for a cpu
@@ -228,19 +180,19 @@ static unsigned long cap_gov_select_freq(cpu)
 
 	policy = cpufreq_cpu_get(cpu);
 	if (IS_ERR_OR_NULL(policy)) {
-		goto bail;
+		goto err_policy;
 	}
 
 	if (!policy->gov_data)
-		goto bail;
+		goto out;
 
 	gd = policy->gov_data;
 
 	/*
-	 * XXX note that get_cpu_usage is called without locking the runqueues.
-	 * This is the same behavior used by find_busiest_cpu in load_balance.
-	 * We are willing to accept occasionally stale data here in exchange
-	 * for lockless behavior.
+	 * get_cpu_usage is called without locking the runqueues. This is the
+	 * same behavior used by find_busiest_cpu in load_balance. We are
+	 * willing to accept occasionally stale data here in exchange for
+	 * lockless behavior.
 	 */
 	for_each_cpu(tmp, policy->cpus) {
 		usage = get_tmp_usage(cpu);
@@ -253,7 +205,7 @@ static unsigned long cap_gov_select_freq(cpu)
 	/* FIXME only for debug */
 	cap = capacity_of(cpu);
 	if (!cap) {
-		goto bail;
+		goto out;
 	}
 	trace_printk("cpu = %d actual cap = %lu", cpu, cap);
 
@@ -261,11 +213,23 @@ static unsigned long cap_gov_select_freq(cpu)
 	index = cpufreq_frequency_table_get_index(policy, policy->cur);
 	up_thr = gd->up_threshold[index];
 	trace_printk("cpu = %d index = %d up_thr = %lu",
-			cpu, index, gd->up_threshold[index]);
+			cpu, index, up_thr);
 
+	/*
+	 * if max_usage > up_thr ... WAIT WAIT
+	 *
+	 * Why not converge on max_usage, regardless of whether that is up or
+	 * down? max_usage comes from get_cpu_usage, which is (usage *
+	 * capacity_orig) >> SCHED_LOAD_SHIFT, thus that value can be
+	 * immediately converged upon. No threshold necessary.
+	 *
+	 * So we walk the list of frequencies in the table, trying to find
+	 * floor(max_usage). This means the lowest frequency whose capacity
+	 * value is >= max_usage.
+	 */
 	/* above the utilization threshold for this capacity? go to max freq */
 	freq = policy->max;
-	
+
 	/* else find lowest freq at a higher capacity than the current usage */
 	if (max_usage < up_thr) {
 		/*
@@ -284,34 +248,10 @@ static unsigned long cap_gov_select_freq(cpu)
 	}
 	trace_printk("cpu %d freq %u", cpu, freq);
 
+out:
+	cpufreq_cpu_put(policy);
+err_policy:
 	return freq;
-
-#if 0
-		/* write gd->target_freq with read lock held */
-		atomic_long_set(&gd->target_freq, policy->max);
-		trace_printk("requesting transition to %u", policy->max);
-		/*
-		 * FIXME this is gross. convert arch_eval_cpu_freq to
-		 * hold the write lock?
-		 */
-		atomic_set(&gd->need_wake_task, 1);
-		/* FIXME NEW CODE 2015-03-19 */
-		atomic_set(per_cpu(cap_gov_wake_task, cpu), 1);
-	} else if (max_usage < gd->down_threshold[index]) {
-		/* write gd->target_freq with read lock held */
-		atomic_long_set(&gd->target_freq, policy->cur - 1);
-		trace_printk("requesting transition to %u", policy->cur - 1);
-		/*
-		 * FIXME this is gross. convert arch_eval_cpu_freq to
-		 * hold the write lock?
-		 */
-		atomic_set(&gd->need_wake_task, 1);
-	}
-
-bail:
-
-	return;
-#endif
 }
 
 /**
@@ -331,7 +271,7 @@ bail:
  * in the cpufreq driver then we set the need_wake_task flag in this function
  * and return. Selecting a frequency and programming it is done in a dedicated
  * kernel thread which will be woken up from rebalance_domains. See
- * cap_gov_kick thread
+ * cap_gov_kick_thread above.
  *
  * If kicking off a dvfs transition is an operation that returns quickly in the
  * cpufreq driver and will never sleep then we select the frequency in this
@@ -369,54 +309,11 @@ void cap_gov_update_cpu(int cpu)
 		atomic_set(per_cpu(cap_gov_wake_task, cpu), 1);
 	} else {
 		trace_printk("should not be here!");
-		/*freq = select_freq(cpu);
-		ret = program_freq(cpu, freq);*/
+		/* XXX someday select freq and program it here */
 	}
 
 	return;
 }
-
-/* XXX half-baked multiple sched_class experiment below */
-#if 0
-/*
- * The return value of get_cpu_usage is frequency-invariant capacity
- * utilization (aka usage). Sum all of the usage per sched_class per cpu and
- * then set capacity based on the floor of the most utilized cpu in this freq
- * domain
- */
-void cap_gov_select_cap(int cpu, enum class, unsigned long cap)
-{
-	int i;
-	unsigned long sum_usage, max_usage = 0;
-	struct cpufreq_policy *policy = cpufreq_cpu_get(cpu);
-
-	trace_printk("cpu %d, class %p, cap %lu");
-
-	/*
-	 * store capacity in per-cpu variable FIXME Maybe do this in struct rq?
-	 * Would require extra locking...
-	 */
-	atomic_long_set(&per_cpu(usage[class], cpu), cap);
-
-	/*
-	 * for each online cpu in this frequency domain we sum up the usage
-	 * contributed by each sched_class and take the max
-	 */
-	for_each_cpu(policy->cpus, i) {
-		sum_usage = 0;
-		for (j = 0; j < NR_CLASS; j++)
-			sum_usage += atomic_long_read(&per_cpu(usage[j], i));
-		if (sum_usage > max_usage)
-			max_usage = sum_usage;
-	}
-
-	/* walk cpufreq_policy->cpus (online only) and pick the max capacity */
-
-	/* select the best frequency from that list */
-
-	/* maybe leave all of that 'enum class' stuff out for now? */
-}
-#endif
 
 static void cap_gov_start(struct cpufreq_policy *policy)
 {
@@ -440,11 +337,11 @@ static void cap_gov_start(struct cpufreq_policy *policy)
 
 	/* pre-compute per-capacity utilization up_thresholds */
 	gd->up_threshold = kcalloc(count, sizeof(unsigned int), GFP_KERNEL);
-
 	cpufreq_for_each_entry(pos, policy->freq_table) {
 		/* FIXME capacity below is not scaled for uarch */
 		capacity = pos->frequency * SCHED_CAPACITY_SCALE / policy->max;
 		gd->up_threshold[index] = capacity * UP_THRESHOLD / 100;
+
 		pr_debug("%s: cpu = %u index = %d capacity = %u up = %u \n",
 				__func__, cpumask_first(policy->cpus), index,
 				capacity, gd->up_threshold[index]);
@@ -466,7 +363,7 @@ static void cap_gov_stop(struct cpufreq_policy *policy)
 
 	kthread_stop(gd->task);
 
-	/* replace with devm counterparts */
+	/* FIXME replace with devm counterparts? */
 	kfree(gd->up_threshold);
 	kfree(em);
 }
