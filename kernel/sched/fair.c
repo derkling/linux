@@ -2473,8 +2473,13 @@ static u32 __compute_runnable_contrib(u64 n)
 
 unsigned long __weak arch_scale_freq_capacity(struct sched_domain *sd, int cpu);
 unsigned long __weak arch_scale_cpu_capacity(struct sched_domain *sd, int cpu);
+#if 0
 void arch_eval_cpu_freq(struct cpumask *cpus);
 void arch_scale_cpu_freq(void);
+#else
+void cap_gov_update_cpu(int cpu);
+void cap_gov_kick_thread(int cpu);
+#endif
 
 /*
  * We can represent the historical contribution to runnable average as the
@@ -2515,7 +2520,7 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 	unsigned long scale_freq = arch_scale_freq_capacity(NULL, cpu);
 	unsigned long scale_cpu = arch_scale_cpu_capacity(NULL, cpu);
 
-	trace_sched_contrib_scale_f(cpu, scale_freq, scale_cpu);
+	trace_sched_contrib_scale_f(cpu, scale_freq, 0);
 
 
 	delta = now - sa->last_runnable_update;
@@ -2802,7 +2807,7 @@ static inline void update_entity_load_avg(struct sched_entity *se,
 	struct cfs_rq *cfs_rq = cfs_rq_of(se);
 	long contrib_delta, utilization_delta;
 	int cpu = cpu_of(rq_of(cfs_rq));
-	int cap;
+	//int cap;
 	u64 now;
 
 	/*
@@ -2836,9 +2841,11 @@ static inline void update_entity_load_avg(struct sched_entity *se,
 							-utilization_delta);
 	}
 
+#if 0
 	/* store updated per-cpu usage when update_cfs_rq is true */
 	cap = get_cpu_usage(cpu);
 	atomic_long_set(&per_cpu(usage, cpu), cap);
+#endif
 
 	trace_sched_load_avg_cpu(cpu, cfs_rq);
 }
@@ -6496,6 +6503,7 @@ unsigned long __weak arch_scale_cpu_capacity(struct sched_domain *sd, int cpu)
 	return default_scale_cpu_capacity(sd, cpu);
 }
 
+#if 0
 void __weak arch_eval_cpu_freq(struct cpumask *cpus)
 {
 	return;
@@ -6505,6 +6513,7 @@ void __weak arch_scale_cpu_freq(void)
 {
 	return;
 }
+#endif
 
 static unsigned long scale_rt_capacity(int cpu)
 {
@@ -7468,11 +7477,11 @@ static int load_balance(int this_cpu, struct rq *this_rq,
 			struct sched_domain *sd, enum cpu_idle_type idle,
 			int *continue_balancing)
 {
-	int ld_moved, cur_ld_moved, active_balance = 0, i;
+	int ld_moved, cur_ld_moved, active_balance = 0; //, i;
 	struct sched_domain *sd_parent = sd->parent;
 	struct sched_group *group;
-	struct rq *busiest, *rq;
-	unsigned long flags, capacity, wl;
+	struct rq *busiest; //, *rq;
+	unsigned long flags; //, capacity, wl;
 	struct cpumask *cpus = this_cpu_cpumask_var_ptr(load_balance_mask);
 
 	struct lb_env env = {
@@ -7678,6 +7687,7 @@ more_balance:
 	} else {
 		sd->nr_balance_failed = 0;
 
+#if 0
 		/*
 		 * find the new busiest cpu and scale capacity to it.
 		 * shamelessly stolen from find_busiest_queue.
@@ -7707,6 +7717,7 @@ more_balance:
 
 		//cpufreq_scale_busiest_cpu(i, wl, capacity);
 		cpufreq_cap_gov_request(i, wl, capacity);
+#endif
 	}
 
 	if (likely(!active_balance)) {
@@ -8411,12 +8422,12 @@ static void run_rebalance_domains(struct softirq_action *h)
 	nohz_idle_balance(this_rq, idle);
 
 	/*
-	 * FIXME some platforms do not need this, but current CPUfreq locking
-	 * prevents us from changing cpu frequency rq locks held and interrupts
-	 * disabled
+	 * FIXME some hardware does not require this, but current CPUfreq
+	 * locking prevents us from changing cpu frequency with rq locks held
+	 * and interrupts disabled
 	 */
-	if (sched_cap_gov() && cap_gov_needs_kick())
-		cap_gov_kick_thread();
+	if (sched_energy_freq())
+		cap_gov_kick_thread(cpu_of(this_rq));
 }
 
 /*
