@@ -2476,9 +2476,10 @@ unsigned long __weak arch_scale_cpu_capacity(struct sched_domain *sd, int cpu);
 #if 0
 void arch_eval_cpu_freq(struct cpumask *cpus);
 void arch_scale_cpu_freq(void);
-#else
 void cap_gov_update_cpu(int cpu);
 void cap_gov_kick_thread(int cpu);
+int get_cpu_usage(int cpu);
+unsigned long capacity_of(int cpu);
 #endif
 
 /*
@@ -4428,7 +4429,8 @@ static unsigned long target_load(int cpu, int type)
 	return max(rq->cpu_load[type-1], total);
 }
 
-static unsigned long capacity_of(int cpu)
+/* FIXME probably can be made static again */
+unsigned long capacity_of(int cpu)
 {
 	return cpu_rq(cpu)->cpu_capacity;
 }
