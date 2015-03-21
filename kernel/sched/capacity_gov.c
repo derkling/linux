@@ -175,7 +175,7 @@ static unsigned long cap_gov_select_freq(cpu)
 	struct gov_data *gd;
 	int index;
 	unsigned int cpu, tmp;
-	unsigned long freq, max_usage = 0, cap = 0, usage = 0, up_thr;
+	unsigned long freq = 0, max_usage = 0, cap = 0, usage = 0, up_thr;
 	struct cpufreq_frequency_table *pos;
 
 	policy = cpufreq_cpu_get(cpu);
@@ -215,9 +215,8 @@ static unsigned long cap_gov_select_freq(cpu)
 	trace_printk("cpu = %d index = %d up_thr = %lu",
 			cpu, index, up_thr);
 
+#if 1
 	/*
-	 * if max_usage > up_thr ... WAIT WAIT
-	 *
 	 * Why not converge on max_usage, regardless of whether that is up or
 	 * down? max_usage comes from get_cpu_usage, which is (usage *
 	 * capacity_orig) >> SCHED_LOAD_SHIFT, thus that value can be
@@ -227,6 +226,32 @@ static unsigned long cap_gov_select_freq(cpu)
 	 * floor(max_usage). This means the lowest frequency whose capacity
 	 * value is >= max_usage.
 	 */
+#if 0
+	/* trivial case of fully loaded cpu */
+	if (max_usage == capacity_orig_of(cpu)) {
+		freq = policy->max;
+		goto out;
+	}
+#endif
+	/*
+	 * converge towards max_usage. We want the lowest frequency whose
+	 * capacity is >= to max_usage. In other words:
+	 *
+	 * 	find capacity == floor(usage)
+	 *
+	 * Sadly cpufreq freq tables are not ordered by frequency...
+	 */
+	cpufreq_for_each_entry(pos, policy->freq_table) {
+		cap = pos->frequency * SCHED_CAPACITY_SCALE /
+			policy->max;
+		if (max_usage < cap && pos->frequency < freq)
+			freq = pos->frequency;
+		trace_printk("cpu = %u max_usage = %lu cap = %u \
+				table_freq = %lu freq = %u",
+				cpu, max_usage, cap, pos->frequency, freq);
+	}
+
+#else
 	/* above the utilization threshold for this capacity? go to max freq */
 	freq = policy->max;
 
@@ -239,18 +264,19 @@ static unsigned long cap_gov_select_freq(cpu)
 		cpufreq_for_each_entry(pos, policy->freq_table) {
 			cap = pos->frequency * SCHED_CAPACITY_SCALE /
 				policy->max;
-			if (max_usage < capacity && pos->frequency < freq)
+			if (max_usage < cap && pos->frequency < freq)
 				freq = pos->frequency;
 			trace_printk("cpu = %u max_usage = %lu cap = %u \
 					table_freq = %lu freq = %u",
 					cpu, max_usage, cap, pos->frequency, freq);
 		}
 	}
-	trace_printk("cpu %d freq %u", cpu, freq);
+#endif
 
 out:
 	cpufreq_cpu_put(policy);
 err_policy:
+	trace_printk("cpu %d final freq %u", cpu, freq);
 	return freq;
 }
 
@@ -312,6 +338,7 @@ void cap_gov_update_cpu(int cpu)
 		/* XXX someday select freq and program it here */
 	}
 
+	cpufreq_cpu_put(policy);
 	return;
 }
 
