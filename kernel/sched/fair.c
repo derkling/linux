@@ -4306,8 +4306,11 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	}
 
 	if(sched_energy_freq())
+		cap_gov_update_cpu(cpu_of(rq));
+	/*
 		set_capacity(cpu_of(rq), fair_sched_class,
 				get_cpu_usage(rq_of(cpu)));
+				*/
 
 	hrtick_update(rq);
 }
@@ -4372,7 +4375,8 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	}
 
 	if(sched_energy_freq())
-		set_capacity(int cpu, enum sched_class, capacity constraint);
+		cap_gov_update_cpu(cpu_of(rq));
+		//set_capacity(int cpu, enum sched_class, capacity constraint);
 
 	hrtick_update(rq);
 }
@@ -8466,6 +8470,9 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 		task_tick_numa(rq, curr);
 
 	update_rq_runnable_avg(rq, 1);
+
+	if(sched_energy_freq())
+		cap_gov_update_cpu(cpu_of(rq));
 }
 
 /*
