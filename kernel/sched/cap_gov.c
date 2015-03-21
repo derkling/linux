@@ -158,6 +158,7 @@ static unsigned long cap_gov_select_freq(struct cpufreq_policy *policy)
 	 *
 	 * Sadly cpufreq freq tables are not ordered by frequency...
 	 */
+	freq = policy->max;
 	cpufreq_for_each_entry(pos, policy->freq_table) {
 		cap = pos->frequency * SCHED_CAPACITY_SCALE /
 			policy->max;
@@ -358,7 +359,7 @@ out:
 
 static void cap_gov_start(struct cpufreq_policy *policy)
 {
-	int index = 0, count = 0;
+	int index = 0, count = 0, cpu;
 	unsigned int capacity;
 	struct gov_data *gd;
 	struct cpufreq_frequency_table *pos;
@@ -377,7 +378,7 @@ static void cap_gov_start(struct cpufreq_policy *policy)
 		count++;
 
 	/* pre-compute per-capacity utilization up_thresholds */
-	//gd->up_threshold = kcalloc(count, sizeof(unsigned int), GFP_KERNEL);
+	gd->up_threshold = kcalloc(count, sizeof(unsigned int), GFP_KERNEL);
 	cpufreq_for_each_entry(pos, policy->freq_table) {
 		/* FIXME capacity below is not scaled for uarch */
 		capacity = pos->frequency * SCHED_CAPACITY_SCALE / policy->max;
@@ -394,6 +395,10 @@ static void cap_gov_start(struct cpufreq_policy *policy)
 	gd->task = kthread_create(cap_gov_thread, policy, "kcap_gov_task");
 	if (IS_ERR_OR_NULL(gd->task))
 		pr_err("%s: failed to create kcap_gov_task thread\n", __func__);
+
+	/* save per-cpu pointer to per-policy need_wake_task */
+	for_each_cpu(cpu, policy->related_cpus)
+		per_cpu(cap_gov_wake_task, cpu) = &gd->need_wake_task;
 }
 
 static void cap_gov_stop(struct cpufreq_policy *policy)
