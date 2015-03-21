@@ -103,14 +103,14 @@ config CPU_FREQ_DEFAULT_GOV_CONSERVATIVE
 	  governor. If unsure have a look at the help section of the
 	  driver. Fallback governor will be the performance governor.
 
-config CPU_FREQ_DEFAULT_GOV_ENERGY_MODEL
-	bool "energy_model"
-	select CPU_FREQ_GOV_ENERGY_MODEL
+config CPU_FREQ_DEFAULT_GOV_CAP_GOV
+	bool "cap_gov"
+	select CPU_FREQ_GOV_CAP_GOV
 	select CPU_FREQ_GOV_PERFORMANCE
 	help
-	  Use the CPUfreq governor 'energy_model' as default. This
-	  scales cpu frequency from the scheduler as per-task statistics
-	  are updated.
+	  Use the CPUfreq governor 'cap_gov' as default. This scales cpu
+	  frequency from the scheduler as per-entity load tracking
+	  statistics are updated.
 endchoice
 
 config CPU_FREQ_GOV_PERFORMANCE
@@ -207,15 +207,16 @@ config CPUFREQ_DT
 
 	  If in doubt, say N.
 
-config CPU_FREQ_GOV_ENERGY_MODEL
-	tristate "'energy model' cpufreq governor"
+config CPU_FREQ_GOV_CAP_GOV
+	tristate "'capacity governor' cpufreq governor"
 	depends on CPU_FREQ
 	select CPU_FREQ_GOV_COMMON
 	help
-	  'energy_model' - this governor scales cpu frequency from the
-	  scheduler as a function of cpu utilization. It does not
-	  evaluate utilization on a periodic basis (unlike ondemand) but
-	  instead is invoked from CFS when updating per-task statistics.
+	  'cap_gov' - this governor scales cpu frequency from the
+	  scheduler as a function of cpu capacity utilization. It does
+	  not evaluate utilization on a periodic basis (unlike ondemand)
+	  but instead is invoked from CFS when updating per-entity load
+	  tracking statistics.
 
 	  If in doubt, say N.
 
