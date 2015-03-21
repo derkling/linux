@@ -54,103 +54,11 @@ static DEFINE_PER_CPU(atomic_t *, cap_gov_wake_task);
  */
 struct gov_data {
 	ktime_t throttle;
+	unsigned int *up_threshold;
 	struct task_struct *task;
 	atomic_long_t target_freq;
 	atomic_t need_wake_task;
 };
-
-/*
- * we pass in struct cpufreq_policy. This is safe because changing out the
- * policy requires a call to __cpufreq_governor(policy, CPUFREQ_GOV_STOP),
- * which tears down all of the data structures and __cpufreq_governor(policy,
- * CPUFREQ_GOV_START) will do a full rebuild, including this kthread with the
- * new policy pointer
- */
-static int cap_gov_thread(void *data)
-{
-	struct sched_param param;
-	struct cpufreq_policy *policy;
-	struct gov_data *em;
-	int ret;
-
-	policy = (struct cpufreq_policy *) data;
-	if (!policy) {
-		pr_warn("%s: missing policy\n", __func__);
-		do_exit(-EINVAL);
-	}
-
-	em = policy->gov_data;
-	if (!em) {
-		pr_warn("%s: missing governor data\n", __func__);
-		do_exit(-EINVAL);
-	}
-
-	param.sched_priority = 0;
-	sched_setscheduler(current, SCHED_FIFO, &param);
-	set_cpus_allowed_ptr(current, policy->related_cpus);
-
-	/* main loop of the per-policy kthread */
-	do {
-		down_write(&policy->rwsem);
-		if (!atomic_read(&gd->need_wake_task))  {
-			trace_printk("NOT waking up kthread (%d)", gd->task->pid);
-			up_write(&policy->rwsem);
-			set_current_state(TASK_INTERRUPTIBLE);
-			schedule();
-			continue;
-		}
-
-		trace_printk("kthread %d requested freq switch", gd->task->pid);
-		ret = __cpufreq_driver_target(policy, atomic_read(&gd->target_freq),
-				CPUFREQ_RELATION_H);
-		if (ret)
-			pr_debug("%s: __cpufreq_driver_target returned %d\n",
-					__func__, ret);
-
-		/*gd->throttle = ktime_get();
-		//gd->throttle = ktime_add_ns(gd->throttle, THROTTLE);*/
-		gd->throttle = ktime_add_ns(ktime_get(), THROTTLE_NS);
-		atomic_set(&gd->need_wake_task, 0);
-		up_write(&policy->rwsem);
-	} while (!kthread_should_stop());
-
-	do_exit(0);
-}
-
-static void cap_gov_wake_up_process(struct task_struct *task)
-{
-	/* this is null during early boot */
-	if (IS_ERR_OR_NULL(task)) {
-		return;
-	}
-
-	wake_up_process(task);
-}
-
-void cap_gov_kick_thread(int cpu)
-{
-	struct cpufreq_policy *policy;
-	struct gov_data *gd;
-	int cpu;
-
-	policy = cpufreq_cpu_get(cpu);
-	if (IS_ERR_OR_NULL(policy))
-		continue;
-
-	gd = policy->gov_data;
-	if (!gd) {
-		cpufreq_cpu_put(policy);
-		continue;
-	}
-
-	/* per-cpu access not needed here since we have gd */
-	if (atomic_read(&gd->need_wake_task)) {
-		trace_printk("waking up kthread (%d)", gd->task->pid);
-		cap_gov_wake_up_process(gd->task);
-	}
-
-	cpufreq_cpu_put(policy);
-}
 
 /**
  * cap_gov_select_freq - pick the next frequency for a cpu
@@ -169,19 +77,23 @@ void cap_gov_kick_thread(int cpu)
  *
  * Returns frequency selected.
  */
-static unsigned long cap_gov_select_freq(cpu)
+//static unsigned long cap_gov_select_freq(int cpu)
+static unsigned long cap_gov_select_freq(struct cpufreq_policy *policy)
 {
-	struct cpufreq_policy *policy;
+	//struct cpufreq_policy *policy;
+	int cpu;
 	struct gov_data *gd;
 	int index;
-	unsigned int cpu, tmp;
+	//unsigned int tmp;
 	unsigned long freq = 0, max_usage = 0, cap = 0, usage = 0, up_thr;
 	struct cpufreq_frequency_table *pos;
 
+#if 0
 	policy = cpufreq_cpu_get(cpu);
 	if (IS_ERR_OR_NULL(policy)) {
 		goto err_policy;
 	}
+#endif
 
 	if (!policy->gov_data)
 		goto out;
@@ -194,24 +106,29 @@ static unsigned long cap_gov_select_freq(cpu)
 	 * willing to accept occasionally stale data here in exchange for
 	 * lockless behavior.
 	 */
-	for_each_cpu(tmp, policy->cpus) {
-		usage = get_tmp_usage(cpu);
-		trace_printk("cpu = %d usage = %lu", tmp, usage);
+	for_each_cpu(cpu, policy->cpus) {
+		usage = get_cpu_usage(cpu);
+		trace_printk("cpu = %d usage = %lu", cpu, usage);
 		if (usage > max_usage)
 			max_usage = usage;
 	}
 	trace_printk("max_usage = %lu", max_usage);
 
+#if 0
 	/* FIXME only for debug */
 	cap = capacity_of(cpu);
 	if (!cap) {
 		goto out;
 	}
 	trace_printk("cpu = %d actual cap = %lu", cpu, cap);
+#endif
+
+	/* FIXME debug only */
+	cpu = cpumask_first(policy->cpus);
 
 	/* find the utilization threshold at which we scale up frequency */
 	index = cpufreq_frequency_table_get_index(policy, policy->cur);
-	up_thr = gd->up_threshold[index];
+	//up_thr = gd->up_threshold[index];
 	trace_printk("cpu = %d index = %d up_thr = %lu",
 			cpu, index, up_thr);
 
@@ -246,8 +163,8 @@ static unsigned long cap_gov_select_freq(cpu)
 			policy->max;
 		if (max_usage < cap && pos->frequency < freq)
 			freq = pos->frequency;
-		trace_printk("cpu = %u max_usage = %lu cap = %u \
-				table_freq = %lu freq = %u",
+		trace_printk("cpu = %u max_usage = %lu cap = %lu \
+				table_freq = %u freq = %lu",
 				cpu, max_usage, cap, pos->frequency, freq);
 	}
 
@@ -274,10 +191,109 @@ static unsigned long cap_gov_select_freq(cpu)
 #endif
 
 out:
-	cpufreq_cpu_put(policy);
-err_policy:
-	trace_printk("cpu %d final freq %u", cpu, freq);
+	//cpufreq_cpu_put(policy);
+//err_policy:
+	trace_printk("cpu %d final freq %lu", cpu, freq);
 	return freq;
+}
+
+/*
+ * we pass in struct cpufreq_policy. This is safe because changing out the
+ * policy requires a call to __cpufreq_governor(policy, CPUFREQ_GOV_STOP),
+ * which tears down all of the data structures and __cpufreq_governor(policy,
+ * CPUFREQ_GOV_START) will do a full rebuild, including this kthread with the
+ * new policy pointer
+ */
+static int cap_gov_thread(void *data)
+{
+	struct sched_param param;
+	struct cpufreq_policy *policy;
+	struct gov_data *gd;
+	unsigned long freq;
+	int ret;
+
+	policy = (struct cpufreq_policy *) data;
+	if (!policy) {
+		pr_warn("%s: missing policy\n", __func__);
+		do_exit(-EINVAL);
+	}
+
+	gd = policy->gov_data;
+	if (!gd) {
+		pr_warn("%s: missing governor data\n", __func__);
+		do_exit(-EINVAL);
+	}
+
+	param.sched_priority = 0;
+	sched_setscheduler(current, SCHED_FIFO, &param);
+	set_cpus_allowed_ptr(current, policy->related_cpus);
+
+	/* main loop of the per-policy kthread */
+	do {
+		down_write(&policy->rwsem);
+		if (!atomic_read(&gd->need_wake_task))  {
+			trace_printk("NOT waking up kthread (%d)", gd->task->pid);
+			up_write(&policy->rwsem);
+			set_current_state(TASK_INTERRUPTIBLE);
+			schedule();
+			continue;
+		}
+
+		trace_printk("kthread %d requested freq switch", gd->task->pid);
+
+		/* XXX alway true, for now */
+		if (driver_might_sleep)
+			freq = cap_gov_select_freq(policy);
+
+		ret = __cpufreq_driver_target(policy, freq,
+				CPUFREQ_RELATION_H);
+		if (ret)
+			pr_debug("%s: __cpufreq_driver_target returned %d\n",
+					__func__, ret);
+
+		/*gd->throttle = ktime_get();
+		//gd->throttle = ktime_add_ns(gd->throttle, THROTTLE);*/
+		gd->throttle = ktime_add_ns(ktime_get(), THROTTLE_NSEC);
+		atomic_set(&gd->need_wake_task, 0);
+		up_write(&policy->rwsem);
+	} while (!kthread_should_stop());
+
+	do_exit(0);
+}
+
+static void cap_gov_wake_up_process(struct task_struct *task)
+{
+	/* this is null during early boot */
+	if (IS_ERR_OR_NULL(task)) {
+		return;
+	}
+
+	wake_up_process(task);
+}
+
+void cap_gov_kick_thread(int cpu)
+{
+	struct cpufreq_policy *policy;
+	struct gov_data *gd;
+
+	policy = cpufreq_cpu_get(cpu);
+	if (IS_ERR_OR_NULL(policy))
+		return;
+
+	gd = policy->gov_data;
+	if (!gd) {
+		cpufreq_cpu_put(policy);
+		goto out;
+	}
+
+	/* per-cpu access not needed here since we have gd */
+	if (atomic_read(&gd->need_wake_task)) {
+		trace_printk("waking up kthread (%d)", gd->task->pid);
+		cap_gov_wake_up_process(gd->task);
+	}
+
+out:
+	cpufreq_cpu_put(policy);
 }
 
 /**
@@ -308,26 +324,23 @@ void cap_gov_update_cpu(int cpu)
 {
 	struct cpufreq_policy *policy;
 	struct gov_data *gd;
-	int index;
-	unsigned int cpu;
-	unsigned long freq;
 
 	/* XXX put policy pointer in per-cpu data? */
 	policy = cpufreq_cpu_get(cpu);
 	if (IS_ERR_OR_NULL(policy)) {
-		goto bail;
+		return;
 	}
 
 	/* XXX too paranoid? cap_gov_start will fail if !gov_data */
 	if (!policy->gov_data)
-		goto bail;
+		goto out;
 
 	gd = policy->gov_data;
 
 	/* bail early if we are throttled */
 	if (ktime_before(ktime_get(), gd->throttle)) {
 		trace_printk("THROTTLED");
-		goto bail;
+		goto out;
 	}
 
 	/* XXX driver_might_sleep is always true */
@@ -338,6 +351,7 @@ void cap_gov_update_cpu(int cpu)
 		/* XXX someday select freq and program it here */
 	}
 
+out:
 	cpufreq_cpu_put(policy);
 	return;
 }
@@ -346,24 +360,24 @@ static void cap_gov_start(struct cpufreq_policy *policy)
 {
 	int index = 0, count = 0;
 	unsigned int capacity;
-	struct gov_data *em;
+	struct gov_data *gd;
 	struct cpufreq_frequency_table *pos;
 
 	/* prepare per-policy private data */
-	em = kzalloc(sizeof(*em), GFP_KERNEL);
-	if (!em) {
+	gd = kzalloc(sizeof(*gd), GFP_KERNEL);
+	if (!gd) {
 		pr_debug("%s: failed to allocate private data\n", __func__);
 		return;
 	}
 
-	policy->gov_data = em;
+	policy->gov_data = gd;
 
 	/* how many entries in the frequency table? */
 	cpufreq_for_each_entry(pos, policy->freq_table)
 		count++;
 
 	/* pre-compute per-capacity utilization up_thresholds */
-	gd->up_threshold = kcalloc(count, sizeof(unsigned int), GFP_KERNEL);
+	//gd->up_threshold = kcalloc(count, sizeof(unsigned int), GFP_KERNEL);
 	cpufreq_for_each_entry(pos, policy->freq_table) {
 		/* FIXME capacity below is not scaled for uarch */
 		capacity = pos->frequency * SCHED_CAPACITY_SCALE / policy->max;
@@ -384,15 +398,15 @@ static void cap_gov_start(struct cpufreq_policy *policy)
 
 static void cap_gov_stop(struct cpufreq_policy *policy)
 {
-	struct gov_data *em;
+	struct gov_data *gd;
 
-	em = policy->gov_data;
+	gd = policy->gov_data;
 
 	kthread_stop(gd->task);
 
 	/* FIXME replace with devm counterparts? */
 	kfree(gd->up_threshold);
-	kfree(em);
+	kfree(gd);
 }
 
 static int cap_gov_setup(struct cpufreq_policy *policy, unsigned int event)
@@ -415,7 +429,7 @@ static int cap_gov_setup(struct cpufreq_policy *policy, unsigned int event)
 	return 0;
 }
 
-#ifndef CONFIG_CPU_FREQ_DEFAULT_GOV_cap_gov
+#ifndef CONFIG_CPU_FREQ_DEFAULT_GOV_CAP_GOV
 static
 #endif
 struct cpufreq_governor cpufreq_gov_cap_gov = {
