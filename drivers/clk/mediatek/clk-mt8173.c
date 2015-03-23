@@ -237,6 +237,12 @@
 
 static DEFINE_SPINLOCK(lock);
 
+/* dirty hack to make scpsys work */
+spinlock_t *get_mtk_clk_lock(void)
+{
+       return &lock;
+}
+
 static struct mtk_fixed_factor root_clk_alias[] __initdata = {
 	FACTOR(TOP_CLKPH_MCK_O, clkph_mck_o, clk_null, 1, 1),
 	FACTOR(TOP_DPI_CK, dpi_ck, clk_null, 1, 1),
