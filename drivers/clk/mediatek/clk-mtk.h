@@ -129,4 +129,11 @@ struct clk *mtk_clk_register_mux(
 		u8 gate_bit,
 		spinlock_t *lock);
 
+/* dirty hack to make scpsys work */
+extern spinlock_t *get_mtk_clk_lock(void);
+
+#define mtk_clk_lock(flags)    spin_lock_irqsave(get_mtk_clk_lock(), flags)
+#define mtk_clk_unlock(flags)  \
+               spin_unlock_irqrestore(get_mtk_clk_lock(), flags)
+
 #endif /* __DRV_CLK_MTK_H */
