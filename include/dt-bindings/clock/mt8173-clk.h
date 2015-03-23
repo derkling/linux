@@ -213,4 +213,18 @@
 #define PERI_I2C6		35
 #define PERI_NR_CLK		36
 
+/* SCP_SYS */
+
+#define SCP_SYS_VDE            1
+#define SCP_SYS_MFG            2
+#define SCP_SYS_VEN            3
+#define SCP_SYS_ISP            4
+#define SCP_SYS_DIS            5
+#define SCP_SYS_VEN2           6
+#define SCP_SYS_AUDIO          7
+#define SCP_SYS_MFG_2D         8
+#define SCP_SYS_MFG_ASYNC      9
+#define SCP_SYS_USB            10
+#define SCP_NR_CLK             11
+
 #endif /* _DT_BINDINGS_CLK_MT8173_H */
