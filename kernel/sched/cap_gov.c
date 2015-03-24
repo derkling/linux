@@ -128,7 +128,7 @@ static unsigned long cap_gov_select_freq(struct cpufreq_policy *policy)
 
 	/* find the utilization threshold at which we scale up frequency */
 	index = cpufreq_frequency_table_get_index(policy, policy->cur);
-	//up_thr = gd->up_threshold[index];
+	up_thr = gd->up_threshold[index];
 	trace_printk("cpu = %d index = %d up_thr = %lu",
 			cpu, index, up_thr);
 
@@ -191,10 +191,10 @@ static unsigned long cap_gov_select_freq(struct cpufreq_policy *policy)
 	}
 #endif
 
+	trace_printk("cpu %d final freq %lu", cpu, freq);
 out:
 	//cpufreq_cpu_put(policy);
 //err_policy:
-	trace_printk("cpu %d final freq %lu", cpu, freq);
 	return freq;
 }
 
