@@ -8073,6 +8073,10 @@ static void rebalance_domains(struct rq *rq, enum cpu_idle_type idle)
 
 	rcu_read_lock();
 	for_each_domain(cpu, sd) {
+
+		if (sd->flags & SD_SHARE_ENERGY)
+			continue;
+
 		/*
 		 * Decay the newidle max times here because this is a regular
 		 * visit to all the domains. Decay ~1% per second.

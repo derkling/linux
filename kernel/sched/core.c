@@ -5529,7 +5529,7 @@ static int sd_degenerate(struct sched_domain *sd)
 	}
 
 	/* Following flags don't use groups */
-	if (sd->flags & (SD_WAKE_AFFINE))
+	if (sd->flags & (SD_WAKE_AFFINE | SD_SHARE_ENERGY))
 		return 0;
 
 	return 1;
@@ -6215,8 +6215,9 @@ static int sched_domains_curr_level;
  * SD_SHARE_POWERDOMAIN   - describes shared power domain
  * SD_SHARE_CAP_STATES    - describes shared capacity states
  *
- * Odd one out:
+ * Odd two out:
  * SD_ASYM_PACKING        - describes SMT quirks
+ * SD_SHARE_ENERGY        - describes EAS quirks
  */
 #define TOPOLOGY_SD_FLAGS		\
 	(SD_SHARE_CPUCAPACITY |		\
@@ -6224,7 +6225,8 @@ static int sched_domains_curr_level;
 	 SD_NUMA |			\
 	 SD_ASYM_PACKING |		\
 	 SD_SHARE_POWERDOMAIN |		\
-	 SD_SHARE_CAP_STATES)
+	 SD_SHARE_CAP_STATES |		\
+	 SD_SHARE_ENERGY)
 
 static struct sched_domain *
 sd_init(struct sched_domain_topology_level *tl, int cpu)
@@ -6298,6 +6300,14 @@ sd_init(struct sched_domain_topology_level *tl, int cpu)
 		sd->cache_nice_tries = 1;
 		sd->busy_idx = 2;
 
+	} else if (sd->flags & SD_SHARE_ENERGY) {
+		/* Reset the default configuration completely */
+		memset(sd, 0, sizeof(*sd));
+
+		sd->flags = 1*SD_SHARE_ENERGY;
+#ifdef CONFIG_SCHED_DEBUG
+		sd->name = tl->name;
+#endif
 #ifdef CONFIG_NUMA
 	} else if (sd->flags & SD_NUMA) {
 		sd->cache_nice_tries = 2;
@@ -6826,8 +6836,6 @@ static int build_sched_domains(const struct cpumask *cpu_map,
 				*per_cpu_ptr(d.sd, i) = sd;
 			if (tl->flags & SDTL_OVERLAP || sched_feat(FORCE_SD_OVERLAP))
 				sd->flags |= SD_OVERLAP;
-			if (cpumask_equal(cpu_map, sched_domain_span(sd)))
-				break;
 		}
 	}
 
