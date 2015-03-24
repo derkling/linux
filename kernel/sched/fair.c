@@ -2481,6 +2481,10 @@ void cap_gov_kick_thread(int cpu);
 int get_cpu_usage(int cpu);
 unsigned long capacity_of(int cpu);
 #endif
+#if !defined CONFIG_CPU_FREQ_GOV_CAP_GOV
+void cap_gov_update_cpu(int cpu) {}
+void cap_gov_kick_thread(int cpu) {}
+#endif
 
 /*
  * We can represent the historical contribution to runnable average as the
