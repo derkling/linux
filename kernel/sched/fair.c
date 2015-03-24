@@ -4658,7 +4658,7 @@ static int __get_cpu_usage(int cpu, int delta)
 	return sum;
 }
 
-static int get_cpu_usage(int cpu)
+int get_cpu_usage(int cpu)
 {
 	return __get_cpu_usage(cpu, 0);
 }
