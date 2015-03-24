@@ -296,6 +296,29 @@ void store_cpu_topology(unsigned int cpuid)
  * normalization must be consistent. That is, one bogo-joule/watt must be the
  * same quantity for all data, but we don't care what it is.
  */
+static struct idle_state idle_states_system[] = {
+	 { .power = 100 }, /* sys-off */
+	};
+
+static struct capacity_state cap_states_system[] = {
+	/* Sytem only power */
+	 { .cap =  150, .power = 1000, }, /*  350 MHz */
+	 { .cap =  172, .power = 2000, }, /*  400 MHz */
+	 { .cap =  215, .power = 3000, }, /*  500 MHz */
+	 { .cap =  258, .power = 4000, }, /*  600 MHz */
+	 { .cap =  301, .power = 5000, }, /*  700 MHz */
+	 { .cap =  344, .power = 6000, }, /*  800 MHz */
+	 { .cap =  387, .power = 7000, }, /*  900 MHz */
+	 { .cap =  430, .power = 8000, }, /* 1000 MHz */
+	};
+
+static struct sched_group_energy energy_system = {
+	  .nr_idle_states = ARRAY_SIZE(idle_states_system),
+	  .idle_states    = idle_states_system,
+	  .nr_cap_states  = ARRAY_SIZE(cap_states_system),
+	  .cap_states     = cap_states_system,
+};
+
 static struct idle_state idle_states_cluster_a7[] = {
 	 { .power = 25 }, /* WFI */
 	 { .power = 10 }, /* cluster-sleep-l */
@@ -391,6 +414,11 @@ static struct sched_group_energy energy_core_a15 = {
 };
 
 /* sd energy functions */
+static inline const struct sched_group_energy *cpu_system_energy(int cpu)
+{
+	return &energy_system;
+}
+
 static inline const struct sched_group_energy *cpu_cluster_energy(int cpu)
 {
 	return cpu_topology[cpu].socket_id ? &energy_cluster_a7 :
@@ -409,11 +437,17 @@ static inline int cpu_corepower_flags(void)
 	       SD_SHARE_CAP_STATES;
 }
 
+static inline int cpu_sys_flags(void)
+{
+	return SD_SHARE_ENERGY;
+}
+
 static struct sched_domain_topology_level arm_topology[] = {
 #ifdef CONFIG_SCHED_MC
 	{ cpu_coregroup_mask, cpu_corepower_flags, cpu_core_energy, SD_INIT_NAME(MC) },
 #endif
 	{ cpu_cpu_mask, 0, cpu_cluster_energy, SD_INIT_NAME(DIE) },
+	{ cpu_cpu_mask, cpu_sys_flags, cpu_system_energy, SD_INIT_NAME(SYS) },
 	{ NULL, },
 };
 
