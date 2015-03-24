@@ -275,7 +275,7 @@ static void cap_gov_wake_up_process(struct task_struct *task)
 void cap_gov_kick_thread(int cpu)
 {
 	struct cpufreq_policy *policy;
-	struct gov_data *gd;
+	struct gov_data *gd = NULL;
 
 	policy = cpufreq_cpu_get(cpu);
 	if (IS_ERR_OR_NULL(policy))
@@ -369,8 +369,6 @@ static void cap_gov_start(struct cpufreq_policy *policy)
 		return;
 	}
 
-	policy->gov_data = gd;
-
 	/* how many entries in the frequency table? */
 	cpufreq_for_each_entry(pos, policy->freq_table)
 		count++;
@@ -388,15 +386,18 @@ static void cap_gov_start(struct cpufreq_policy *policy)
 		index++;
 	}
 
+
+	/* save per-cpu pointer to per-policy need_wake_task */
+	for_each_cpu(cpu, policy->related_cpus)
+		per_cpu(cap_gov_wake_task, cpu) = &gd->need_wake_task;
+
 	/* FIXME if we move to an arbitrator model then we will only want one thread? */
 	/* init per-policy kthread */
 	gd->task = kthread_create(cap_gov_thread, policy, "kcap_gov_task");
 	if (IS_ERR_OR_NULL(gd->task))
 		pr_err("%s: failed to create kcap_gov_task thread\n", __func__);
 
-	/* save per-cpu pointer to per-policy need_wake_task */
-	for_each_cpu(cpu, policy->related_cpus)
-		per_cpu(cap_gov_wake_task, cpu) = &gd->need_wake_task;
+	policy->gov_data = gd;
 }
 
 static void cap_gov_stop(struct cpufreq_policy *policy)
@@ -404,6 +405,7 @@ static void cap_gov_stop(struct cpufreq_policy *policy)
 	struct gov_data *gd;
 
 	gd = policy->gov_data;
+	policy->gov_data = NULL;
 
 	kthread_stop(gd->task);
 
