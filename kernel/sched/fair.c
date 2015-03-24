@@ -298,10 +298,10 @@ void update_packing_domain(int cpu)
 
 end:
 	if (target)
-		cpumask_scnprintf(buf, 40, sched_group_cpus(target));
+		cpumap_print_to_pagebuf(false, buf, sched_group_cpus(target));
 	pr_info("CPU%d packing on CPU%d of group 0x%s\n", cpu, id, buf);
 	if (sd)
-		cpumask_scnprintf(buf, 40, sched_group_cpus(sd->groups));
+		cpumap_print_to_pagebuf(false,buf, sched_group_cpus(sd->groups));
 	pr_info("CPU%d leaded by CPU%d for group 0x%s\n", cpu, pcpu, buf);
 	pr_info("CPU%d packing @ level %d\n", cpu, sd ? sd->level : -1);
 

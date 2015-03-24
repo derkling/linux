@@ -6046,6 +6046,8 @@ static void init_sched_groups_capacity(int cpu, struct sched_domain *sd)
 		sg->sgc->pack_thres = 0;
 		sg->sgc->perf_thres = 1024;
 	}
+	pr_info("cpu%d pack %d, perf th %d\n", cpu,
+			sg->sgc->pack_thres, sg->sgc->perf_thres);
 #endif
 }
 
