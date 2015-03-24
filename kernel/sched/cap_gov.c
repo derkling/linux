@@ -282,10 +282,8 @@ void cap_gov_kick_thread(int cpu)
 		return;
 
 	gd = policy->gov_data;
-	if (!gd) {
-		cpufreq_cpu_put(policy);
+	if (!gd)
 		goto out;
-	}
 
 	/* per-cpu access not needed here since we have gd */
 	if (atomic_read(&gd->need_wake_task)) {
