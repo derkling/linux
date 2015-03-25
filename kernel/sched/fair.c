@@ -4316,6 +4316,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		add_nr_running(rq, 1);
 	}
 
+	trace_printk("trigger cap_gov for CPU%d", cpu_of(rq));
 	cap_gov_update_cpu(cpu_of(rq));
 
 	hrtick_update(rq);
@@ -4380,6 +4381,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		update_rq_runnable_avg(rq, 1);
 	}
 
+	trace_printk("trigger cap_gov for CPU%d", cpu_of(rq));
 	cap_gov_update_cpu(cpu_of(rq));
 
 	hrtick_update(rq);
@@ -8479,6 +8481,7 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 
 	update_rq_runnable_avg(rq, 1);
 
+	trace_printk("trigger cap_gov for CPU%d", cpu_of(rq));
 	cap_gov_update_cpu(cpu_of(rq));
 }
 

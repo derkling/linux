@@ -82,7 +82,7 @@ static unsigned long cap_gov_select_freq(struct cpufreq_policy *policy)
 	int cpu;
 	struct gov_data *gd;
 	int index;
-	unsigned long freq = 0, max_usage = 0, cap = 0, usage = 0, up_thr;
+	unsigned long freq = 0, max_usage = 0, usage = 0, up_thr;
 	struct cpufreq_frequency_table *pos;
 	struct sched_domain *sd;
 	struct sched_group_energy *sge = NULL;
@@ -113,8 +113,8 @@ static unsigned long cap_gov_select_freq(struct cpufreq_policy *policy)
 	/* find the utilization threshold at which we scale up frequency */
 	index = cpufreq_frequency_table_get_index(policy, policy->cur);
 	up_thr = gd->up_threshold[index];
-	trace_printk("cpu = %d index = %d up_thr = %lu",
-			cpu, index, up_thr);
+	trace_printk("curr cpu=%d freq=%u index=%d up_thr=%lu",
+		     cpu, policy->cur, index, up_thr);
 
 	/* trivial case of fully loaded cpu */
 	//if (max_usage == capacity_orig_of(cpu)) {
@@ -150,9 +150,6 @@ static unsigned long cap_gov_select_freq(struct cpufreq_policy *policy)
 				break;
 			}
 			index++;
-			trace_printk("cpu = %u max_usage = %lu cap = %u \
-					table_freq = %lu freq = %u",
-					cpu, max_usage, cap, pos->frequency, freq);
 		}
 
 		rcu_read_unlock();
@@ -204,8 +201,6 @@ static int cap_gov_thread(void *data)
 			continue;
 		}
 
-		trace_printk("kthread %d requested freq switch", gd->task->pid);
-
 		/* XXX alway true, for now */
 		if (driver_might_sleep)
 			freq = cap_gov_select_freq(policy);
@@ -215,6 +210,8 @@ static int cap_gov_thread(void *data)
 		if (ret)
 			pr_debug("%s: __cpufreq_driver_target returned %d\n",
 					__func__, ret);
+
+		trace_printk("kthread %d requested freq switch", gd->task->pid);
 
 		gd->throttle = ktime_add_ns(ktime_get(), THROTTLE_NSEC);
 		atomic_set(&gd->need_wake_task, 0);
@@ -300,7 +297,7 @@ void cap_gov_update_cpu(int cpu)
 
 	/* bail early if we are throttled */
 	if (ktime_before(ktime_get(), gd->throttle)) {
-		trace_printk("THROTTLED");
+		trace_printk("THROTTLED (%d)", gd->task->pid);
 		goto out;
 	}
 
@@ -308,7 +305,7 @@ void cap_gov_update_cpu(int cpu)
 	if (driver_might_sleep) {
 		atomic_set(per_cpu(cap_gov_wake_task, cpu), 1);
 	} else {
-		trace_printk("should not be here!");
+		BUG_ON(1);
 		/* XXX someday select freq and program it here */
 	}
 
