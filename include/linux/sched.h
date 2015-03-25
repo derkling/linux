@@ -1172,10 +1172,22 @@ struct entity_execution_run {
 	u64	suspend_start;
 	u64	suspend_last;
 	u64	suspend_sum;
+	/* Task not on RQ: reasons */
+	struct {
+		union {
+			unsigned flags;
+			unsigned sleeping:1; /* Task not on RQ: sleeping */
+			unsigned blocked:1;  /* Task not on RQ: blocked */
+			unsigned iowait:1;   /* Task not on RQ: iowait */
+		};
+	} suspend_reason;
 };
 
 struct entity_model {
 	struct entity_execution_run er;
+	u16 load_index;
+	u16 sleepness_index;
+	u16 delay_index;
 };
 
 struct sched_entity {
