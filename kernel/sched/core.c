@@ -835,11 +835,110 @@ static void set_load_weight(struct task_struct *p)
 	load->inv_weight = prio_to_wmult[prio];
 }
 
+#ifdef CONFIG_ENTITY_MODEL
+#define time_local() rq_clock(this_rq())
+
+static inline void
+entity_model_activate(struct task_struct *task, int flags)
+{
+	struct entity_model *em = &task->se.em;
+	struct entity_execution_run *er = &em->er;
+	u64 now = time_local();
+
+	/* Mark start of enqueue time */
+	er->delay_start = now;
+
+	/* Update suspend time */
+	if (er->suspend_start) {
+		er->suspend_last = now - er->suspend_start;
+		er->suspend_sum += er->suspend_last;
+	}
+}
+
+static inline void
+entity_model_resume(struct task_struct *next)
+{
+	struct entity_model *em = &next->se.em;
+	struct entity_execution_run *er = &em->er;
+	u64 now = time_local();
+
+	/* Accumulate enqueue time */
+	er->delay_last += now - er->delay_start;
+	er->delay_sum  += er->delay_last;
+
+	/* Mark start of a new execution slice */
+	er->exec_start = now;
+
+}
+
+static inline void
+entity_model_preempt(struct task_struct *prev)
+{
+	struct entity_model *em = &prev->se.em;
+	struct entity_execution_run *er = &em->er;
+	u64 now = time_local();
+
+	/* Nothing to do if the task has been already deactivated */
+	if (er->exec_start == 0)
+		return;
+
+	/* Accumulate execution intervals */
+	er->exec_last += now - er->exec_start;
+	er->exec_sum  += er->exec_last;
+
+	/* Mark start of a RUNNING wait time */
+	er->delay_start = now;
+}
+
+static inline void
+entity_model_deactivate(struct task_struct *task, int flags)
+{
+	struct entity_model *em = &task->se.em;
+	struct entity_execution_run *er = &em->er;
+	u64 now = time_local();
+
+	/* Trigger preemption computations */
+	entity_model_preempt(task);
+
+	/* Mark task for execution completed, i.e. deactivated */
+	er->exec_start = 0;
+
+	/*
+	 * if the task is going to be suspended, report last execution run event
+	 */
+	if (flags & DEQUEUE_SLEEP) {
+
+		er->suspend_start = now;
+
+		trace_printk("pid=%d comm=%s delay=%llu exec=%llu sleep=%llu %s\n",
+				task->pid, task->comm,
+				er->delay_last,
+				er->exec_last,
+				er->suspend_last,
+				get_task_state(task));
+
+		/* Reset last execution run metrics */
+		er->delay_last = 0;
+		er->exec_last = 0;
+		er->suspend_last = 0;
+
+	}
+
+}
+#else
+# define entity_model_activate(task, flags)
+# define entity_model_resume(next)
+# define entity_model_preempt(prev)
+# define entity_model_deactivate(task, flags)
+#endif
+
+
 static void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	update_rq_clock(rq);
 	sched_info_queued(rq, p);
 	p->sched_class->enqueue_task(rq, p, flags);
+	entity_model_activate(p, flags);
 }
 
 static void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
@@ -847,6 +946,7 @@ static void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 	update_rq_clock(rq);
 	sched_info_dequeued(rq, p);
 	p->sched_class->dequeue_task(rq, p, flags);
+	entity_model_deactivate(p, flags);
 }
 
 void activate_task(struct rq *rq, struct task_struct *p, int flags)
@@ -2210,6 +2310,8 @@ static inline void
 prepare_task_switch(struct rq *rq, struct task_struct *prev,
 		    struct task_struct *next)
 {
+	entity_model_preempt(prev);
+	entity_model_resume(next);
 	trace_sched_switch(prev, next);
 	sched_info_switch(rq, prev, next);
 	perf_event_task_sched_out(prev, next);

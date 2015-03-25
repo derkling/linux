@@ -1154,6 +1154,30 @@ struct sched_statistics {
 };
 #endif
 
+/*
+ * Parameters describing the last run of a task
+ * i.e. since last !RUNNABLE state for all the time interval the task is on
+ * on RUNNABLE state.
+ */
+struct entity_execution_run {
+	/* Task on RQ w/o an assigned CPU */
+	u64	delay_start;
+	u64	delay_last;
+	u64	delay_sum;
+	/* Task on RQ w an assigned CPU */
+	u64	exec_start;
+	u64	exec_last;
+	u64	exec_sum;
+	/* Task not on RQ */
+	u64	suspend_start;
+	u64	suspend_last;
+	u64	suspend_sum;
+};
+
+struct entity_model {
+	struct entity_execution_run er;
+};
+
 struct sched_entity {
 	struct load_weight	load;		/* for load-balancing */
 	struct rb_node		run_node;
@@ -1166,6 +1190,8 @@ struct sched_entity {
 	u64			prev_sum_exec_runtime;
 
 	u64			nr_migrations;
+
+	struct entity_model	em;
 
 #ifdef CONFIG_SCHEDSTATS
 	struct sched_statistics statistics;
