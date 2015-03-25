@@ -636,6 +636,40 @@ TRACE_EVENT(sched_load_avg_cpu,
 	TP_printk("cpu=%d load=%lu utilization=%lu",
 		  __entry->cpu, __entry->load, __entry->utilization)
 );
+
+/*
+ * Tracepoint for task model updates
+ */
+TRACE_EVENT(sched_task_model_update,
+
+	TP_PROTO(struct task_struct *tsk,
+		struct entity_execution_run *er,
+		const char *state),
+
+	TP_ARGS(tsk, er, state),
+
+	TP_STRUCT__entry(
+		__field( pid_t,	pid			)
+		__array( char,	comm,	TASK_COMM_LEN	)
+		__field( u64,	delay_last		)
+		__field( u64,	exec_last		)
+		__field( u64,	suspend_last		)
+		__array( char,	state,	TASK_COMM_LEN	)
+	),
+
+	TP_fast_assign(
+		__entry->pid			= tsk->pid;
+		memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
+		__entry->delay_last		= er->delay_last;
+		__entry->exec_last		= er->exec_last;
+		__entry->suspend_last		= er->suspend_last;
+		memcpy(__entry->state, state, TASK_COMM_LEN);
+	),
+
+	TP_printk("pid=%d comm=%s delay=%llu exec=%llu sleep=%llu %s\n",
+		__entry->pid, __entry->comm, __entry->delay_last,
+		__entry->exec_last, __entry->suspend_last, __entry->state)
+);
 #endif /* _TRACE_SCHED_H */
 
 /* This part must be outside protection */
