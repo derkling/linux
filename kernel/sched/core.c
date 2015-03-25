@@ -836,6 +836,23 @@ static void set_load_weight(struct task_struct *p)
 }
 
 #ifdef CONFIG_ENTITY_MODEL
+static const char * const task_state_array[] = {
+	"R (running)",		/*   0 */
+	"S (sleeping)",		/*   1 */
+	"D (disk sleep)",	/*   2 */
+	"T (stopped)",		/*   4 */
+	"t (tracing stop)",	/*   8 */
+	"X (dead)",		/*  16 */
+	"Z (zombie)",		/*  32 */
+};
+
+static inline const char *get_task_state(struct task_struct *tsk)
+{
+	unsigned int state = (tsk->state | tsk->exit_state) & TASK_REPORT;
+	BUILD_BUG_ON(1 + ilog2(TASK_REPORT) != ARRAY_SIZE(task_state_array)-1);
+	return task_state_array[fls(state)];
+}
+
 #define time_local() rq_clock(this_rq())
 
 static inline void
@@ -844,6 +861,11 @@ entity_model_activate(struct task_struct *task, int flags)
 	struct entity_model *em = &task->se.em;
 	struct entity_execution_run *er = &em->er;
 	u64 now = time_local();
+
+	trace_printk("A [%d:%s] %s, on_rq: %d, flags: %d\n",
+			task->pid, task->comm,
+			get_task_state(task),
+			task->on_rq, flags);
 
 	/* Mark start of enqueue time */
 	er->delay_start = now;
@@ -869,6 +891,12 @@ entity_model_resume(struct task_struct *next)
 	/* Mark start of a new execution slice */
 	er->exec_start = now;
 
+	trace_printk("R [%d:%s] %s, on_rq: %d, es: %llu\n",
+			next->pid, next->comm,
+			get_task_state(next),
+			next->on_rq,
+			er->exec_start);
+
 }
 
 static inline void
@@ -881,6 +909,11 @@ entity_model_preempt(struct task_struct *prev)
 	/* Nothing to do if the task has been already deactivated */
 	if (er->exec_start == 0)
 		return;
+
+	trace_printk("P [%d:%s] %s, on_rq: %d\n",
+			prev->pid, prev->comm,
+			get_task_state(prev),
+			prev->on_rq);
 
 	/* Accumulate execution intervals */
 	er->exec_last += now - er->exec_start;
@@ -899,6 +932,11 @@ entity_model_deactivate(struct task_struct *task, int flags)
 
 	/* Trigger preemption computations */
 	entity_model_preempt(task);
+
+	trace_printk("D [%d:%s] %s, on_rq: %d, flags: %d\n",
+			task->pid, task->comm,
+			get_task_state(task),
+			task->on_rq, flags);
 
 	/* Mark task for execution completed, i.e. deactivated */
 	er->exec_start = 0;
