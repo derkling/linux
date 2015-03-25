@@ -2666,7 +2666,7 @@ hw_died:
 		irq_pending |= IMAN_IP;
 		writel(irq_pending, &xhci->ir_set->irq_pending);
 	}
-
+	udelay(20);
 	if (xhci->xhc_state & XHCI_STATE_DYING) {
 		xhci_dbg(xhci, "xHCI dying, ignoring interrupt. "
 				"Shouldn't IRQs be disabled?\n");
