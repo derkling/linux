@@ -84,6 +84,8 @@ static unsigned long cap_gov_select_freq(struct cpufreq_policy *policy)
 	int index;
 	unsigned long freq = 0, max_usage = 0, cap = 0, usage = 0, up_thr;
 	struct cpufreq_frequency_table *pos;
+	struct sched_domain *sd;
+	struct sched_group_energy *sge = NULL;
 
 
 	if (!policy->gov_data)
@@ -126,19 +128,35 @@ static unsigned long cap_gov_select_freq(struct cpufreq_policy *policy)
 	/* else find lowest freq at a higher capacity than the current usage */
 	if (max_usage < up_thr) {
 		/*
-		 * find capacity == floor(usage)
+		 * FIXME
 		 * Sadly cpufreq freq tables are not ordered by frequency...
+		 * but we act as if they were, for the time being >:)
 		 */
+		rcu_read_lock();
+
+		for_each_domain(cpumask_first(policy->cpus), sd)
+			if (!sd->child) {
+				sge = sd->groups->sge;
+				break;
+			}
+
+		index = 0;
 		cpufreq_for_each_entry(pos, policy->freq_table) {
-			cap = pos->frequency * SCHED_CAPACITY_SCALE /
-				policy->max;
-			if (max_usage < cap && pos->frequency < freq)
+			trace_printk("index=%d freq=%u cap=%lu",
+				     index, pos->frequency,
+				     sge->cap_states[index].cap);
+			if (sge->cap_states[index].cap >= max_usage) {
 				freq = pos->frequency;
+				break;
+			}
+			index++;
 			trace_printk("cpu = %u max_usage = %lu cap = %u \
 					table_freq = %lu freq = %u",
 					cpu, max_usage, cap, pos->frequency, freq);
 		}
 
+		rcu_read_unlock();
+	}
 	trace_printk("cpu %d final freq %lu", cpu, freq);
 out:
 	return freq;
@@ -305,6 +323,8 @@ static void cap_gov_start(struct cpufreq_policy *policy)
 	unsigned int capacity;
 	struct gov_data *gd;
 	struct cpufreq_frequency_table *pos;
+	struct sched_domain *sd;
+	struct sched_group_energy *sge = NULL;
 
 	/* prepare per-policy private data */
 	gd = kzalloc(sizeof(*gd), GFP_KERNEL);
@@ -319,17 +339,38 @@ static void cap_gov_start(struct cpufreq_policy *policy)
 
 	/* pre-compute per-capacity utilization up_thresholds */
 	gd->up_threshold = kcalloc(count, sizeof(unsigned int), GFP_KERNEL);
-	cpufreq_for_each_entry(pos, policy->freq_table) {
-		/* FIXME capacity below is not scaled for uarch */
-		capacity = pos->frequency * SCHED_CAPACITY_SCALE / policy->max;
+
+	rcu_read_lock();
+	for_each_domain(cpumask_first(policy->cpus), sd)
+		if (!sd->child) {
+#ifdef CONFIG_SCHED_DEBUG
+			pr_debug("%s: using %s sched_group_energy\n",
+				 __func__,
+				 sd->name);
+#endif
+			sge = sd->groups->sge;
+			break;
+		}
+
+	if (!sge) {
+		pr_debug("%s: failed to access sched_group_energy\n",
+			 __func__);
+		kfree(gd->up_threshold);
+		kfree(gd);
+		rcu_read_unlock();
+		return;
+	}
+
+	for (index = 0; index < sge->nr_cap_states; index++) {
+		/* capacity below is both freq and uarch scaled */
+		capacity = sge->cap_states[index].cap;
 		gd->up_threshold[index] = capacity * UP_THRESHOLD / 100;
 
 		pr_debug("%s: cpu = %u index = %d capacity = %u up = %u \n",
 				__func__, cpumask_first(policy->cpus), index,
 				capacity, gd->up_threshold[index]);
-		index++;
 	}
-
+	rcu_read_unlock();
 
 	/* save per-cpu pointer to per-policy need_wake_task */
 	for_each_cpu(cpu, policy->related_cpus)
