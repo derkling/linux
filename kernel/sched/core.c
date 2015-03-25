@@ -835,6 +835,7 @@ static void set_load_weight(struct task_struct *p)
 	load->inv_weight = prio_to_wmult[prio];
 }
 
+#define CONFIG_ENTITY_MODEL
 #ifdef CONFIG_ENTITY_MODEL
 static const char * const task_state_array[] = {
 	"R (running)",		/*   0 */
