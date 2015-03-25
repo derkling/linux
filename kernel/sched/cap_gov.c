@@ -13,8 +13,8 @@
 
 #include "sched.h"
 
-#define UP_THRESHOLD		95
-#define THROTTLE_NSEC		50000000
+#define UP_THRESHOLD		80
+#define THROTTLE_NSEC		5000000
 
 /* XXX always true, for now */
 static bool driver_might_sleep = true;
