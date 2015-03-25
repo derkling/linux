@@ -790,6 +790,23 @@ static void set_load_weight(struct task_struct *p)
 }
 
 #ifdef CONFIG_ENTITY_MODEL
+static const char * const task_state_array[] = {
+	"R (running)",		/*   0 */
+	"S (sleeping)",		/*   1 */
+	"D (disk sleep)",	/*   2 */
+	"T (stopped)",		/*   4 */
+	"t (tracing stop)",	/*   8 */
+	"X (dead)",		/*  16 */
+	"Z (zombie)",		/*  32 */
+};
+
+static inline const char *get_task_state(struct task_struct *tsk)
+{
+	unsigned int state = (tsk->state | tsk->exit_state) & TASK_REPORT;
+	BUILD_BUG_ON(1 + ilog2(TASK_REPORT) != ARRAY_SIZE(task_state_array)-1);
+	return task_state_array[fls(state)];
+}
+
 #define time_local() rq_clock(this_rq())
 
 static inline void
@@ -863,6 +880,8 @@ entity_model_deactivate(struct task_struct *task, int flags)
 	if (flags & DEQUEUE_SLEEP) {
 
 		er->suspend_start = now;
+
+		trace_sched_task_model_update(task, er, get_task_state(task));
 
 		/* Reset last execution run metrics */
 		er->delay_last = 0;
