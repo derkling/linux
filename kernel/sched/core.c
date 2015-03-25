@@ -949,6 +949,8 @@ entity_model_deactivate(struct task_struct *task, int flags)
 
 		er->suspend_start = now;
 
+		trace_sched_task_model_update(task, er, get_task_state(task));
+
 		/* Reset last execution run metrics */
 		er->delay_last = 0;
 		er->exec_last = 0;
