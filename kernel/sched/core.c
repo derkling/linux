@@ -949,13 +949,6 @@ entity_model_deactivate(struct task_struct *task, int flags)
 
 		er->suspend_start = now;
 
-		trace_printk("pid=%d comm=%s delay=%llu exec=%llu sleep=%llu %s\n",
-				task->pid, task->comm,
-				er->delay_last,
-				er->exec_last,
-				er->suspend_last,
-				get_task_state(task));
-
 		/* Reset last execution run metrics */
 		er->delay_last = 0;
 		er->exec_last = 0;
