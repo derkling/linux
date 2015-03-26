@@ -875,6 +875,7 @@ entity_model_activate(struct task_struct *task, int flags)
 	if (er->suspend_start) {
 		er->suspend_last = now - er->suspend_start;
 		er->suspend_sum += er->suspend_last;
+		er->suspend_start = 0;
 	}
 }
 
@@ -930,6 +931,13 @@ entity_model_deactivate(struct task_struct *task, int flags)
 	struct entity_model *em = &task->se.em;
 	struct entity_execution_run *er = &em->er;
 	u64 now = time_local();
+
+	/*
+	 * This is required for proper metrics computations on tasks going to
+	 * dead
+	 */
+	if (task->state == TASK_DEAD)
+		entity_model_resume(task);
 
 	/* Trigger preemption computations */
 	entity_model_preempt(task);
