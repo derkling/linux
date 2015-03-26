@@ -13,7 +13,7 @@
 
 #include "sched.h"
 
-#define UP_THRESHOLD		80
+#define UP_THRESHOLD		95
 #define THROTTLE_NSEC		5000000
 
 /* XXX always true, for now */
@@ -84,9 +84,6 @@ static unsigned long cap_gov_select_freq(struct cpufreq_policy *policy)
 	int index;
 	unsigned long freq = 0, max_usage = 0, usage = 0, up_thr;
 	struct cpufreq_frequency_table *pos;
-	struct sched_domain *sd;
-	struct sched_group_energy *sge = NULL;
-
 
 	if (!policy->gov_data)
 		goto out;
@@ -132,27 +129,17 @@ static unsigned long cap_gov_select_freq(struct cpufreq_policy *policy)
 		 * Sadly cpufreq freq tables are not ordered by frequency...
 		 * but we act as if they were, for the time being >:)
 		 */
-		rcu_read_lock();
-
-		for_each_domain(cpumask_first(policy->cpus), sd)
-			if (!sd->child) {
-				sge = sd->groups->sge;
-				break;
-			}
-
 		index = 0;
 		cpufreq_for_each_entry(pos, policy->freq_table) {
-			trace_printk("index=%d freq=%u cap=%lu",
+			trace_printk("index=%d freq=%u up_thr=%u",
 				     index, pos->frequency,
-				     sge->cap_states[index].cap);
-			if (sge->cap_states[index].cap >= max_usage) {
+				     gd->up_threshold[index]);
+			if (gd->up_threshold[index] >= max_usage) {
 				freq = pos->frequency;
 				break;
 			}
 			index++;
 		}
-
-		rcu_read_unlock();
 	}
 	trace_printk("cpu %d final freq %lu", cpu, freq);
 out:
