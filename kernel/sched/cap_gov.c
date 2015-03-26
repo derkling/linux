@@ -235,7 +235,8 @@ void cap_gov_kick_thread(int cpu)
 	if (atomic_read(&gd->need_wake_task)) {
 		trace_printk("waking up kthread (%d)", gd->task->pid);
 		cap_gov_wake_up_process(gd->task);
-	}
+	} else
+		trace_printk("NOT waking up kthread (%d)", gd->task->pid);
 
 out:
 	cpufreq_cpu_put(policy);

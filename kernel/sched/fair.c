@@ -4316,7 +4316,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		add_nr_running(rq, 1);
 	}
 
-	trace_printk("trigger cap_gov for CPU%d", cpu_of(rq));
+	trace_printk("task %d queued -> trigger cap_gov for CPU%d", p->pid, cpu_of(rq));
 	cap_gov_update_cpu(cpu_of(rq));
 
 	hrtick_update(rq);
@@ -4381,7 +4381,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		update_rq_runnable_avg(rq, 1);
 	}
 
-	trace_printk("trigger cap_gov for CPU%d", cpu_of(rq));
+	trace_printk("task %d dequeued -> trigger cap_gov for CPU%d", p->pid, cpu_of(rq));
 	cap_gov_update_cpu(cpu_of(rq));
 
 	hrtick_update(rq);
@@ -8426,6 +8426,7 @@ static void run_rebalance_domains(struct softirq_action *h)
 	 * locking prevents us from changing cpu frequency with rq locks held
 	 * and interrupts disabled
 	 */
+	trace_printk("CPU%d -> kick cap_gov kthread", cpu_of(this_rq));
 	cap_gov_kick_thread(cpu_of(this_rq));
 }
 
@@ -8481,7 +8482,7 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 
 	update_rq_runnable_avg(rq, 1);
 
-	trace_printk("trigger cap_gov for CPU%d", cpu_of(rq));
+	trace_printk("task %d tick -> trigger cap_gov for CPU%d", curr->pid, cpu_of(rq));
 	cap_gov_update_cpu(cpu_of(rq));
 }
 
