@@ -2290,6 +2290,7 @@ static u32 __compute_runnable_contrib(u64 n)
 }
 
 unsigned long __weak arch_scale_freq_capacity(struct sched_domain *sd, int cpu);
+unsigned long __weak arch_scale_max_freq_capacity(struct sched_domain *sd, int cpu);
 unsigned long __weak arch_scale_cpu_capacity(struct sched_domain *sd, int cpu);
 
 /*
@@ -4388,6 +4389,13 @@ static unsigned long capacity_curr_of(int cpu)
 	       >> SCHED_CAPACITY_SHIFT;
 }
 
+static unsigned long capacity_curr_max(int cpu)
+{
+	return cpu_rq(cpu)->cpu_capacity_orig *
+	       arch_scale_max_freq_capacity(NULL, cpu)
+	       >> SCHED_CAPACITY_SHIFT;
+}
+
 /*
  * get_cpu_usage returns the amount of capacity of a CPU that is used by CFS
  * tasks. The unit of the return value must capacity so we can compare the
@@ -6263,6 +6271,11 @@ static unsigned long default_scale_capacity(struct sched_domain *sd, int cpu)
 }
 
 unsigned long __weak arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
+{
+	return default_scale_capacity(sd, cpu);
+}
+
+unsigned long __weak arch_scale_max_freq_capacity(struct sched_domain *sd, int cpu)
 {
 	return default_scale_capacity(sd, cpu);
 }

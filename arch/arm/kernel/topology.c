@@ -189,6 +189,17 @@ unsigned long arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
 	return (curr * SCHED_CAPACITY_SCALE) / max;
 }
 
+unsigned long arch_scale_max_freq_capacity(struct sched_domain *sd, int cpu)
+{
+	unsigned long curr_max = atomic_long_read(&per_cpu(cpu_curr_max_freq, cpu));
+	unsigned long max = atomic_long_read(&per_cpu(cpu_max_freq, cpu));
+
+	if (!max)
+		return SCHED_CAPACITY_SCALE;
+
+	return (curr_max * SCHED_CAPACITY_SCALE) / max;
+}
+
 #else
 static inline void parse_dt_topology(void) {}
 static inline void update_cpu_capacity(unsigned int cpuid) {}
