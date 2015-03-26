@@ -160,6 +160,7 @@ static void update_cpu_capacity(unsigned int cpu)
 
 static DEFINE_PER_CPU(atomic_long_t, cpu_curr_freq);
 static DEFINE_PER_CPU(atomic_long_t, cpu_max_freq);
+static DEFINE_PER_CPU(atomic_long_t, cpu_curr_max_freq);
 
 /* cpufreq callback function setting current cpu frequency */
 void arch_scale_set_curr_freq(int cpu, unsigned long freq)
@@ -170,7 +171,11 @@ void arch_scale_set_curr_freq(int cpu, unsigned long freq)
 /* cpufreq callback function setting max cpu frequency */
 void arch_scale_set_max_freq(int cpu, unsigned long freq)
 {
-	atomic_long_set(&per_cpu(cpu_max_freq, cpu), freq);
+	unsigned long max = atomic_long_read(&per_cpu(cpu_max_freq, cpu));
+	if (freq > max)
+		atomic_long_set(&per_cpu(cpu_max_freq, cpu), freq);
+
+	atomic_long_set(&per_cpu(cpu_curr_max_freq, cpu), freq);
 }
 
 unsigned long arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
