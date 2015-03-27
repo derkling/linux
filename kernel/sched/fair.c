@@ -2473,18 +2473,6 @@ static u32 __compute_runnable_contrib(u64 n)
 
 unsigned long __weak arch_scale_freq_capacity(struct sched_domain *sd, int cpu);
 unsigned long __weak arch_scale_cpu_capacity(struct sched_domain *sd, int cpu);
-#if 0
-void arch_eval_cpu_freq(struct cpumask *cpus);
-void arch_scale_cpu_freq(void);
-void cap_gov_update_cpu(int cpu);
-void cap_gov_kick_thread(int cpu);
-int get_cpu_usage(int cpu);
-unsigned long capacity_of(int cpu);
-#endif
-#if !defined CONFIG_CPU_FREQ_GOV_CAP_GOV
-void cap_gov_update_cpu(int cpu) {}
-void cap_gov_kick_thread(int cpu) {}
-#endif
 
 /*
  * We can represent the historical contribution to runnable average as the
@@ -4317,7 +4305,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	}
 
 	trace_printk("task %d queued -> trigger cap_gov for CPU%d", p->pid, cpu_of(rq));
-	cap_gov_update_cpu(cpu_of(rq));
+	irq_work_queue_on(&rq->cpufreq_work, cpu_of(rq));
 
 	hrtick_update(rq);
 }
@@ -4382,7 +4370,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	}
 
 	trace_printk("task %d dequeued -> trigger cap_gov for CPU%d", p->pid, cpu_of(rq));
-	cap_gov_update_cpu(cpu_of(rq));
+	irq_work_queue_on(&rq->cpufreq_work, cpu_of(rq));
 
 	hrtick_update(rq);
 }
@@ -8420,14 +8408,6 @@ static void run_rebalance_domains(struct softirq_action *h)
 	 * stopped.
 	 */
 	nohz_idle_balance(this_rq, idle);
-
-	/*
-	 * FIXME some hardware does not require this, but current CPUfreq
-	 * locking prevents us from changing cpu frequency with rq locks held
-	 * and interrupts disabled
-	 */
-	trace_printk("CPU%d -> kick cap_gov kthread", cpu_of(this_rq));
-	cap_gov_kick_thread(cpu_of(this_rq));
 }
 
 /*
@@ -8483,7 +8463,7 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 	update_rq_runnable_avg(rq, 1);
 
 	trace_printk("task %d tick -> trigger cap_gov for CPU%d", curr->pid, cpu_of(rq));
-	cap_gov_update_cpu(cpu_of(rq));
+	irq_work_queue_on(&rq->cpufreq_work, cpu_of(rq));
 }
 
 /*

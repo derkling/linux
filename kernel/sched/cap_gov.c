@@ -173,9 +173,21 @@ static int cap_gov_thread(void *data)
 		do_exit(-EINVAL);
 	}
 
-	param.sched_priority = 0;
-	sched_setscheduler(current, SCHED_FIFO, &param);
-	set_cpus_allowed_ptr(current, policy->related_cpus);
+	param.sched_priority = 50;
+	ret = sched_setscheduler_nocheck(gd->task, SCHED_FIFO, &param);
+	if (ret) {
+		pr_warn("%s: failed to set SCHED_FIFO\n", __func__);
+		do_exit(-EINVAL);
+	} else {
+		pr_debug("%s: kthread (%d) set to SCHED_FIFO\n",
+			 __func__, gd->task->pid);
+	}
+
+	ret = set_cpus_allowed_ptr(gd->task, policy->related_cpus);
+	if (ret) {
+		pr_warn("%s: failed to set allowed ptr\n", __func__);
+		do_exit(-EINVAL);
+	}
 
 	/* main loop of the per-policy kthread */
 	do {
@@ -231,58 +243,6 @@ void cap_gov_kick_thread(int cpu)
 	if (!gd)
 		goto out;
 
-	/* per-cpu access not needed here since we have gd */
-	if (atomic_read(&gd->need_wake_task)) {
-		trace_printk("waking up kthread (%d)", gd->task->pid);
-		cap_gov_wake_up_process(gd->task);
-	} else
-		trace_printk("NOT waking up kthread (%d)", gd->task->pid);
-
-out:
-	cpufreq_cpu_put(policy);
-}
-
-/**
- * cap_gov_update_cpu - interface to scheduler for changing capacity values
- * @cpu: cpu whose capacity utilization has recently changed
- *
- * cap_gov_udpate_cpu is an interface exposed to the scheduler so that the
- * scheduler may inform the governor of updates to capacity utilization and
- * make changes to cpu frequency. Currently this interface is designed around
- * PELT values in CFS. It can be expanded to other scheduling classes in the
- * future if needed.
- *
- * The semantics of this call vary based on the cpu frequency scaling
- * characteristics of the hardware.
- *
- * If kicking off a dvfs transition is an operation that might block or sleep
- * in the cpufreq driver then we set the need_wake_task flag in this function
- * and return. Selecting a frequency and programming it is done in a dedicated
- * kernel thread which will be woken up from rebalance_domains. See
- * cap_gov_kick_thread above.
- *
- * If kicking off a dvfs transition is an operation that returns quickly in the
- * cpufreq driver and will never sleep then we select the frequency in this
- * function and program the hardware for it in the scheduler hot path. No
- * dedicated kthread is needed.
- */
-void cap_gov_update_cpu(int cpu)
-{
-	struct cpufreq_policy *policy;
-	struct gov_data *gd;
-
-	/* XXX put policy pointer in per-cpu data? */
-	policy = cpufreq_cpu_get(cpu);
-	if (IS_ERR_OR_NULL(policy)) {
-		return;
-	}
-
-	/* XXX too paranoid? cap_gov_start will fail if !gov_data */
-	if (!policy->gov_data)
-		goto out;
-
-	gd = policy->gov_data;
-
 	/* bail early if we are throttled */
 	if (ktime_before(ktime_get(), gd->throttle)) {
 		trace_printk("THROTTLED (%d)", gd->task->pid);
@@ -291,7 +251,9 @@ void cap_gov_update_cpu(int cpu)
 
 	/* XXX driver_might_sleep is always true */
 	if (driver_might_sleep) {
+		trace_printk("waking up kthread (%d)", gd->task->pid);
 		atomic_set(per_cpu(cap_gov_wake_task, cpu), 1);
+		cap_gov_wake_up_process(gd->task);
 	} else {
 		BUG_ON(1);
 		/* XXX someday select freq and program it here */
@@ -299,7 +261,6 @@ void cap_gov_update_cpu(int cpu)
 
 out:
 	cpufreq_cpu_put(policy);
-	return;
 }
 
 static void cap_gov_start(struct cpufreq_policy *policy)

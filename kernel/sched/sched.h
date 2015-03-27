@@ -8,6 +8,7 @@
 #include <linux/stop_machine.h>
 #include <linux/tick.h>
 #include <linux/slab.h>
+#include <linux/irq_work.h>
 
 #include "cpupri.h"
 #include "cpudeadline.h"
@@ -679,6 +680,11 @@ struct rq {
 	/* Must be inspected within a rcu lock section */
 	struct cpuidle_state *idle_state;
 	int idle_state_idx;
+#endif
+
+#if defined CONFIG_CPU_FREQ_GOV_CAP_GOV && defined CONFIG_IRQ_WORK
+	unsigned int new_cap;
+	struct irq_work cpufreq_work;
 #endif
 };
 
@@ -1450,7 +1456,6 @@ static inline int hrtick_enabled(struct rq *rq)
 #ifdef CONFIG_SMP
 extern void sched_avg_update(struct rq *rq);
 extern unsigned long arch_scale_freq_capacity(struct sched_domain *sd, int cpu);
-void cap_gov_update_cpu(int cpu);
 void cap_gov_kick_thread(int cpu);
 int get_cpu_usage(int cpu);
 unsigned long capacity_of(int cpu);

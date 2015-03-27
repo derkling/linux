@@ -7175,6 +7175,16 @@ struct task_group root_task_group;
 LIST_HEAD(task_groups);
 #endif
 
+#if defined CONFIG_CPU_FREQ_GOV_CAP_GOV && defined CONFIG_IRQ_WORK
+void cpufreq_work_func(struct irq_work *work)
+{
+	struct rq *rq = container_of(work, struct rq, cpufreq_work);
+	trace_printk("cpufreq work func called on CPU%d", cpu_of(rq));
+
+	cap_gov_kick_thread(cpu_of(rq));
+}
+#endif
+
 DECLARE_PER_CPU(cpumask_var_t, load_balance_mask);
 
 void __init sched_init(void)
@@ -7310,6 +7320,10 @@ void __init sched_init(void)
 #endif
 		init_rq_hrtick(rq);
 		atomic_set(&rq->nr_iowait, 0);
+#if defined CONFIG_CPU_FREQ_GOV_CAP_GOV && defined CONFIG_IRQ_WORK
+		rq->new_cap = 0;
+		init_irq_work(&rq->cpufreq_work, cpufreq_work_func);
+#endif
 	}
 
 	set_load_weight(&init_task);
