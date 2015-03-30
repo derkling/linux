@@ -597,8 +597,8 @@ TRACE_EVENT(sched_load_avg_task,
 	TP_fast_assign(
 		memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
 		__entry->pid			= tsk->pid;
-		__entry->load			= avg->load_avg_contrib;
-		__entry->utilization		= avg->utilization_avg_contrib;
+		__entry->load			= avg->load;
+		__entry->utilization		= avg->utilization;
 		__entry->runnable_avg_sum	= avg->runnable_avg_sum;
 		__entry->running_avg_sum	= avg->running_avg_sum;
 		__entry->avg_period		= avg->avg_period;
@@ -629,8 +629,8 @@ TRACE_EVENT(sched_load_avg_cpu,
 
 	TP_fast_assign(
 		__entry->cpu			= cpu;
-		__entry->load			= cfs_rq->runnable_load_avg;
-		__entry->utilization		= cfs_rq->utilization_load_avg;
+		__entry->load			= cfs_rq->load_avg;
+		__entry->utilization		= cfs_rq->utilization_avg;
 	),
 
 	TP_printk("cpu=%d load=%lu utilization=%lu",
