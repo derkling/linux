@@ -2432,9 +2432,8 @@ static inline u64 __synchronize_entity_decay(struct sched_entity *se)
 	if (!decays)
 		return 0;
 
-	se->avg.load_avg_contrib = decay_load(se->avg.load_avg_contrib, decays);
-	se->avg.utilization_avg_contrib =
-		decay_load(se->avg.utilization_avg_contrib, decays);
+	se->avg.load = decay_load(se->avg.load, decays);
+	se->avg.utilization = decay_load(se->avg.utilization, decays);
 	se->avg.decay_count = 0;
 
 	return decays;
@@ -2489,7 +2488,7 @@ static inline void __update_group_entity_contrib(struct sched_entity *se)
 	u64 contrib;
 
 	contrib = cfs_rq->tg_load_contrib * tg->shares;
-	se->avg.load_avg_contrib = div_u64(contrib,
+	se->avg.load = div_u64(contrib,
 				     atomic_long_read(&tg->load_avg) + 1);
 
 	/*
@@ -2517,8 +2516,8 @@ static inline void __update_group_entity_contrib(struct sched_entity *se)
 	 */
 	runnable_avg = atomic_read(&tg->runnable_avg);
 	if (runnable_avg < NICE_0_LOAD) {
-		se->avg.load_avg_contrib *= runnable_avg;
-		se->avg.load_avg_contrib >>= NICE_0_SHIFT;
+		se->avg.load *= runnable_avg;
+		se->avg.load >>= NICE_0_SHIFT;
 	}
 }
 
@@ -2544,13 +2543,13 @@ static inline void __update_task_entity_contrib(struct sched_entity *se)
 	/* avoid overflowing a 32-bit type w/ SCHED_LOAD_SCALE */
 	contrib = se->avg.runnable_avg_sum * scale_load_down(se->load.weight);
 	contrib /= (se->avg.avg_period + 1);
-	se->avg.load_avg_contrib = scale_load(contrib);
+	se->avg.load = scale_load(contrib);
 }
 
 /* Compute the current contribution to load_avg by se, return any delta */
-static long __update_entity_load_avg_contrib(struct sched_entity *se)
+static long __update_entity_load_avg(struct sched_entity *se)
 {
-	long old_contrib = se->avg.load_avg_contrib;
+	long old_contrib = se->avg.load;
 
 	if (entity_is_task(se)) {
 		__update_task_entity_contrib(se);
@@ -2559,7 +2558,7 @@ static long __update_entity_load_avg_contrib(struct sched_entity *se)
 		__update_group_entity_contrib(se);
 	}
 
-	return se->avg.load_avg_contrib - old_contrib;
+	return se->avg.load - old_contrib;
 }
 
 
@@ -2570,21 +2569,21 @@ static inline void __update_task_entity_utilization(struct sched_entity *se)
 	/* avoid overflowing a 32-bit type w/ SCHED_LOAD_SCALE */
 	contrib = se->avg.running_avg_sum * scale_load_down(SCHED_LOAD_SCALE);
 	contrib /= (se->avg.avg_period + 1);
-	se->avg.utilization_avg_contrib = scale_load(contrib);
+	se->avg.utilization = scale_load(contrib);
 }
 
-static long __update_entity_utilization_avg_contrib(struct sched_entity *se)
+static long __update_entity_utilization_avg(struct sched_entity *se)
 {
-	long old_contrib = se->avg.utilization_avg_contrib;
+	long old_contrib = se->avg.utilization;
 
 	if (entity_is_task(se))
 		__update_task_entity_utilization(se);
 	else
-		se->avg.utilization_avg_contrib =
-				group_cfs_rq(se)->utilization_avg +
-				group_cfs_rq(se)->utilization_blocked_avg;
+		se->avg.utilization =
+			group_cfs_rq(se)->utilization_avg +
+			group_cfs_rq(se)->utilization_blocked_avg;
 
-	return se->avg.utilization_avg_contrib - old_contrib;
+	return se->avg.utilization - old_contrib;
 }
 
 static inline void subtract_load_blocked(struct cfs_rq *cfs_rq,
@@ -2629,8 +2628,8 @@ static inline void update_entity_load_avg(struct sched_entity *se,
 					cfs_rq->curr == se))
 		return;
 
-	load_delta = __update_entity_load_avg_contrib(se);
-	utilization_delta = __update_entity_utilization_avg_contrib(se);
+	load_delta = __update_entity_load_avg(se);
+	utilization_delta = __update_entity_utilization_avg(se);
 
 	if (entity_is_task(se))
 		trace_sched_load_avg_task(task_of(se), &se->avg);
@@ -2696,7 +2695,7 @@ static inline void enqueue_entity_load_avg(struct cfs_rq *cfs_rq,
 	 *
 	 * Newly forked tasks are enqueued with se->avg.decay_count == 0, they
 	 * are seen by enqueue_entity_load_avg() as a migration with an already
-	 * constructed load_avg_contrib.
+	 * constructed load.
 	 */
 	if (unlikely(se->avg.decay_count <= 0)) {
 		se->avg.last_runnable_update = rq_clock_task(rq_of(cfs_rq));
@@ -2722,14 +2721,13 @@ static inline void enqueue_entity_load_avg(struct cfs_rq *cfs_rq,
 
 	/* migrated tasks did not contribute to our blocked load */
 	if (wakeup) {
-		subtract_load_blocked(cfs_rq, se->avg.load_avg_contrib);
-		subtract_utilization_blocked(cfs_rq,
-					se->avg.utilization_avg_contrib);
+		subtract_load_blocked(cfs_rq, se->avg.load);
+		subtract_utilization_blocked(cfs_rq, se->avg.utilization);
 		update_entity_load_avg(se, 0);
 	}
 
-	cfs_rq->load_avg += se->avg.load_avg_contrib;
-	cfs_rq->utilization_avg += se->avg.utilization_avg_contrib;
+	cfs_rq->load_avg += se->avg.load;
+	cfs_rq->utilization_avg += se->avg.utilization;
 	/* we force update consideration on load-balancer moves */
 	update_cfs_rq_blocked_load(cfs_rq, !wakeup);
 }
@@ -2747,12 +2745,11 @@ static inline void dequeue_entity_load_avg(struct cfs_rq *cfs_rq,
 	/* we force update consideration on load-balancer moves */
 	update_cfs_rq_blocked_load(cfs_rq, !sleep);
 
-	cfs_rq->load_avg -= se->avg.load_avg_contrib;
-	cfs_rq->utilization_avg -= se->avg.utilization_avg_contrib;
+	cfs_rq->load_avg -= se->avg.load;
+	cfs_rq->utilization_avg -= se->avg.utilization;
 	if (sleep) {
-		cfs_rq->load_blocked_avg += se->avg.load_avg_contrib;
-		cfs_rq->utilization_blocked_avg +=
-						se->avg.utilization_avg_contrib;
+		cfs_rq->load_blocked_avg += se->avg.load;
+		cfs_rq->utilization_blocked_avg += se->avg.utilization;
 		se->avg.decay_count = atomic64_read(&cfs_rq->decay_counter);
 	} /* migrations, e.g. sleep=0 leave decay_count == 0 */
 }
@@ -4961,7 +4958,7 @@ static unsigned long group_max_capacity(struct sched_group *sg)
 
 static inline unsigned long task_utilization(struct task_struct *p)
 {
-	return p->se.avg.utilization_avg_contrib;
+	return p->se.avg.utilization;
 }
 
 static int cpu_overutilized(int cpu, struct sched_domain *sd)
@@ -5150,10 +5147,8 @@ migrate_task_rq_fair(struct task_struct *p, int next_cpu)
 	 */
 	if (se->avg.decay_count) {
 		se->avg.decay_count = -__synchronize_entity_decay(se);
-		atomic_long_add(se->avg.load_avg_contrib,
-						&cfs_rq->removed_load);
-		atomic_long_add(se->avg.utilization_avg_contrib,
-					&cfs_rq->removed_utilization);
+		atomic_long_add(se->avg.load, &cfs_rq->removed_load);
+		atomic_long_add(se->avg.utilization, &cfs_rq->removed_utilization);
 	}
 
 	/* We have migrated, no longer consider this task hot */
@@ -6138,7 +6133,7 @@ static void update_cfs_rq_h_load(struct cfs_rq *cfs_rq)
 
 	while ((se = cfs_rq->h_load_next) != NULL) {
 		load = cfs_rq->h_load;
-		load = div64_ul(load * se->avg.load_avg_contrib, cfs_rq->load_avg + 1);
+		load = div64_ul(load * se->avg.load, cfs_rq->load_avg + 1);
 		cfs_rq = group_cfs_rq(se);
 		cfs_rq->h_load = load;
 		cfs_rq->last_h_load_update = now;
@@ -6150,8 +6145,7 @@ static unsigned long task_h_load(struct task_struct *p)
 	struct cfs_rq *cfs_rq = task_cfs_rq(p);
 
 	update_cfs_rq_h_load(cfs_rq);
-	return div64_ul(p->se.avg.load_avg_contrib * cfs_rq->h_load,
-			cfs_rq->load_avg + 1);
+	return div64_ul(p->se.avg.load * cfs_rq->h_load, cfs_rq->load_avg + 1);
 }
 #else
 static inline void update_blocked_averages(int cpu)
@@ -6160,7 +6154,7 @@ static inline void update_blocked_averages(int cpu)
 
 static unsigned long task_h_load(struct task_struct *p)
 {
-	return p->se.avg.load_avg_contrib;
+	return p->se.avg.load;
 }
 #endif
 
@@ -8273,9 +8267,8 @@ static void switched_from_fair(struct rq *rq, struct task_struct *p)
 	*/
 	if (se->avg.decay_count) {
 		__synchronize_entity_decay(se);
-		subtract_load_blocked(cfs_rq, se->avg.load_avg_contrib);
-		subtract_utilization_blocked(cfs_rq,
-					se->avg.utilization_avg_contrib);
+		subtract_load_blocked(cfs_rq, se->avg.load);
+		subtract_utilization_blocked(cfs_rq, se->avg.utilization);
 	}
 #endif
 }
@@ -8387,9 +8380,8 @@ static void task_move_group_fair(struct task_struct *p, int queued)
 		 * decay.
 		 */
 		se->avg.decay_count = atomic64_read(&cfs_rq->decay_counter);
-		cfs_rq->load_blocked_avg += se->avg.load_avg_contrib;
-		cfs_rq->utilization_blocked_avg +=
-						se->avg.utilization_avg_contrib;
+		cfs_rq->load_blocked_avg += se->avg.load;
+		cfs_rq->utilization_blocked_avg += se->avg.utilization;
 #endif
 	}
 }
