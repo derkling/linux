@@ -4304,9 +4304,6 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		add_nr_running(rq, 1);
 	}
 
-	trace_printk("task %d queued -> trigger cap_gov for CPU%d", p->pid, cpu_of(rq));
-	set_capacity_curr(rq, SCHED_CAPACITY_SCALE + 1);
-
 	hrtick_update(rq);
 }
 
@@ -4322,6 +4319,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &p->se;
 	int task_sleep = flags & DEQUEUE_SLEEP;
+	int cpu = cpu_of(rq);
 
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
@@ -4369,9 +4367,9 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		update_rq_runnable_avg(rq, 1);
 	}
 
-	trace_printk("task %d dequeued -> trigger cap_gov for CPU%d", p->pid, cpu_of(rq));
-	set_capacity_curr(rq, SCHED_CAPACITY_SCALE + 1);
-
+	trace_printk("task %d dequeued from CPU%d (new_usage=%d)",
+		     p->pid, cpu, get_cpu_usage(cpu));
+	set_capacity_curr(rq, get_cpu_usage(cpu));
 	hrtick_update(rq);
 }
 
@@ -5331,6 +5329,16 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 unlock:
 	rcu_read_unlock();
 
+	/*
+	 * FIXME
+	 * This is obviously wrong! Here, of before getting here,
+	 * we need to compute/annotate the new max_group_usage with
+	 * this task utilization added.
+	 */
+	trace_printk("task %d (util=%lu) wake-up on CPU%d (usage=%d) -> new_cap=%lu",
+		     p->pid, task_utilization(p), new_cpu, get_cpu_usage(new_cpu),
+		     get_cpu_usage(new_cpu) + task_utilization(p));
+	set_capacity_curr(cpu_rq(new_cpu), get_cpu_usage(new_cpu) + task_utilization(p));
 	return new_cpu;
 }
 
@@ -8455,6 +8463,7 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 {
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &curr->se;
+	int cpu = cpu_of(rq);
 
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
@@ -8466,8 +8475,11 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 
 	update_rq_runnable_avg(rq, 1);
 
-	trace_printk("task %d tick -> trigger cap_gov for CPU%d", curr->pid, cpu_of(rq));
-	set_capacity_curr(rq, SCHED_CAPACITY_SCALE + 1);
+	if (task_utilization(curr) >= capacity_curr_of(cpu) * 90 / 100) {
+		trace_printk("task %d tick (CPU%d) -> freq max",
+			     curr->pid, cpu);
+		set_capacity_curr(rq, SCHED_CAPACITY_MAX);
+	}
 }
 
 /*

@@ -899,6 +899,7 @@ enum cpu_idle_type {
  */
 #define SCHED_CAPACITY_SHIFT	10
 #define SCHED_CAPACITY_SCALE	(1L << SCHED_CAPACITY_SHIFT)
+#define SCHED_CAPACITY_MAX	(SCHED_CAPACITY_SCALE + 1)
 
 /*
  * sched-domains (multiprocessor balancing) declarations:
