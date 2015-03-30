@@ -14,7 +14,7 @@
 #include "sched.h"
 
 #define UP_THRESHOLD		95
-#define THROTTLE_NSEC		5000000
+#define THROTTLE_NSEC		50000000 /* 50ms default */
 
 /* XXX always true, for now */
 static bool driver_might_sleep = true;
@@ -55,6 +55,7 @@ static DEFINE_PER_CPU(atomic_t *, cap_gov_wake_task);
 struct gov_data {
 	ktime_t throttle;
 	unsigned int *up_threshold;
+	unsigned int throttle_nsec;
 	struct task_struct *task;
 	atomic_long_t target_freq;
 	atomic_t need_wake_task;
@@ -212,7 +213,7 @@ static int cap_gov_thread(void *data)
 
 		trace_printk("kthread %d requested freq switch", gd->task->pid);
 
-		gd->throttle = ktime_add_ns(ktime_get(), THROTTLE_NSEC);
+		gd->throttle = ktime_add_ns(ktime_get(), gd->throttle_nsec);
 		atomic_set(&gd->need_wake_task, 0);
 		up_write(&policy->rwsem);
 	} while (!kthread_should_stop());
@@ -317,6 +318,16 @@ static void cap_gov_start(struct cpufreq_policy *policy)
 				capacity, gd->up_threshold[index]);
 	}
 	rcu_read_unlock();
+
+	/*
+	 * Don't ask for freq changes at an higher rate than what
+	 * the driver advertises as transition latency.
+	 */
+	gd->throttle_nsec = policy->cpuinfo.transition_latency ?
+			    policy->cpuinfo.transition_latency :
+			    THROTTLE_NSEC;
+	pr_debug("%s: throttle threshold = %u [ns]\n",
+		  __func__, gd->throttle_nsec);
 
 	/* save per-cpu pointer to per-policy need_wake_task */
 	for_each_cpu(cpu, policy->related_cpus)
