@@ -7178,10 +7178,22 @@ LIST_HEAD(task_groups);
 #if defined CONFIG_CPU_FREQ_GOV_CAP_GOV && defined CONFIG_IRQ_WORK
 void cpufreq_work_func(struct irq_work *work)
 {
+	unsigned long flags;
+	unsigned int new_cap;
 	struct rq *rq = container_of(work, struct rq, cpufreq_work);
+	int cpu = cpu_of(rq);
+
 	trace_printk("cpufreq work func called on CPU%d", cpu_of(rq));
 
-	cap_gov_kick_thread(cpu_of(rq));
+	raw_spin_lock_irqsave(&rq->lock, flags);
+	if (rq->new_cap > capacity_orig_of(cpu))
+		new_cap = capacity_orig_of(cpu);
+	else
+		new_cap = rq->new_cap;
+	raw_spin_unlock_irqrestore(&rq->lock, flags);
+
+	trace_printk("cpu=%d new_cap=%u", cpu, new_cap);
+	cap_gov_kick_thread(cpu, new_cap);
 }
 
 /*

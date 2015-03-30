@@ -54,7 +54,8 @@ static DEFINE_PER_CPU(atomic_t *, cap_gov_wake_task);
  */
 struct gov_data {
 	ktime_t throttle;
-	unsigned int *up_threshold;
+	unsigned int new_cap;
+	unsigned int *cap_to_freq;
 	unsigned int throttle_nsec;
 	struct task_struct *task;
 	atomic_long_t target_freq;
@@ -78,12 +79,12 @@ struct gov_data {
  *
  * Returns frequency selected.
  */
-static unsigned long cap_gov_select_freq(struct cpufreq_policy *policy)
+static unsigned long cap_to_freq(struct cpufreq_policy *policy)
 {
 	int cpu;
 	struct gov_data *gd;
 	int index;
-	unsigned long freq = 0, max_usage = 0, usage = 0, up_thr;
+	unsigned long freq = 0;
 	struct cpufreq_frequency_table *pos;
 
 	if (!policy->gov_data)
@@ -91,56 +92,31 @@ static unsigned long cap_gov_select_freq(struct cpufreq_policy *policy)
 
 	gd = policy->gov_data;
 
-	/*
-	 * get_cpu_usage is called without locking the runqueues. This is the
-	 * same behavior used by find_busiest_cpu in load_balance. We are
-	 * willing to accept occasionally stale data here in exchange for
-	 * lockless behavior.
-	 */
-	for_each_cpu(cpu, policy->cpus) {
-		usage = get_cpu_usage(cpu);
-		trace_printk("cpu = %d usage = %lu", cpu, usage);
-		if (usage > max_usage)
-			max_usage = usage;
-	}
-	trace_printk("max_usage = %lu", max_usage);
-
 	/* FIXME debug only */
 	cpu = cpumask_first(policy->cpus);
 
-	/* find the utilization threshold at which we scale up frequency */
-	index = cpufreq_frequency_table_get_index(policy, policy->cur);
-	up_thr = gd->up_threshold[index];
-	trace_printk("curr cpu=%d freq=%u index=%d up_thr=%lu",
-		     cpu, policy->cur, index, up_thr);
-
 	/* trivial case of fully loaded cpu */
-	//if (max_usage == capacity_orig_of(cpu)) {
-	//	freq = policy->max;
-	//	goto out;
-	//}
+	if (gd->new_cap == capacity_orig_of(cpu)) {
+		freq = policy->max;
+		goto out;
+	}
 
-	/* above the utilization threshold for this capacity? go to max freq */
+	/*
+	 * FIXME
+	 * Sadly cpufreq freq tables are not ordered by frequency...
+	 * but we act as if they were, for the time being >:)
+	 */
+	index = 0;
 	freq = policy->max;
-
-	/* else find lowest freq at a higher capacity than the current usage */
-	if (max_usage < up_thr) {
-		/*
-		 * FIXME
-		 * Sadly cpufreq freq tables are not ordered by frequency...
-		 * but we act as if they were, for the time being >:)
-		 */
-		index = 0;
-		cpufreq_for_each_entry(pos, policy->freq_table) {
-			trace_printk("index=%d freq=%u up_thr=%u",
-				     index, pos->frequency,
-				     gd->up_threshold[index]);
-			if (gd->up_threshold[index] >= max_usage) {
-				freq = pos->frequency;
-				break;
-			}
-			index++;
+	cpufreq_for_each_entry(pos, policy->freq_table) {
+		trace_printk("index=%d freq=%u cap_to_freq=%u",
+			     index, pos->frequency,
+			     gd->cap_to_freq[index]);
+		if (gd->cap_to_freq[index] >= gd->new_cap) {
+			freq = pos->frequency;
+			break;
 		}
+		index++;
 	}
 	trace_printk("cpu %d final freq %lu", cpu, freq);
 out:
@@ -159,7 +135,7 @@ static int cap_gov_thread(void *data)
 	struct sched_param param;
 	struct cpufreq_policy *policy;
 	struct gov_data *gd;
-	unsigned long freq;
+	unsigned long new_freq;
 	int ret;
 
 	policy = (struct cpufreq_policy *) data;
@@ -201,11 +177,8 @@ static int cap_gov_thread(void *data)
 			continue;
 		}
 
-		/* XXX alway true, for now */
-		if (driver_might_sleep)
-			freq = cap_gov_select_freq(policy);
-
-		ret = __cpufreq_driver_target(policy, freq,
+		new_freq = cap_to_freq(policy);
+		ret = __cpufreq_driver_target(policy, new_freq,
 				CPUFREQ_RELATION_H);
 		if (ret)
 			pr_debug("%s: __cpufreq_driver_target returned %d\n",
@@ -231,7 +204,7 @@ static void cap_gov_wake_up_process(struct task_struct *task)
 	wake_up_process(task);
 }
 
-void cap_gov_kick_thread(int cpu)
+void cap_gov_kick_thread(int cpu, unsigned int new_cap)
 {
 	struct cpufreq_policy *policy;
 	struct gov_data *gd = NULL;
@@ -252,7 +225,9 @@ void cap_gov_kick_thread(int cpu)
 
 	/* XXX driver_might_sleep is always true */
 	if (driver_might_sleep) {
-		trace_printk("waking up kthread (%d)", gd->task->pid);
+		gd->new_cap = new_cap;
+		trace_printk("waking up kthread (%d) new_cap=%u",
+			     gd->task->pid, gd->new_cap);
 		atomic_set(per_cpu(cap_gov_wake_task, cpu), 1);
 		cap_gov_wake_up_process(gd->task);
 	} else {
@@ -267,7 +242,6 @@ out:
 static void cap_gov_start(struct cpufreq_policy *policy)
 {
 	int index = 0, count = 0, cpu;
-	unsigned int capacity;
 	struct gov_data *gd;
 	struct cpufreq_frequency_table *pos;
 	struct sched_domain *sd;
@@ -285,7 +259,7 @@ static void cap_gov_start(struct cpufreq_policy *policy)
 		count++;
 
 	/* pre-compute per-capacity utilization up_thresholds */
-	gd->up_threshold = kcalloc(count, sizeof(unsigned int), GFP_KERNEL);
+	gd->cap_to_freq = kcalloc(count, sizeof(unsigned int), GFP_KERNEL);
 
 	rcu_read_lock();
 	for_each_domain(cpumask_first(policy->cpus), sd)
@@ -302,7 +276,7 @@ static void cap_gov_start(struct cpufreq_policy *policy)
 	if (!sge) {
 		pr_debug("%s: failed to access sched_group_energy\n",
 			 __func__);
-		kfree(gd->up_threshold);
+		kfree(gd->cap_to_freq);
 		kfree(gd);
 		rcu_read_unlock();
 		return;
@@ -310,12 +284,11 @@ static void cap_gov_start(struct cpufreq_policy *policy)
 
 	for (index = 0; index < sge->nr_cap_states; index++) {
 		/* capacity below is both freq and uarch scaled */
-		capacity = sge->cap_states[index].cap;
-		gd->up_threshold[index] = capacity * UP_THRESHOLD / 100;
+		gd->cap_to_freq[index] = sge->cap_states[index].cap;
 
-		pr_debug("%s: cpu = %u index = %d capacity = %u up = %u \n",
+		pr_debug("%s: cpu=%u index=%d capacity=%u\n",
 				__func__, cpumask_first(policy->cpus), index,
-				capacity, gd->up_threshold[index]);
+				gd->cap_to_freq[index]);
 	}
 	rcu_read_unlock();
 
@@ -352,7 +325,7 @@ static void cap_gov_stop(struct cpufreq_policy *policy)
 	kthread_stop(gd->task);
 
 	/* FIXME replace with devm counterparts? */
-	kfree(gd->up_threshold);
+	kfree(gd->cap_to_freq);
 	kfree(gd);
 }
 
