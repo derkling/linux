@@ -212,12 +212,12 @@ void print_cfs_rq(struct seq_file *m, int cpu, struct cfs_rq *cfs_rq)
 	SEQ_printf(m, "  .%-30s: %d\n", "nr_running", cfs_rq->nr_running);
 	SEQ_printf(m, "  .%-30s: %ld\n", "load", cfs_rq->load.weight);
 #ifdef CONFIG_SMP
-	SEQ_printf(m, "  .%-30s: %ld\n", "runnable_load_avg",
-			cfs_rq->runnable_load_avg);
-	SEQ_printf(m, "  .%-30s: %ld\n", "blocked_load_avg",
-			cfs_rq->blocked_load_avg);
-	SEQ_printf(m, "  .%-30s: %ld\n", "utilization_load_avg",
-			cfs_rq->utilization_load_avg);
+	SEQ_printf(m, "  .%-30s: %ld\n", "load_avg",
+			cfs_rq->load_avg);
+	SEQ_printf(m, "  .%-30s: %ld\n", "load_blocked_avg",
+			cfs_rq->load_blocked_avg);
+	SEQ_printf(m, "  .%-30s: %ld\n", "utilization_avg",
+			cfs_rq->utilization_avg);
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	SEQ_printf(m, "  .%-30s: %ld\n", "tg_load_contrib",
 			cfs_rq->tg_load_contrib);
