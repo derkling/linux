@@ -2444,7 +2444,7 @@ static inline void __update_cfs_rq_tg_load_contrib(struct cfs_rq *cfs_rq,
 	struct task_group *tg = cfs_rq->tg;
 	long tg_contrib;
 
-	tg_contrib = cfs_rq->runnable_load_avg + cfs_rq->blocked_load_avg;
+	tg_contrib = cfs_rq->load_avg + cfs_rq->load_blocked_avg;
 	tg_contrib -= cfs_rq->tg_load_contrib;
 
 	if (!tg_contrib)
@@ -2578,22 +2578,22 @@ static long __update_entity_utilization_avg_contrib(struct sched_entity *se)
 		__update_task_entity_utilization(se);
 	else
 		se->avg.utilization_avg_contrib =
-				group_cfs_rq(se)->utilization_load_avg +
+				group_cfs_rq(se)->utilization_avg +
 				group_cfs_rq(se)->utilization_blocked_avg;
 
 	return se->avg.utilization_avg_contrib - old_contrib;
 }
 
-static inline void subtract_blocked_load_contrib(struct cfs_rq *cfs_rq,
+static inline void subtract_load_blocked(struct cfs_rq *cfs_rq,
 						 long load_contrib)
 {
-	if (likely(load_contrib < cfs_rq->blocked_load_avg))
-		cfs_rq->blocked_load_avg -= load_contrib;
+	if (likely(load_contrib < cfs_rq->load_blocked_avg))
+		cfs_rq->load_blocked_avg -= load_contrib;
 	else
-		cfs_rq->blocked_load_avg = 0;
+		cfs_rq->load_blocked_avg = 0;
 }
 
-static inline void subtract_utilization_blocked_contrib(struct cfs_rq *cfs_rq,
+static inline void subtract_utilization_blocked(struct cfs_rq *cfs_rq,
 						long utilization_contrib)
 {
 	if (likely(utilization_contrib < cfs_rq->utilization_blocked_avg))
@@ -2609,7 +2609,7 @@ static inline void update_entity_load_avg(struct sched_entity *se,
 					  int update_cfs_rq)
 {
 	struct cfs_rq *cfs_rq = cfs_rq_of(se);
-	long contrib_delta, utilization_delta;
+	long load_delta, utilization_delta;
 	int cpu = cpu_of(rq_of(cfs_rq));
 	u64 now;
 
@@ -2626,18 +2626,18 @@ static inline void update_entity_load_avg(struct sched_entity *se,
 					cfs_rq->curr == se))
 		return;
 
-	contrib_delta = __update_entity_load_avg_contrib(se);
+	load_delta = __update_entity_load_avg_contrib(se);
 	utilization_delta = __update_entity_utilization_avg_contrib(se);
 
 	if (!update_cfs_rq)
 		return;
 
 	if (se->on_rq) {
-		cfs_rq->runnable_load_avg += contrib_delta;
-		cfs_rq->utilization_load_avg += utilization_delta;
+		cfs_rq->load_avg += load_delta;
+		cfs_rq->utilization_avg += utilization_delta;
 	} else {
-		subtract_blocked_load_contrib(cfs_rq, -contrib_delta);
-		subtract_utilization_blocked_contrib(cfs_rq,
+		subtract_load_blocked(cfs_rq, -load_delta);
+		subtract_utilization_blocked(cfs_rq,
 							-utilization_delta);
 	}
 }
@@ -2660,14 +2660,13 @@ static void update_cfs_rq_blocked_load(struct cfs_rq *cfs_rq, int force_update)
 		removed_load = atomic_long_xchg(&cfs_rq->removed_load, 0);
 		removed_utilization =
 			atomic_long_xchg(&cfs_rq->removed_utilization, 0);
-		subtract_blocked_load_contrib(cfs_rq, removed_load);
-		subtract_utilization_blocked_contrib(cfs_rq,
+		subtract_load_blocked(cfs_rq, removed_load);
+		subtract_utilization_blocked(cfs_rq,
 							removed_utilization);
 	}
 
 	if (decays) {
-		cfs_rq->blocked_load_avg = decay_load(cfs_rq->blocked_load_avg,
-						      decays);
+		cfs_rq->load_blocked_avg = decay_load(cfs_rq->load_blocked_avg, decays);
 		cfs_rq->utilization_blocked_avg =
 			decay_load(cfs_rq->utilization_blocked_avg, decays);
 		atomic64_add(decays, &cfs_rq->decay_counter);
@@ -2715,14 +2714,14 @@ static inline void enqueue_entity_load_avg(struct cfs_rq *cfs_rq,
 
 	/* migrated tasks did not contribute to our blocked load */
 	if (wakeup) {
-		subtract_blocked_load_contrib(cfs_rq, se->avg.load_avg_contrib);
-		subtract_utilization_blocked_contrib(cfs_rq,
+		subtract_load_blocked(cfs_rq, se->avg.load_avg_contrib);
+		subtract_utilization_blocked(cfs_rq,
 					se->avg.utilization_avg_contrib);
 		update_entity_load_avg(se, 0);
 	}
 
-	cfs_rq->runnable_load_avg += se->avg.load_avg_contrib;
-	cfs_rq->utilization_load_avg += se->avg.utilization_avg_contrib;
+	cfs_rq->load_avg += se->avg.load_avg_contrib;
+	cfs_rq->utilization_avg += se->avg.utilization_avg_contrib;
 	/* we force update consideration on load-balancer moves */
 	update_cfs_rq_blocked_load(cfs_rq, !wakeup);
 }
@@ -2730,7 +2729,7 @@ static inline void enqueue_entity_load_avg(struct cfs_rq *cfs_rq,
 /*
  * Remove se's load from this cfs_rq child load-average, if the entity is
  * transitioning to a blocked state we track its projected decay using
- * blocked_load_avg.
+ * load_blocked_avg.
  */
 static inline void dequeue_entity_load_avg(struct cfs_rq *cfs_rq,
 						  struct sched_entity *se,
@@ -2740,10 +2739,10 @@ static inline void dequeue_entity_load_avg(struct cfs_rq *cfs_rq,
 	/* we force update consideration on load-balancer moves */
 	update_cfs_rq_blocked_load(cfs_rq, !sleep);
 
-	cfs_rq->runnable_load_avg -= se->avg.load_avg_contrib;
-	cfs_rq->utilization_load_avg -= se->avg.utilization_avg_contrib;
+	cfs_rq->load_avg -= se->avg.load_avg_contrib;
+	cfs_rq->utilization_avg -= se->avg.utilization_avg_contrib;
 	if (sleep) {
-		cfs_rq->blocked_load_avg += se->avg.load_avg_contrib;
+		cfs_rq->load_blocked_avg += se->avg.load_avg_contrib;
 		cfs_rq->utilization_blocked_avg +=
 						se->avg.utilization_avg_contrib;
 		se->avg.decay_count = atomic64_read(&cfs_rq->decay_counter);
@@ -4163,7 +4162,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 /* Used instead of source_load when we know the type == 0 */
 static unsigned long weighted_cpuload(const int cpu)
 {
-	return cpu_rq(cpu)->cfs.runnable_load_avg;
+	return cpu_rq(cpu)->cfs.load_avg;
 }
 
 /*
@@ -4213,7 +4212,7 @@ static unsigned long cpu_avg_load_per_task(int cpu)
 {
 	struct rq *rq = cpu_rq(cpu);
 	unsigned long nr_running = ACCESS_ONCE(rq->cfs.h_nr_running);
-	unsigned long load_avg = rq->cfs.runnable_load_avg;
+	unsigned long load_avg = rq->cfs.load_avg;
 
 	if (nr_running)
 		return load_avg / nr_running;
@@ -4393,11 +4392,11 @@ static unsigned long capacity_curr_of(int cpu)
  * tasks. The unit of the return value must capacity so we can compare the
  * usage with the capacity of the CPU that is available for CFS task (ie
  * cpu_capacity).
- * cfs.utilization_load_avg is the sum of running time of runnable tasks on a
+ * cfs.utilization_avg is the sum of running time of runnable tasks on a
  * CPU. It represents the amount of utilization of a CPU in the range
  * [0..capacity_curr]. The usage of a CPU can't be higher than the current
  * capacity of the CPU because it's about the running time on this CPU.
- * Nevertheless, cfs.utilization_load_avg can be higher than capacity_curr
+ * Nevertheless, cfs.utilization_avg can be higher than capacity_curr
  * because of unfortunate rounding in avg_period and running_load_avg or just
  * after migrating tasks until the average stabilizes with the new running
  * time. So we need to check that the usage stays into the range
@@ -4408,7 +4407,7 @@ static unsigned long capacity_curr_of(int cpu)
 static int __get_cpu_usage(int cpu, int delta)
 {
 	int sum;
-	unsigned long usage = cpu_rq(cpu)->cfs.utilization_load_avg;
+	unsigned long usage = cpu_rq(cpu)->cfs.utilization_avg;
 	unsigned long blocked = cpu_rq(cpu)->cfs.utilization_blocked_avg;
 	unsigned long capacity_curr = capacity_curr_of(cpu);
 
@@ -6125,14 +6124,13 @@ static void update_cfs_rq_h_load(struct cfs_rq *cfs_rq)
 	}
 
 	if (!se) {
-		cfs_rq->h_load = cfs_rq->runnable_load_avg;
+		cfs_rq->h_load = cfs_rq->load_avg;
 		cfs_rq->last_h_load_update = now;
 	}
 
 	while ((se = cfs_rq->h_load_next) != NULL) {
 		load = cfs_rq->h_load;
-		load = div64_ul(load * se->avg.load_avg_contrib,
-				cfs_rq->runnable_load_avg + 1);
+		load = div64_ul(load * se->avg.load_avg_contrib, cfs_rq->load_avg + 1);
 		cfs_rq = group_cfs_rq(se);
 		cfs_rq->h_load = load;
 		cfs_rq->last_h_load_update = now;
@@ -6145,7 +6143,7 @@ static unsigned long task_h_load(struct task_struct *p)
 
 	update_cfs_rq_h_load(cfs_rq);
 	return div64_ul(p->se.avg.load_avg_contrib * cfs_rq->h_load,
-			cfs_rq->runnable_load_avg + 1);
+			cfs_rq->load_avg + 1);
 }
 #else
 static inline void update_blocked_averages(int cpu)
@@ -8267,8 +8265,8 @@ static void switched_from_fair(struct rq *rq, struct task_struct *p)
 	*/
 	if (se->avg.decay_count) {
 		__synchronize_entity_decay(se);
-		subtract_blocked_load_contrib(cfs_rq, se->avg.load_avg_contrib);
-		subtract_utilization_blocked_contrib(cfs_rq,
+		subtract_load_blocked(cfs_rq, se->avg.load_avg_contrib);
+		subtract_utilization_blocked(cfs_rq,
 					se->avg.utilization_avg_contrib);
 	}
 #endif
@@ -8381,7 +8379,7 @@ static void task_move_group_fair(struct task_struct *p, int queued)
 		 * decay.
 		 */
 		se->avg.decay_count = atomic64_read(&cfs_rq->decay_counter);
-		cfs_rq->blocked_load_avg += se->avg.load_avg_contrib;
+		cfs_rq->load_blocked_avg += se->avg.load_avg_contrib;
 		cfs_rq->utilization_blocked_avg +=
 						se->avg.utilization_avg_contrib;
 #endif

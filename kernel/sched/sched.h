@@ -343,18 +343,23 @@ struct cfs_rq {
 	 * Under CFS, load is tracked on a per-entity basis and aggregated up.
 	 * This allows for the description of both thread and group usage (in
 	 * the FAIR_GROUP_SCHED case).
-	 * runnable_load_avg is the sum of the load_avg_contrib of the
-	 * sched_entities on the rq.
-	 * blocked_load_avg is similar to runnable_load_avg except that its
-	 * the blocked sched_entities on the rq.
-	 * utilization_load_avg is the sum of the average running time of the
-	 * sched_entities on the rq.
-	 * utilization_blocked_avg is the utilization equivalent of
-	 * blocked_load_avg, i.e. the sum of running contributions of blocked
-	 * sched_entities associated with the rq.
+	 *
+	 * Signals realted to time on RQ (task runnable):
+	 * - load_avg
+	 *   sum of the load_avg_contrib of the SEs on the RQ
+	 * - load_blocked_avg
+	 *   similar to load_avg except that it tracks the runnable
+	 *   time of SEs blocked on the RQ
+	 *
+	 * Signals related to time on CPU (task running):
+	 * - utilization_avg
+	 *   sum of the average running time of the SE on the RQ
+	 * - utilization_blocked_avg
+	 *   similar to utilization_avg except that is tracks the running
+	 *   time of SEs blocked on the RQ
 	 */
-	unsigned long runnable_load_avg, blocked_load_avg;
-	unsigned long utilization_load_avg, utilization_blocked_avg;
+	unsigned long load_avg, load_blocked_avg;
+	unsigned long utilization_avg, utilization_blocked_avg;
 	atomic64_t decay_counter;
 	u64 last_decay;
 	atomic_long_t removed_load, removed_utilization;

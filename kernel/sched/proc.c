@@ -497,7 +497,7 @@ static void __update_cpu_load(struct rq *this_rq, unsigned long this_load,
 #ifdef CONFIG_SMP
 static inline unsigned long get_rq_runnable_load(struct rq *rq)
 {
-	return rq->cfs.runnable_load_avg;
+	return rq->cfs.load_avg;
 }
 #else
 static inline unsigned long get_rq_runnable_load(struct rq *rq)
