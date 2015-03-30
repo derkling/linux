@@ -1296,6 +1296,12 @@ static inline void idle_exit_fair(struct rq *rq) { }
 
 #endif
 
+#if defined CONFIG_CPU_FREQ_GOV_CAP_GOV && defined CONFIG_IRQ_WORK
+void set_capacity_curr(struct rq *rq, unsigned int new_cap);
+#else
+void set_capacity_curr(struct rq *rq, unsigned int new_cap) { }
+#endif
+
 #ifdef CONFIG_CPU_IDLE
 static inline void idle_set_state(struct rq *rq,
 				  struct cpuidle_state *idle_state)

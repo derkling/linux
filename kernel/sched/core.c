@@ -7183,6 +7183,16 @@ void cpufreq_work_func(struct irq_work *work)
 
 	cap_gov_kick_thread(cpu_of(rq));
 }
+
+/*
+ * Trigger a frequency change on cpu_of(rq).
+ * Requires rq->lock.
+ */
+void set_capacity_curr(struct rq *rq, unsigned int new_cap)
+{
+	rq->new_cap = new_cap;
+	irq_work_queue_on(&rq->cpufreq_work, cpu_of(rq));
+}
 #endif
 
 DECLARE_PER_CPU(cpumask_var_t, load_balance_mask);

@@ -4305,7 +4305,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	}
 
 	trace_printk("task %d queued -> trigger cap_gov for CPU%d", p->pid, cpu_of(rq));
-	irq_work_queue_on(&rq->cpufreq_work, cpu_of(rq));
+	set_capacity_curr(rq, SCHED_CAPACITY_SCALE + 1);
 
 	hrtick_update(rq);
 }
@@ -4370,7 +4370,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	}
 
 	trace_printk("task %d dequeued -> trigger cap_gov for CPU%d", p->pid, cpu_of(rq));
-	irq_work_queue_on(&rq->cpufreq_work, cpu_of(rq));
+	set_capacity_curr(rq, SCHED_CAPACITY_SCALE + 1);
 
 	hrtick_update(rq);
 }
@@ -8463,7 +8463,7 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 	update_rq_runnable_avg(rq, 1);
 
 	trace_printk("task %d tick -> trigger cap_gov for CPU%d", curr->pid, cpu_of(rq));
-	irq_work_queue_on(&rq->cpufreq_work, cpu_of(rq));
+	set_capacity_curr(rq, SCHED_CAPACITY_SCALE + 1);
 }
 
 /*
