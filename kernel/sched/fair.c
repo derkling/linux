@@ -2565,12 +2565,9 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 		periods = delta / 1024;
 		delta %= 1024;
 
-		sa->runnable_avg_sum = decay_load(sa->runnable_avg_sum,
-						  periods + 1);
-		sa->running_avg_sum = decay_load(sa->running_avg_sum,
-						  periods + 1);
-		sa->avg_period = decay_load(sa->avg_period,
-						     periods + 1);
+		sa->runnable_avg_sum = decay_load(sa->runnable_avg_sum, periods + 1);
+		sa->running_avg_sum = decay_load(sa->running_avg_sum, periods + 1);
+		sa->avg_period = decay_load(sa->avg_period, periods + 1);
 
 		/* Efficiently calculate \sum (1..n_period) 1024*y^i */
 		runnable_contrib = __compute_runnable_contrib(periods);
