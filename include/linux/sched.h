@@ -1096,15 +1096,17 @@ struct load_weight {
 struct sched_avg {
 	u64 last_runnable_update;
 	s64 decay_count;
+
 	/*
-	 * utilization_avg_contrib describes the amount of time that a
-	 * sched_entity is running on a CPU. It is based on running_avg_sum
-	 * and is scaled in the range [0..SCHED_LOAD_SCALE].
-	 * load_avg_contrib described the amount of time that a sched_entity
-	 * is runnable on a rq. It is based on both runnable_avg_sum and the
-	 * weight of the task.
+	 * - load
+	 *   amount of time that a SE is "runnable" on a RQ, based on both
+	 *   runnable_avg_sum and the weight of the task.
+	 * - utilization
+	 *   amount of time that a SE is "running" on a CPU, based on
+	 *   running_avg_sum and scaled in the range [0..SCHED_LOAD_SCALE].
 	 */
-	unsigned long load_avg_contrib, utilization_avg_contrib;
+	unsigned long load, utilization;
+
 	/*
 	 * These sums represent an infinite geometric series and so are bound
 	 * above by 1024/(1-y).  Thus we only need a u32 to store them for all
