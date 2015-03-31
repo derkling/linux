@@ -2544,7 +2544,7 @@ static inline void __update_task_entity_contrib(struct sched_entity *se)
 }
 
 /* Compute the current contribution to load_avg by se, return any delta */
-static long __update_entity_load_avg_contrib(struct sched_entity *se)
+static long __update_entity_load_avg(struct sched_entity *se)
 {
 	long old_contrib = se->avg.load;
 
@@ -2569,7 +2569,7 @@ static inline void __update_task_entity_utilization(struct sched_entity *se)
 	se->avg.utilization = scale_load(contrib);
 }
 
-static long __update_entity_utilization_avg_contrib(struct sched_entity *se)
+static long __update_entity_utilization_avg(struct sched_entity *se)
 {
 	long old_contrib = se->avg.utilization;
 
@@ -2625,8 +2625,8 @@ static inline void update_entity_load_avg(struct sched_entity *se,
 					cfs_rq->curr == se))
 		return;
 
-	load_delta = __update_entity_load_avg_contrib(se);
-	utilization_delta = __update_entity_utilization_avg_contrib(se);
+	load_delta = __update_entity_load_avg(se);
+	utilization_delta = __update_entity_utilization_avg(se);
 
 	if (!update_cfs_rq)
 		return;
