@@ -669,7 +669,7 @@ static u64 sched_vslice(struct cfs_rq *cfs_rq, struct sched_entity *se)
 static int select_idle_sibling(struct task_struct *p, int cpu);
 static unsigned long task_h_load(struct task_struct *p);
 
-static inline void __update_task_entity_contrib(struct sched_entity *se);
+static inline void __update_task_load_avg(struct sched_entity *se);
 static inline void __update_task_entity_utilization(struct sched_entity *se);
 
 /* Give new task start runnable values to heavy its load in infant time */
@@ -681,7 +681,7 @@ void init_task_runnable_average(struct task_struct *p)
 	slice = sched_slice(task_cfs_rq(p), &p->se) >> 10;
 	p->se.avg.runnable_avg_sum = p->se.avg.running_avg_sum = slice;
 	p->se.avg.avg_period = slice;
-	__update_task_entity_contrib(&p->se);
+	__update_task_avg_load(&p->se);
 	__update_task_entity_utilization(&p->se);
 }
 #else
@@ -2476,7 +2476,7 @@ static inline void __update_tg_runnable_avg(struct sched_avg *sa,
 	}
 }
 
-static inline void __update_group_entity_contrib(struct sched_entity *se)
+static inline void __update_group_avg_load(struct sched_entity *se)
 {
 	struct cfs_rq *cfs_rq = group_cfs_rq(se);
 	struct task_group *tg = cfs_rq->tg;
@@ -2529,11 +2529,11 @@ static inline void __update_cfs_rq_tg_load_contrib(struct cfs_rq *cfs_rq,
 						 int force_update) {}
 static inline void __update_tg_runnable_avg(struct sched_avg *sa,
 						  struct cfs_rq *cfs_rq) {}
-static inline void __update_group_entity_contrib(struct sched_entity *se) {}
+static inline void __update_group_avg_load(struct sched_entity *se) {}
 static inline void update_rq_runnable_avg(struct rq *rq, int runnable) {}
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 
-static inline void __update_task_entity_contrib(struct sched_entity *se)
+static inline void __update_task_avg_load(struct sched_entity *se)
 {
 	u32 contrib;
 
@@ -2544,15 +2544,15 @@ static inline void __update_task_entity_contrib(struct sched_entity *se)
 }
 
 /* Compute the current contribution to load_avg by se, return any delta */
-static long __update_entity_load_avg(struct sched_entity *se)
+static long __update_entity_avg_load(struct sched_entity *se)
 {
 	long old_contrib = se->avg.load;
 
 	if (entity_is_task(se)) {
-		__update_task_entity_contrib(se);
+		__update_task_avg_load(se);
 	} else {
 		__update_tg_runnable_avg(&se->avg, group_cfs_rq(se));
-		__update_group_entity_contrib(se);
+		__update_group_avg_load(se);
 	}
 
 	return se->avg.load - old_contrib;
@@ -2638,7 +2638,7 @@ static inline void update_entity_load_avg(struct sched_entity *se,
 					cfs_rq->curr == se))
 		return;
 
-	load_delta = __update_entity_load_avg(se);
+	load_delta = __update_entity_avg_load(se);
 	utilization_delta = __update_entity_utilization_avg(se);
 
 	if (!update_cfs_rq)
