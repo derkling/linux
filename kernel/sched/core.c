@@ -817,6 +817,11 @@ entity_model_activate(struct task_struct *task, int flags)
 	struct entity_execution_run *er = &em->er;
 	u64 now = time_local();
 
+	trace_printk("A [%d:%s] %s, on_rq: %d, flags: %d\n",
+			task->pid, task->comm,
+			get_task_state(task),
+			task->on_rq, flags);
+
 	/* Mark start of enqueue time */
 	er->delay_start = now;
 
@@ -842,6 +847,12 @@ entity_model_resume(struct task_struct *next)
 	/* Mark start of a new execution slice */
 	er->exec_start = now;
 
+	trace_printk("R [%d:%s] %s, on_rq: %d, es: %llu\n",
+			next->pid, next->comm,
+			get_task_state(next),
+			next->on_rq,
+			er->exec_start);
+
 }
 
 static inline void
@@ -854,6 +865,11 @@ entity_model_preempt(struct task_struct *prev)
 	/* Nothing to do if the task has been already deactivated */
 	if (er->exec_start == 0)
 		return;
+
+	trace_printk("P [%d:%s] %s, on_rq: %d\n",
+			prev->pid, prev->comm,
+			get_task_state(prev),
+			prev->on_rq);
 
 	/* Accumulate execution intervals */
 	er->exec_last += now - er->exec_start;
@@ -879,6 +895,11 @@ entity_model_deactivate(struct task_struct *task, int flags)
 
 	/* Trigger preemption computations */
 	entity_model_preempt(task);
+
+	trace_printk("D [%d:%s] %s, on_rq: %d, flags: %d\n",
+			task->pid, task->comm,
+			get_task_state(task),
+			task->on_rq, flags);
 
 	/* Mark task for execution completed, i.e. deactivated */
 	er->exec_start = 0;
