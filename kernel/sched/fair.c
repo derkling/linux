@@ -2584,7 +2584,7 @@ static long __update_entity_utilization_avg_contrib(struct sched_entity *se)
 	return se->avg.utilization_avg_contrib - old_contrib;
 }
 
-static inline void subtract_blocked_load_contrib(struct cfs_rq *cfs_rq,
+static inline void subtract_load_blocked(struct cfs_rq *cfs_rq,
 						 long load_contrib)
 {
 	if (likely(load_contrib < cfs_rq->load_blocked_avg))
@@ -2593,7 +2593,7 @@ static inline void subtract_blocked_load_contrib(struct cfs_rq *cfs_rq,
 		cfs_rq->load_blocked_avg = 0;
 }
 
-static inline void subtract_utilization_blocked_contrib(struct cfs_rq *cfs_rq,
+static inline void subtract_utilization_blocked(struct cfs_rq *cfs_rq,
 						long utilization_contrib)
 {
 	if (likely(utilization_contrib < cfs_rq->utilization_blocked_avg))
@@ -2636,9 +2636,8 @@ static inline void update_entity_load_avg(struct sched_entity *se,
 		cfs_rq->load_avg += load_delta;
 		cfs_rq->utilization_avg += utilization_delta;
 	} else {
-		subtract_blocked_load_contrib(cfs_rq, -load_delta);
-		subtract_utilization_blocked_contrib(cfs_rq,
-							-utilization_delta);
+		subtract_load_blocked(cfs_rq, -load_delta);
+		subtract_utilization_blocked(cfs_rq, -utilization_delta);
 	}
 }
 
@@ -2660,8 +2659,8 @@ static void update_cfs_rq_blocked_load(struct cfs_rq *cfs_rq, int force_update)
 		removed_load = atomic_long_xchg(&cfs_rq->removed_load, 0);
 		removed_utilization =
 			atomic_long_xchg(&cfs_rq->removed_utilization, 0);
-		subtract_blocked_load_contrib(cfs_rq, removed_load);
-		subtract_utilization_blocked_contrib(cfs_rq,
+		subtract_load_blocked(cfs_rq, removed_load);
+		subtract_utilization_blocked(cfs_rq,
 							removed_utilization);
 	}
 
@@ -2714,8 +2713,8 @@ static inline void enqueue_entity_load_avg(struct cfs_rq *cfs_rq,
 
 	/* migrated tasks did not contribute to our blocked load */
 	if (wakeup) {
-		subtract_blocked_load_contrib(cfs_rq, se->avg.load_avg_contrib);
-		subtract_utilization_blocked_contrib(cfs_rq,
+		subtract_load_blocked(cfs_rq, se->avg.load_avg_contrib);
+		subtract_utilization_blocked(cfs_rq,
 					se->avg.utilization_avg_contrib);
 		update_entity_load_avg(se, 0);
 	}
@@ -8265,8 +8264,8 @@ static void switched_from_fair(struct rq *rq, struct task_struct *p)
 	*/
 	if (se->avg.decay_count) {
 		__synchronize_entity_decay(se);
-		subtract_blocked_load_contrib(cfs_rq, se->avg.load_avg_contrib);
-		subtract_utilization_blocked_contrib(cfs_rq,
+		subtract_load_blocked(cfs_rq, se->avg.load_avg_contrib);
+		subtract_utilization_blocked(cfs_rq,
 					se->avg.utilization_avg_contrib);
 	}
 #endif
