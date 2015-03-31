@@ -808,7 +808,7 @@ static inline const char *get_task_state(struct task_struct *tsk)
 	return task_state_array[fls(state)];
 }
 
-#define time_local() rq_clock(this_rq())
+#define time_local() sched_clock_cpu(raw_smp_processor_id())
 
 static inline void
 entity_model_activate(struct task_struct *task, int flags)
