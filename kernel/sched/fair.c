@@ -5183,6 +5183,7 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 	struct sched_group *sg, *sg_target;
 	int target_max_cap = SCHED_CAPACITY_SCALE;
 	int target_cpu = task_cpu(p);
+	int target_cap = get_cpu_usage(target_cpu) + task_utilization(p);
 	int i;
 
 	sd = rcu_dereference(per_cpu(sd_ea, task_cpu(p)));
@@ -5230,11 +5231,19 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 		};
 
 		/* Not enough spare capacity on previous cpu */
-		if (cpu_overutilized(task_cpu(p), sd))
-			return target_cpu;
+		if (cpu_overutilized(task_cpu(p), sd)) {
+			target_cap = eenv.max_usage;
+			goto out;
+		}
 
 		if (energy_diff(&eenv) >= 0)
-			return task_cpu(p);
+			target_cpu = task_cpu(p);
+		else
+			target_cap = eenv.max_usage;
+	}
+out:
+	if (target_cap > capacity_curr_of(target_cpu)) {
+		set_capacity_curr(cpu_rq(target_cpu), target_cap);
 	}
 
 	return target_cpu;
@@ -5341,7 +5350,10 @@ unlock:
 	trace_printk("task %d (util=%lu) wake-up on CPU%d (usage=%d) -> new_cap=%lu",
 		     p->pid, task_utilization(p), new_cpu, get_cpu_usage(new_cpu),
 		     get_cpu_usage(new_cpu) + task_utilization(p));
-	set_capacity_curr(cpu_rq(new_cpu), get_cpu_usage(new_cpu) + task_utilization(p));
+	if (!energy_aware()) {
+		set_capacity_curr(cpu_rq(new_cpu),
+				  get_cpu_usage(new_cpu) + task_utilization(p));
+	}
 	return new_cpu;
 }
 
