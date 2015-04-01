@@ -4648,6 +4648,7 @@ struct energy_env {
 	struct sched_group	*sg_top;
 	struct sched_group	*sg_cap;
 	int			usage_delta;
+	int			max_usage;
 	int			src_cpu;
 	int			dst_cpu;
 	int			energy;
@@ -4733,6 +4734,7 @@ static int find_new_capacity(struct energy_env *eenv,
 {
 	int idx;
 	unsigned long util = group_max_usage(eenv, eenv->sg_cap);
+	eenv->max_usage = util;
 
 	for (idx = 0; idx < sge->nr_cap_states; idx++) {
 		if (sge->cap_states[idx].cap >= util)
@@ -5222,6 +5224,7 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 	if (target_cpu != task_cpu(p)) {
 		struct energy_env eenv = {
 			.usage_delta	= task_utilization(p),
+			.max_usage	= 0,
 			.src_cpu	= task_cpu(p),
 			.dst_cpu	= target_cpu,
 		};
