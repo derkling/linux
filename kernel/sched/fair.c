@@ -5162,10 +5162,13 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 	int target_cpu = task_cpu(p);
 	int i;
 
+	rcu_read_lock();
 	sd = rcu_dereference(per_cpu(sd_ea, task_cpu(p)));
 
-	if (!sd)
-		return -1;
+	if (!sd) {
+		target_cpu = -1;
+		goto unlock;
+	}
 
 	sg = sd->groups;
 	sg_target = sg;
@@ -5207,12 +5210,16 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 
 		/* Not enough spare capacity on previous cpu */
 		if (cpu_overutilized(task_cpu(p), sd))
-			return target_cpu;
+			goto unlock;
 
-		if (energy_diff(&eenv) >= 0)
-			return task_cpu(p);
+		if (energy_diff(&eenv) >= 0) {
+			target_cpu = task_cpu(p);
+			goto unlock;
+		}
 	}
 
+unlock:
+	rcu_read_unlock();
 	return target_cpu;
 }
 
@@ -5236,6 +5243,10 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	int new_cpu = cpu;
 	int want_affine = 0;
 	int sync = wake_flags & WF_SYNC;
+
+	/* Do energy aware task wakeup if enabled */
+	if (energy_aware() && (sd_flag & SD_BALANCE_WAKE))
+		return energy_aware_wake_cpu(p);
 
 	if (sd_flag & SD_BALANCE_WAKE)
 		want_affine = cpumask_test_cpu(cpu, tsk_cpus_allowed(p));
@@ -5263,10 +5274,6 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 		prev_cpu = cpu;
 
 	if (sd_flag & SD_BALANCE_WAKE) {
-		if (energy_aware()) {
-			new_cpu = energy_aware_wake_cpu(p);
-			goto unlock;
-		}
 		new_cpu = select_idle_sibling(p, prev_cpu);
 		goto unlock;
 	}
