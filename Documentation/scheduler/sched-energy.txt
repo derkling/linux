@@ -8,10 +8,10 @@ data structures attached to the sched_groups in the sched_domain hierarchy. The
 energy cost model offers two functions that can be used to guide scheduling
 decisions:
 
-1.	static unsigned int sched_group_energy(struct energy_env *eenv)
+1.	static unsigned int estimate_sg_energy(struct energy_env *eenv)
 2.	static int energy_diff(struct energy_env *eenv)
 
-sched_group_energy() estimates the energy consumed by all cpus in a specific
+estimate_sg_energy() estimates the energy consumed by all cpus in a specific
 sched_group including any shared resources owned exclusively by this group of
 cpus. Resources shared with other cpus are excluded (e.g. later level caches).
 
@@ -32,7 +32,7 @@ Both functions use a struct energy_env to specify the scenario to be evaluated:
 sg_top: sched_group to be evaluated. Not used by energy_diff().
 
 sg_cap: sched_group covering the cpus in the same frequency domain. Set by
-sched_group_energy().
+estimate_sg_energy().
 
 usage_delta: Amount of utilization to be added, removed, or migrated.
 
@@ -42,7 +42,7 @@ src_cpu: Source cpu from where 'usage_delta' utilization is removed. Should be
 dst_cpu: Destination cpu where 'usage_delta' utilization is added. Should be -1
 if utilization is removed (e.g. terminating tasks).
 
-energy: Result of sched_group_energy().
+energy: Result of estimate_sg_energy().
 
 The metric used to represent utilization is the actual per-entity running time
 averaged over time using a geometric series. Very similar to the existing

@@ -4744,7 +4744,7 @@ static int group_idle_state(struct sched_group *sg)
 }
 
 /*
- * sched_group_energy(): Returns absolute energy consumption of cpus belonging
+ * estimate_sg_energy(): Returns absolute energy consumption of cpus belonging
  * to the sched_group including shared resources shared only by members of the
  * group. Iterates over all cpus in the hierarchy below the sched_group starting
  * from the bottom working it's way up before going to the next cpu until all
@@ -4752,7 +4752,7 @@ static int group_idle_state(struct sched_group *sg)
  * gather the same usage statistics multiple times. This can probably be done in
  * a faster but more complex way.
  */
-static unsigned int sched_group_energy(struct energy_env *eenv)
+static unsigned int estimate_sg_energy(struct energy_env *eenv)
 {
 	struct sched_domain *sd;
 	int cpu, total_energy = 0;
@@ -4855,8 +4855,8 @@ static int energy_diff(struct energy_env *eenv)
 		if (eenv->src_cpu != -1 && cpumask_test_cpu(eenv->src_cpu,
 							sched_group_cpus(sg))) {
 			eenv_before.sg_top = eenv->sg_top = sg;
-			energy_before += sched_group_energy(&eenv_before);
-			energy_after += sched_group_energy(eenv);
+			energy_before += estimate_sg_energy(&eenv_before);
+			energy_after += estimate_sg_energy(eenv);
 
 			/* src_cpu and dst_cpu may belong to the same group */
 			continue;
@@ -4865,8 +4865,8 @@ static int energy_diff(struct energy_env *eenv)
 		if (eenv->dst_cpu != -1	&& cpumask_test_cpu(eenv->dst_cpu,
 							sched_group_cpus(sg))) {
 			eenv_before.sg_top = eenv->sg_top = sg;
-			energy_before += sched_group_energy(&eenv_before);
-			energy_after += sched_group_energy(eenv);
+			energy_before += estimate_sg_energy(&eenv_before);
+			energy_after += estimate_sg_energy(eenv);
 		}
 	} while (sg = sg->next, sg != sd->groups);
 
@@ -6761,7 +6761,7 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 			.src_cpu        = -1,
 			.dst_cpu        = -1,
 		};
-		unsigned long group_energy = sched_group_energy(&eenv);
+		unsigned long group_energy = estimate_sg_energy(&eenv);
 
 		if (group_energy)
 			sgs->group_eff = 1024*sgs->group_usage/group_energy;
@@ -7262,7 +7262,7 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 				.src_cpu        = -1,
 				.dst_cpu        = -1,
 			};
-			unsigned long energy = sched_group_energy(&eenv);
+			unsigned long energy = estimate_sg_energy(&eenv);
 
 			if (rq->nr_running == 1 && capacity_orig_of(i) >=
 					capacity_orig_of(env->dst_cpu))
