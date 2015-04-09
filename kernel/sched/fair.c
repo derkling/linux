@@ -4719,6 +4719,25 @@ static int find_new_capacity(struct energy_env *eenv,
 // Could we simplify here the call and make more clear the
 // group_max_usage function requires all the params passed by env?
 
+// This function assumes that the current actual capacity of the CPUs, which
+// is enforced by CPUFreq, is matching the one tracked by the:
+//     usage + blocked + delta
+// of _just_ CFS tasks.
+//
+// IMHO this is possibly fundamentally broken for two main reasons:
+// 1. if CPUs frequencies (i.e. capacities) are not matching at this moment
+//    the tracked signals we are making wrong assumptions
+//    For example, this happens if we ran EAS with the CPUFreq governo set to
+//    performance
+// 2. the considered signals are tracking __only__ CFS tasks, thus in general
+//    the problem descibed in the previous point, could happens also with the
+//    "on demand" governor, all the times we have higher priority tasks
+//    running and (when DVFS will be integrated) demanding for an higher OPP
+//    than the one tracked by the signals considered by group_max_usage
+//
+// Should we consider the possibility to close here a control loop by using
+// the actual available capacity reported by CPUFreq each time it is updated?
+
 	for (idx = 0; idx < sge->nr_cap_states; idx++) {
 		if (sge->cap_states[idx].cap >= util)
 			return idx;
