@@ -1,0 +1,169 @@
+
+.:: energy_aware_wake_cpu
+-------------------------
+
+In the following example, a task wake ups on the big CPU4 and the
+energy_aware_wake_cpu function selects the LITTLE CPU2 as a possible target for
+this task to be placed.
+
+.:: energy_diff
+---------------
+
+This function is responsible for computing the energy variation between the
+choice to wakeup the task on the previous CPU (CPU4 on this example) and the
+choice of moving it to the target CPU identified by the energy_aware_wake_cpu
+caller function.
+
+This function visits the scheduling domain hierarchy starting from the top
+level SG of the source CPU (CPU4) which has EA data available.
+In this example it is the SG representing the CPUs of the big cluster:
+
+               +-------+            +---------+
+DIE            |  big  | +--------> | LITTLE  |
+             +-+-------+-+         ++----+----++
+             |           |         |     |     |
+             |           |         |     |     |
+             |           |         |     |     |
+           +-v-+       +-v-+     +-v-+ +-v-+ +-v-+
+MC         | 3 |       | 4 |     | 0 | | 1 | | 2 |
+           +---+       +---+     +---+ +---+ +---+
+
+For each SG at that level (i.e. DIE) the sched_group_energy function is called
+to compute the cluster energy "before" and "after" the choice under evaluation.
+
+Since the wakeup CPU is a big CPU, the first SG to be visited by the
+energy_diff function is the one corresponding to the big cluster, which is
+passed to the sched_group_energy as top_sg.
+
+BIG CLUSTER:
+
+.:: energy_before ==================================================================
+Goal: identify the energy consumption on the big cluster in the current configuration
+      i.e. assuming the task will remain on CPU4, thus the delta on (current)
+           load will be 0
+
+          <idle>-0     [004]   593.904113: bprint:               sched_group_energy: src: 4, dst: 2, delta: 0
+
+All the child SGs of the top level SG (big) are going to be evaluated to compute the
+CORE contribution to energy consumption:
+          <idle>-0     [004]   593.904117: bprint:               sched_group_energy: visit_cpus: 3-4, cpu: 3, sd: MC, sg_shared_cap: 3-4
+
+--------------------------------------------------------------------------------
+          <idle>-0     [004]   593.904120: bprint:               sched_group_energy: domain: MC
+
+CPU3 energy contribution:
+          <idle>-0     [004]   593.904124: bprint:               sched_group_energy: gc: 3-4, cx: 3, ix: 0, gu: 0, be: 0, ie: 0, te: 0
+          <idle>-0     [004]   593.904127: bprint:               sched_group_energy: vm: 4
+
+CPU4 energy contribution:
+          <idle>-0     [004]   593.904132: bprint:               sched_group_energy: gc: 3-4, cx: 3, ix: 0, gu: 676, be: 2062, ie: 0, te: 2062
+          <idle>-0     [004]   593.904134: bprint:               sched_group_energy: vm:
+
+--------------------------------------------------------------------------------
+          <idle>-0     [004]   593.904136: bprint:               sched_group_energy: domain: DIE
+
+big Cluster contribution:
+          <idle>-0     [004]   593.904141: bprint:               sched_group_energy: gc: 3-4, cx: 3, ix: 0, gu: 676, be: 5409, ie: 23, te: 7494
+          <idle>-0     [004]   593.904143: bprint:               sched_group_energy: vm:
+
+--------------------------------------------------------------------------------
+
+Overall big cluster current energy consumption (i.e. task not moved):
+          <idle>-0     [004]   593.904145: bprint:               sched_group_energy: energy: 7494
+
+.:: energy_after ===================================================================
+Goal: identify the energy consumption on the big cluster in the configuration
+      under evaluation, i.e. assuming the task will be moved from CPU4 (to
+      CPU2), thus the delta on (current) load will be the utilization of the
+      task to be moved
+
+          <idle>-0     [004]   593.904147: bprint:               sched_group_energy: src: 4, dst: 2, delta: 289
+
+All the child SGs of the top level SG (big) are going to be evaluated to compute the
+CORE contribution to energy consumption:
+          <idle>-0     [004]   593.904152: bprint:               sched_group_energy: 1: visit_cpus: 3-4, cpu: 3, sd: MC, sg_shared_cap: 3-4
+
+--------------------------------------------------------------------------------
+          <idle>-0     [004]   593.904154: bprint:               sched_group_energy: domain: MC
+
+CPU3 energy contribution:
+          <idle>-0     [004]   593.904159: bprint:               sched_group_energy: gc: 3-4, cx: 0, ix: 0, gu: 0, be: 0, ie: 0, te: 0
+          <idle>-0     [004]   593.904161: bprint:               sched_group_energy: vm: 4
+
+CPU4 energy contribution:
+          <idle>-0     [004]   593.904166: bprint:               sched_group_energy: gc: 3-4, cx: 0, ix: 0, gu: 387, be: 763, ie: 0, te: 763
+          <idle>-0     [004]   593.904168: bprint:               sched_group_energy: vm:
+
+--------------------------------------------------------------------------------
+          <idle>-0     [004]   593.904171: bprint:               sched_group_energy: domain: DIE
+
+big Cluster contribution:
+          <idle>-0     [004]   593.904175: bprint:               sched_group_energy: gc: 3-4, cx: 0, ix: 0, gu: 387, be: 2993, ie: 43, te: 3799
+          <idle>-0     [004]   593.904177: bprint:               sched_group_energy: vm:
+
+--------------------------------------------------------------------------------
+
+Overall big cluster estimated energy consumption (i.e. task moved from CPU4):
+          <idle>-0     [004]   593.904179: bprint:               sched_group_energy: energy: 3799
+
+LITTLE CLUSTER:
+
+Once the big cluster has been evaluated both in the "before" and "after"
+configuration, a similar analysis is done on the following top level SG, which
+is the one corresponding to the CPUs of the LITTLE cluster.
+
+.:: energy_before ==================================================================
+          <idle>-0     [004]   593.904182: bprint:               sched_group_energy: src: 4, dst: 2, delta: 0
+          <idle>-0     [004]   593.904187: bprint:               sched_group_energy: 1: visit_cpus: 0-2, cpu: 0, sd: MC, sg_shared_cap: 0-2
+--------------------------------------------------------------------------------
+          <idle>-0     [004]   593.904189: bprint:               sched_group_energy: domain: MC
+          <idle>-0     [004]   593.904193: bprint:               sched_group_energy: gc: 0-2, cx: 0, ix: 0, gu: 0, be: 0, ie: 0, te: 0
+          <idle>-0     [004]   593.904196: bprint:               sched_group_energy: vm: 1-2
+          <idle>-0     [004]   593.904200: bprint:               sched_group_energy: gc: 0-2, cx: 0, ix: 0, gu: 0, be: 0, ie: 0, te: 0
+          <idle>-0     [004]   593.904203: bprint:               sched_group_energy: vm: 2
+          <idle>-0     [004]   593.904207: bprint:               sched_group_energy: gc: 0-2, cx: 0, ix: 0, gu: 142, be: 25, ie: 0, te: 25
+          <idle>-0     [004]   593.904210: bprint:               sched_group_energy: vm:
+--------------------------------------------------------------------------------
+          <idle>-0     [004]   593.904213: bprint:               sched_group_energy: domain: DIE
+          <idle>-0     [004]   593.904217: bprint:               sched_group_energy: gc: 0-2, cx: 0, ix: 0, gu: 142, be: 411, ie: 21, te: 457
+          <idle>-0     [004]   593.904219: bprint:               sched_group_energy: vm:
+--------------------------------------------------------------------------------
+          <idle>-0     [004]   593.904222: bprint:               sched_group_energy: energy: 457
+
+.:: energy_after ===================================================================
+          <idle>-0     [004]   593.904224: bprint:               sched_group_energy: src: 4, dst: 2, delta: 289
+          <idle>-0     [004]   593.904228: bprint:               sched_group_energy: 1: visit_cpus: 0-2, cpu: 0, sd: MC, sg_shared_cap: 0-2
+--------------------------------------------------------------------------------
+          <idle>-0     [004]   593.904229: bprint:               sched_group_energy: domain: MC
+          <idle>-0     [004]   593.904234: bprint:               sched_group_energy: gc: 0-2, cx: 6, ix: 0, gu: 0, be: 0, ie: 0, te: 0
+          <idle>-0     [004]   593.904237: bprint:               sched_group_energy: vm: 1-2
+          <idle>-0     [004]   593.904243: bprint:               sched_group_energy: gc: 0-2, cx: 6, ix: 0, gu: 0, be: 0, ie: 0, te: 0
+          <idle>-0     [004]   593.904246: bprint:               sched_group_energy: vm: 2
+          <idle>-0     [004]   593.904250: bprint:               sched_group_energy: gc: 0-2, cx: 6, ix: 0, gu: 831, be: 617, ie: 0, te: 617
+          <idle>-0     [004]   593.904253: bprint:               sched_group_energy: vm:
+--------------------------------------------------------------------------------
+          <idle>-0     [004]   593.904255: bprint:               sched_group_energy: domain: DIE
+          <idle>-0     [004]   593.904261: bprint:               sched_group_energy: gc: 0-2, cx: 6, ix: 1, gu: 831, be: 3178, ie: 1, te: 3796
+          <idle>-0     [004]   593.904263: bprint:               sched_group_energy: vm:
+--------------------------------------------------------------------------------
+          <idle>-0     [004]   593.904265: bprint:               sched_group_energy: energy: 3796
+
+================================================================================
+
+All the contributions of the "before" configurations are:
+BIG cluster:     7494
+LITTLE cluster:   457
+Total before:    7951
+
+All the contributions of the "after" configurations are:
+BIG cluster:     3799
+LITTLE cluster:  3796
+Total after:     7595
+
+
+Thus, since the energy of the "after" configuration (7595) is lower than the
+energy of the "before" configuration (7951), the EAS wakeup function decides to
+move the task on the candidate destination CPU (CPU2).
+
+          <idle>-0     [002]   593.904570: sched_wakeup:         phases0:3141 [120] success=1 CPU:002
+          <idle>-0     [002]   593.904624: sched_switch:         swapper/2:0 [120] R ==> phases0:3141 [120]
