@@ -4712,6 +4712,12 @@ static int find_new_capacity(struct energy_env *eenv,
 {
 	int idx;
 	unsigned long util = group_max_usage(eenv, eenv->sg_cap);
+//						  ^^^^^^^^^^^^^
+// This is the only callsite for this group_max_usage function
+// thus I do not see any need for the time being to have the SG parametere
+// passed explicitely since it is already part of the first eenv param.
+// Could we simplify here the call and make more clear the
+// group_max_usage function requires all the params passed by env?
 
 	for (idx = 0; idx < sge->nr_cap_states; idx++) {
 		if (sge->cap_states[idx].cap >= util)
