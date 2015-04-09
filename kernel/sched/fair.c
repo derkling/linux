@@ -4823,6 +4823,12 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 					eenv->sg_cap = sg_shared_cap;
 				else
 					eenv->sg_cap = sg;
+//                                      ^^^^^^^^^^^^
+// The usage of this enviroment variable should be possibly better
+// explained. It is difficult from this code fragment to undertand that
+//    eenv->sg_cap
+// is used by the find_new_capacity method to identify which CPUs to consider
+// to compute the maximum capacity among them
 
 				cap_idx = find_new_capacity(eenv, sg->sge);
 				idle_idx = group_idle_state(sg);
