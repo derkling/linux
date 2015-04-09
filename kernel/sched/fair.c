@@ -5270,6 +5270,12 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	int want_affine = 0;
 	int sync = wake_flags & WF_SYNC;
 
+	if (!do_wakeup_balance()) {
+		trace_printk("WUB disabled -> task=%d new_cpu=%d",
+			     p->pid, cpu);
+		goto out;
+	}
+
 	if (sd_flag & SD_BALANCE_WAKE)
 		want_affine = cpumask_test_cpu(cpu, tsk_cpus_allowed(p));
 
@@ -5341,6 +5347,7 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 unlock:
 	rcu_read_unlock();
 
+out:
 	/*
 	 * FIXME
 	 * This is obviously wrong! Here, of before getting here,

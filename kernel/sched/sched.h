@@ -1432,6 +1432,11 @@ static inline bool energy_aware(void)
 	return sched_feat(ENERGY_AWARE);
 }
 
+static inline bool do_wakeup_balance(void)
+{
+	return sched_feat(WAKEUP_BALANCE);
+}
+
 static inline bool do_idle_balance(void)
 {
 	return sched_feat(IDLE_BALANCE);
