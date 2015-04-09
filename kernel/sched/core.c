@@ -6699,6 +6699,19 @@ static int __sdt_alloc(const struct cpumask *cpu_map)
 			sge = kzalloc_node(sizeof(struct sched_group_energy) +
 				nr_idle_states*sizeof(struct idle_state) +
 				nr_cap_states*sizeof(struct capacity_state),
+//                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+// NOTE:
+// Here we allocate space to host cap/idl tables for each and every CPU and
+// than we copy, i.e. replicate, the same informations multiple times for the
+// different CPUs.
+// This leads to:
+// 1. unecessary data duplications, since tables are the same for all the CPUs
+//    on a cluster
+// 2. inefficient data access due to caches trashing especially when looping
+//    on the CPUs of a single cluster, e.g. on sched_group_energy at MC level
+//
+// Perhaps we could try to use just a pointer to be initialized by
+// init_sched_energy to point to the specific table for a CORE/CLUSTER?
 				GFP_KERNEL, cpu_to_node(j));
 
 			if (!sge)
@@ -6713,6 +6726,13 @@ static int __sdt_alloc(const struct cpumask *cpu_map)
 					   sizeof(sge->cap_states) +
 					   nr_idle_states*
 					   sizeof(struct idle_state));
+//
+// Previous note followup, in this last two sentences we initialize the
+// sched_group_energy data structure... but this initialization is completed
+// only once the allocated tables are filled with the initialization data.
+// Should we better move at least this initialziation portion on the
+// init_sched_energy method and keep on this method just the allocation
+// code? This seems more aligned with the specific purposes of this method.
 
 			*per_cpu_ptr(sdd->sge, j) = sge;
 		}
