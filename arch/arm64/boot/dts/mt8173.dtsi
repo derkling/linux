@@ -256,6 +256,50 @@
 			#clock-cells = <1>;
 		};
 
+		drm0: drm@10215000 {
+			compatible = "mediatek,mt8173-drm";
+			reg = <0 0x14000000 0 0x120>,	/* CONFIG */
+			      <0 0x1400c000 0 0x1000>,	/* OVL0 */
+			      <0 0x1400e000 0 0x1000>,	/* RDMA0 */
+			      <0 0x14013000 0 0x1000>,	/* COLOR0 */
+			      <0 0x14015000 0 0x1000>,	/* AAL */
+			      <0 0x1401a000 0 0x1000>,	/* UFOE */
+			      <0 0x1401b000 0 0x1000>,	/* DSI0 */
+			      <0 0x14020000 0 0x1000>,	/* MUTEX */
+			      <0 0x14023000 0 0x1000>,	/* OD */
+			      <0 0x10215000 0 0x1000>;	/* MIPITX */
+			#interrupts = <0 182 0x8>;	/* RDMA */
+			interrupts = <0 196 0x8>;	/* OD */
+			iommus = <&iommu M4U_PORT_DISP_OVL0>,
+				 <&iommu M4U_PORT_DISP_RDMA0>;
+			clocks = <&scpsys SCP_SYS_DIS>,
+				 <&mmsys MM_SMI_COMMON>,
+				 <&mmsys MM_SMI_LARB0>,
+				 <&mmsys MM_SMI_LARB4>,
+				 <&mmsys MM_MUTEX_32K>,
+				 <&mmsys MM_DISP_OVL0>,
+				 <&mmsys MM_DISP_RDMA0>,
+				 <&mmsys MM_DISP_COLOR0>,
+				 <&mmsys MM_DISP_AAL>,
+				 <&mmsys MM_DISP_UFOE>,
+				 <&mmsys MM_DISP_OD>,
+				 <&mmsys MM_DSI0_ENGINE>,
+				 <&mmsys MM_DSI0_DIGITAL>;
+			clock-names = "disp_mtcmos",
+				      "smi_common_ck",
+				      "smi_larb0_ck",
+				      "smi_larb4_ck",
+				      "mutex_disp_ck",
+				      "ovl0_disp_ck",
+				      "rdma0_disp_ck",
+				      "color0_disp_ck",
+				      "aal_disp_ck",
+				      "ufoe_disp_ck",
+				      "od_disp_ck",
+				      "dsi0_engine_disp_ck",
+				      "dsi0_digital_disp_ck";
+		};
+
 		gic: interrupt-controller@10220000 {
 			compatible = "arm,gic-400";
 			#interrupt-cells = <3>;
