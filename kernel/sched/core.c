@@ -6083,6 +6083,19 @@ static void init_sched_energy(int cpu, struct sched_domain *sd,
 		/* Disregard non-cpuidle 'active' idle states */
 		if (sd->child)
 			idle_states_below--;
+//		        ^^^^^^^^^^^^^^^^^^^^
+// Is this condition really meet sometimes?
+// AFAIU, this function is always entered with *sd pointing to a top level SD
+// which has EA data attached, thus DIE level for TC2 and Juno.
+// But, when we have just DIE and MC sd levels, we never meet it... because
+// there is always just one level below DIE and this is the last level without
+// any child.
+//
+// Are we considering platforms with more than 2 SD with EA info attached?
+// How are we disregarding non-cpuidle 'active' states on Juno and TC2?
+// BTW, the current indexing of "below states" seems to work for me, at least
+// on TC2... thus perhaps this code is just not required or belongs to a more
+// generic case/platform which I've not figured out.
 	}
 
 	energy->nr_idle_states = fn(cpu)->nr_idle_states;
