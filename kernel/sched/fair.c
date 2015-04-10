@@ -5376,6 +5376,11 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 		if (energy_aware()) {
 			new_cpu = energy_aware_wake_cpu(p);
 			goto unlock;
+// [Peter] we should to EA wakeup only if U < 1, otherwise we should go with
+// the default path
+// [Morthen] ture, but we need the energy_aware_wake_cpu to compute the proper
+// CPU utilization. We should eventually call select_idle_sibling in case the
+// utilization is ~1
 		}
 		new_cpu = select_idle_sibling(p, prev_cpu);
 		goto unlock;
