@@ -4866,6 +4866,9 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 // big cluster to a currently IDLE LITTLE cluster, the sg_idle_energy will be
 // computed considering the LITTLE cluster IDLE...
 				group_util = group_norm_usage(eenv, sg);
+//                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+// [Sai] the normalized group usage should be computed considering the new
+// capacity reported by find_new_capacity.
 
 				/* Optimize for group_util = 1024 and 0 here using if's */
 				sg_busy_energy = (group_util * sg->sge->cap_states[cap_idx].power)
