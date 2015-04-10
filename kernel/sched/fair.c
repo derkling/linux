@@ -4857,6 +4857,14 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 
 				cap_idx = find_new_capacity(eenv, sg->sge);
 				idle_idx = group_idle_state(sg);
+// 				           ^^^^^^^^^^^^^^^^^^^^
+// The computation of the idle idx should consider the environment since, in
+// the case we are evaluating the movement of a task on a cluster currently
+// IDLE, in the energy_after component we should consider the cluster
+// energy component as being affected by the task running on it.
+// In the current implementation, for example if we are moving a task from a
+// big cluster to a currently IDLE LITTLE cluster, the sg_idle_energy will be
+// computed considering the LITTLE cluster IDLE...
 				group_util = group_norm_usage(eenv, sg);
 
 				/* Optimize for group_util = 1024 and 0 here using if's */
