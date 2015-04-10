@@ -430,6 +430,70 @@ TRACE_EVENT(sched_pi_setprio,
 			__entry->oldprio, __entry->newprio)
 );
 
+/*
+ * Tracepoint for accounting sched averages for tasks.
+ */
+TRACE_EVENT(sched_load_avg_task,
+
+	TP_PROTO(struct task_struct *tsk, struct sched_avg *avg),
+
+	TP_ARGS(tsk, avg),
+
+	TP_STRUCT__entry(
+		__array( char,	comm,	TASK_COMM_LEN		)
+		__field( pid_t,	pid				)
+		__field( int,	cpu				)
+		__field( unsigned long,	load			)
+		__field( unsigned long,	utilization		)
+		__field( unsigned int,	runnable_avg_sum	)
+		__field( unsigned int,	running_avg_sum		)
+		__field( unsigned int,	avg_period		)
+	),
+
+	TP_fast_assign(
+		memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
+		__entry->pid			= tsk->pid;
+		__entry->cpu			= task_cpu(tsk);
+		__entry->load			= avg->load_avg_contrib;
+		__entry->utilization		= avg->utilization_avg_contrib;
+		__entry->runnable_avg_sum	= avg->runnable_avg_sum;
+		__entry->running_avg_sum	= avg->running_avg_sum;
+		__entry->avg_period		= avg->avg_period;
+	),
+
+	TP_printk("comm=%s pid=%d cpu=%d load=%lu utilization=%lu runnable_avg_sum=%u"
+		  " running_avg_sum=%u avg_period=%u",
+		  __entry->comm, __entry->pid, __entry->cpu,
+		  __entry->load, __entry->utilization,
+		  (unsigned int)__entry->runnable_avg_sum,
+		  (unsigned int)__entry->running_avg_sum,
+		  (unsigned int)__entry->avg_period)
+);
+
+/*
+ * Tracepoint for accounting sched averages for cpus.
+ */
+TRACE_EVENT(sched_load_avg_cpu,
+
+	TP_PROTO(int cpu, struct cfs_rq *cfs_rq),
+
+	TP_ARGS(cpu, cfs_rq),
+
+	TP_STRUCT__entry(
+		__field( int,	cpu				)
+		__field( unsigned long,	load			)
+		__field( unsigned long,	utilization		)
+	),
+
+	TP_fast_assign(
+		__entry->cpu			= cpu;
+		__entry->load			= cfs_rq->runnable_load_avg;
+		__entry->utilization		= cfs_rq->utilization_load_avg;
+	),
+
+	TP_printk("cpu=%d load=%lu utilization=%lu",
+		  __entry->cpu, __entry->load, __entry->utilization)
+);
 #endif /* _TRACE_SCHED_H */
 
 /* This part must be outside protection */

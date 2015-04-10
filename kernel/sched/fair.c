@@ -2536,6 +2536,9 @@ static inline void update_entity_load_avg(struct sched_entity *se,
 	contrib_delta = __update_entity_load_avg_contrib(se);
 	utilization_delta = __update_entity_utilization_avg_contrib(se);
 
+	if (entity_is_task(se))
+		trace_sched_load_avg_task(task_of(se), &se->avg);
+
 	if (!update_cfs_rq)
 		return;
 
@@ -2547,6 +2550,8 @@ static inline void update_entity_load_avg(struct sched_entity *se,
 		subtract_utilization_blocked_contrib(cfs_rq,
 							-utilization_delta);
 	}
+
+	trace_sched_load_avg_cpu(cpu, cfs_rq);
 }
 
 /*
