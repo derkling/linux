@@ -4776,8 +4776,15 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 		if (sd && sd->parent)
 			sg_shared_cap = sd->parent->groups;
 
+// This loop navigate the SD hierarchy starting from the MC level (fine
+// grained, i.e. single core) up to the DIE level (coarse grained, i.e. single
+// clusters)
+
 		for_each_domain(cpu, sd) {
 			sg = sd->groups;
+
+// At MC level  (single core), sg is a list of single CPUs
+// At DIE level (single cluster), sg is a list of clusters
 
 			/* Has this sched_domain already been visited? */
 			if (sd->child && cpumask_first(sched_group_cpus(sg)) != cpu)
@@ -4806,11 +4813,21 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 
 				total_energy += sg_busy_energy + sg_idle_energy;
 
+// If we are at the smallest SD level (i.e. MC) than we mark this CPU as
+// visited by clearing its bit on the mask of visited CPUs
+
 				if (!sd->child)
 					cpumask_xor(&visit_cpus, &visit_cpus, sched_group_cpus(sg));
 
+
+// The current SG mask is equal to the top level SG mask only when the current
+// SG is the DIE level group.
+// Seems to be a cascaded loop exit matching the external loop exit
+// condition...
 				if (cpumask_equal(sched_group_cpus(sg), sched_group_cpus(eenv->sg_top)))
 					goto next_cpu;
+
+// Go on with the next CPU on this group...
 
 			} while (sg = sg->next, sg != sd->groups);
 		}
