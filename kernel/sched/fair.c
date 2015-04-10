@@ -4776,6 +4776,12 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 		if (sd && sd->parent)
 			sg_shared_cap = sd->parent->groups;
 
+// It seems to me that sg_top and sg_shared_cap always point to the same SG,
+// which is the "cluster level" domain.
+// When is sg_shared_cap could point to a different SG?!?!
+// NOTE that "sd" is thereafter used a SD index to navigate the sched domain
+// hierarchy from MC up to DIE level...
+
 // This loop navigate the SD hierarchy starting from the MC level (fine
 // grained, i.e. single core) up to the DIE level (coarse grained, i.e. single
 // clusters)
@@ -4794,6 +4800,8 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 				unsigned group_util;
 				int sg_busy_energy, sg_idle_energy;
 				int cap_idx, idle_idx;
+
+//  When sg_shared_cap could be null?!?
 
 				if (sg_shared_cap && sg_shared_cap->group_weight >= sg->group_weight)
 					eenv->sg_cap = sg_shared_cap;
