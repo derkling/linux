@@ -352,31 +352,31 @@ EXPORT_SYMBOL_GPL(cpu_topology);
  */
 
 static struct idle_state idle_states_cluster_a53[] = {
-	{ .power = 16 },
-	{ .power = 39 },
+	{ .power = 56 },
+	{ .power = 17 },
 };
 
 static struct idle_state idle_states_cluster_a57[] = {
-	{ .power = 28 },
-	{ .power = 37 },
+	{ .power = 65 },
+	{ .power = 24 },
 };
 
 static struct capacity_state cap_states_cluster_a53[] = {
         /* Power per cluster */
-	{ .cap = 236, .power = 25, },
-	{ .cap = 302, .power = 30, },
-	{ .cap = 367, .power = 37, },
-	{ .cap = 407, .power = 44, },
-	{ .cap = 447, .power = 75, },
+	{ .cap = 235, .power = 26, },
+	{ .cap = 303, .power = 30, },
+	{ .cap = 368, .power = 39, },
+	{ .cap = 406, .power = 47, },
+	{ .cap = 447, .power = 57, },
 };
 
 static struct capacity_state cap_states_cluster_a57[] = {
         /* Power per cluster */
-	{ .cap = 418, .power = 25, },
-	{ .cap = 581, .power = 30, },
+	{ .cap = 417, .power = 24, },
+	{ .cap = 579, .power = 32, },
 	{ .cap = 744, .power = 43, },
-	{ .cap = 884, .power = 47, },
-	{ .cap = 1024, .power = 60, },
+	{ .cap = 883, .power = 49, },
+	{ .cap = 1024, .power = 64, },
 };
 
 static struct sched_group_energy energy_cluster_a53 = {
@@ -394,31 +394,31 @@ static struct sched_group_energy energy_cluster_a57 = {
 };
 
 static struct idle_state idle_states_core_a53[] = {
-	{ .power = 0 },
 	{ .power = 6 },
+	{ .power = 0 },
 };
 
 static struct idle_state idle_states_core_a57[] = {
-	{ .power = 0 },
-	{ .power = 6 },
+	{ .power = 15 },
+	{ .power = 0  },
 };
 
 static struct capacity_state cap_states_core_a53[] = {
         /* Power per cpu */
-	{ .cap = 236, .power = 33, },
+	{ .cap = 235, .power = 33, },
 	{ .cap = 302, .power = 46, },
-	{ .cap = 368, .power = 62, },
-	{ .cap = 407, .power = 77, },
-	{ .cap = 447, .power = 83, },
+	{ .cap = 368, .power = 61, },
+	{ .cap = 406, .power = 76, },
+	{ .cap = 447, .power = 93, },
 };
 
 static struct capacity_state cap_states_core_a57[] = {
         /* Power per cpu */
-	{ .cap = 418, .power = 166, },
-	{ .cap = 581, .power = 252, },
-	{ .cap = 745, .power = 358, },
-	{ .cap = 884, .power = 479, },
-	{ .cap = 1024, .power = 615, },
+	{ .cap = 417, .power = 168, },
+	{ .cap = 579, .power = 251, },
+	{ .cap = 744, .power = 359, },
+	{ .cap = 883, .power = 479, },
+	{ .cap = 1024, .power = 616, },
 };
 
 static struct sched_group_energy energy_core_a53 = {
