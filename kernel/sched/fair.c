@@ -5270,6 +5270,17 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 
 		if (sg_max_capacity >= task_utilization(p) &&
 				sg_max_capacity <= target_max_cap) {
+// [Sai] task_utilization is capped by the sg_max_capacity thus a "big task"
+// (100%) utilization running on LITTLE will still select a LITTLE clster
+// [Morten] "big tasks" placement on big cluster is solved by the periodic
+// balancer
+// [Morten] a margin could be added to avoid LITTLE cluster when a task has a
+// utilization near the max_capacity, e.g.
+//   sg_max_capacity > task_utilization(p) + margin
+//
+// [Morten] here we should consider the current utilization of a SG to avoid
+// placing a little task on a LITTLE cluster when it is already fully utilized
+
 			sg_target = sg;
 			target_max_cap = sg_max_capacity;
 		}
@@ -5278,6 +5289,10 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 	/* Find cpu with sufficient capacity */
 	for_each_cpu_and(i, tsk_cpus_allowed(p), sched_group_cpus(sg_target)) {
 		int new_usage = get_cpu_usage(i) + task_utilization(p);
+// [Sai] Double accounting for task utilization if the task wakeup on same CPU
+// [Morten] right, but if at this point the blocked load of the task has been
+// already decayed, and if the task was sleeping for a long time this could
+// lead to a poor estimate of the new utilization...
 
 		if (new_usage >	capacity_orig_of(i))
 			continue;
