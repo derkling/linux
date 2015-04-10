@@ -4307,7 +4307,6 @@ static int __get_cpu_usage(int cpu, int delta)
 	unsigned long usage = cpu_rq(cpu)->cfs.utilization_load_avg;
 	unsigned long blocked = cpu_rq(cpu)->cfs.utilization_blocked_avg;
 	unsigned long capacity_curr = capacity_curr_of(cpu);
-	trace_printk("sge: cpu %d capacity_curr %lu", cpu, capacity_curr);
 
 	sum = usage + blocked + delta;
 
