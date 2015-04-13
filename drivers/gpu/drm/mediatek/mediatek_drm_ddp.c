@@ -219,8 +219,8 @@ static void disp_config_ext_path_mutex(void __iomem *mutex_base)
 	writel((1 << 12 | 1 << 14 | 1 << 19 | 1 << 21),
 		mutex_base + DISP_REG_CONFIG_MUTEX_MOD(ID));
 
-	/* Clock source from DSI0 */
-	writel(1, mutex_base + DISP_REG_CONFIG_MUTEX_SOF(ID));
+	/* Clock source from DPI0 */
+	writel(3, mutex_base + DISP_REG_CONFIG_MUTEX_SOF(ID));
 	writel(1, mutex_base + DISP_REG_CONFIG_MUTEX_EN(ID));
 }
 #endif /* MEDIATEK_DRM_UPSTREAM */
@@ -497,7 +497,7 @@ void ovl_layer_config(struct drm_crtc *crtc, unsigned int addr,
 		bpp = 1;
 	}
 
-	src_pitch = crtc->mode.hdisplay * bpp;
+	src_pitch = crtc->primary->fb->pitches[0];
 
 	writel(0x1, drm_disp_base + DISP_REG_OVL_RST);
 	writel(0x0, drm_disp_base + DISP_REG_OVL_RST);
