@@ -4690,11 +4690,11 @@ static inline int calc_usage_delta(struct energy_env *eenv, int cpu)
 	return 0;
 }
 
-static unsigned group_max_usage(struct energy_env *eenv,
-					struct sched_group *sg)
+static unsigned group_max_usage(struct energy_env *eenv)
 {
 	int i, delta;
 	int max_usage = 0;
+	struct sched_group *sg = eenv->sg_cap;
 
 	for_each_cpu(i, sched_group_cpus(sg)) {
 		delta = calc_usage_delta(eenv, i);
@@ -4733,7 +4733,7 @@ static int find_new_capacity(struct energy_env *eenv,
 		struct sched_group_energy *sge)
 {
 	int idx;
-	unsigned long util = group_max_usage(eenv, eenv->sg_cap);
+	unsigned long util = group_max_usage(eenv);
 	eenv->max_usage = util;
 
 	for (idx = 0; idx < sge->nr_cap_states; idx++) {
