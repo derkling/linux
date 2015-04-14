@@ -161,6 +161,36 @@
 			#reset-cells = <1>;
 		};
 
+		watchdog: watchdog@10007000 {
+			compatible = "mediatek,mt8173-watchdog",
+				     "mediatek,mt6589-wdt";
+			reg = <0 0x10007000 0 0x100>;
+		};
+
+		audiosys: audiosys@112200000 {
+			compatible = "mediatek,mt8173-audiosys", "syscon";
+			reg = <0 0x11220000 0 0x1000>;
+			#clock-cells = <1>;
+		};
+
+		mfgsys: mfgsys@13fff000 {
+			compatible = "mediatek,mt8173-mfgsys", "syscon";
+			reg = <0 0x13fff000 0 0x1000>;
+			#clock-cells = <1>;
+		};
+
+		mmsys: mmsys@14000000 {
+			compatible = "mediatek,mt8173-mmsys", "syscon";
+			reg = <0 0x14000000 0 0x1000>;
+			#clock-cells = <1>;
+		};
+
+		imgsys: imgsys@15000000 {
+			compatible = "mediatek,mt8173-imgsys", "syscon";
+			reg = <0 0x15000000 0 0x1000>;
+			#clock-cells = <1>;
+		};
+
 		pio: pinctrl@10005000 {
 			compatible = "mediatek,mt8173-pinctrl";
 			reg = <0 0x1000b000 0 0x1000>;
@@ -229,12 +259,6 @@
 					bias-pull-down;
 				};
 			};
-		};
-
-		watchdog: watchdog@10007000 {
-			compatible = "mediatek,mt8173-watchdog",
-				     "mediatek,mt6589-wdt";
-			reg = <0 0x10007000 0 0x100>;
 		};
 
 		pwrap: pwrap@1000d000 {
@@ -490,12 +514,6 @@
 			reg = <0 0x11012000 0 0x1C>;
 		};
 
-		audiosys: audiosys@112200000 {
-			compatible = "mediatek,mt8173-audiosys", "syscon";
-			reg = <0 0x11220000 0 0x1000>;
-			#clock-cells = <1>;
-		};
-
 		mmc0: mmc@11230000 {
 			compatible = "mediatek,mt8173-mmc",
 				     "mediatek,mt8135-mmc";
@@ -567,18 +585,6 @@
 			interrupt-names = "RGX";
 		};
 
-		mfgsys: mfgsys@13fff000 {
-			compatible = "mediatek,mt8173-mfgsys", "syscon";
-			reg = <0 0x13fff000 0 0x1000>;
-			#clock-cells = <1>;
-		};
-
-		mmsys: mmsys@14000000 {
-			compatible = "mediatek,mt8173-mmsys", "syscon";
-			reg = <0 0x14000000 0 0x1000>;
-			#clock-cells = <1>;
-		};
-
 		hdmidpi0: hdmidpi@1401d000 {
 			compatible = "mediatek,mt8173-hdmi-dpi";
 			interrupts = <GIC_SPI 174 IRQ_TYPE_LEVEL_LOW>;
@@ -598,12 +604,6 @@
 			reg = <0 0x14027000 0 0x1000>;
 			clocks = <&mmsys MM_SMI_COMMON>, <&mmsys MM_SMI_LARB4>;
 			clock-names = "larb_sub0", "larb_sub1";
-		};
-
-		imgsys: imgsys@15000000 {
-			compatible = "mediatek,mt8173-imgsys", "syscon";
-			reg = <0 0x15000000 0 0x1000>;
-			#clock-cells = <1>;
 		};
 
 		larb2: larb@15010000 {
