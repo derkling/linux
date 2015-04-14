@@ -476,7 +476,7 @@ static inline void mtk_iommu_config_port(struct mtk_iommu_info *piommu,
 	larb = piommu->imucfg->pport[portid].larb_id;
 	larb_port = piommu->imucfg->pport[portid].port_id;
 
-	mtk_smi_config_port(piommu->larbpdev[larb], larb_port);
+	mtk_smi_config_port(&piommu->larbpdev[larb]->dev, larb_port);
 }
 
 /*
@@ -509,7 +509,6 @@ static int mtk_iommu_domain_init(struct iommu_domain *domain)
 	memset(priv->pgd, 0, M4U_PGD_SIZE);
 
 	spin_lock_init(&priv->pgtlock);
-	spin_lock_init(&priv->portlock);
 	domain->priv = priv;
 
 	domain->geometry.aperture_start = 0;
@@ -539,7 +538,6 @@ static void mtk_iommu_domain_destroy(struct iommu_domain *domain)
 static int mtk_iommu_attach_device(struct iommu_domain *domain,
 				   struct device *dev)
 {
-	unsigned long flags;
 	struct mtk_iommu_domain *priv = domain->priv;
 	struct mtk_iommu_info *piommu = priv->piommuinfo;
 	struct of_phandle_args out_args = {0};
@@ -550,8 +548,6 @@ static int mtk_iommu_attach_device(struct iommu_domain *domain,
 		goto imudev;
 	else
 		imudev = piommu->dev;
-
-	spin_lock_irqsave(&priv->portlock, flags);
 
 	while (!of_parse_phandle_with_args(dev->of_node, "iommus",
 					   "#iommu-cells", i, &out_args)) {
@@ -568,8 +564,6 @@ static int mtk_iommu_attach_device(struct iommu_domain *domain,
 		}
 		i++;
 	}
-
-	spin_unlock_irqrestore(&priv->portlock, flags);
 
 imudev:
 	return 0;
@@ -691,7 +685,7 @@ static int mtk_iommu_probe(struct platform_device *pdev)
 
 	arch_setup_dma_ops(piommu->dev, 0, (1ULL<<32) - 1, &mtk_iommu_ops, 0);
 
-	dom = get_dma_domain(piommu->dev);
+	dom = arch_get_dma_domain(piommu->dev);
 	domain = iommu_dma_raw_domain(dom);
 
 	mtk_domain = domain->priv;
