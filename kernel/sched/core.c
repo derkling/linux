@@ -7183,7 +7183,15 @@ void cpufreq_work_func(struct irq_work *work)
 	struct rq *rq = container_of(work, struct rq, cpufreq_work);
 	int cpu = cpu_of(rq);
 
-	trace_printk("cpufreq work func called on CPU%d", cpu_of(rq));
+	trace_printk("cpufreq work func called on CPU%d", cpu);
+	//if (in_nmi())
+	//	trace_printk("--> in_nmi %d", 0);
+	//if (in_irq())
+	//	trace_printk("--> in_irq %d", 0);
+	//if (in_softirq())
+	//	trace_printk("--> in_softirq %d", 0);
+	//if (in_atomic())
+	//	trace_printk("--> in_atomic %d", 0);
 
 	raw_spin_lock_irqsave(&rq->lock, flags);
 	if (rq->new_cap > capacity_orig_of(cpu))

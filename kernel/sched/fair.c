@@ -4810,6 +4810,7 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 				unsigned group_util;
 				int sg_busy_energy, sg_idle_energy;
 				int cap_idx, idle_idx;
+				char buf[64];
 
 				if (sg_shared_cap && sg_shared_cap->group_weight >= sg->group_weight)
 					eenv->sg_cap = sg_shared_cap;
@@ -4828,6 +4829,9 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 								>> SCHED_CAPACITY_SHIFT;
 
 				total_energy += sg_busy_energy + sg_idle_energy;
+				snprintf(buf, sizeof(buf), "%*pbl", cpumask_pr_args(sched_group_cpus(sg)));
+				trace_printk("sg=%s max_usage=%d cap_idx=%d idle_idx=%d group_util=%u total_energy=%d",
+					     buf, eenv->max_usage, cap_idx, idle_idx, group_util, total_energy);
 
 				if (!sd->child)
 					cpumask_xor(&visit_cpus, &visit_cpus, sched_group_cpus(sg));
@@ -5185,11 +5189,14 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 	int target_cpu = task_cpu(p);
 	int target_cap = get_cpu_usage(target_cpu) + task_utilization(p);
 	int i;
+	char buf[64];
 
 	sd = rcu_dereference(per_cpu(sd_ea, task_cpu(p)));
 
 	if (!sd)
 		return -1;
+
+	trace_printk("task=%d util=%lu task_cpu=%d", p->pid, task_utilization(p), task_cpu(p));
 
 	sg = sd->groups;
 	sg_target = sg;
@@ -5203,10 +5210,14 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 			target_max_cap = sg_max_capacity;
 		}
 	} while (sg = sg->next, sg != sd->groups);
+	snprintf(buf, sizeof(buf), "%*pbl", cpumask_pr_args(sched_group_cpus(sg_target)));
+	trace_printk("sg_target: %s", buf);
 
 	/* Find cpu with sufficient capacity */
 	for_each_cpu_and(i, tsk_cpus_allowed(p), sched_group_cpus(sg_target)) {
 		int new_usage = get_cpu_usage(i) + task_utilization(p);
+		trace_printk("cpu=%d cap=%lu usage=%d new_usage=%d",
+			     i, capacity_curr_of(i), get_cpu_usage(i), new_usage);
 
 		if (new_usage >	capacity_orig_of(i))
 			continue;
@@ -5225,6 +5236,8 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 		if (target_cpu == task_cpu(p))
 			target_cpu = i;
 	}
+
+	trace_printk("target_cpu=%d", target_cpu);
 
 	if (target_cpu != task_cpu(p)) {
 		struct energy_env eenv = {
@@ -5246,7 +5259,10 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 			target_cap = eenv.max_usage;
 	}
 out:
+	trace_printk("target_cap=%d capacity_curr=%lu",
+		     target_cap, capacity_curr_of(target_cpu));
 	if (target_cap > capacity_curr_of(target_cpu)) {
+		trace_printk("new_cap=%d", target_cap);
 		set_capacity_curr(cpu_rq(target_cpu), target_cap);
 	}
 
@@ -5358,10 +5374,12 @@ out:
 	 * we need to compute/annotate the new max_group_usage with
 	 * this task utilization added.
 	 */
-	trace_printk("task %d (util=%lu) wake-up on CPU%d (usage=%d) -> new_cap=%lu",
-		     p->pid, task_utilization(p), new_cpu, get_cpu_usage(new_cpu),
-		     get_cpu_usage(new_cpu) + task_utilization(p));
 	if (!energy_aware()) {
+		trace_printk("task %d (util=%lu) wake-up on CPU%d"
+			     " (usage=%d) -> new_cap=%lu",
+			     p->pid, task_utilization(p), new_cpu,
+			     get_cpu_usage(new_cpu),
+			     get_cpu_usage(new_cpu) + task_utilization(p));
 		set_capacity_curr(cpu_rq(new_cpu),
 				  get_cpu_usage(new_cpu) + task_utilization(p));
 	}
@@ -6209,6 +6227,8 @@ static int detach_tasks(struct lb_env *env)
 			goto next;
 
 detach:
+		trace_printk("detach cpu=%d -> task=%d util=%lu",
+			     cpu_of(env->src_rq), p->pid, task_utilization(p));
 		detach_task(p, env);
 		list_add(&p->se.group_node, &env->tasks);
 
@@ -6267,6 +6287,8 @@ static void attach_task(struct rq *rq, struct task_struct *p)
 static void attach_one_task(struct rq *rq, struct task_struct *p)
 {
 	raw_spin_lock(&rq->lock);
+	trace_printk("attach task=%d util=%lu -> cpu=%d",
+		     p->pid, task_utilization(p), cpu_of(rq));
 	attach_task(rq, p);
 	raw_spin_unlock(&rq->lock);
 }
@@ -6806,8 +6828,10 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 			sgs->idle_cpus++;
 
 		/* If cpu is over-utilized, bail out of ea */
-		if (env->use_ea && cpu_overutilized(i, env->sd))
+		if (env->use_ea && cpu_overutilized(i, env->sd)) {
+			trace_printk("tipping point for cpu %d -> disabling eas", i);
 			env->use_ea = false;
+		}
 	}
 
 	/* Adjust by relative CPU capacity of the group */
@@ -6996,6 +7020,8 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 		}
 
 		if (env->use_ea && update_sd_pick_costliest(sds, sgs)) {
+			trace_printk("new costliest group usage=%lu eff=%lu",
+				     sgs->group_usage, sgs->group_eff);
 			sds->costliest = sg;
 			sds->costliest_stat = *sgs;
 		}
@@ -7524,6 +7550,7 @@ static int load_balance(int this_cpu, struct rq *this_rq,
 	struct rq *busiest; //, *rq;
 	unsigned long flags; //, capacity, wl;
 	struct cpumask *cpus = this_cpu_cpumask_var_ptr(load_balance_mask);
+	char buf[64];
 
 	struct lb_env env = {
 		.sd		= sd,
@@ -7538,6 +7565,12 @@ static int load_balance(int this_cpu, struct rq *this_rq,
 		.use_ea		= (energy_aware() && sd->groups->sge) ? true : false,
 	};
 
+	snprintf(buf, sizeof(buf), "%*pbl", cpumask_pr_args(env.dst_grpmask));
+	trace_printk("level=%s dst_cpu=%d dst_grpmask=%s",
+		     env.sd->name,
+		     env.dst_cpu,
+		     buf);
+
 	/*
 	 * For NEWLY_IDLE load_balancing, we don't need to consider
 	 * other cpus in our group
@@ -7551,6 +7584,8 @@ static int load_balance(int this_cpu, struct rq *this_rq,
 
 redo:
 	if (!should_we_balance(&env)) {
+		trace_printk("level=%s dst_cpu=%d dst_grpmask=%s !should_we_balance",
+			     env.sd->name, env.dst_cpu, buf);
 		*continue_balancing = 0;
 		goto out_balanced;
 	}
@@ -7561,10 +7596,20 @@ redo:
 		goto out_balanced;
 	}
 
+	if (env.use_ea) {
+		snprintf(buf, sizeof(buf), "%*pbl",
+			 cpumask_pr_args(sched_group_cpus(group)));
+		trace_printk("costliest_group=%s", buf);
+	}
+
 	busiest = find_busiest_queue(&env, group);
 	if (!busiest) {
 		schedstat_inc(sd, lb_nobusyq[idle]);
 		goto out_balanced;
+	}
+
+	if (env.use_ea) {
+		trace_printk("costliest_queue=%d", cpu_of(busiest));
 	}
 
 	BUG_ON(busiest == env.dst_rq);
@@ -7933,9 +7978,11 @@ static int idle_balance(struct rq *this_rq)
 		u64 t0, domain_cost;
 
 		if (!(sd->flags & SD_LOAD_BALANCE) || !do_idle_balance()) {
-			trace_printk("cpu: %d sd:%s not to be balanced", this_cpu, sd->name);
+			trace_printk("ILB cpu=%d sd=%s: disabled", this_cpu, sd->name);
 			continue;
 		}
+
+		trace_printk("ILB cpu=%d sd=%s", this_cpu, sd->name);
 
 		if (this_rq->avg_idle < curr_cost + sd->max_newidle_lb_cost) {
 			update_next_balance(sd, 0, &next_balance);
@@ -8305,7 +8352,7 @@ static void rebalance_domains(struct rq *rq, enum cpu_idle_type idle)
 		max_cost += sd->max_newidle_lb_cost;
 
 		if (!(sd->flags & SD_LOAD_BALANCE) || !do_periodic_balance()) {
-			trace_printk("cpu: %d sd:%s not to be balanced", cpu, sd->name);
+			trace_printk("PLB disabled cpu=%d sd=%s", cpu, sd->name);
 			continue;
 		}
 
@@ -8329,6 +8376,7 @@ static void rebalance_domains(struct rq *rq, enum cpu_idle_type idle)
 		}
 
 		if (time_after_eq(jiffies, sd->last_balance + interval)) {
+			trace_printk("PLB cpu=%d sd=%s", cpu, sd->name);
 			if (load_balance(cpu, rq, sd, idle, &continue_balancing)) {
 				/*
 				 * The LBF_DST_PINNED logic could have changed

@@ -170,7 +170,7 @@ static int cap_gov_thread(void *data)
 	do {
 		down_write(&policy->rwsem);
 		if (!atomic_read(&gd->need_wake_task))  {
-			trace_printk("NOT waking up kthread (%d)", gd->task->pid);
+			trace_printk("kthread (%d) goes to sleep", gd->task->pid);
 			up_write(&policy->rwsem);
 			set_current_state(TASK_INTERRUPTIBLE);
 			schedule();
