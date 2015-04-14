@@ -24,6 +24,10 @@ void init_cpu_topology(void);
 void store_cpu_topology(unsigned int cpuid);
 const struct cpumask *cpu_coregroup_mask(int cpu);
 
+struct sched_domain;
+#define arch_scale_cpu_capacity scale_cpu_capacity
+extern unsigned long scale_cpu_capacity(struct sched_domain *sd, int cpu);
+
 #else
 
 static inline void init_cpu_topology(void) { }
