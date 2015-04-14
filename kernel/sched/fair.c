@@ -7770,41 +7770,8 @@ more_balance:
 			 */
 			sd->nr_balance_failed = sd->cache_nice_tries+1;
 		}
-	} else {
+	} else
 		sd->nr_balance_failed = 0;
-
-#if 0
-		/*
-		 * find the new busiest cpu and scale capacity to it.
-		 * shamelessly stolen from find_busiest_queue.
-		 */
-		for_each_cpu_and(i, sched_group_cpus(group), env->cpus) {
-			rq = cpu_rq(i);
-			capacity = capacity_of(i);
-			wl = weighted_cpuload(i);
-
-			/*
-			 * For the load comparisons with the other cpu's, consider
-			 * the weighted_cpuload() scaled with the cpu capacity, so
-			 * that the load can be moved away from the cpu that is
-			 * potentially running at a lower capacity.
-			 *
-			 * Thus we're looking for max(wl_i / capacity_i), crosswise
-			 * multiplication to rid ourselves of the division works out
-			 * to: wl_i * capacity_j > wl_j * capacity_i;  where j is
-			 * our previous maximum.
-			 */
-			if (wl * busiest_capacity > busiest_load * capacity) {
-				busiest_load = wl;
-				busiest_capacity = capacity;
-				busiest = rq;
-			}
-		}
-
-		//cpufreq_scale_busiest_cpu(i, wl, capacity);
-		cpufreq_cap_gov_request(i, wl, capacity);
-#endif
-	}
 
 	if (likely(!active_balance)) {
 		/* We were unbalanced, so reset the balancing interval */
