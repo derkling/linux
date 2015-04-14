@@ -5217,7 +5217,11 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 				break;
 		}
 
-		/* cpu has capacity at higher OPP, keep it as fallback */
+		/*
+		 * capacity_curr_of(i) < new_usage(i) < capacity_orig_of(i)
+		 * Keep CPU i as fallback (we do want to still try to evaluate
+		 * waking up p on some other CPU?), as it has capacity at higher OPP.
+		 */
 		if (target_cpu == task_cpu(p))
 			target_cpu = i;
 	}
@@ -6081,6 +6085,10 @@ int can_migrate_task(struct task_struct *p, struct lb_env *env)
 	 * 2) task is cache cold, or
 	 * 3) too many balance attempts have failed.
 	 */
+
+	/* XXX
+	 * can task_hot affect our decisions?
+	 */
 	tsk_cache_hot = task_hot(p, env);
 	if (!tsk_cache_hot)
 		tsk_cache_hot = migrate_degrades_locality(p, env);
@@ -6456,6 +6464,8 @@ static inline void init_sd_lb_stats(struct sd_lb_stats *sds)
 	 */
 	*sds = (struct sd_lb_stats){
 		.busiest = NULL,
+		/* XXX do we need this? */
+		.costliest = NULL,
 		.local = NULL,
 		.total_load = 0UL,
 		.total_capacity = 0UL,
@@ -6877,11 +6887,18 @@ static bool update_sd_pick_busiest(struct lb_env *env,
 	return false;
 }
 
+/* XXX why noinline? */
 static noinline bool update_sd_pick_costliest(struct sd_lb_stats *sds,
 					      struct sg_lb_stats *sgs)
 {
 	struct sg_lb_stats *costliest = &sds->costliest_stat;
 
+	/* XXX
+	 * what about if we have a group with 0 usage?
+	 * it will have 0 eff, so it will turn out to be the
+	 * costliest one, while it is probably the most energy
+	 * efficient?
+	 */
 	if (sgs->group_eff < costliest->group_eff)
 		return true;
 
@@ -7322,6 +7339,7 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 			};
 			unsigned long energy = sched_group_energy(&eenv);
 
+			/* XXX we don't want to down migrate, right? */
 			if (rq->nr_running == 1 && capacity_orig_of(i) >=
 					capacity_orig_of(env->dst_cpu))
 				continue;
@@ -7370,6 +7388,11 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 		if (rt > env->fbq_type)
 			continue;
 
+		/* XXX
+		 * maybe we can embedd parametrization inside these helpers,
+		 * as the inequality below is pretty similar to what we have
+		 * for EAS.
+		 */
 		capacity = capacity_of(i);
 
 		wl = weighted_cpuload(i);
