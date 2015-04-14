@@ -138,7 +138,7 @@ static int m4u_alloc_pte(struct mtk_iommu_domain *domain, struct imu_pgd_t *pgd,
 	struct device *dev = domain->piommuinfo->dev;
 	unsigned int ret;
 
-	pte_new_va = kmem_cache_zalloc(pte_kmem, GFP_KERNEL);
+	pte_new_va = kmem_cache_zalloc(pte_kmem, GFP_ATOMIC);
 	if (unlikely(!pte_new_va)) {
 		dev_err(dev, "%s:fail, no memory\n", __func__);
 		return -ENOMEM;
