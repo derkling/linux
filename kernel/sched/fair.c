@@ -4319,7 +4319,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &p->se;
 	int task_sleep = flags & DEQUEUE_SLEEP;
-	int cpu = cpu_of(rq);
+	//int cpu = cpu_of(rq);
 
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
@@ -4367,9 +4367,9 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		update_rq_runnable_avg(rq, 1);
 	}
 
-	trace_printk("task %d dequeued from CPU%d (new_usage=%d)",
-		     p->pid, cpu, get_cpu_usage(cpu));
-	set_capacity_curr(rq, get_cpu_usage(cpu));
+	//trace_printk("task %d dequeued from CPU%d (new_usage=%d)",
+	//	     p->pid, cpu, get_cpu_usage(cpu));
+	//set_capacity_curr(rq, get_cpu_usage(cpu));
 	hrtick_update(rq);
 }
 
