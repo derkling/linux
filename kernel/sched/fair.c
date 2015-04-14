@@ -7785,6 +7785,58 @@ out_one_pinned:
 
 	ld_moved = 0;
 out:
+	/* XXX
+	 * We moved some task around and we didn't reach the tipping
+	 * point while doing so. We have now to get the new
+	 * max usage of src and dst groups (if different) and, if
+	 * they are changed, we must trigger a freq switch.
+	 */
+	if (ld_moved && env.use_ea) {
+		unsigned long src_util, dst_util;
+		struct sched_domain *sd;
+		struct sched_group *sg_shared_cap = NULL;
+		struct energy_env eenv;
+
+		if (!env.dst_grpmask || !group)
+			goto out_no_dvfs;
+
+		/* Evaluate the max usage of the src cpu group */
+		sd = highest_flag_domain(env.src_cpu, SD_SHARE_CAP_STATES);
+		if (sd && sd->parent)
+			sg_shared_cap = sd->parent->groups;
+
+		eenv = (struct energy_env){
+			.src_cpu = -1,
+			.dst_cpu = -1,
+			.sg_cap = sg_shared_cap ? sg_shared_cap : sd->groups,
+		};
+
+		src_util = group_max_usage(&eenv);
+		trace_printk("src_cpu: %d src_util: %lu", env.src_cpu, src_util);
+		set_capacity_curr(cpu_rq(env.src_cpu), src_util);
+
+		/*
+		 * If src and dst belong to different groups, evaluate also
+		 * the max usage of the dst cpu group
+		 */
+		if (!cpumask_intersects(env.dst_grpmask, sched_group_cpus(sg_shared_cap))) {
+			sd = highest_flag_domain(env.dst_cpu, SD_SHARE_CAP_STATES);
+			if (sd && sd->parent)
+				sg_shared_cap = sd->parent->groups;
+
+			eenv = (struct energy_env){
+				.src_cpu = -1,
+				.dst_cpu = -1,
+				.sg_cap = sg_shared_cap ? sg_shared_cap : sd->groups,
+			};
+
+			dst_util = group_max_usage(&eenv);
+			trace_printk("dst_cpu: %d, dst_util: %lu", env.dst_cpu, dst_util);
+			set_capacity_curr(cpu_rq(env.dst_cpu), src_util);
+		}
+	}
+
+out_no_dvfs:
 	return ld_moved;
 }
 
