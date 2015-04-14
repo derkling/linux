@@ -17,6 +17,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/slab.h>
 
 #include <asm/cpuidle.h>
 
@@ -94,29 +95,39 @@ static int __init arm64_idle_init(void)
 {
 	int cpu, ret;
 	struct cpuidle_driver *drv = &arm64_idle_driver;
-
-	/*
-	 * Initialize idle states data, starting at index 1.
-	 * This driver is DT only, if no DT idle states are detected (ret == 0)
-	 * let the driver initialization fail accordingly since there is no
-	 * reason to initialize the idle driver if only wfi is supported.
-	 */
-	ret = dt_init_idle_driver(drv, arm64_idle_state_match, 1);
-	if (ret <= 0)
-		return ret ? : -ENODEV;
+	cpumask_t *cpumask;
 
 	/*
 	 * Call arch CPU operations in order to initialize
 	 * idle states suspend back-end specific data
 	 */
 	for_each_possible_cpu(cpu) {
-		ret = cpu_init_idle(cpu);
-		if (ret) {
-			pr_err("CPU %d failed to init idle CPU ops\n", cpu);
-			return ret;
+		if(cpu){
+			drv = kzalloc(sizeof(struct cpuidle_driver),
+				      GFP_KERNEL);
+			memcpy(drv, &arm64_idle_driver,
+			       sizeof(arm64_idle_driver));
 		}
+		cpumask = kzalloc(cpumask_size(), GFP_KERNEL);
+		cpumask_empty(cpumask);
+		cpumask_set_cpu(cpu, cpumask);
+		drv->cpumask = cpumask;
+		/*
+		* Initialize idle states data, starting at index 1.
+		* This driver is DT only, if no DT idle states are detected (ret == 0)
+		* let the driver initialization fail accordingly since there is no
+		* reason to initialize the idle driver if only wfi is supported.
+		*/
+		ret = dt_init_idle_driver(drv, arm64_idle_state_match, 1);
+		if (ret <= 0)
+			pr_warn("CPU %d failed to init idle dt\n", cpu);
+		ret = cpu_init_idle(cpu);
+		if (ret)
+			pr_warn("CPU %d failed to init idle CPU ops\n", cpu);
+		ret = cpuidle_register(drv, NULL);
+		if (ret)
+			pr_warn("CPU %d failed to register idle driver\n", cpu);
 	}
-
-	return cpuidle_register(drv, NULL);
+	return 0;
 }
 device_initcall(arm64_idle_init);
