@@ -4619,24 +4619,22 @@ static inline bool energy_aware(void)
 }
 
 /*
- * cpu_norm_usage() returns the cpu usage relative to it's current capacity,
+ * cpu_norm_usage() returns the cpu usage relative to a specific capacity,
  * i.e. it's busy ratio, in the range [0..SCHED_LOAD_SCALE] which is useful for
  * energy calculations. Using the scale-invariant usage returned by
  * get_cpu_usage() and approximating scale-invariant usage by:
  *
  *   usage ~ (curr_freq/max_freq)*1024 * capacity_orig/1024 * running_time/time
  *
- * the normalized usage can be found using capacity_curr.
+ * the normalized usage can be found using the specific capacity.
  *
- *   capacity_curr = capacity_orig * curr_freq/max_freq
+ *   capacity = capacity_orig * curr_freq/max_freq
  *
- *   norm_usage = running_time/time ~ usage/capacity_curr
+ *   norm_usage = running_time/time ~ usage/capacity
  */
-static inline unsigned long cpu_norm_usage(int cpu)
+static inline unsigned long cpu_norm_usage(int cpu, unsigned long capacity)
 {
-	unsigned long capacity_curr = capacity_curr_of(cpu);
-
-	return (get_cpu_usage(cpu) << SCHED_CAPACITY_SHIFT)/capacity_curr;
+	return (get_cpu_usage(cpu) << SCHED_CAPACITY_SHIFT)/capacity;
 }
 
 static unsigned group_max_usage(struct sched_group *sg)
@@ -4659,13 +4657,14 @@ static unsigned group_max_usage(struct sched_group *sg)
  * latter is used as the estimate as it leads to a more pessimistic energy
  * estimate (more busy).
  */
-static unsigned group_norm_usage(struct sched_group *sg)
+static unsigned group_norm_usage(struct sched_group *sg, int cap_idx)
 {
 	int i;
 	unsigned long usage_sum = 0;
+	unsigned long capacity = sg->sge->cap_states[cap_idx].cap;
 
 	for_each_cpu(i, sched_group_cpus(sg))
-		usage_sum += cpu_norm_usage(i);
+		usage_sum += cpu_norm_usage(i, capacity);
 
 	if (usage_sum > SCHED_CAPACITY_SCALE)
 		return SCHED_CAPACITY_SCALE;
@@ -4738,7 +4737,7 @@ static unsigned int sched_group_energy(struct sched_group *sg_top)
 					sg_cap_util = sg;
 
 				cap_idx = find_new_capacity(sg_cap_util, sg->sge);
-				group_util = group_norm_usage(sg);
+				group_util = group_norm_usage(sg, cap_idx);
 				sg_busy_energy = (group_util * sg->sge->cap_states[cap_idx].power)
 										>> SCHED_CAPACITY_SHIFT;
 				sg_idle_energy = ((SCHED_LOAD_SCALE-group_util) * sg->sge->idle_states[0].power)
