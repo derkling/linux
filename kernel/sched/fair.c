@@ -7832,8 +7832,10 @@ out:
 		struct sched_group *sg_shared_cap = NULL;
 		struct energy_env eenv;
 
-		if (!env.dst_grpmask || !group)
-			goto out_no_dvfs;
+		/*
+		 * If here we pulled someone from the costliest group.
+		 */
+		BUG_ON(!group);
 
 		/* Evaluate the max usage of the src cpu group */
 		sd = highest_flag_domain(env.src_cpu, SD_SHARE_CAP_STATES);
@@ -7852,9 +7854,12 @@ out:
 
 		/*
 		 * If src and dst belong to different groups, evaluate also
-		 * the max usage of the dst cpu group
+		 * the max usage of the dst cpu group.
+		 * dst_grpmask might be NULL for NEWLY_IDLE.
 		 */
-		if (!cpumask_intersects(env.dst_grpmask, sched_group_cpus(sg_shared_cap))) {
+		if (env.dst_grpmask &&
+		    !cpumask_intersects(env.dst_grpmask,
+					sched_group_cpus(sg_shared_cap))) {
 			sd = highest_flag_domain(env.dst_cpu, SD_SHARE_CAP_STATES);
 			if (sd && sd->parent)
 				sg_shared_cap = sd->parent->groups;
