@@ -5261,10 +5261,8 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 out:
 	trace_printk("target_cap=%d capacity_curr=%lu",
 		     target_cap, capacity_curr_of(target_cpu));
-	if (target_cap > capacity_curr_of(target_cpu)) {
-		trace_printk("new_cap=%d", target_cap);
-		set_capacity_curr(cpu_rq(target_cpu), target_cap);
-	}
+	trace_printk("new_cap=%d", target_cap);
+	set_capacity_curr(cpu_rq(target_cpu), target_cap);
 
 	return target_cpu;
 }
