@@ -4448,6 +4448,9 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 	int cpu, total_energy = 0;
 	struct cpumask visit_cpus;
 	struct sched_group *sg;
+	int cap_src = 0;
+	int cap_dst = 0;
+	int perf_diff = 0;
 
 	WARN_ON(!eenv->sg_top->sge);
 
@@ -4484,6 +4487,11 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 					eenv->sg_cap = sg;
 
 				cap_idx = find_new_capacity(eenv, sg->sge);
+				if (cpu == eenv->src_cpu)
+					cap_src = sg->sge->cap_states[cap_idx].cap;
+				else if (cpu == eenv->dst_cpu)
+					cap_dst = sg->sge->cap_states[cap_idx].cap;
+
 				group_util = group_norm_usage(eenv, sg);
 				sg_busy_energy = (group_util * sg->sge->cap_states[cap_idx].power)
 										>> SCHED_CAPACITY_SHIFT;
@@ -4505,6 +4513,13 @@ next_cpu:
 	}
 
 	eenv->energy = total_energy;
+
+	perf_diff = cap_dst - cap_src;
+	trace_sched_group_energy(
+			eenv->src_cpu, eenv->dst_cpu, eenv->usage_delta,
+			cap_src, cap_dst,
+			total_energy, perf_diff);
+
 	return total_energy;
 }
 

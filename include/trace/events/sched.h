@@ -494,6 +494,41 @@ TRACE_EVENT(sched_load_avg_cpu,
 	TP_printk("cpu=%d load=%lu utilization=%lu",
 		  __entry->cpu, __entry->load, __entry->utilization)
 );
+
+/*
+ * Tracepoint for accounting sched group energy
+ */
+TRACE_EVENT(sched_group_energy,
+
+	TP_PROTO(int scpu, int dcpu, int udelta, int scap, int dcap, int nrg, int pwr),
+
+	TP_ARGS(scpu, dcpu, udelta, scap, dcap, nrg, pwr),
+
+	TP_STRUCT__entry(
+		__field( int,	scpu				)
+		__field( int,	dcpu				)
+		__field( int,	udelta				)
+		__field( int,	scap				)
+		__field( int,	dcap				)
+		__field( int,	nrg				)
+		__field( int,	pwr				)
+	),
+
+	TP_fast_assign(
+		__entry->scpu 		= scpu;
+		__entry->dcpu 		= dcpu;
+		__entry->udelta 	= udelta;
+		__entry->scap 		= scap;
+		__entry->dcap 		= dcap;
+		__entry->nrg 		= nrg;
+		__entry->pwr 		= pwr;
+	),
+
+	TP_printk("src_cpu=%d dst_cpu=%d usage_delta=%d src_cap=%d dst_cap=%d total_energy=%d perf_diff=%d",
+		__entry->scpu, __entry->dcpu, __entry->udelta,
+		__entry->scap, __entry->dcap,
+		__entry->nrg, __entry->pwr)
+);
 #endif /* _TRACE_SCHED_H */
 
 /* This part must be outside protection */
