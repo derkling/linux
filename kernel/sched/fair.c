@@ -4797,8 +4797,6 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 	int cap_dst = 0;
 	int perf_diff = 0;
 
-	trace_printk("src: %d, dst: %d, delta: %d\n",
-			eenv->src_cpu, eenv->dst_cpu, eenv->usage_delta);
 
 	WARN_ON(!eenv->sg_top->sge);
 
@@ -4833,8 +4831,6 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 				cpumask_pr_args(sched_group_cpus(sg_shared_cap)));
 		else
 			scnprintf(buff2, 16, "(Nil)");
-		trace_printk("visit_cpus: %s, cpu: %d, sd: %s, sg_shared_cap: %s\n",
-				buff1, cpu, sd->name, buff2);
 
 		for_each_domain(cpu, sd) {
 			sg = sd->groups;
@@ -4842,7 +4838,6 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 // At MC level  (single core), sg is a list of single CPUs
 // At DIE level (single cluster), sg is a list of clusters
 
-			trace_printk("domain: %s\n", sd->name);
 
 			/* Has this sched_domain already been visited? */
 			if (sd->child && cpumask_first(sched_group_cpus(sg)) != cpu)
@@ -4896,11 +4891,6 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 				total_energy += sg_busy_energy + sg_idle_energy;
 
 				scnprintf(buff1, 16, "%*pbl", cpumask_pr_args(sched_group_cpus(eenv->sg_cap)));
-				trace_printk("gc: %s, cx: %d, ix: %d, gu: %d, be: %d, ie: %d, te: %d\n",
-						buff1,
-						cap_idx, idle_idx, group_util,
-						sg_busy_energy, sg_idle_energy,
-						total_energy);
 
 
 // If we are at the smallest SD level (i.e. MC) than we mark this CPU as
@@ -4910,7 +4900,6 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 					cpumask_xor(&visit_cpus, &visit_cpus, sched_group_cpus(sg));
 
 				scnprintf(buff1, 16, "%*pbl", cpumask_pr_args(&visit_cpus));
-				trace_printk("vm: %s\n", buff1);
 
 // The current SG mask is equal to the top level SG mask only when the current
 // SG is the DIE level group.
@@ -4927,7 +4916,6 @@ next_cpu:
 		continue;
 	}
 
-	trace_printk("energy: %d\n", total_energy);
 
 	eenv->energy = total_energy;
 
