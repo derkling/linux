@@ -4593,6 +4593,10 @@ static int energy_diff(struct energy_env *eenv)
 	eenv->nrg.after = energy_after;
 	eenv->nrg.diff = eenv->nrg.after - eenv->nrg.before;
 
+	trace_sched_energy_diff(
+			eenv->src_cpu, eenv->dst_cpu, eenv->usage_delta,
+			eenv->nrg.before, eenv->nrg.after, eenv->nrg.diff,
+			eenv->cap.before, eenv->cap.after, eenv->cap.diff);
 	return eenv->nrg.diff;
 }
 
