@@ -4637,6 +4637,7 @@ struct energy_env {
 	int			usage_delta;
 	int			src_cpu;
 	int			dst_cpu;
+	struct sched_group	*src_grp;
 	int			energy;
 };
 
@@ -4671,6 +4672,9 @@ static inline int calc_usage_delta(struct energy_env *eenv, int cpu)
 		return -eenv->usage_delta;
 	if (cpu == eenv->dst_cpu)
 		return eenv->usage_delta;
+	if (eenv->src_grp && cpumask_test_cpu(cpu,
+				sched_group_cpus(eenv->src_grp)))
+		return -get_cpu_usage(cpu);
 	return 0;
 }
 
