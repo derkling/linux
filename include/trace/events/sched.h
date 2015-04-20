@@ -639,6 +639,48 @@ TRACE_EVENT(sched_load_avg_cpu,
 	TP_printk("cpu=%d load=%lu utilization=%lu",
 		  __entry->cpu, __entry->load, __entry->utilization)
 );
+
+/*
+ * Tracepoint for accounting sched group energy
+ */
+TRACE_EVENT(sched_energy_diff,
+
+	TP_PROTO(int scpu, int dcpu, int udelta, int nrgb, int nrga, int nrgd, int capb, int capa, int capd),
+
+	TP_ARGS(scpu, dcpu, udelta, nrgb, nrga, nrgd, capb, capa, capd),
+
+	TP_STRUCT__entry(
+		__field( int,	scpu	)
+		__field( int,	dcpu	)
+		__field( int,	udelta	)
+		__field( int,	nrgb	)
+		__field( int,	nrga	)
+		__field( int,	nrgd	)
+		__field( int,	capb	)
+		__field( int,	capa	)
+		__field( int,	capd	)
+	),
+
+	TP_fast_assign(
+		__entry->scpu 		= scpu;
+		__entry->dcpu 		= dcpu;
+		__entry->udelta 	= udelta;
+		__entry->nrgb 		= nrgb;
+		__entry->nrga 		= nrga;
+		__entry->nrgd 		= nrgd;
+		__entry->capb 		= capb;
+		__entry->capa 		= capa;
+		__entry->capd 		= capd;
+	),
+
+	TP_printk("src_cpu=%d dst_cpu=%d usage_delta=%d "
+			"nrg_before=%d nrg_after=%d nrg_diff=%d "
+			"cap_before=%d cap_after=%d cap_diff=%d\n",
+		__entry->scpu, __entry->dcpu, __entry->udelta,
+		__entry->nrgb, __entry->nrga, __entry->nrgd,
+		__entry->capb, __entry->capa, __entry->capd)
+);
+
 #endif /* _TRACE_SCHED_H */
 
 /* This part must be outside protection */
