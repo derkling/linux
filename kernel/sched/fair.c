@@ -4799,7 +4799,7 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 			sg = sd->groups;
 
 			/* Has this sched_domain already been visited? */
-			if (sd->child && cpumask_first(sched_group_cpus(sg)) != cpu)
+			if (sd->child && group_first_cpu(sg) != cpu)
 				break;
 
 			do {
