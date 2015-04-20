@@ -7874,7 +7874,6 @@ out:
 		}
 	}
 
-out_no_dvfs:
 	return ld_moved;
 }
 
