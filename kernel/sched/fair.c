@@ -4638,6 +4638,7 @@ struct energy_env {
 	int			usage_delta;
 	int			src_cpu;
 	int			dst_cpu;
+	struct sched_group	*src_grp;
 	int			energy;
 };
 
@@ -4677,6 +4678,9 @@ static inline int calc_usage_delta(struct energy_env *eenv, int cpu)
 		return -eenv->usage_delta;
 	if (cpu == eenv->dst_cpu)
 		return eenv->usage_delta;
+	if (eenv->src_grp && cpumask_test_cpu(cpu,
+				sched_group_cpus(eenv->src_grp)))
+		return -get_cpu_usage(cpu);
 	return 0;
 }
 
@@ -4857,7 +4861,17 @@ static int energy_diff(struct energy_env *eenv)
 	if (eenv->src_cpu == eenv->dst_cpu)
 		return 0;
 
-	sd_cpu = (eenv->src_cpu != -1) ? eenv->src_cpu : eenv->dst_cpu;
+	/*
+	 * Setting src_grp currently implies vacating the group. Set src_cpu
+	 * instead for the 'before' scenario.
+	 */
+	if (eenv->src_grp)
+		eenv_before.src_cpu =
+			cpumask_first(sched_group_cpus(eenv->src_grp));
+
+	sd_cpu = (eenv_before.src_cpu != -1) ? eenv_before.src_cpu
+						: eenv_before.dst_cpu;
+
 	sd = rcu_dereference(per_cpu(sd_ea, sd_cpu));
 
 	if (!sd)
@@ -4865,7 +4879,8 @@ static int energy_diff(struct energy_env *eenv)
 
 	sg = sd->groups;
 	do {
-		if (eenv->src_cpu != -1 && cpumask_test_cpu(eenv->src_cpu,
+		if (eenv_before.src_cpu != -1 &&
+				cpumask_test_cpu(eenv_before.src_cpu,
 							sched_group_cpus(sg))) {
 			eenv_before.sg_top = eenv->sg_top = sg;
 			energy_before += sched_group_energy(&eenv_before);
@@ -4875,7 +4890,8 @@ static int energy_diff(struct energy_env *eenv)
 			continue;
 		}
 
-		if (eenv->dst_cpu != -1	&& cpumask_test_cpu(eenv->dst_cpu,
+		if (eenv_before.dst_cpu != -1 &&
+				cpumask_test_cpu(eenv_before.dst_cpu,
 							sched_group_cpus(sg))) {
 			eenv_before.sg_top = eenv->sg_top = sg;
 			energy_before += sched_group_energy(&eenv_before);
