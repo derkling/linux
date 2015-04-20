@@ -4690,7 +4690,7 @@ static inline int calc_usage_delta(struct energy_env *eenv, int cpu)
 	return 0;
 }
 
-static unsigned group_max_usage(struct energy_env *eenv)
+static unsigned __group_max_usage(struct energy_env *eenv)
 {
 	int i, delta;
 	int max_usage = 0;
@@ -4702,6 +4702,28 @@ static unsigned group_max_usage(struct energy_env *eenv)
 	}
 
 	return max_usage;
+}
+
+/* Evaluate the max usage of the cpu's sched group */
+static unsigned long group_max_usage(int cpu,
+				     struct sched_group **sg_shared_cap)
+{
+	struct sched_domain *sd;
+	struct energy_env eenv;
+
+	sd = highest_flag_domain(cpu, SD_SHARE_CAP_STATES);
+	if (sd && sd->parent)
+		*sg_shared_cap = sd->parent->groups;
+	else
+		*sg_shared_cap = sd->groups;
+
+	eenv = (struct energy_env){
+		.src_cpu = -1,
+		.dst_cpu = -1,
+		.sg_cap = *sg_shared_cap,
+	};
+
+	return __group_max_usage(&eenv);
 }
 
 /*
@@ -4733,7 +4755,7 @@ static int find_new_capacity(struct energy_env *eenv,
 		struct sched_group_energy *sge)
 {
 	int idx;
-	unsigned long util = group_max_usage(eenv);
+	unsigned long util = __group_max_usage(eenv);
 	eenv->max_usage = util;
 
 	for (idx = 0; idx < sge->nr_cap_states; idx++) {
@@ -7826,27 +7848,16 @@ out:
 	 */
 	if (ld_moved && env.use_ea) {
 		unsigned long src_util, dst_util;
-		struct sched_domain *sd;
-		struct sched_group *sg_shared_cap = NULL;
-		struct energy_env eenv;
+		struct sched_group *src_shared_cap = NULL,
+				   *dst_shared_cap = NULL;
 
 		/*
 		 * If here we pulled someone from the costliest group.
 		 */
 		BUG_ON(!group);
 
-		/* Evaluate the max usage of the src cpu group */
-		sd = highest_flag_domain(env.src_cpu, SD_SHARE_CAP_STATES);
-		if (sd && sd->parent)
-			sg_shared_cap = sd->parent->groups;
-
-		eenv = (struct energy_env){
-			.src_cpu = -1,
-			.dst_cpu = -1,
-			.sg_cap = sg_shared_cap ? sg_shared_cap : sd->groups,
-		};
-
-		src_util = group_max_usage(&eenv);
+		/* Evaluate the max usage of src cpu */
+		src_util = group_max_usage(env.src_cpu, &src_shared_cap);
 		trace_printk("src_cpu: %d src_util: %lu", env.src_cpu, src_util);
 		set_capacity_curr(cpu_rq(env.src_cpu), src_util);
 
@@ -7857,20 +7868,10 @@ out:
 		 */
 		if (env.dst_grpmask &&
 		    !cpumask_intersects(env.dst_grpmask,
-					sched_group_cpus(sg_shared_cap))) {
-			sd = highest_flag_domain(env.dst_cpu, SD_SHARE_CAP_STATES);
-			if (sd && sd->parent)
-				sg_shared_cap = sd->parent->groups;
-
-			eenv = (struct energy_env){
-				.src_cpu = -1,
-				.dst_cpu = -1,
-				.sg_cap = sg_shared_cap ? sg_shared_cap : sd->groups,
-			};
-
-			dst_util = group_max_usage(&eenv);
+					sched_group_cpus(src_shared_cap))) {
+			dst_util = group_max_usage(env.dst_cpu, &dst_shared_cap);
 			trace_printk("dst_cpu: %d, dst_util: %lu", env.dst_cpu, dst_util);
-			set_capacity_curr(cpu_rq(env.dst_cpu), src_util);
+			set_capacity_curr(cpu_rq(env.dst_cpu), dst_util);
 		}
 	}
 
