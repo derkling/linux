@@ -5258,6 +5258,10 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 		if (cpu_overutilized(task_cpu(p), sd))
 			return target_cpu;
 
+		/* Avoid computations when moving small tasks */
+		if (eenv.usage_delta == 0)
+			return task_cpu(p);
+
 		if (energy_diff(&eenv) >= 0)
 			return task_cpu(p);
 	}
