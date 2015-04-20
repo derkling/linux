@@ -7846,7 +7846,8 @@ out:
 	 * max usage of src and dst groups (if different) and, if
 	 * they are changed, we must trigger a freq switch.
 	 */
-	if (ld_moved && env.use_ea) {
+	//if (ld_moved && env.use_ea) {
+	if (ld_moved) {
 		unsigned long src_util, dst_util;
 		struct sched_group *src_shared_cap = NULL,
 				   *dst_shared_cap = NULL;
