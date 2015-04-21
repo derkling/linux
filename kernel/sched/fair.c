@@ -6118,6 +6118,7 @@ static int detach_tasks(struct lb_env *env)
 	struct task_struct *p;
 	unsigned long load = 0;
 	int detached = 0, usage_detached = 0;
+	bool try_to_vac_sg = env->use_ea && env->imbalance > 0;
 
 	lockdep_assert_held(&env->src_rq->lock);
 
@@ -6153,7 +6154,7 @@ static int detach_tasks(struct lb_env *env)
 			};
 			int e_diff = energy_diff(&eenv);
 
-			if (e_diff >= 0)
+			if (e_diff >= 0 && !try_to_vac_sg)
 				goto next;
 
 			/* Do not over-utilize the destination cpu */
@@ -7062,6 +7063,22 @@ static inline void calculate_imbalance(struct lb_env *env, struct sd_lb_stats *s
 	local = &sds->local_stat;
 	busiest = &sds->busiest_stat;
 
+	if (env->use_ea) {
+		struct sg_lb_stats *costliest = &sds->costliest_stat;
+		struct energy_env eenv = {
+			.usage_delta = costliest->group_usage,
+			.src_cpu = -1,
+			.dst_cpu = env->dst_cpu,
+			.src_grp = sds->costliest,
+		};
+
+		int e_diff = energy_diff(&eenv);
+
+		env->imbalance = (e_diff < 0) ? costliest->group_usage : 0;
+
+		return;
+	}
+
 	if (busiest->group_type == group_imbalanced) {
 		/*
 		 * In the group_imb case we cannot rely on group-wide averages
@@ -7156,7 +7173,7 @@ static struct sched_group *find_busiest_group(struct lb_env *env)
 	busiest = &sds.busiest_stat;
 
 	if (env->use_ea)
-		return sds.costliest;
+		goto *(void *) sds.costliest ? &&force_balance : &&out_balanced;
 
 	/* ASYM feature bypasses nice load balance check */
 	if ((env->idle == CPU_IDLE || env->idle == CPU_NEWLY_IDLE) &&
@@ -7221,7 +7238,7 @@ static struct sched_group *find_busiest_group(struct lb_env *env)
 force_balance:
 	/* Looks like there is an imbalance. Compute it */
 	calculate_imbalance(env, &sds);
-	return sds.busiest;
+	return env->use_ea ? sds.costliest : sds.busiest;
 
 out_balanced:
 	env->imbalance = 0;
