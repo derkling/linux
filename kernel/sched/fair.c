@@ -8035,8 +8035,12 @@ out_unlock:
 	busiest_rq->active_balance = 0;
 	raw_spin_unlock(&busiest_rq->lock);
 
-	if (p)
+	if (p) {
 		attach_one_task(target_rq, p);
+		trace_printk("task %d active load balance src=%d target=%d",
+			     p->pid, cpu_of(busiest_rq), target_cpu);
+		adapt_capacity_curr(cpu_of(busiest_rq), target_cpu);
+	}
 
 	local_irq_enable();
 
