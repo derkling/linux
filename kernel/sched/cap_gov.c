@@ -313,13 +313,19 @@ static void cap_gov_start(struct cpufreq_policy *policy)
 		pr_err("%s: failed to create kcap_gov_task thread\n", __func__);
 
 	policy->gov_data = gd;
+	for_each_cpu(cpu, policy->related_cpus)
+		atomic_set(&cpu_rq(cpu)->cap_gov_enabled, 1);
 }
 
 static void cap_gov_stop(struct cpufreq_policy *policy)
 {
 	struct gov_data *gd;
+	int cpu;
 
 	gd = policy->gov_data;
+
+	for_each_cpu(cpu, policy->related_cpus)
+		atomic_set(&cpu_rq(cpu)->cap_gov_enabled, 0);
 	policy->gov_data = NULL;
 
 	kthread_stop(gd->task);

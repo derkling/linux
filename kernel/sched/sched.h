@@ -685,6 +685,7 @@ struct rq {
 #if defined CONFIG_CPU_FREQ_GOV_CAP_GOV && defined CONFIG_IRQ_WORK
 	unsigned int new_cap;
 	struct irq_work cpufreq_work;
+	atomic_t cap_gov_enabled;
 #endif
 };
 

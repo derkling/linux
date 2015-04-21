@@ -7353,6 +7353,7 @@ void __init sched_init(void)
 #if defined CONFIG_CPU_FREQ_GOV_CAP_GOV && defined CONFIG_IRQ_WORK
 		rq->new_cap = 0;
 		init_irq_work(&rq->cpufreq_work, cpufreq_work_func);
+		atomic_set(&rq->cap_gov_enabled, 0);
 #endif
 	}
 
