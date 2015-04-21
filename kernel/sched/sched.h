@@ -1297,6 +1297,8 @@ static inline void idle_exit_fair(struct rq *rq) { }
 
 #endif
 
+unsigned long group_max_usage(int cpu,
+			      struct sched_group **sg_shared_cap);
 #if defined CONFIG_CPU_FREQ_GOV_CAP_GOV && defined CONFIG_IRQ_WORK
 void set_capacity_curr(struct rq *rq, unsigned int new_cap);
 #else

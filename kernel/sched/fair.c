@@ -4705,8 +4705,8 @@ static unsigned __group_max_usage(struct energy_env *eenv)
 }
 
 /* Evaluate the max usage of the cpu's sched group */
-static unsigned long group_max_usage(int cpu,
-				     struct sched_group **sg_shared_cap)
+unsigned long group_max_usage(int cpu,
+			      struct sched_group **sg_shared_cap)
 {
 	struct sched_domain *sd;
 	struct energy_env eenv;
