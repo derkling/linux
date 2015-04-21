@@ -5311,8 +5311,8 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	int sync = wake_flags & WF_SYNC;
 
 	if (!do_wakeup_balance()) {
-		trace_printk("WUB disabled -> task=%d new_cpu=%d",
-			     p->pid, cpu);
+		trace_printk("WUB disabled -> task=%d prev_cpu=%d new_cpu=%d",
+			     p->pid, prev_cpu, new_cpu);
 		goto out;
 	}
 
@@ -8548,7 +8548,7 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 	update_rq_runnable_avg(rq, 1);
 
 	if (task_utilization(curr) >= capacity_curr_of(cpu) * 90 / 100) {
-		trace_printk("task %d tick (CPU%d) -> freq max",
+		trace_printk("task %d tick (CPU%d) crossed up threshold",
 			     curr->pid, cpu);
 		set_capacity_max(rq);
 	}
