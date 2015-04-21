@@ -7213,6 +7213,43 @@ void set_capacity_curr(struct rq *rq, unsigned int new_cap)
 	rq->new_cap = new_cap;
 	irq_work_queue_on(&rq->cpufreq_work, cpu_of(rq));
 }
+
+void set_capacity_max(struct rq *rq)
+{
+	if (!atomic_read(&rq->cap_gov_enabled))
+		return;
+
+	trace_printk("CPU%d -> freq max", cpu_of(rq));
+	set_capacity_curr(rq, SCHED_CAPACITY_MAX);
+}
+
+void adapt_capacity_curr(int src_cpu, int dst_cpu)
+{
+	unsigned long src_util, dst_util;
+	struct sched_group *src_shared_cap = NULL,
+			   *dst_shared_cap = NULL;
+
+	if (!atomic_read(&cpu_rq(src_cpu)->cap_gov_enabled) ||
+	    (dst_cpu != -1 && !atomic_read(&cpu_rq(dst_cpu)->cap_gov_enabled)))
+		return;
+
+	/* Evaluate the max usage of src cpu */
+	src_util = group_max_usage(src_cpu, &src_shared_cap);
+	trace_printk("src_cpu: %d src_util: %lu", src_cpu, src_util);
+	set_capacity_curr(cpu_rq(src_cpu), src_util);
+
+	/*
+	 * If src and dst belong to different groups, evaluate also
+	 * the max usage of the dst cpu group.
+	 * dst_grpmask might be NULL for NEWLY_IDLE.
+	 */
+	if (dst_cpu != -1 &&
+	    !cpumask_test_cpu(dst_cpu, sched_group_cpus(src_shared_cap))) {
+		dst_util = group_max_usage(dst_cpu, &dst_shared_cap);
+		trace_printk("dst_cpu: %d, dst_util: %lu", dst_cpu, dst_util);
+		set_capacity_curr(cpu_rq(dst_cpu), dst_util);
+	}
+}
 #endif
 
 DECLARE_PER_CPU(cpumask_var_t, load_balance_mask);

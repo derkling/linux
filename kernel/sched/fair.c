@@ -5284,7 +5284,7 @@ out:
 	trace_printk("target_cap=%d capacity_curr=%lu",
 		     target_cap, capacity_curr_of(target_cpu));
 	trace_printk("new_cap=%d", target_cap);
-	set_capacity_curr(cpu_rq(target_cpu), target_cap);
+	//set_capacity_curr(cpu_rq(target_cpu), target_cap);
 
 	return target_cpu;
 }
@@ -5388,21 +5388,8 @@ unlock:
 	rcu_read_unlock();
 
 out:
-	/*
-	 * FIXME
-	 * This is obviously wrong! Here, of before getting here,
-	 * we need to compute/annotate the new max_group_usage with
-	 * this task utilization added.
-	 */
-	if (!energy_aware()) {
-		trace_printk("task %d (util=%lu) wake-up on CPU%d"
-			     " (usage=%d) -> new_cap=%lu",
-			     p->pid, task_utilization(p), new_cpu,
-			     get_cpu_usage(new_cpu),
-			     get_cpu_usage(new_cpu) + task_utilization(p));
-		set_capacity_curr(cpu_rq(new_cpu),
-				  get_cpu_usage(new_cpu) + task_utilization(p));
-	}
+	adapt_capacity_curr(prev_cpu, new_cpu != prev_cpu ? new_cpu : -1);
+
 	return new_cpu;
 }
 
@@ -7840,41 +7827,10 @@ out_one_pinned:
 
 	ld_moved = 0;
 out:
-	/* XXX
-	 * We moved some task around and we didn't reach the tipping
-	 * point while doing so. We have now to get the new
-	 * max usage of src and dst groups (if different) and, if
-	 * they are changed, we must trigger a freq switch.
-	 */
-	//if (ld_moved && env.use_ea) {
-	if (ld_moved) {
-		unsigned long src_util, dst_util;
-		struct sched_group *src_shared_cap = NULL,
-				   *dst_shared_cap = NULL;
-
-		/*
-		 * If here we pulled someone from the costliest group.
-		 */
-		BUG_ON(!group);
-
-		/* Evaluate the max usage of src cpu */
-		src_util = group_max_usage(env.src_cpu, &src_shared_cap);
-		trace_printk("src_cpu: %d src_util: %lu", env.src_cpu, src_util);
-		set_capacity_curr(cpu_rq(env.src_cpu), src_util);
-
-		/*
-		 * If src and dst belong to different groups, evaluate also
-		 * the max usage of the dst cpu group.
-		 * dst_grpmask might be NULL for NEWLY_IDLE.
-		 */
-		if (env.dst_grpmask &&
-		    !cpumask_intersects(env.dst_grpmask,
-					sched_group_cpus(src_shared_cap))) {
-			dst_util = group_max_usage(env.dst_cpu, &dst_shared_cap);
-			trace_printk("dst_cpu: %d, dst_util: %lu", env.dst_cpu, dst_util);
-			set_capacity_curr(cpu_rq(env.dst_cpu), dst_util);
-		}
-	}
+	if (ld_moved)
+		/* dst_grpmask might be NULL for NEWLY_IDLE. */
+		adapt_capacity_curr(env.src_cpu,
+				    env.dst_grpmask ? env.dst_cpu : -1);
 
 	return ld_moved;
 }
@@ -8594,7 +8550,7 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 	if (task_utilization(curr) >= capacity_curr_of(cpu) * 90 / 100) {
 		trace_printk("task %d tick (CPU%d) -> freq max",
 			     curr->pid, cpu);
-		set_capacity_curr(rq, SCHED_CAPACITY_MAX);
+		set_capacity_max(rq);
 	}
 }
 
