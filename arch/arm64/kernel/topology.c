@@ -343,6 +343,48 @@ static void update_cpu_capacity(unsigned int cpu)
 		cpu, arch_scale_cpu_capacity(NULL, cpu));
 }
 
+
+/*
+ * Scheduler load-tracking scale-invariance
+ *
+ * Provides the scheduler with a scale-invariance correction factor that
+ * compensates for frequency scaling.
+ */
+
+static DEFINE_PER_CPU(atomic_long_t, cpu_freq_capacity);
+static DEFINE_PER_CPU(atomic_long_t, cpu_max_freq);
+
+/* cpufreq callback function setting current cpu frequency */
+void arch_scale_set_curr_freq(int cpu, unsigned long freq)
+{
+	unsigned long max = atomic_long_read(&per_cpu(cpu_max_freq, cpu));
+	unsigned long curr;
+
+	if (!max)
+		return;
+
+	curr = (freq * SCHED_CAPACITY_SCALE) / max;
+
+	atomic_long_set(&per_cpu(cpu_freq_capacity, cpu), curr);
+}
+
+/* cpufreq callback function setting max cpu frequency */
+void arch_scale_set_max_freq(int cpu, unsigned long freq)
+{
+	atomic_long_set(&per_cpu(cpu_max_freq, cpu), freq);
+}
+
+/* arch_scale_freq_capacity() implementation called from scheduler */
+unsigned long arm64_arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
+{
+	unsigned long curr = atomic_long_read(&per_cpu(cpu_freq_capacity, cpu));
+
+	if (!curr)
+		return SCHED_CAPACITY_SCALE;
+
+	return curr;
+}
+
 /*
  * cpu topology table
  */
@@ -352,6 +394,15 @@ EXPORT_SYMBOL_GPL(cpu_topology);
 const struct cpumask *cpu_coregroup_mask(int cpu)
 {
 	return &cpu_topology[cpu].core_sibling;
+}
+
+/*
+ * The current assumption is that we can power gate each core independently.
+ * This will be superseded by DT binding once available.
+ */
+const struct cpumask *cpu_corepower_mask(int cpu)
+{
+	return &cpu_topology[cpu].thread_sibling;
 }
 
 static void update_siblings_masks(unsigned int cpuid)
@@ -418,6 +469,54 @@ topology_populated:
 	update_cpu_capacity(cpuid);
 }
 
+
+static inline int cpu_corepower_flags(void)
+{
+	return SD_SHARE_PKG_RESOURCES  | SD_SHARE_POWERDOMAIN;
+}
+
+/*
+ * power threshold should be filled according to platform info that can come
+ * from DT as an example. For now use default table
+ */
+static int core_pack_threshold[2][2] = {
+     /* pack, perf */
+	{ 30, 100},
+	{ 20, 100},
+};
+
+static int cpu_core_th(int cpu, int index)
+{
+	if (arch_scale_cpu_capacity(NULL, cpu) < SCHED_CAPACITY_SCALE)
+		return (core_pack_threshold[1][index] * 1024) / 100;
+
+	return (core_pack_threshold[0][index] * 1024) / 100;
+}
+
+static int cluster_pack_threshold[2][2] = {
+     /* pack, perf */
+	{ 50, 100},
+	{ 50, 70},
+};
+
+static int cpu_cluster_th(int cpu, int index)
+{
+
+	if (arch_scale_cpu_capacity(NULL, cpu) < SCHED_CAPACITY_SCALE)
+		return (cluster_pack_threshold[1][index] * 1024) / 100;
+
+	return (cluster_pack_threshold[0][index] * 1024) / 100;
+}
+
+static struct sched_domain_topology_level arm_topology[] = {
+#ifdef CONFIG_SCHED_MC
+	{ cpu_corepower_mask, cpu_corepower_flags, cpu_core_th, SD_INIT_NAME(GMC) },
+	{ cpu_coregroup_mask, cpu_core_flags, cpu_core_th, SD_INIT_NAME(MC) },
+#endif
+	{ cpu_cpu_mask, NULL, cpu_cluster_th, SD_INIT_NAME(DIE) },
+	{ NULL, },
+};
+
 static void __init reset_cpu_topology(void)
 {
 	unsigned int cpu;
@@ -457,4 +556,6 @@ void __init init_cpu_topology(void)
 
 	reset_cpu_capacity();
 	parse_dt_cpu_capacity();
+	/* Set scheduler topology descriptor */
+	set_sched_topology(arm_topology);
 }
