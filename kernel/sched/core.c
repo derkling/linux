@@ -690,6 +690,23 @@ static inline bool got_nohz_idle_kick(void)
 bool sched_can_stop_tick(void)
 {
 	/*
+	 * FIFO realtime policy runs the highest priority task. Other runnable
+	 * tasks are of a lower priority. The scheduler tick does nothing.
+	 */
+	if (current->policy == SCHED_FIFO)
+		return true;
+
+	/*
+	 * Round-robin realtime tasks time slice with other tasks at the same
+	 * realtime priority. Is this task the only one at this priority?
+	 */
+	if (current->policy == SCHED_RR) {
+		struct sched_rt_entity *rt_se = &current->rt;
+
+		return rt_se->run_list.prev == rt_se->run_list.next;
+	}
+
+	/*
 	 * More than one running task need preemption.
 	 * nr_running update is assumed to be visible
 	 * after IPI is sent from wakers.
@@ -3034,6 +3051,8 @@ void rt_mutex_setprio(struct task_struct *p, int prio)
 	} else {
 		if (dl_prio(oldprio))
 			p->dl.dl_boosted = 0;
+		if (rt_prio(oldprio))
+			p->rt.timeout = 0;
 		p->sched_class = &fair_sched_class;
 	}
 
@@ -5318,36 +5337,13 @@ static int sched_cpu_active(struct notifier_block *nfb,
 static int sched_cpu_inactive(struct notifier_block *nfb,
 					unsigned long action, void *hcpu)
 {
-	unsigned long flags;
-	long cpu = (long)hcpu;
-	struct dl_bw *dl_b;
-
 	switch (action & ~CPU_TASKS_FROZEN) {
 	case CPU_DOWN_PREPARE:
-		set_cpu_active(cpu, false);
-
-		/* explicitly allow suspend */
-		if (!(action & CPU_TASKS_FROZEN)) {
-			bool overflow;
-			int cpus;
-
-			rcu_read_lock_sched();
-			dl_b = dl_bw_of(cpu);
-
-			raw_spin_lock_irqsave(&dl_b->lock, flags);
-			cpus = dl_bw_cpus(cpu);
-			overflow = __dl_overflow(dl_b, cpus, 0, 0);
-			raw_spin_unlock_irqrestore(&dl_b->lock, flags);
-
-			rcu_read_unlock_sched();
-
-			if (overflow)
-				return notifier_from_errno(-EBUSY);
-		}
+		set_cpu_active((long)hcpu, false);
 		return NOTIFY_OK;
+	default:
+		return NOTIFY_DONE;
 	}
-
-	return NOTIFY_DONE;
 }
 
 static int __init migration_init(void)
@@ -5425,17 +5421,6 @@ static int sched_domain_debug_one(struct sched_domain *sd, int cpu, int level,
 		if (!group) {
 			printk("\n");
 			printk(KERN_ERR "ERROR: group is NULL\n");
-			break;
-		}
-
-		/*
-		 * Even though we initialize ->capacity to something semi-sane,
-		 * we leave capacity_orig unset. This allows us to detect if
-		 * domain iteration is still funny without causing /0 traps.
-		 */
-		if (!group->sgc->capacity_orig) {
-			printk(KERN_CONT "\n");
-			printk(KERN_ERR "ERROR: domain->cpu_capacity not set\n");
 			break;
 		}
 
@@ -5808,6 +5793,7 @@ cpu_attach_domain(struct sched_domain *sd, struct root_domain *rd, int cpu)
 	rcu_assign_pointer(rq->sd, sd);
 	destroy_sched_domains(tmp, cpu);
 
+	update_packing_domain(cpu);
 	update_top_cache_domain(cpu);
 }
 
@@ -6036,6 +6022,9 @@ build_sched_groups(struct sched_domain *sd, int cpu)
 static void init_sched_groups_capacity(int cpu, struct sched_domain *sd)
 {
 	struct sched_group *sg = sd->groups;
+	struct sd_data *sdd = sd->private;
+	struct sched_domain_topology_level *tl =
+		container_of(sdd, struct sched_domain_topology_level, data);
 
 	WARN_ON(!sg);
 
@@ -6049,6 +6038,17 @@ static void init_sched_groups_capacity(int cpu, struct sched_domain *sd)
 
 	update_group_capacity(sd, cpu);
 	atomic_set(&sg->sgc->nr_busy_cpus, sg->group_weight);
+#ifdef CONFIG_SCHED_PACKING_TASKS
+	if (tl->pwr_thr) {
+		sg->sgc->pack_thres = (*tl->pwr_thr)(cpu, 0);
+		sg->sgc->perf_thres = ((*tl->pwr_thr)(cpu, 1) * cpu_rq(cpu)->cpu_capacity_orig) / sg->sgc->capacity_orig;
+	} else {
+		sg->sgc->pack_thres = 0;
+		sg->sgc->perf_thres = 1024;
+	}
+	pr_info("cpu%d pack %d, perf th %d\n", cpu,
+			sg->sgc->pack_thres, sg->sgc->perf_thres);
+#endif
 }
 
 /*
@@ -6192,9 +6192,9 @@ sd_init(struct sched_domain_topology_level *tl, int cpu)
 		sd_flags &= ~TOPOLOGY_SD_FLAGS;
 
 	*sd = (struct sched_domain){
-		.min_interval		= sd_weight,
-		.max_interval		= 2*sd_weight,
-		.busy_factor		= 32,
+		.min_interval		= 1,
+		.max_interval		= 1,
+		.busy_factor		= 2,
 		.imbalance_pct		= 125,
 
 		.cache_nice_tries	= 0,
@@ -6219,7 +6219,7 @@ sd_init(struct sched_domain_topology_level *tl, int cpu)
 					,
 
 		.last_balance		= jiffies,
-		.balance_interval	= sd_weight,
+		.balance_interval	= 1,
 		.smt_gain		= 0,
 		.max_newidle_lb_cost	= 0,
 		.next_decay_max_lb_cost	= jiffies,
@@ -6233,6 +6233,7 @@ sd_init(struct sched_domain_topology_level *tl, int cpu)
 	 */
 
 	if (sd->flags & SD_SHARE_CPUCAPACITY) {
+		sd->flags |= SD_PREFER_SIBLING;
 		sd->imbalance_pct = 110;
 		sd->smt_gain = 1178; /* ~15% */
 
@@ -6998,7 +6999,6 @@ static int cpuset_cpu_active(struct notifier_block *nfb, unsigned long action,
 		 */
 
 	case CPU_ONLINE:
-	case CPU_DOWN_FAILED:
 		cpuset_update_active_cpus(true);
 		break;
 	default:
@@ -7010,8 +7010,30 @@ static int cpuset_cpu_active(struct notifier_block *nfb, unsigned long action,
 static int cpuset_cpu_inactive(struct notifier_block *nfb, unsigned long action,
 			       void *hcpu)
 {
-	switch (action) {
+	unsigned long flags;
+	long cpu = (long)hcpu;
+	struct dl_bw *dl_b;
+
+	switch (action & ~CPU_TASKS_FROZEN) {
 	case CPU_DOWN_PREPARE:
+		/* explicitly allow suspend */
+		if (!(action & CPU_TASKS_FROZEN)) {
+			bool overflow;
+			int cpus;
+
+			rcu_read_lock_sched();
+			dl_b = dl_bw_of(cpu);
+
+			raw_spin_lock_irqsave(&dl_b->lock, flags);
+			cpus = dl_bw_cpus(cpu);
+			overflow = __dl_overflow(dl_b, cpus, 0, 0);
+			raw_spin_unlock_irqrestore(&dl_b->lock, flags);
+
+			rcu_read_unlock_sched();
+
+			if (overflow)
+				return notifier_from_errno(-EBUSY);
+		}
 		cpuset_update_active_cpus(false);
 		break;
 	case CPU_DOWN_PREPARE_FROZEN:
@@ -7156,8 +7178,8 @@ void __init sched_init(void)
 		rq->calc_load_active = 0;
 		rq->calc_load_update = jiffies + LOAD_FREQ;
 		init_cfs_rq(&rq->cfs);
-		init_rt_rq(&rq->rt, rq);
-		init_dl_rq(&rq->dl, rq);
+		init_rt_rq(&rq->rt);
+		init_dl_rq(&rq->dl);
 #ifdef CONFIG_FAIR_GROUP_SCHED
 		root_task_group.shares = ROOT_TASK_GROUP_LOAD;
 		INIT_LIST_HEAD(&rq->leaf_cfs_rq_list);
@@ -7197,7 +7219,7 @@ void __init sched_init(void)
 #ifdef CONFIG_SMP
 		rq->sd = NULL;
 		rq->rd = NULL;
-		rq->cpu_capacity = SCHED_CAPACITY_SCALE;
+		rq->cpu_capacity = rq->cpu_capacity_orig = SCHED_CAPACITY_SCALE;
 		rq->post_schedule = 0;
 		rq->active_balance = 0;
 		rq->next_balance = jiffies;
@@ -7796,7 +7818,7 @@ static int sched_rt_global_constraints(void)
 }
 #endif /* CONFIG_RT_GROUP_SCHED */
 
-static int sched_dl_global_constraints(void)
+static int sched_dl_global_validate(void)
 {
 	u64 runtime = global_rt_runtime();
 	u64 period = global_rt_period();
@@ -7897,11 +7919,11 @@ int sched_rt_handler(struct ctl_table *table, int write,
 		if (ret)
 			goto undo;
 
-		ret = sched_rt_global_constraints();
+		ret = sched_dl_global_validate();
 		if (ret)
 			goto undo;
 
-		ret = sched_dl_global_constraints();
+		ret = sched_rt_global_constraints();
 		if (ret)
 			goto undo;
 
