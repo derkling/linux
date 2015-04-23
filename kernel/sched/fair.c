@@ -5219,6 +5219,7 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 			.usage_delta	= task_utilization(p),
 			.src_cpu	= task_cpu(p),
 			.dst_cpu	= target_cpu,
+			.src_grp        = NULL,
 		};
 
 		/* Not enough spare capacity on previous cpu */
@@ -6148,6 +6149,7 @@ static int detach_tasks(struct lb_env *env)
 				.src_cpu = env->src_cpu,
 				.dst_cpu = env->dst_cpu,
 				.usage_delta = delta,
+				.src_grp = NULL,
 			};
 			int e_diff = energy_diff(&eenv);
 
@@ -6747,6 +6749,7 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 			.usage_delta    = 0,
 			.src_cpu        = -1,
 			.dst_cpu        = -1,
+			.src_grp	= NULL,
 		};
 		unsigned long group_energy = sched_group_energy(&eenv);
 
@@ -7248,6 +7251,7 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 				.usage_delta    = 0,
 				.src_cpu        = -1,
 				.dst_cpu        = -1,
+				.src_grp	= NULL,
 			};
 			unsigned long energy = sched_group_energy(&eenv);
 
