@@ -5254,6 +5254,9 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	int want_affine = 0;
 	int sync = wake_flags & WF_SYNC;
 
+	if (!sched_feat(WU_LB))
+		return prev_cpu;
+
 	if (sd_flag & SD_BALANCE_WAKE)
 		want_affine = cpumask_test_cpu(cpu, tsk_cpus_allowed(p));
 
@@ -6175,6 +6178,9 @@ static int detach_tasks(struct lb_env *env)
 			trace_printk("pid=%d util=%lu reason=%d e_diff=%d usage_det=%d",
 				     p->pid, task_utilization(p), reason, e_diff, usage_detached);
 
+			if(!sched_feat(EA_LB))
+				goto next;
+
 			if (e_diff >= 0 && !try_to_vac_sg)
 				goto next;
 
@@ -6186,6 +6192,9 @@ static int detach_tasks(struct lb_env *env)
 
 			goto detach;
 		}
+
+		if (!sched_feat(NEA_LB))
+			goto next;
 
 		load = task_h_load(p);
 
@@ -7438,6 +7447,9 @@ static int need_active_balance(struct lb_env *env)
 {
 	struct sched_domain *sd = env->sd;
 
+	if (!sched_feat(ACT_LB))
+		return 0;
+
 	if (env->idle == CPU_NEWLY_IDLE) {
 
 		/*
@@ -7516,7 +7528,7 @@ static int load_balance(int this_cpu, struct rq *this_rq,
 			struct sched_domain *sd, enum cpu_idle_type idle,
 			int *continue_balancing)
 {
-	int ld_moved, cur_ld_moved, active_balance = 0;
+	int ld_moved = 0, cur_ld_moved, active_balance = 0;
 	struct sched_domain *sd_parent = sd->parent;
 	struct sched_group *group;
 	struct rq *busiest;
@@ -7535,6 +7547,11 @@ static int load_balance(int this_cpu, struct rq *this_rq,
 		.tasks		= LIST_HEAD_INIT(env.tasks),
 		.use_ea		= (energy_aware() && sd->groups->sge),
 	};
+
+	if (!sched_feat(PER_LB)) {
+		*continue_balancing = 0;
+		goto out;
+	}
 
 	/*
 	 * For NEWLY_IDLE load_balancing, we don't need to consider
@@ -7818,6 +7835,9 @@ static int idle_balance(struct rq *this_rq)
 	struct sched_domain *sd;
 	int pulled_task = 0;
 	u64 curr_cost = 0;
+
+	if (!sched_feat(IDLE_LB))
+		goto out;
 
 	idle_enter_fair(this_rq);
 
@@ -8243,6 +8263,9 @@ static void nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle)
 	int this_cpu = this_rq->cpu;
 	struct rq *rq;
 	int balance_cpu;
+
+	if (!sched_feat(NOHZI_LB))
+		goto end;
 
 	if (idle != CPU_IDLE ||
 	    !test_bit(NOHZ_BALANCE_KICK, nohz_flags(this_cpu)))

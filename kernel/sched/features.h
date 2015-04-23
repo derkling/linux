@@ -97,3 +97,11 @@ SCHED_FEAT(NUMA_RESIST_LOWER, false)
  * decisions optimizing for energy efficiency.
  */
 SCHED_FEAT(ENERGY_AWARE, false)
+
+SCHED_FEAT(PER_LB, false)
+SCHED_FEAT(WU_LB, false)
+SCHED_FEAT(IDLE_LB, false)
+SCHED_FEAT(NOHZI_LB, false)
+SCHED_FEAT(ACT_LB, false)
+SCHED_FEAT(EA_LB, false)
+SCHED_FEAT(NEA_LB, false)
