@@ -734,6 +734,18 @@
 				 <&vencltsys VENCLT_CKE1>;
 			clock-names = "larb_sub0", "larb_sub1", "larb_sub2";
 		};
+
+		pwm0: pwm@1401e000 {
+			compatible = "mediatek,mt8173-disp-pwm";
+			reg = <0 0x1401e000 0 0x1000>;
+			#pwm-cells = <2>;
+			clocks = <&topckgen TOP_PWM_SEL>,
+				 <&mmsys MM_DISP_PWM0MM>,
+				 <&mmsys MM_DISP_PWM026M>;
+			clock-names = "pwm_sel",
+				      "mm_disp_pwm0mm",
+				      "mm_disp_pwm026m";
+		};
 	};
 };
 
