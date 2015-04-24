@@ -390,13 +390,15 @@ void fpu__clear(struct task_struct *tsk)
 	if (!use_eager_fpu()) {
 		/* FPU state will be reallocated lazily at the first use. */
 		drop_fpu(fpu);
-		fpstate_free(&tsk->thread.fpu);
-	} else if (!fpu->fpstate_active) {
-		/* kthread execs. TODO: cleanup this horror. */
-		if (WARN_ON(fpstate_alloc_init(fpu)))
-			force_sig(SIGKILL, tsk);
-		user_fpu_begin();
-		restore_init_xstate();
+		fpstate_free(fpu);
+	} else {
+		 if (!fpu->fpstate_active) {
+			/* kthread execs. TODO: cleanup this horror. */
+			if (WARN_ON(fpstate_alloc_init(fpu)))
+				force_sig(SIGKILL, tsk);
+			user_fpu_begin();
+			restore_init_xstate();
+		}
 	}
 }
 
