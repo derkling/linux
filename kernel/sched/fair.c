@@ -5985,7 +5985,7 @@ static inline bool migrate_degrades_locality(struct task_struct *p,
  * can_migrate_task - may task p from runqueue rq be migrated to this_cpu?
  */
 static
-int can_migrate_task(struct task_struct *p, struct lb_env *env)
+int can_migrate_task(struct task_struct *p, struct lb_env *env, int *reason)
 {
 	int tsk_cache_hot = 0;
 
@@ -5998,8 +5998,10 @@ int can_migrate_task(struct task_struct *p, struct lb_env *env)
 	 * 3) running (obviously), or
 	 * 4) are cache-hot on their current CPU.
 	 */
-	if (throttled_lb_pair(task_group(p), env->src_cpu, env->dst_cpu))
+	if (throttled_lb_pair(task_group(p), env->src_cpu, env->dst_cpu)) {
+		*reason = 1;
 		return 0;
+	}
 
 	if (!cpumask_test_cpu(env->dst_cpu, tsk_cpus_allowed(p))) {
 		int cpu;
@@ -6016,8 +6018,10 @@ int can_migrate_task(struct task_struct *p, struct lb_env *env)
 		 * Also avoid computing new_dst_cpu if we have already computed
 		 * one in current iteration.
 		 */
-		if (!env->dst_grpmask || (env->flags & LBF_DST_PINNED))
+		if (!env->dst_grpmask || (env->flags & LBF_DST_PINNED)) {
+			*reason = 2;
 			return 0;
+		}
 
 		/* Prevent to re-select dst_cpu via env's cpus */
 		for_each_cpu_and(cpu, env->dst_grpmask, env->cpus) {
@@ -6028,6 +6032,7 @@ int can_migrate_task(struct task_struct *p, struct lb_env *env)
 			}
 		}
 
+		*reason = 3;
 		return 0;
 	}
 
@@ -6036,6 +6041,7 @@ int can_migrate_task(struct task_struct *p, struct lb_env *env)
 
 	if (task_running(env->src_rq, p)) {
 		schedstat_inc(p, se.statistics.nr_failed_migrations_running);
+		*reason = 4;
 		return 0;
 	}
 
@@ -6055,10 +6061,12 @@ int can_migrate_task(struct task_struct *p, struct lb_env *env)
 			schedstat_inc(env->sd, lb_hot_gained[env->idle]);
 			schedstat_inc(p, se.statistics.nr_forced_migrations);
 		}
+		*reason = 5;
 		return 1;
 	}
 
 	schedstat_inc(p, se.statistics.nr_failed_migrations_hot);
+	*reason = 6;
 	return 0;
 }
 
@@ -6087,7 +6095,8 @@ static struct task_struct *detach_one_task(struct lb_env *env)
 	lockdep_assert_held(&env->src_rq->lock);
 
 	list_for_each_entry_safe(p, n, &env->src_rq->cfs_tasks, se.group_node) {
-		if (!can_migrate_task(p, env))
+		int reason = 0;
+		if (!can_migrate_task(p, env, &reason))
 			continue;
 
 		detach_task(p, env);
@@ -6126,6 +6135,7 @@ static int detach_tasks(struct lb_env *env)
 		return 0;
 
 	while (!list_empty(tasks)) {
+		int reason = 0;
 		p = list_first_entry(tasks, struct task_struct, se.group_node);
 
 		env->loop++;
@@ -6140,7 +6150,7 @@ static int detach_tasks(struct lb_env *env)
 			break;
 		}
 
-		if (!can_migrate_task(p, env))
+		if (!can_migrate_task(p, env, &reason))
 			goto next;
 
 		if (env->use_ea) {
