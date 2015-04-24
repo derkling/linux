@@ -8551,7 +8551,10 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 
 	update_rq_runnable_avg(rq, 1);
 
-	if (task_utilization(curr) >= capacity_curr_of(cpu) * 90 / 100) {
+	/* 80% UP_THRESHOLD */
+	if ((capacity_curr_of(cpu) < capacity_orig_of(cpu)) &&
+	    ((capacity_curr_of(cpu) * 100) <
+	     (task_utilization(curr) * 125))) {
 		trace_printk("task %d tick (CPU%d) crossed up threshold",
 			     curr->pid, cpu);
 		set_capacity_max(rq);
