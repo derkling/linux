@@ -4666,15 +4666,22 @@ static inline unsigned long cpu_norm_usage(int cpu)
 	return __cpu_norm_usage(cpu, capacity_curr_of(cpu), 0);
 }
 
-static inline int calc_usage_delta(struct energy_env *eenv, int cpu)
+static noinline int calc_usage_delta(struct energy_env *eenv, int cpu)
 {
-	if (cpu == eenv->src_cpu)
+	if (cpu == eenv->src_cpu) {
+		trace_printk("src_cpu=%d usage_delta=%d", cpu, -eenv->usage_delta);
 		return -eenv->usage_delta;
-	if (cpu == eenv->dst_cpu)
+	}
+	if (cpu == eenv->dst_cpu) {
+		trace_printk("dst_cpu=%d usage_delta=%d", cpu, eenv->usage_delta);
 		return eenv->usage_delta;
+	}
 	if (eenv->src_grp && cpumask_test_cpu(cpu,
-				sched_group_cpus(eenv->src_grp)))
+				sched_group_cpus(eenv->src_grp))) {
+		trace_printk("src_grp=0x%lx usage_delta=%d", *(eenv->src_grp->cpumask),
+			     -get_cpu_usage(cpu));
 		return -get_cpu_usage(cpu);
+	}
 	return 0;
 }
 
@@ -4765,7 +4772,7 @@ static int group_idle_state(struct sched_group *sg)
  * gather the same usage statistics multiple times. This can probably be done in
  * a faster but more complex way.
  */
-static unsigned int sched_group_energy(struct energy_env *eenv)
+static unsigned int sched_group_energy(struct energy_env *eenv, bool trace)
 {
 	struct sched_domain *sd;
 	int cpu, total_energy = 0;
@@ -4773,6 +4780,9 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 	struct sched_group *sg;
 
 	WARN_ON(!eenv->sg_top->sge);
+
+	if (trace)
+		trace_printk("sg_top=0x%lx", *(eenv->sg_top->cpumask));
 
 	cpumask_copy(&visit_cpus, sched_group_cpus(eenv->sg_top));
 
@@ -4788,6 +4798,17 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 		sd = highest_flag_domain(cpu, SD_SHARE_CAP_STATES);
 		if (sd && sd->parent)
 			sg_shared_cap = sd->parent->groups;
+
+		if (!sg_shared_cap) {
+			if (trace) {
+				trace_printk("cpu=%d sd=%s", cpu, sd->name);
+			}
+		}
+		else {
+			if (trace) {
+				trace_printk("cpu=%d sd=%s sg_shared_cap=0x%lx", cpu, sd->name, *(sg_shared_cap->cpumask));
+			}
+		}
 
 		for_each_domain(cpu, sd) {
 			sg = sd->groups;
@@ -4816,6 +4837,10 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 								>> SCHED_CAPACITY_SHIFT;
 
 				total_energy += sg_busy_energy + sg_idle_energy;
+
+				if (trace)
+					trace_printk("sg=0x%lx cap_idx=%d idle_inx=%d group_util=%u sd_busy_e=%d sd_idle_e=%d total_e=%d",
+						     *(sg->cpumask), cap_idx, idle_idx, group_util, sg_busy_energy, sg_idle_energy, total_energy);
 
 				if (!sd->child)
 					cpumask_xor(&visit_cpus, &visit_cpus, sched_group_cpus(sg));
@@ -4858,16 +4883,24 @@ static int energy_diff(struct energy_env *eenv)
 	sd_cpu = (eenv->src_cpu != -1) ? eenv->src_cpu : eenv->dst_cpu;
 	sd = rcu_dereference(per_cpu(sd_ea, sd_cpu));
 
-	if (!sd)
+	trace_printk("sd_cpu=%d", sd_cpu);
+
+	if (!sd) {
+		trace_printk("sd = NULL");
 		return 0; /* Error */
+	}
 
 	sg = sd->groups;
 	do {
 		if (eenv->src_cpu != -1 && cpumask_test_cpu(eenv->src_cpu,
 							sched_group_cpus(sg))) {
 			eenv_before.sg_top = eenv->sg_top = sg;
-			energy_before += sched_group_energy(&eenv_before);
-			energy_after += sched_group_energy(eenv);
+			energy_before += sched_group_energy(&eenv_before, true);
+			trace_printk("src_cpu=%d sg=0x%lx e_before=%d",
+				     eenv->src_cpu, *(sg->cpumask), energy_before);
+			energy_after += sched_group_energy(eenv, true);
+			trace_printk("src_cpu=%d sg=0x%lx e_after=%d",
+				     eenv->src_cpu, *(sg->cpumask), energy_after);
 
 			/* src_cpu and dst_cpu may belong to the same group */
 			continue;
@@ -4876,10 +4909,16 @@ static int energy_diff(struct energy_env *eenv)
 		if (eenv->dst_cpu != -1	&& cpumask_test_cpu(eenv->dst_cpu,
 							sched_group_cpus(sg))) {
 			eenv_before.sg_top = eenv->sg_top = sg;
-			energy_before += sched_group_energy(&eenv_before);
-			energy_after += sched_group_energy(eenv);
+			energy_before += sched_group_energy(&eenv_before, true);
+			trace_printk("dst_cpu=%d sg=0x%lx e_before=%d",
+				     eenv->dst_cpu, *(sg->cpumask), energy_before);
+			energy_after += sched_group_energy(eenv, true);
+			trace_printk("dst_cpu=%d sg=0x%lx e_after=%d",
+				     eenv->dst_cpu, *(sg->cpumask), energy_after);
 		}
 	} while (sg = sg->next, sg != sd->groups);
+
+	trace_printk("e_after-e_before=%d", energy_after - energy_before);
 
 	return energy_after-energy_before;
 }
@@ -6783,7 +6822,7 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 			.dst_cpu        = -1,
 			.src_grp	= NULL,
 		};
-		unsigned long group_energy = sched_group_energy(&eenv);
+		unsigned long group_energy = sched_group_energy(&eenv, false);
 
 		if (group_energy)
 			sgs->group_eff = 1024*sgs->group_usage/group_energy;
@@ -7099,12 +7138,14 @@ __always_inline static void __trace_lb(const struct cpumask *mask, int dst_cpu)
 		lockdep_assert_held(&rq->lock);
 
 		list_for_each_entry(p, &rq->cfs_tasks, se.group_node) {
-			char *format = "";
+			char format[4] = { 0, };
 
-			if ((dst_cpu != -1) && !cpumask_test_cpu(dst_cpu, tsk_cpus_allowed(p)))
-				format = "a";
-			if ((dst_cpu != -1) && task_running(rq, p))
-				format = "r";
+			if (dst_cpu != -1) {
+				if (!cpumask_test_cpu(dst_cpu, tsk_cpus_allowed(p)))
+					sprintf(format, "%c", 'a');
+				if (task_running(rq, p))
+					sprintf(format, "%c", 'r');
+			}
 			trace_printk("pid=%d util=%lu %s", p->pid, task_utilization(p), format);
 		}
 
@@ -7136,6 +7177,38 @@ static inline void calculate_imbalance(struct lb_env *env, struct sd_lb_stats *s
 	local = &sds->local_stat;
 	busiest = &sds->busiest_stat;
 
+	/* (1) calculate energy of busiest sg */
+	if (env->use_ea) {
+		struct energy_env eenv = {
+			.sg_top = sds->costliest,
+			.usage_delta    = 0,
+			.src_cpu        = -1,
+			.dst_cpu        = -1,
+			.src_grp        = NULL,
+		};
+		unsigned long group_energy = sched_group_energy(&eenv, false);
+		struct sg_lb_stats *costliest = &sds->costliest_stat;
+
+		trace_printk("sched_eas: costliest sg=0x%lx group_usage=%lu group_energy=%lu",
+			     *(sds->costliest->cpumask), costliest->group_usage, group_energy);
+	}
+
+	/* (2) calculate energy of local sg */
+	if (env->use_ea) {
+		struct energy_env eenv = {
+			.sg_top = sds->local,
+			.usage_delta    = 0,
+			.src_cpu        = -1,
+			.dst_cpu        = -1,
+			.src_grp        = NULL,
+		};
+		unsigned long group_energy = sched_group_energy(&eenv, false);
+
+		trace_printk("sched_eas: local sg=0x%lx group_usage=%lu group_energy=%lu",
+			     *(sds->local->cpumask), local->group_usage, group_energy);
+	}
+
+	/* (3) calculate energy diff w/ src_cpu=-1  */
 	if (env->use_ea) {
 		struct sg_lb_stats *costliest = &sds->costliest_stat;
 		struct energy_env eenv = {
@@ -7144,8 +7217,23 @@ static inline void calculate_imbalance(struct lb_env *env, struct sd_lb_stats *s
 			.dst_cpu = env->dst_cpu,
 			.src_grp = sds->costliest,
 		};
-
 		int e_diff = energy_diff(&eenv);
+
+		trace_printk("sched_eas: e_diff(w/ src_cpu=-1)=%d", e_diff);
+	}
+
+	/* (4) calculate energy diff w/ src_cpu=group_first_cpu(sds->costliest) */
+	if (env->use_ea) {
+		struct sg_lb_stats *costliest = &sds->costliest_stat;
+		struct energy_env eenv = {
+			.usage_delta = costliest->group_usage,
+			.src_cpu = group_first_cpu(sds->costliest),
+			.dst_cpu = env->dst_cpu,
+			.src_grp = sds->costliest,
+		};
+		int e_diff = energy_diff(&eenv);
+
+		trace_printk("sched_eas: e_diff(w/ group_first_cpu(sds->costliest))=%d", e_diff);
 
 		env->imbalance = (e_diff < 0) ? costliest->group_usage : 0;
 
@@ -7350,7 +7438,7 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 				.dst_cpu        = -1,
 				.src_grp	= NULL,
 			};
-			unsigned long energy = sched_group_energy(&eenv);
+			unsigned long energy = sched_group_energy(&eenv, false);
 
 			if (rq->nr_running == 1 && capacity_orig_of(i) >=
 					capacity_orig_of(env->dst_cpu))
