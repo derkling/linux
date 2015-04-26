@@ -4978,10 +4978,15 @@ static inline unsigned long task_utilization(struct task_struct *p)
 	return p->se.avg.utilization_avg_contrib;
 }
 
+static int __cpu_overutilized(int cpu, struct sched_domain *sd, int delta)
+{
+	return ((get_cpu_usage(cpu) + delta) * sd->imbalance_pct >
+		capacity_orig_of(cpu) * 100);
+}
+
 static int cpu_overutilized(int cpu, struct sched_domain *sd)
 {
-	return (capacity_orig_of(cpu) * 100) <
-				(get_cpu_usage(cpu) * sd->imbalance_pct);
+	return __cpu_overutilized(cpu, sd, 0);
 }
 
 static int energy_aware_wake_cpu(struct task_struct *p)
