@@ -4508,7 +4508,7 @@ static unsigned group_max_usage(struct energy_env *eenv,
  * latter is used as the estimate as it leads to a more pessimistic energy
  * estimate (more busy).
  */
-static unsigned group_norm_usage(struct energy_env *eenv,
+static unsigned int group_norm_usage(struct energy_env *eenv,
 					struct sched_group *sg)
 {
 	int i, delta;
@@ -4604,7 +4604,7 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 				break;
 
 			do {
-				unsigned group_util;
+				unsigned int group_util;
 				int sg_busy_energy, sg_idle_energy;
 				int cap_idx, idle_idx;
 
