@@ -8551,6 +8551,9 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 
 	update_rq_runnable_avg(rq, 1);
 
+	trace_printk("capacity_curr=%lu task_utilization=%lu",
+		     capacity_curr_of(cpu),
+		     task_utilization(curr));
 	/* 80% UP_THRESHOLD */
 	if ((capacity_curr_of(cpu) < capacity_orig_of(cpu)) &&
 	    ((capacity_curr_of(cpu) * 100) <
