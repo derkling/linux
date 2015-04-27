@@ -188,6 +188,7 @@ static int cap_gov_thread(void *data)
 
 		gd->throttle = ktime_add_ns(ktime_get(), gd->throttle_nsec);
 		atomic_set(&gd->need_wake_task, 0);
+		gd->new_cap = 0;
 		up_write(&policy->rwsem);
 	} while (!kthread_should_stop());
 
@@ -225,6 +226,8 @@ void cap_gov_kick_thread(int cpu, unsigned int new_cap)
 
 	/* XXX driver_might_sleep is always true */
 	if (driver_might_sleep) {
+		if (new_cap < gd->new_cap)
+			goto out;
 		gd->new_cap = new_cap;
 		trace_printk("waking up kthread (%d) new_cap=%u",
 			     gd->task->pid, gd->new_cap);
