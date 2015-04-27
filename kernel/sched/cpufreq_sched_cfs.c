@@ -95,6 +95,11 @@ static unsigned long gov_cfs_select_freq(struct cpufreq_policy *policy)
 
 	cpu = cpumask_first(policy->cpus);
 
+	if (max_usage >= capacity_orig_of(cpu)) {
+		freq = policy->max;
+		goto out;
+	}
+
 	/* freq is current utilization + 25% */
 	freq = max_usage * policy->max / capacity_orig_of(cpu);
 
