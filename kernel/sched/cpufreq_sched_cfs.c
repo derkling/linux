@@ -224,12 +224,13 @@ void gov_cfs_update_cpu(int cpu, unsigned long capacity)
 
 	gd = policy->governor_data;
 
+	per_cpu(new_capacity, cpu) = capacity;
+
 	/* bail early if we are throttled */
 	if (ktime_before(ktime_get(), gd->throttle)) {
 		goto out;
 	}
 
-	per_cpu(new_capacity, cpu) = capacity;
 	irq_work_queue_on(&gd->irq_work, cpu);
 
 out:
