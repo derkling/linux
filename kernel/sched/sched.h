@@ -1402,11 +1402,13 @@ unsigned long arch_scale_cpu_capacity(struct sched_domain *sd, int cpu)
 	return SCHED_CAPACITY_SCALE;
 }
 #endif
+unsigned long capacity_curr_of(int cpu);
 
+#define MARGIN_PCT 125 /* taken from imbalance_pct = 125 */
 #ifdef CONFIG_CPU_FREQ_GOV_SCHED_CFS
-void gov_cfs_update_cpu(int cpu);
+void gov_cfs_update_cpu(int cpu, unsigned long capacity);
 #else
-static inline void gov_cfs_update_cpu(int cpu) {}
+static inline void gov_cfs_update_cpu(int cpu, unsigned long capacity) {}
 #endif
 
 static inline void sched_rt_avg_update(struct rq *rq, u64 rt_delta)
