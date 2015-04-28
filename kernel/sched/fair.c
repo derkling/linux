@@ -4342,7 +4342,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	}
 
 	if(sched_energy_freq())
-		gov_cfs_update_cpu(cpu_of(rq));
+		gov_cfs_update_cpu(cpu_of(rq), rq->cfs.utilization_load_avg);
 
 	hrtick_update(rq);
 }
@@ -4407,7 +4407,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	}
 
 	if(sched_energy_freq())
-		gov_cfs_update_cpu(cpu_of(rq));
+		gov_cfs_update_cpu(cpu_of(rq), rq->cfs.utilization_load_avg);
 
 	hrtick_update(rq);
 }
@@ -4817,7 +4817,7 @@ static long effective_load(struct task_group *tg, int cpu, long wl, long wg)
  * Returns the current capacity of cpu after applying both
  * cpu and freq scaling.
  */
-static unsigned long capacity_curr_of(int cpu)
+unsigned long capacity_curr_of(int cpu)
 {
 	return cpu_rq(cpu)->cpu_capacity_orig *
 	       arch_scale_freq_capacity(NULL, cpu)
@@ -8674,6 +8674,7 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 {
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &curr->se;
+	int cpu = task_cpu(curr);
 
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
@@ -8688,8 +8689,12 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 	if (!rq->rd->overutilized && cpu_overutilized(task_cpu(curr)))
 		rq->rd->overutilized = true;
 
-	if(sched_energy_freq())
-		gov_cfs_update_cpu(cpu_of(rq));
+	if (sched_energy_freq() &&
+	    (capacity_curr_of(cpu) < capacity_orig_of(cpu)) &&
+	    ((capacity_curr_of(cpu) * 100) <
+	     (task_utilization(curr) * MARGIN_PCT))) {
+		gov_cfs_update_cpu(cpu_of(rq), SCHED_LOAD_SCALE);
+	}
 }
 
 /*
