@@ -4655,6 +4655,9 @@ static int rt5677_probe(struct snd_soc_codec *codec)
 
 	regmap_write(rt5677->regmap, RT5677_DIG_MISC, 0x0020);
 	regmap_write(rt5677->regmap, RT5677_PWR_DSP2, 0x0c00);
+	/* initialize I2S2 to master mode */
+	regmap_update_bits(rt5677->regmap, RT5677_I2S2_SDP,
+			   RT5677_I2S_MS_MASK , RT5677_I2S_MS_M);
 
 	for (i = 0; i < RT5677_GPIO_NUM; i++)
 		rt5677_gpio_config(rt5677, i, rt5677->pdata.gpio_config[i]);
