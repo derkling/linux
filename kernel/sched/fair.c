@@ -4591,13 +4591,14 @@ static unsigned long capacity_curr_of(int cpu)
  * task (ie cpu_capacity).
  * cfs.utilization_load_avg is the sum of running time of runnable tasks on a
  * CPU. It represents the amount of utilization of a CPU in the range
- * [0..capacity_curr]. The usage of a CPU can't be higher than the current
- * capacity of the CPU because it's about the running time on this CPU.
- * Nevertheless, cfs.utilization_load_avg can be higher than capacity_curr
- * because of unfortunate rounding in avg_period and running_load_avg or just
- * after migrating tasks until the average stabilizes with the new running
- * time. So we need to check that the usage stays into the range
- * [0..cpu_capacity_curr] and cap if necessary.
+ * [0..capacity_curr] where capacity_curr <= capacity_orig. The usage of a CPU
+ * converges towards a sum equal to or less than the current capacity
+ * (capacity_curr) of the CPU because it's about the running time on this CPU.
+ * Nevertheless, cfs.utilization_load_avg can be higher than capacity_curr or
+ * even higher than capacity_orig because of unfortunate rounding in avg_period
+ * and running_load_avg or just after migrating tasks until the average
+ * stabilizes with the new running time. We need to check that the usage
+ * stays into the range [0..cpu_capacity_orig] and cap if necessary.
  * Without capping the usage, a group could be seen as overloaded (CPU0 usage
  * at 121% + CPU1 usage at 80%) whereas CPU1 has 20% of available capacity
  */
@@ -4606,15 +4607,15 @@ static int __get_cpu_usage(int cpu, int delta)
 	int sum;
 	unsigned long usage = cpu_rq(cpu)->cfs.utilization_load_avg;
 	unsigned long blocked = cpu_rq(cpu)->cfs.utilization_blocked_avg;
-	unsigned long capacity_curr = capacity_curr_of(cpu);
+	unsigned long capacity_orig = capacity_orig_of(cpu);
 
 	sum = usage + blocked + delta;
 
 	if (sum < 0)
 		return 0;
 
-	if (sum >= capacity_curr)
-		return capacity_curr;
+	if (sum >= capacity_orig)
+		return capacity_orig;
 
 	return sum;
 }
@@ -4657,7 +4658,12 @@ struct energy_env {
 static inline
 unsigned long __cpu_norm_usage(int cpu, unsigned long capacity, int delta)
 {
-	return (__get_cpu_usage(cpu, delta) << SCHED_CAPACITY_SHIFT)/capacity;
+	int usage = __get_cpu_usage(cpu, delta);
+
+	if (usage >= capacity)
+		return SCHED_CAPACITY_SCALE;
+
+	return (usage << SCHED_CAPACITY_SHIFT)/capacity;
 }
 
 static inline unsigned long cpu_norm_usage(int cpu)
