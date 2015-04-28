@@ -14,8 +14,9 @@
 
 #include "sched.h"
 
-#define MARGIN_PCT		125 /* taken from imbalance_pct = 125 */
 #define THROTTLE_NSEC		50000000 /* 50ms default */
+
+static DEFINE_PER_CPU(unsigned long, new_capacity);
 
 /**
  * gov_data - per-policy data internal to the governor
@@ -85,7 +86,7 @@ static unsigned long gov_cfs_select_freq(struct cpufreq_policy *policy)
 	 * lockless behavior.
 	 */
 	for_each_cpu(cpu, policy->cpus) {
-		usage = get_cpu_usage(cpu);
+		usage = per_cpu(new_capacity, cpu);
 		if (usage > max_usage)
 			max_usage = usage;
 	}
@@ -101,7 +102,7 @@ static unsigned long gov_cfs_select_freq(struct cpufreq_policy *policy)
 	}
 
 	/* freq is current utilization + 25% */
-	freq = max_usage * policy->max / capacity_orig_of(cpu);
+	freq = (max_usage * policy->max) / capacity_orig_of(cpu);
 
 out:
 	return freq;
@@ -201,7 +202,7 @@ static void gov_cfs_irq_work(struct irq_work *irq_work)
  * gov_cfs_update_cpu raises an IPI. The irq_work handler for that IPI wakes up
  * the thread that does the actual work, gov_cfs_thread.
  */
-void gov_cfs_update_cpu(int cpu)
+void gov_cfs_update_cpu(int cpu, unsigned long capacity)
 {
 	struct cpufreq_policy *policy;
 	struct gov_data *gd;
@@ -223,6 +224,7 @@ void gov_cfs_update_cpu(int cpu)
 		goto out;
 	}
 
+	per_cpu(new_capacity, cpu) = capacity;
 	irq_work_queue_on(&gd->irq_work, cpu);
 
 out:
@@ -233,6 +235,7 @@ out:
 static void gov_cfs_start(struct cpufreq_policy *policy)
 {
 	struct gov_data *gd;
+	int cpu;
 
 	/* prepare per-policy private data */
 	gd = kzalloc(sizeof(*gd), GFP_KERNEL);
@@ -250,6 +253,9 @@ static void gov_cfs_start(struct cpufreq_policy *policy)
 			    THROTTLE_NSEC;
 	pr_debug("%s: throttle threshold = %u [ns]\n",
 		  __func__, gd->throttle_nsec);
+
+	for_each_cpu(cpu, policy->related_cpus)
+		per_cpu(new_capacity, cpu) = 0;
 
 	/* init per-policy kthread */
 	gd->task = kthread_run(gov_cfs_thread, policy, "kgov_cfs_task");
