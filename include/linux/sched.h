@@ -1095,6 +1095,8 @@ struct sched_domain_shared {
 	int		has_idle_cores;
 };
 
+unsigned long capacity_curr_of(int cpu);
+
 struct sched_domain {
 	/* These fields must be setup */
 	struct sched_domain *parent;	/* top domain must be null terminated */
