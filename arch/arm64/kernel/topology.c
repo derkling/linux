@@ -172,11 +172,16 @@ static void __init parse_cpu_capacity(struct device_node *cpu_node, int cpu)
 	}
 }
 
+static const struct sched_group_energy * const cpu_core_energy(int cpu);
+
 static void normalize_cpu_capacity(void)
 {
 	u64 capacity;
 	int cpu;
 	bool asym = false;
+
+	if (cpu_core_energy(0))
+		return;
 
 	if (!raw_capacity || cap_parsing_failed)
 		return;
@@ -561,6 +566,43 @@ static int cpu_coregroup_flags(void)
 	return mc_flags;
 }
 
+static void update_cpu_capacity(unsigned int cpu)
+{
+	unsigned long capacity;
+	int max_cap_idx;
+
+	if (!cpu_core_energy(cpu))
+		return;
+
+	max_cap_idx = cpu_core_energy(cpu)->nr_cap_states - 1;
+	capacity = cpu_core_energy(cpu)->cap_states[max_cap_idx].cap;
+
+	set_capacity_scale(cpu, capacity);
+
+	pr_info("CPU%d: update cpu_capacity %lu\n",
+		cpu, arch_scale_cpu_capacity(NULL, cpu));
+}
+
+static void check_asym_cpucap(void)
+{
+	int cpu, max_cap_idx;
+	u64 capacity;
+
+	for_each_possible_cpu(cpu) {
+		if (!cpu_core_energy(cpu))
+			return;
+
+		max_cap_idx = cpu_core_energy(cpu)->nr_cap_states - 1;
+		capacity = cpu_core_energy(cpu)->cap_states[max_cap_idx].cap;
+
+		if (capacity < SCHED_CAPACITY_SCALE) {
+			asym_cpucap = true;
+			update_sched_flags();
+			break;
+		}
+	}
+}
+
 static void update_siblings_masks(unsigned int cpuid)
 {
 	struct cpu_topology *cpu_topo, *cpuid_topo = &cpu_topology[cpuid];
@@ -622,6 +664,8 @@ void store_cpu_topology(unsigned int cpuid)
 
 topology_populated:
 	update_siblings_masks(cpuid);
+	update_cpu_capacity(cpuid);
+	check_asym_cpucap();
 }
 
 static void __init reset_cpu_topology(void)
