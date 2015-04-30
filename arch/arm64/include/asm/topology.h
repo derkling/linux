@@ -29,6 +29,9 @@ unsigned long arm_arch_scale_freq_capacity(struct sched_domain *sd, int cpu);
 
 DECLARE_PER_CPU(atomic_long_t, cpu_freq_capacity);
 
+#define arch_scale_cpu_capacity arm_arch_scale_cpu_capacity
+extern unsigned long arm_arch_scale_cpu_capacity(struct sched_domain *sd, int cpu);
+
 #include <asm-generic/topology.h>
 
 #endif /* _ASM_ARM_TOPOLOGY_H */
