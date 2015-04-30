@@ -1430,17 +1430,6 @@ static inline int cpu_util(int cpu)
 	return (util >= capacity) ? capacity : util;
 }
 
-/*
- * Returns the current capacity of cpu after applying both
- * cpu and freq scaling.
- */
-static inline unsigned long capacity_curr_of(int cpu)
-{
-	return cpu_rq(cpu)->cpu_capacity_orig *
-	       arch_scale_freq_capacity(NULL, cpu)
-	       >> SCHED_CAPACITY_SHIFT;
-}
-
 #endif
 
 #ifdef CONFIG_CPU_FREQ_GOV_SCHED
