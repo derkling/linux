@@ -21,6 +21,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/sched/topology.h>
+#include <trace/events/power.h>
 
 DEFINE_PER_CPU(unsigned long, freq_scale) = SCHED_CAPACITY_SCALE;
 
@@ -36,8 +37,10 @@ void arch_set_freq_scale(struct cpumask *cpus, unsigned long cur_freq,
 	trace_printk("cpus=%s cur_freq=%lu max_freq=%lu scale=%lu",
 			buf, cur_freq, max_freq, scale);
 
-	for_each_cpu(i, cpus)
+	for_each_cpu(i, cpus) {
 		per_cpu(freq_scale, i) = scale;
+		trace_cpu_capacity(capacity_curr_of(i), i);
+	}
 }
 
 static DEFINE_MUTEX(cpu_scale_mutex);
