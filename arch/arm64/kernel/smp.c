@@ -53,6 +53,7 @@
 #include <asm/tlbflush.h>
 #include <asm/ptrace.h>
 
+#include <trace/events/power.h>
 #define CREATE_TRACE_POINTS
 #include <trace/events/ipi.h>
 
@@ -693,6 +694,7 @@ static int cpufreq_callback(struct notifier_block *nb,
 		return NOTIFY_OK;
 
 	scale_freq_capacity(cpu, freq->new, max);
+	trace_cpu_capacity(capacity_curr_of(cpu), cpu);
 
 	return NOTIFY_OK;
 }
@@ -713,6 +715,7 @@ static int cpufreq_policy_callback(struct notifier_block *nb,
 	for_each_cpu(i, policy->cpus) {
 		scale_freq_capacity(i, policy->cur, policy->max);
 		atomic_long_set(&per_cpu(cpu_max_freq, i), policy->max);
+		trace_cpu_capacity(capacity_curr_of(i), i);
 	}
 
 	return NOTIFY_OK;
