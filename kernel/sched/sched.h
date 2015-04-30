@@ -1514,17 +1514,6 @@ static inline unsigned long cpu_util(int cpu, bool use_pelt)
 	return __cpu_util(cpu, 0, use_pelt);
 }
 
-/*
- * Returns the current capacity of cpu after applying both
- * cpu and freq scaling.
- */
-static inline unsigned long capacity_curr_of(int cpu)
-{
-	return cpu_rq(cpu)->cpu_capacity_orig *
-	       arch_scale_freq_capacity(NULL, cpu)
-	       >> SCHED_CAPACITY_SHIFT;
-}
-
 #endif
 
 #ifdef CONFIG_CPU_FREQ_GOV_SCHED
