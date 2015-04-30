@@ -4568,7 +4568,7 @@ struct energy_env {
  * Returns the current capacity of cpu after applying both
  * cpu and freq scaling.
  */
-static unsigned long capacity_curr_of(int cpu)
+unsigned long capacity_curr_of(int cpu)
 {
 	return cpu_rq(cpu)->cpu_capacity_orig *
 	       arch_scale_freq_capacity(NULL, cpu)
