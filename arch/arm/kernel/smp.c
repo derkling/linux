@@ -47,6 +47,7 @@
 #include <asm/mach/arch.h>
 #include <asm/mpu.h>
 
+#include <trace/events/power.h>
 #define CREATE_TRACE_POINTS
 #include <trace/events/ipi.h>
 
@@ -709,6 +710,7 @@ static int cpufreq_callback(struct notifier_block *nb,
 					per_cpu(l_p_j_ref_freq, cpu),
 					freq->new);
 	}
+
 	return NOTIFY_OK;
 }
 
