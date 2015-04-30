@@ -22,6 +22,7 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
+#include <asm-generic/io-64-nonatomic-lo-hi.h>
 
 struct v2m_juno_hwmon_type {
 	const char *name;
