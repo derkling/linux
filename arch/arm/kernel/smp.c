@@ -47,6 +47,7 @@
 #include <asm/mach/arch.h>
 #include <asm/mpu.h>
 
+#include <trace/events/power.h>
 #define CREATE_TRACE_POINTS
 #include <trace/events/ipi.h>
 
@@ -775,6 +776,7 @@ static int cpufreq_callback(struct notifier_block *nb,
 	}
 
 	scale_freq_capacity(cpu, freq->new, max);
+	trace_cpu_capacity(capacity_curr_of(cpu), cpu);
 
 	return NOTIFY_OK;
 }
