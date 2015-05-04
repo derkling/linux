@@ -22,10 +22,40 @@
 	backlight_lcd: backlight_lcd {
 		enable-gpios = <&pio6397 23 1>;
 	};
+
+	sound {
+		compatible = "mediatek,mt8173-max98090";
+		mediatek,audio-codec = <&max98090>;
+		reg-vgp1-supply = <&mt6397_vgp1_reg>;
+		reg-vgp4-supply = <&mt6397_vgp4_reg>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&aud_i2s2>;
+		status = "okay";
+	};
+};
+
+&i2c0 {
+	max98090: audio-codec@10 {
+		compatible = "maxim,max98090";
+		reg = <0x10>;
+		interrupt-parent = <&pio>;
+		interrupts = <9 IRQ_TYPE_EDGE_FALLING>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&max98090_irq>;
+	};
 };
 
 &i2c4 {
 	trackpad@15 {
 		interrupts = <7 IRQ_TYPE_LEVEL_LOW>;
+	};
+};
+
+&pio {
+	max98090_irq: max98090_irq {
+		pins1 {
+			pinmux = <MT8173_PIN_9_EINT9__FUNC_GPIO9>;
+			bias-pull-up;
+		};
 	};
 };
