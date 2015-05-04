@@ -18,6 +18,55 @@
 / {
 	model = "Mediatek Oak rev1 board";
 	compatible = "google,oak-rev1", "google,oak", "mediatek,mt8173";
+
+	sound {
+		compatible = "mediatek,mt8173-rt5650-rt5676";
+		mediatek,audio-codec = <&rt5650 &rt5676>;
+		rt5650-clk-en-gpios = <&pio 16 GPIO_ACTIVE_HIGH>;
+		rt5676-clk-en-gpios = <&pio 17 GPIO_ACTIVE_HIGH>;
+		reg-vgp1-supply = <&mt6397_vgp1_reg>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&aud_i2s2>;
+		status = "okay";
+	};
+};
+
+&i2c0 {
+	rt5650: audio-codec@1a {
+		compatible = "realtek,rt5650";
+		reg = <0x1a>;
+		interrupt-parent = <&pio>;
+		interrupts = <3 IRQ_TYPE_EDGE_BOTH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&rt5650_irq>;
+		status = "okay";
+	};
+
+	rt5676: audio-codec@2c {
+		compatible = "realtek,rt5676";
+		reg = <0x2c>;
+		interrupt-parent = <&pio>;
+		interrupts = <2 IRQ_TYPE_EDGE_BOTH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&rt5676_irq>;
+		status = "okay";
+	};
+};
+
+&pio {
+	rt5650_irq: rt5650_irq {
+		pins1 {
+			pinmux = <MT8173_PIN_3_EINT3__FUNC_GPIO3>;
+			bias-pull-down;
+		};
+	};
+
+	rt5676_irq: rt5676_irq {
+		pins1 {
+			pinmux = <MT8173_PIN_2_EINT2__FUNC_GPIO2>;
+			bias-pull-down;
+		};
+	};
 };
 
 &i2c_tunnel {

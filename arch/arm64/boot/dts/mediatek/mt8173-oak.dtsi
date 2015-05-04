@@ -11,6 +11,7 @@
 
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/sound/mtk-afe.h>
 #include "mt8173.dtsi"
 #include "mt8173-pinfunc.h"
 
@@ -101,6 +102,22 @@
 				#size-cells = <0>;
 			};
 		};
+	};
+};
+
+&afe {
+	dai@0 {
+		io = <MTK_AFE_IO_I2S>;
+		connections = <5 3 6 4 17 9 18 10>;
+		mem-interface-playback = <MTK_AFE_MEMIF_DL1 MTK_AFE_IRQ_1 0>;
+		mem-interface-capture = <MTK_AFE_MEMIF_VUL MTK_AFE_IRQ_2 0>;
+	};
+
+	dai@1 {
+		io = <MTK_AFE_IO_HDMI>;
+		connections = <36 36 37 37 34 32 35 33 32 34 33 35 30 30 31 31>;
+		mem-interface-playback = <MTK_AFE_MEMIF_HDMI MTK_AFE_IRQ_5 0>;
+		loopback-pin = <MTK_AFE_IO_I2S>;
 	};
 };
 
@@ -304,6 +321,17 @@
 };
 
 &pio {
+	aud_i2s2: aud_i2s2 {
+		pins1 {
+			pinmux = <MT8173_PIN_128_I2S0_LRCK__FUNC_I2S1_WS>,
+				 <MT8173_PIN_129_I2S0_BCK__FUNC_I2S1_BCK>,
+				 <MT8173_PIN_130_I2S0_MCK__FUNC_I2S1_MCK>,
+				 <MT8173_PIN_131_I2S0_DATA0__FUNC_I2S1_DO_1>,
+				 <MT8173_PIN_132_I2S0_DATA1__FUNC_I2S2_DI_2>;
+			bias-pull-down;
+		};
+	};
+
 	disp_pwm0_pins: disp_pwm0_pins {
 		pins1 {
 			pinmux = <MT8173_PIN_87_DISP_PWM0__FUNC_DISP_PWM0>;
