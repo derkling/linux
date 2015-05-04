@@ -24,7 +24,13 @@
 	};
 
 	sound {
-		status = "disabled";
+		compatible = "mediatek,mt8173-max98090";
+		mediatek,audio-codec = <&max98090>;
+		dvdd-supply = <&mt6397_vgp1_reg>;
+		avdd-supply = <&mt6397_vgp4_reg>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&aud_i2s2>;
+		status = "okay";
 	};
 };
 
@@ -32,8 +38,28 @@
 	status = "disabled";
 };
 
+&i2c0 {
+	max98090: audio-codec@10 {
+		compatible = "maxim,max98090";
+		reg = <0x10>;
+		interrupt-parent = <&pio>;
+		interrupts = <9 IRQ_TYPE_EDGE_FALLING>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&max98090_irq>;
+	};
+};
+
 &mt6397_vpca7_reg {
 	regulator-always-on = "false";
+};
+
+&pio {
+	max98090_irq: max98090_irq {
+		pins1 {
+			pinmux = <MT8173_PIN_9_EINT9__FUNC_GPIO9>;
+			bias-pull-up;
+		};
+	};
 };
 
 &pmic {
