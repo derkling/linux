@@ -1,0 +1,102 @@
+/*
+ * Copyright (c) 2014 MediaTek Inc.
+ * Author: Eddie Huang <eddie.huang@mediatek.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+/dts-v1/;
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/gpio/gpio.h>
+#include "mt8173.dtsi"
+
+/ {
+	model = "Mediatek Oak rev0 board";
+	compatible = "google,oak-rev0", "google,oak", "mediatek,mt8173";
+
+	aliases {
+		serial0 = &uart0;
+		serial1 = &uart1;
+		serial2 = &uart2;
+		serial3 = &uart3;
+	};
+
+	memory@40000000 {
+		device_type = "memory";
+		reg = <0 0x40000000 0 0x80000000>;
+	};
+
+	chosen {
+		linux,stdout-path = &uart0;
+	};
+
+	gpio-keys {
+		compatible = "gpio-keys";
+		power {
+			label = "Power";
+			gpios = <&pio 14 GPIO_ACTIVE_HIGH>;
+			linux,code = <KEY_POWER>;
+			debounce-interval = <1>;
+			gpio-key,wakeup;
+		};
+	};
+
+	spi_gpio0: ec@0 {
+		compatible = "spi-gpio";
+		#address-cells = <0x1>;
+		#size-cells = <0>;
+		gpio-sck = <&pio 102 GPIO_ACTIVE_HIGH>;
+		gpio-miso = <&pio 103 GPIO_ACTIVE_HIGH>;
+		gpio-mosi = <&pio 104 GPIO_ACTIVE_HIGH>;
+		cs-gpios = <&pio 105 GPIO_ACTIVE_HIGH>;
+		num-chipselects = <1>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&spi_gpio0_pins>;
+		status = "okay";
+		/* clients */
+		cros_ec: ec@0 {
+			compatible = "google,cros-ec-spi";
+			reg = <0x0>;
+			spi-max-frequency = <18000000>;
+			interrupt-parent = <&pio>;
+			interrupts = <0 IRQ_TYPE_LEVEL_LOW>;
+			google,cros-ec-spi-msg-delay = <500>;
+			google,cros-ec-spi-pre-delay = <500>;
+
+			i2c_tunnel: i2c-tunnel {
+				compatible = "google,cros-ec-i2c-tunnel";
+				google,remote-bus = <0>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+			};
+		};
+	};
+};
+
+&uart0 {
+	status = "okay";
+};
+
+&pio {
+	spi_gpio0_pins: spi@ec0 {
+		pins1 {
+			pinmux = <MT8173_PIN_102_MSDC2_DAT2__FUNC_GPIO102>,
+				 <MT8173_PIN_103_MSDC2_DAT3__FUNC_GPIO103>,
+				 <MT8173_PIN_104_MSDC2_CLK__FUNC_GPIO104>,
+				 <MT8173_PIN_105_MSDC2_CMD__FUNC_GPIO105>;
+			bias-disable;
+		};
+
+		pins2 {
+			pinmux = <MT8173_PIN_0_EINT0__FUNC_GPIO0>;
+			bias-pull-up;
+		};
+	};
+};
