@@ -1407,8 +1407,10 @@ unsigned long capacity_curr_of(int cpu);
 #ifdef CONFIG_CPU_FREQ_GOV_SCHED_CFS
 #define MARGIN_PCT 125 /* taken from imbalance_pct = 125 */
 void gov_cfs_update_cpu(int cpu, unsigned long capacity);
+void gov_cfs_reset_cpu(int cpu);
 #else
 static inline void gov_cfs_update_cpu(int cpu) {}
+static inline void gov_cfs_reset_cpu(int cpu) {}
 #endif
 
 static inline void sched_rt_avg_update(struct rq *rq, u64 rt_delta)
