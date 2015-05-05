@@ -344,4 +344,19 @@ config X86_DEBUG_FPU
 
 	  If unsure, say N.
 
+config X86_DEBUG_FPU_PERFORMANCE
+	bool "Measure x86 FPU performance"
+	depends on DEBUG_KERNEL
+	---help---
+	  If this option is enabled then the kernel will run a short
+	  FPU (Floating Point Unit) benchmarking suite during bootup,
+	  to measure the cost of various FPU hardware operations and
+	  other kernel APIs.
+
+	  The results are printed to the kernel log.
+
+	  This extra benchmarking code will be freed after bootup.
+
+	  If unsure, say N.
+
 endmenu

@@ -13,6 +13,7 @@
 #include <asm/processor.h>
 #include <asm/processor-flags.h>
 #include <asm/fpu/internal.h>
+#include <asm/fpu/measure.h>
 #include <asm/msr.h>
 #include <asm/paravirt.h>
 #include <asm/alternative.h>
@@ -37,6 +38,7 @@ void __init check_bugs(void)
 
 	init_utsname()->machine[1] =
 		'0' + (boot_cpu_data.x86 > 6 ? 6 : boot_cpu_data.x86);
+	fpu__measure();
 	alternative_instructions();
 
 	fpu__init_check_bugs();

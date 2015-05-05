@@ -8,6 +8,7 @@
 #include <asm/alternative.h>
 #include <asm/bugs.h>
 #include <asm/processor.h>
+#include <asm/fpu/measure.h>
 #include <asm/mtrr.h>
 #include <asm/cacheflush.h>
 
@@ -18,6 +19,7 @@ void __init check_bugs(void)
 	printk(KERN_INFO "CPU: ");
 	print_cpu_info(&boot_cpu_data);
 #endif
+	fpu__measure();
 	alternative_instructions();
 
 	/*
