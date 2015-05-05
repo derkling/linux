@@ -4413,7 +4413,7 @@ static unsigned long capacity_of(int cpu)
 	return cpu_rq(cpu)->cpu_capacity;
 }
 
-static unsigned long capacity_orig_of(int cpu)
+unsigned long capacity_orig_of(int cpu)
 {
 	return cpu_rq(cpu)->cpu_capacity_orig;
 }
@@ -4633,7 +4633,7 @@ static int __get_cpu_usage(int cpu, int delta)
 	return sum;
 }
 
-static int get_cpu_usage(int cpu)
+int get_cpu_usage(int cpu)
 {
 	return __get_cpu_usage(cpu, 0);
 }

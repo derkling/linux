@@ -919,6 +919,8 @@ static inline void check_sched_energy_data(int cpu, sched_domain_energy_f fn,
 	}
 }
 
+int get_cpu_usage(int cpu);
+unsigned long capacity_orig_of(int cpu);
 #else
 
 static inline void sched_ttwu_pending(void) { }
