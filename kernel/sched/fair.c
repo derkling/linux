@@ -4105,9 +4105,6 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 			rq->rd->overutilized = true;
 	}
 
-	if(sched_energy_freq())
-		gov_cfs_update_cpu(cpu_of(rq), rq->cfs.utilization_load_avg);
-
 	hrtick_update(rq);
 }
 
@@ -4170,8 +4167,18 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		update_rq_runnable_avg(rq, 1);
 	}
 
-	if(sched_energy_freq())
-		gov_cfs_update_cpu(cpu_of(rq), rq->cfs.utilization_load_avg);
+	if(sched_energy_freq()) {
+		/*
+		 * Ask for an update only if we are not going idle.
+		 * If we are going idle we just need to clear our
+		 * current request.
+		 */
+		if (rq->cfs.nr_running)
+			gov_cfs_update_cpu(cpu_of(rq),
+				rq->cfs.utilization_load_avg);
+		else
+			gov_cfs_reset_cpu(cpu_of(rq));
+	}
 
 	hrtick_update(rq);
 }
@@ -5185,6 +5192,11 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 unlock:
 	rcu_read_unlock();
 
+	/* We want to consider the pre-decayed utilization */
+	if(sched_energy_freq())
+		gov_cfs_update_cpu(new_cpu,
+				   cpu_rq(new_cpu)->cfs.utilization_load_avg +
+				   task_utilization(p));
 	return new_cpu;
 }
 
