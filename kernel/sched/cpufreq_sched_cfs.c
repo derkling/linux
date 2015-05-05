@@ -189,6 +189,11 @@ static void gov_cfs_irq_work(struct irq_work *irq_work)
 	wake_up_process(gd->task);
 }
 
+void gov_cfs_reset_cpu(int cpu)
+{
+	per_cpu(new_capacity, cpu) = 0;
+}
+
 /**
  * gov_cfs_update_cpu - interface to scheduler for changing capacity values
  * @cpu: cpu whose capacity utilization has recently changed
