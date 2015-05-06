@@ -39,9 +39,10 @@
 		compatible = "pwm-backlight";
 		pwms = <&pwm0 0 1000000>;
 		brightness-levels = <
-			0  16  32  48  64  80  96 112
+			  0  16  32  48  64  80  96 112
 			128 144 160 176 192 208 224 240
-			255 >;
+			255
+		>;
 		default-brightness-level = <9>;
 		power-supply = <&mt6397_vio18_reg>;
 		enable-gpios = <&pio6397 23 1>;
@@ -121,15 +122,6 @@
 	};
 };
 
-&cpu0 {
-	proc-supply = <&mt6397_vpca15_reg>;
-};
-
-&cpu2 {
-	proc-supply = <&da9211_vcpu_reg>;
-	sram-supply = <&mt6397_vsramca7_reg>;
-};
-
 &afe {
 	dai@0 {
 		io = <MTK_AFE_IO_I2S>;
@@ -144,6 +136,15 @@
 		mem-interface-playback = <MTK_AFE_MEMIF_HDMI MTK_AFE_IRQ_5 0>;
 		loopback-pin = <MTK_AFE_IO_I2S>;
 	};
+};
+
+&cpu0 {
+	proc-supply = <&mt6397_vpca15_reg>;
+};
+
+&cpu2 {
+	proc-supply = <&da9211_vcpu_reg>;
+	sram-supply = <&mt6397_vsramca7_reg>;
 };
 
 &uart0 {
@@ -687,6 +688,7 @@
 	clock-frequency = <100000>;
 	#address-cells = <0x1>;
 	#size-cells = <0>;
+
 	trackpad@15 {
 		compatible = "elan,ekth3000";
 		interrupt-parent = <&pio>;
@@ -695,6 +697,7 @@
 		vcc-supply = <&mt6397_vgp6_reg>;
 		wakeup-source;
 	};
+
 	thermal@4c {
 		compatible = "ti,tmp432";
 		reg = <0x4c>;

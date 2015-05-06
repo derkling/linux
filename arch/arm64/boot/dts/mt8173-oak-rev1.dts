@@ -35,6 +35,23 @@
 		reg = <0 0x40000000 0 0x80000000>;
 	};
 
+	backlight_lcd: backlight_lcd {
+		compatible = "pwm-backlight";
+		pwms = <&pwm0 0 1000000>;
+		brightness-levels = <
+			  0  16  32  48  64  80  96 112
+			128 144 160 176 192 208 224 240
+			255
+		>;
+		default-brightness-level = <9>;
+		power-supply = <&mt6397_vio18_reg>;
+		enable-gpios = <&pio 23 1>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&disp_pwm0_pins>;
+		status = "okay";
+	};
+
 	chosen {
 		linux,stdout-path = &uart0;
 	};
@@ -82,7 +99,7 @@
 	};
 
 	panel: panel {
-		compatible = "lg,ld070wx3-sl01";/* for 800 x 1280 panel */
+		compatible = "innolux,n116bge";
 	};
 
 	sdio_fixed_3v3: fixedregulator@0 {
@@ -532,6 +549,12 @@
 		};
 	};
 
+	disp_pwm0_pins: disp_pwm0_pins{
+		pins1 {
+			pinmux = <MT8173_PIN_87_DISP_PWM0__FUNC_DISP_PWM0>;
+			bias-pull-up;
+		};
+	};
 };
 
 &usb{
@@ -662,13 +685,18 @@
 	clock-frequency = <100000>;
 	#address-cells = <0x1>;
 	#size-cells = <0>;
-	it6151mipirx@6c {
-		compatible = "ite,it6151mipirx";
-		reg = <0x6c>;
-	};
-	it6151dptx@5c {
-		compatible = "ite,it6151dptx";
+
+	ite6151: edp-bridge@5c {
+		compatible = "ite,it6151";
 		reg = <0x5c>;
+		rxreg = <0x6c>;
+		power-gpio = <&pio 93 GPIO_ACTIVE_HIGH>;
+		reset-gpio = <&pio 94 GPIO_ACTIVE_HIGH>;
+		port {
+			dsi_in: endpoint {
+				remote-endpoint = <&dsi_out>;
+			};
+		};
 	};
 };
 
@@ -679,6 +707,7 @@
 	clock-frequency = <100000>;
 	#address-cells = <0x1>;
 	#size-cells = <0>;
+
 	trackpad@15 {
 		compatible = "elan,ekth3000";
 		interrupt-parent = <&pio>;
@@ -687,6 +716,7 @@
 		vcc-supply = <&mt6397_vgp6_reg>;
 		wakeup-source;
 	};
+
 	thermal@4c {
 		compatible = "ti,tmp432";
 		reg = <0x4c>;
@@ -698,11 +728,24 @@
 	p1-gpio = <&pio 3 GPIO_ACTIVE_HIGH>;
 };
 
-&drm0 {
+&dsi {
 	mediatek,width = <1368>;
 	mediatek,height = <768>;
 	mediatek,mipi-tx-burst-freq = <150>;
 	mediatek,panel = <&panel>;
+
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@1 {
+			reg = <1>;
+
+			dsi_out: endpoint {
+				remote-endpoint = <&dsi_in>;
+			};
+		};
+	};
 };
 
 #include "cros-ec-keyboard.dtsi"
