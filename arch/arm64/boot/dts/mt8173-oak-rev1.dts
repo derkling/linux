@@ -148,8 +148,24 @@
 	sram-supply = <&mt6397_vsramca7_reg>;
 };
 
-&uart0 {
-	status = "okay";
+&dsi {
+	mediatek,width = <1368>;
+	mediatek,height = <768>;
+	mediatek,mipi-tx-burst-freq = <150>;
+	mediatek,panel = <&panel>;
+
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@1 {
+			reg = <1>;
+
+			dsi_out: endpoint {
+				remote-endpoint = <&dsi_in>;
+			};
+		};
+	};
 };
 
 &pwrap {
@@ -371,6 +387,24 @@
 };
 
 &pio {
+	aud_i2s2: aud_i2s2 {
+		pins1 {
+			pinmux = <MT8173_PIN_128_I2S0_LRCK__FUNC_I2S1_WS>,
+					 <MT8173_PIN_129_I2S0_BCK__FUNC_I2S1_BCK>,
+					 <MT8173_PIN_130_I2S0_MCK__FUNC_I2S1_MCK>,
+					 <MT8173_PIN_131_I2S0_DATA0__FUNC_I2S1_DO_1>,
+					 <MT8173_PIN_132_I2S0_DATA1__FUNC_I2S2_DI_2>;
+			bias-pull-down;
+		};
+	};
+
+	disp_pwm0_pins: disp_pwm0_pins{
+		pins1 {
+			pinmux = <MT8173_PIN_87_DISP_PWM0__FUNC_DISP_PWM0>;
+			bias-pull-up;
+		};
+	};
+
 	mmc0_pins_default: mmc0default {
 		pins_cmd_dat {
 			pinmux = <MT8173_PIN_57_MSDC0_DAT0__FUNC_MSDC0_DAT0>,
@@ -501,13 +535,9 @@
 		};
 	};
 
-	aud_i2s2: aud_i2s2 {
+	rt5650_irq: rt5650_irq {
 		pins1 {
-			pinmux = <MT8173_PIN_128_I2S0_LRCK__FUNC_I2S1_WS>,
-				 <MT8173_PIN_129_I2S0_BCK__FUNC_I2S1_BCK>,
-				 <MT8173_PIN_130_I2S0_MCK__FUNC_I2S1_MCK>,
-				 <MT8173_PIN_131_I2S0_DATA0__FUNC_I2S1_DO_1>,
-				 <MT8173_PIN_132_I2S0_DATA1__FUNC_I2S2_DI_2>;
+			pinmux = <MT8173_PIN_3_EINT3__FUNC_GPIO3>;
 			bias-pull-down;
 		};
 	};
@@ -515,13 +545,6 @@
 	rt5676_irq: rt5676_irq {
 		pins1 {
 			pinmux = <MT8173_PIN_2_EINT2__FUNC_GPIO2>;
-			bias-pull-down;
-		};
-	};
-
-	rt5650_irq: rt5650_irq {
-		pins1 {
-			pinmux = <MT8173_PIN_3_EINT3__FUNC_GPIO3>;
 			bias-pull-down;
 		};
 	};
@@ -548,58 +571,6 @@
 			bias-disable;
 		};
 	};
-
-	disp_pwm0_pins: disp_pwm0_pins{
-		pins1 {
-			pinmux = <MT8173_PIN_87_DISP_PWM0__FUNC_DISP_PWM0>;
-			bias-pull-up;
-		};
-	};
-};
-
-&usb{
-	pinctrl-names = "default";
-	pinctrl-0 = <&usb_pins>;
-};
-
-&mmc0 {
-	pinctrl-names = "default", "state_uhs";
-	pinctrl-0 = <&mmc0_pins_default>;
-	pinctrl-1 = <&mmc0_pins_uhs>;
-	status = "okay";
-	bus-width = <8>;
-	max-frequency = <50000000>;
-	cap-mmc-highspeed;
-	vmmc-supply = <&mt6397_vemc_3v3_reg>;
-	vqmmc-supply = <&mt6397_vio18_reg>;
-	non-removable;
-};
-
-&mmc1 {
-	pinctrl-names = "default", "state_uhs";
-	pinctrl-0 = <&mmc1_pins_default>;
-	pinctrl-1 = <&mmc1_pins_uhs>;
-	status = "okay";
-	bus-width = <4>;
-	max-frequency = <25000000>;
-	cap-sd-highspeed;
-	cd-gpios = <&pio 1 0>;
-	vmmc-supply = <&mt6397_vmch_reg>;
-	vqmmc-supply = <&mt6397_vmc_reg>;
-};
-
-&mmc3 {
-	pinctrl-names = "default", "state_uhs";
-	pinctrl-0 = <&mmc3_pins_default>;
-	pinctrl-1 = <&mmc3_pins_uhs>;
-	status = "okay";
-	bus-width = <4>;
-	max-frequency = <25000000>;
-	cap-sd-highspeed;
-	#sd-uhs-sdr25;
-	vmmc-supply = <&sdio_fixed_3v3>;
-	vqmmc-supply = <&mt6397_vgp3_reg>;
-	non-removable;
 };
 
 &i2c0 {
@@ -723,29 +694,58 @@
 	};
 };
 
+&mmc0 {
+	pinctrl-names = "default", "state_uhs";
+	pinctrl-0 = <&mmc0_pins_default>;
+	pinctrl-1 = <&mmc0_pins_uhs>;
+	status = "okay";
+	bus-width = <8>;
+	max-frequency = <50000000>;
+	cap-mmc-highspeed;
+	vmmc-supply = <&mt6397_vemc_3v3_reg>;
+	vqmmc-supply = <&mt6397_vio18_reg>;
+	non-removable;
+};
+
+&mmc1 {
+	pinctrl-names = "default", "state_uhs";
+	pinctrl-0 = <&mmc1_pins_default>;
+	pinctrl-1 = <&mmc1_pins_uhs>;
+	status = "okay";
+	bus-width = <4>;
+	max-frequency = <25000000>;
+	cap-sd-highspeed;
+	cd-gpios = <&pio 1 0>;
+	vmmc-supply = <&mt6397_vmch_reg>;
+	vqmmc-supply = <&mt6397_vmc_reg>;
+};
+
+&mmc3 {
+	pinctrl-names = "default", "state_uhs";
+	pinctrl-0 = <&mmc3_pins_default>;
+	pinctrl-1 = <&mmc3_pins_uhs>;
+	status = "okay";
+	bus-width = <4>;
+	max-frequency = <25000000>;
+	cap-sd-highspeed;
+	#sd-uhs-sdr25;
+	vmmc-supply = <&sdio_fixed_3v3>;
+	vqmmc-supply = <&mt6397_vgp3_reg>;
+	non-removable;
+};
+
 /* There is a switch between micro (low to device) and type A (high to host) */
 &u3phy {
 	p1-gpio = <&pio 3 GPIO_ACTIVE_HIGH>;
 };
 
-&dsi {
-	mediatek,width = <1368>;
-	mediatek,height = <768>;
-	mediatek,mipi-tx-burst-freq = <150>;
-	mediatek,panel = <&panel>;
+&uart0 {
+	status = "okay";
+};
 
-	ports {
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		port@1 {
-			reg = <1>;
-
-			dsi_out: endpoint {
-				remote-endpoint = <&dsi_in>;
-			};
-		};
-	};
+&usb{
+	pinctrl-names = "default";
+	pinctrl-0 = <&usb_pins>;
 };
 
 #include "cros-ec-keyboard.dtsi"
