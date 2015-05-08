@@ -5100,8 +5100,10 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	int want_affine = 0;
 	int sync = wake_flags & WF_SYNC;
 
-	if (p->nr_cpus_allowed == 1)
-		return prev_cpu;
+	if (p->nr_cpus_allowed == 1) {
+		new_cpu = prev_cpu;
+		goto out_affine;
+	}
 
 	if (sd_flag & SD_BALANCE_WAKE)
 		want_affine = cpumask_test_cpu(cpu, tsk_cpus_allowed(p));
@@ -5174,6 +5176,7 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 unlock:
 	rcu_read_unlock();
 
+out_affine:
 	/* We want to consider the pre-decayed utilization */
 	if(sched_energy_freq())
 		gov_cfs_update_cpu(new_cpu,
