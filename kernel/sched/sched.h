@@ -1480,6 +1480,11 @@ unsigned long arch_scale_cpu_capacity(struct sched_domain *sd, int cpu)
 #endif
 unsigned long capacity_curr_of(int cpu);
 
+static inline bool sched_energy_freq(void)
+{
+	return sched_feat(SCHED_ENERGY_FREQ);
+}
+
 #define MARGIN_PCT 125 /* taken from imbalance_pct = 125 */
 #ifdef CONFIG_CPU_FREQ_GOV_SCHED_CFS
 void gov_cfs_update_cpu(int cpu, unsigned long capacity);
