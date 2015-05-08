@@ -188,7 +188,9 @@
 #define CLK_INFRA_CEC			9
 #define CLK_INFRA_PMICSPI		10
 #define CLK_INFRA_PMICWRAP		11
-#define CLK_INFRA_NR_CLK		12
+#define CLK_INFRA_CA53SEL		12
+#define CLK_INFRA_CA57SEL		13
+#define CLK_INFRA_NR_CLK		14
 
 /* PERI_SYS */
 
