@@ -163,7 +163,7 @@ static int gov_cfs_thread(void *data)
 		freq = gov_cfs_select_freq(policy);
 
 		ret = __cpufreq_driver_target(policy, freq,
-				CPUFREQ_RELATION_H);
+				CPUFREQ_RELATION_L);
 		if (ret)
 			pr_debug("%s: __cpufreq_driver_target returned %d\n",
 					__func__, ret);
