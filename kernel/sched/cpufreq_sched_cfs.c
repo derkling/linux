@@ -94,6 +94,8 @@ static unsigned long gov_cfs_select_freq(struct cpufreq_policy *policy)
 	/* add margin to max_usage based on imbalance_pct */
 	max_usage = max_usage * MARGIN_PCT / 100;
 
+	cpu = cpumask_first(policy->cpus);
+
 	if (max_usage >= capacity_orig_of(cpu)) {
 		freq = policy->max;
 		goto out;
