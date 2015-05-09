@@ -1043,6 +1043,7 @@ struct sched_group;
 
 struct sched_domain_shared {
 	atomic_t	ref;
+	bool            overutilized;
 };
 
 struct sched_domain {
