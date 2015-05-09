@@ -375,6 +375,7 @@
 				 <&iommu M4U_PORT_DISP_RDMA0>,
 				 <&iommu M4U_PORT_DISP_OVL1>,
 				 <&iommu M4U_PORT_DISP_RDMA1>;
+			power-domains = <&scpsys MT8173_POWER_DOMAIN_MM>;
 			clocks = <&mmsys CLK_MM_MUTEX_32K>,
 				 <&mmsys CLK_MM_DISP_OVL0>,
 				 <&mmsys CLK_MM_DISP_OVL1>,
