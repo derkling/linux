@@ -2966,6 +2966,7 @@ static int rt5645_i2c_probe(struct i2c_client *i2c,
 			dev_warn(&i2c->dev, "Apply rt5650 patch failed: %d\n",
 					   ret);
 	}
+	regmap_update_bits(rt5645->regmap, RT5645_GEN_CTRL1, 1 << 14, 1 << 14);
 
 	if (rt5645->pdata.in2_diff)
 		regmap_update_bits(rt5645->regmap, RT5645_IN2_CTRL,
