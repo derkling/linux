@@ -67,6 +67,12 @@
 	clock-frequency = <100000>;
 	#address-cells = <0x1>;
 	#size-cells = <0>;
+
+	tpm: tpm@20 {
+		compatible = "infineon,slb9645tt";
+		reg = <0x20>;
+		powered-while-suspended;
+	};
 };
 
 &i2c3 {
