@@ -118,6 +118,11 @@
 	clock-frequency = <100000>;
 	#address-cells = <0x1>;
 	#size-cells = <0>;
+
+	thermal@4c {
+		compatible = "ti,tmp432";
+		reg = <0x4c>;
+	};
 };
 
 &uart0 {
