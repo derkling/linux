@@ -20,4 +20,7 @@ config PINCTRL_MT8173
 	default ARM64 && ARCH_MEDIATEK
 	select PINCTRL_MTK_COMMON
 
+config PINCTRL_MT6397
+	def_bool MFD_MT6397
+
 endif
