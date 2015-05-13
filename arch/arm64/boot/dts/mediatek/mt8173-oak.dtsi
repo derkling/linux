@@ -155,6 +155,15 @@
 		compatible = "ti,tmp432";
 		reg = <0x4c>;
 	};
+
+	trackpad@15 {
+		compatible = "elan,ekth3000";
+		interrupt-parent = <&pio>;
+		interrupts = <124 IRQ_TYPE_LEVEL_LOW>;
+		reg = <0x15>;
+		vcc-supply = <&mt6397_vgp6_reg>;
+		wakeup-source;
+	};
 };
 
 &i2c_tunnel {
