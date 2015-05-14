@@ -1409,7 +1409,7 @@ unsigned long capacity_curr_of(int cpu);
 void gov_cfs_update_cpu(int cpu, unsigned long capacity);
 void gov_cfs_reset_cpu(int cpu);
 #else
-static inline void gov_cfs_update_cpu(int cpu) {}
+static inline void gov_cfs_update_cpu(int cpu, unsigned long capacity) {}
 static inline void gov_cfs_reset_cpu(int cpu) {}
 #endif
 
