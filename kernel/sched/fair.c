@@ -5394,7 +5394,7 @@ done:
 	return target;
 }
 
-static int energy_aware_wake_cpu(struct task_struct *p)
+static int energy_aware_wake_cpu(struct task_struct *p, int target)
 {
 	struct sched_domain *sd;
 	struct sched_group *sg, *sg_target;
@@ -5405,7 +5405,7 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 	sd = rcu_dereference(per_cpu(sd_ea, task_cpu(p)));
 
 	if (!sd)
-		return -1;
+		return target;
 
 	sg = sd->groups;
 	sg_target = sg;
@@ -5527,7 +5527,7 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 
 	if (sd_flag & SD_BALANCE_WAKE && want_sibling) {
 		if (energy_aware() && !cpu_rq(cpu)->rd->overutilized)
-			new_cpu = energy_aware_wake_cpu(p);
+			new_cpu = energy_aware_wake_cpu(p, prev_cpu);
 		else
 			new_cpu = select_idle_sibling(p, prev_cpu);
 		goto unlock;
