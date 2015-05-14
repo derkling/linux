@@ -62,7 +62,7 @@ static struct clk *mtk_clk_register_cpumux(const struct mtk_composite *mux,
 {
 	struct mtk_clk_cpumux *cpumux;
 	struct clk *clk;
-	struct clk_init_data init;
+	struct clk_init_data init = {};
 
 	cpumux = kzalloc(sizeof(*cpumux), GFP_KERNEL);
 	if (!cpumux)
