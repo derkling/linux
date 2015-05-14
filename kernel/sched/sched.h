@@ -1404,8 +1404,8 @@ unsigned long arch_scale_cpu_capacity(struct sched_domain *sd, int cpu)
 #endif
 unsigned long capacity_curr_of(int cpu);
 
-#ifdef CONFIG_CPU_FREQ_GOV_SCHED_CFS
 #define MARGIN_PCT 125 /* taken from imbalance_pct = 125 */
+#ifdef CONFIG_CPU_FREQ_GOV_SCHED_CFS
 void gov_cfs_update_cpu(int cpu, unsigned long capacity);
 void gov_cfs_reset_cpu(int cpu);
 #else
