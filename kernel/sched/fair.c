@@ -4985,7 +4985,11 @@ static int sched_eas_show(struct seq_file *m, void *v)
 	sg = sd->groups;
 	do {
 		eenv.sg_top = sg;
+#if 0
 		cluster_energy = sched_group_energy(&eenv);
+#else
+		cluster_energy = sched_get_power(sched_group_cpus(sg), SCHED_POWER_METHOD_MID);
+#endif
 		seq_printf(m, "%d ", cluster_energy);
 	} while (sg = sg->next, sg != sd->groups);
 	seq_puts(m, "\n");
