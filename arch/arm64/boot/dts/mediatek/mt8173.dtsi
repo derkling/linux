@@ -14,6 +14,7 @@
 #include <dt-bindings/clock/mt8173-clk.h>
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/power/mt8173-power.h>
 #include <dt-bindings/reset-controller/mt8173-resets.h>
 #include "mt8173-pinfunc.h"
 
@@ -399,6 +400,7 @@
 			compatible = "mediatek,mt8173-u3phy";
 			reg = <0 0x11271000 0 0x3000>,
 			      <0 0x11280000 0 0x20000>;
+			power-domains = <&scpsys MT8173_POWER_DOMAIN_USB>;
 			usb-host = <&usb>;
 			usb3_ref_clk = <&apmixedsys>;
 			clocks = <&pericfg CLK_PERI_USB0>,
