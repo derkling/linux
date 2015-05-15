@@ -18,6 +18,10 @@
 / {
 	model = "Mediatek Oak rev0 board";
 	compatible = "google,oak-rev0", "google,oak", "mediatek,mt8173";
+
+	backlight_lcd: backlight_lcd {
+		enable-gpios = <&pio6397 23 1>;
+	};
 };
 
 &mt6397_vpca7_reg {
