@@ -30,6 +30,7 @@
 #include <linux/mempolicy.h>
 #include <linux/migrate.h>
 #include <linux/task_work.h>
+#include <linux/debugfs.h>
 
 #include <trace/events/sched.h>
 
@@ -4961,6 +4962,64 @@ next_cpu:
 	eenv->energy = total_energy;
 	return total_energy;
 }
+
+/* Sysfs intereface to read EM estimations from userspace */
+static int sched_eas_show(struct seq_file *m, void *v)
+{
+	struct sched_domain *sd;
+	struct sched_group *sg;
+	struct energy_env eenv = {
+		.usage_delta	=  0,
+		.src_cpu	= -1,
+		.dst_cpu	= -1,
+	};
+	int cluster_energy = 0;
+
+	printk(KERN_WARNING ">>>>> Reading sysfs interface\n");
+
+	rcu_read_lock();
+	sd = rcu_dereference(per_cpu(sd_ea, 0));
+	if (!sd)
+		return 0; /* Error */
+
+	sg = sd->groups;
+	do {
+		eenv.sg_top = sg;
+		cluster_energy = sched_group_energy(&eenv);
+		seq_printf(m, "%d ", cluster_energy);
+	} while (sg = sg->next, sg != sd->groups);
+	seq_puts(m, "\n");
+	rcu_read_unlock();
+
+	/* trace_printk("%s", outbuf); */
+
+	return 0;
+}
+
+
+static int sched_eas_open(struct inode *inode, struct file *filp)
+{
+	return single_open(filp, sched_eas_show, NULL);
+}
+
+static const struct file_operations sched_eas_fops = {
+	.open		= sched_eas_open,
+	.write		= NULL,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static __init int sched_init_eas(void)
+{
+	debugfs_create_file("sample_energy", 0444, NULL, NULL,
+			&sched_eas_fops);
+
+	return 0;
+}
+late_initcall(sched_init_eas);
+
+
 
 /*
  * energy_diff(): Estimate the energy impact of changing the utilization
