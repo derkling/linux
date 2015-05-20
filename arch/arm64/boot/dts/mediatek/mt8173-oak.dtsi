@@ -177,3 +177,5 @@
 &uart0 {
 	status = "okay";
 };
+
+#include "cros-ec-keyboard.dtsi"
