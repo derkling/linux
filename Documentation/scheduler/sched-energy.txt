@@ -177,7 +177,7 @@ with the state of the cpu. Thus, the platform parameter for this contribution
 is idle power (energy/time).
 
 Energy consumed during transitions from an idle-state (C-state) to a busy state
-(P-staet) or going the other way is ignored by the model to simplify the energy
+(P-state) or going the other way is ignored by the model to simplify the energy
 model calculations.
 
 
