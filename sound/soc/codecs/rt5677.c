@@ -4922,6 +4922,22 @@ static const struct regmap_config rt5677_regmap_physical = {
 	.num_ranges = ARRAY_SIZE(rt5677_ranges),
 };
 
+static void rt5677_regmap_lock_mutex(void *__lock)
+{
+	struct mutex *lock = __lock;
+
+	mutex_lock(lock);
+}
+
+static void rt5677_regmap_unlock_mutex(void *__lock)
+{
+	struct mutex *lock = __lock;
+
+	mutex_unlock(lock);
+}
+
+static struct mutex rt5677_regmap_lock;
+
 static const struct regmap_config rt5677_regmap = {
 	.reg_bits = 8,
 	.val_bits = 16,
@@ -4933,6 +4949,9 @@ static const struct regmap_config rt5677_regmap = {
 	.readable_reg = rt5677_readable_register,
 	.reg_read = rt5677_read,
 	.reg_write = rt5677_write,
+	.lock = rt5677_regmap_lock_mutex,
+	.unlock = rt5677_regmap_unlock_mutex,
+	.lock_arg = &rt5677_regmap_lock,
 
 	.cache_type = REGCACHE_RBTREE,
 	.reg_defaults = rt5677_reg,
@@ -5108,6 +5127,8 @@ static int rt5677_i2c_probe(struct i2c_client *i2c,
 			ret);
 		return ret;
 	}
+
+	mutex_init(&rt5677_regmap_lock);
 
 	regmap_read(rt5677->regmap, RT5677_VENDOR_ID2, &val);
 	if (val != RT5677_DEVICE_ID) {
