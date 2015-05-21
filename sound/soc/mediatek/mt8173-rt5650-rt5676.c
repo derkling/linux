@@ -160,6 +160,16 @@ static struct snd_soc_dai_link mt8173_rt5650_rt5676_dais[] = {
 		.ops = &mt8173_rt5650_rt5676_ops,
 		.ignore_pmdown_time = 1,
 	},
+	{ /* rt5676 <-> rt5650 intercodec link: Sets rt5676 I2S2 as master */
+		.name = "rt5650_rt5676 intercodec",
+		.stream_name = "rt5650_rt5676 intercodec",
+		.cpu_dai_name = "snd-soc-dummy-dai",
+		.platform_name = "snd-soc-dummy",
+		.no_pcm = 1,
+		.codec_dai_name = "rt5677-aif2",
+		.dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
+			   SND_SOC_DAIFMT_CBM_CFM,
+	},
 	{
 		.name = "HDMI Playback",
 		.stream_name = "HDMI Playback",
@@ -211,6 +221,9 @@ static int mt8173_rt5650_rt5676_dev_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 	mt8173_rt5650_rt5676_codec_conf[0].of_node =
+		mt8173_rt5650_rt5676_codecs[1].of_node;
+
+	mt8173_rt5650_rt5676_dais[1].codec_of_node =
 		mt8173_rt5650_rt5676_codecs[1].of_node;
 
 	ret = devm_gpio_request_one(&pdev->dev,
