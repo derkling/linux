@@ -584,6 +584,15 @@
 			#clock-cells = <1>;
 		};
 
+		pwm0: pwm@1401e000 {
+			compatible = "mediatek,mt8173-disp-pwm";
+			reg = <0 0x1401e000 0 0x1000>;
+			#pwm-cells = <2>;
+			clocks = <&mmsys CLK_MM_DISP_PWM0MM>,
+				 <&mmsys CLK_MM_DISP_PWM026M>;
+			clock-names = "mm", "main";
+		};
+
 		larb0:larb@14021000 {
 			compatible = "mediatek,mt8173-smi-larb";
 			reg = <0 0x14021000 0 0x1000>;
