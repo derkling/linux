@@ -28,3 +28,13 @@
 		ti,charger-detect-gpio = <&pio 13 GPIO_ACTIVE_HIGH>;
 	};
 };
+
+&pwrap {
+	pmic: mt6397 {
+		mt6397regulator: mt6397regulator {
+			mt6397_vpca7_reg: buck_vpca7 {
+				regulator-always-on;
+			};
+		};
+	};
+};
