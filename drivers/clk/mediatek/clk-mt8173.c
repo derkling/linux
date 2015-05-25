@@ -978,6 +978,8 @@ static void __init mtk_pericfg_init(struct device_node *node)
 			__func__, r);
 
 	mtk_register_reset_controller(node, 2, 0);
+
+	clk_prepare_enable(clk_data->clks[CLK_PERI_UART0]);
 }
 CLK_OF_DECLARE(mtk_pericfg, "mediatek,mt8173-pericfg", mtk_pericfg_init);
 
