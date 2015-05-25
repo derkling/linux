@@ -199,6 +199,15 @@
 		compatible = "simple-bus";
 		ranges;
 
+		drm0: drm {
+			compatible = "mediatek,mt8173-drm";
+			larb = <&larb0>, <&larb4>;
+			iommus = <&iommu M4U_LARB0_ID M4U_PORT_DISP_OVL0>,
+				 <&iommu M4U_LARB0_ID M4U_PORT_DISP_RDMA0>;
+			connectors = <&dsi>;
+			crtcs = <&crtc_main>;
+		};
+
 		topckgen: clock-controller@10000000 {
 			compatible = "mediatek,mt8173-topckgen";
 			reg = <0 0x10000000 0 0x1000>;
@@ -358,6 +367,15 @@
 			compatible = "mediatek,mt8173-apmixedsys";
 			reg = <0 0x10209000 0 0x1000>;
 			#clock-cells = <1>;
+		};
+
+		dsi: dsi@10215000 {
+			compatible = "mediatek,mt8173-dsi";
+			reg = <0 0x1401b000 0 0x1000>,	/* DSI0 */
+			      <0 0x10215000 0 0x1000>;  /* MIPITX */
+			clocks = <&mmsys CLK_MM_DSI0_ENGINE>,
+				 <&mmsys CLK_MM_DSI0_DIGITAL>;
+			clock-names = "dsi0_engine_disp_ck", "dsi0_digital_disp_ck";
 		};
 
 		gic: interrupt-controller@10220000 {
@@ -653,10 +671,44 @@
 			#clock-cells = <1>;
 		};
 
+		ddp: ddp@14000000 {
+			compatible = "mediatek,mt8173-ddp";
+			reg = <0 0x14000000 0 0x100>,	/* CONFIG */
+			      <0 0x14020000 0 0x1000>;	/* MUTEX */
+			power-domains = <&scpsys MT8173_POWER_DOMAIN_MM>;
+			clocks = <&mmsys CLK_MM_MUTEX_32K>;
+			clock-names = "mutex_disp";
+		};
+
 		mmsys: mmsys@14000000 {
 			compatible = "mediatek,mt8173-mmsys", "syscon";
 			reg = <0 0x14000000 0 0x1000>;
 			#clock-cells = <1>;
+		};
+
+		crtc_main: crtc0@1400c000 {
+			compatible = "mediatek,mt8173-crtc-main";
+			interrupts = <GIC_SPI 196 IRQ_TYPE_LEVEL_LOW>,
+				     <GIC_SPI 181 IRQ_TYPE_LEVEL_LOW>;
+			reg = <0 0x1400c000 0 0x1000>,	/* OVL0 */
+			      <0 0x1400e000 0 0x1000>,	/* RDMA0 */
+			      <0 0x14013000 0 0x1000>,	/* COLOR0 */
+			      <0 0x14015000 0 0x1000>,	/* AAL */
+			      <0 0x1401a000 0 0x1000>,	/* UFOE */
+			      <0 0x14023000 0 0x1000>;	/* OD */
+			clocks = <&mmsys CLK_MM_DISP_OVL0>,
+				 <&mmsys CLK_MM_DISP_RDMA0>,
+				 <&mmsys CLK_MM_DISP_COLOR0>,
+				 <&mmsys CLK_MM_DISP_AAL>,
+				 <&mmsys CLK_MM_DISP_UFOE>,
+				 <&mmsys CLK_MM_DISP_OD>;
+			clock-names = "ovl0_disp",
+				      "rdma0_disp",
+				      "color0_disp",
+				      "aal_disp",
+				      "ufoe_disp",
+				      "od_disp";
+			ddp = <&ddp>;
 		};
 
 		pwm0: pwm@1401e000 {
