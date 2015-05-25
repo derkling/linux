@@ -190,6 +190,14 @@
 			bias-pull-up;
 		};
 	};
+
+	usb_pins: usb@0 {
+		pins1 {
+			pinmux = <MT8173_PIN_101_MSDC2_DAT1__FUNC_GPIO101>;
+			output-high;
+			bias-disable;
+		};
+	};
 };
 
 &pwrap {
@@ -412,6 +420,17 @@
 
 &uart0 {
 	status = "okay";
+};
+
+/* There is a switch between micro (low to device) and type A (high to host) */
+&u3phy {
+	p1-gpio = <&pio 3 GPIO_ACTIVE_HIGH>;
+	reg-vusb33-supply = <&mt6397_vusb_reg>;
+};
+
+&usb {
+	pinctrl-names = "default";
+	pinctrl-0 = <&usb_pins>;
 };
 
 #include "cros-ec-keyboard.dtsi"
