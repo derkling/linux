@@ -19,3 +19,12 @@
 	model = "Mediatek Oak rev1 board";
 	compatible = "google,oak-rev1", "google,oak", "mediatek,mt8173";
 };
+
+&i2c_tunnel {
+	charger: bq24773@6a {
+		compatible = "ti,bq24773";
+		reg = <0x6a>;
+		monitor-mode;
+		ti,charger-detect-gpio = <&pio 13 GPIO_ACTIVE_HIGH>;
+	};
+};
