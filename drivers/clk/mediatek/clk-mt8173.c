@@ -904,6 +904,7 @@ static void mtk_clk_enable_critical(void)
 	clk_prepare_enable(mt8173_top_clk_data->clks[CLK_TOP_DDRPHYCFG_SEL]);
 	clk_prepare_enable(mt8173_top_clk_data->clks[CLK_TOP_CCI400_SEL]);
 	clk_prepare_enable(mt8173_top_clk_data->clks[CLK_TOP_RTC_SEL]);
+	clk_prepare_enable(mt8173_top_clk_data->clks[CLK_TOP_USB30_SEL]);
 }
 
 static void __init mtk_topckgen_init(struct device_node *node)
