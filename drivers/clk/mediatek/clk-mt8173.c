@@ -898,6 +898,8 @@ static void mtk_clk_enable_critical(void)
 	if (!mt8173_top_clk_data || !mt8173_pll_clk_data)
 		return;
 
+	clk_prepare_enable(mt8173_pll_clk_data->clks[CLK_APMIXED_ARMCA15PLL]);
+
 	clk_prepare_enable(mt8173_top_clk_data->clks[CLK_TOP_MEM_SEL]);
 	clk_prepare_enable(mt8173_top_clk_data->clks[CLK_TOP_DDRPHYCFG_SEL]);
 	clk_prepare_enable(mt8173_top_clk_data->clks[CLK_TOP_CCI400_SEL]);
