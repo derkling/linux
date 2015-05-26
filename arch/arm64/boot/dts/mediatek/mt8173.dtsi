@@ -12,6 +12,7 @@
  */
 
 #include <dt-bindings/clock/mt8173-clk.h>
+#include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/iommu/mt8173-iommu-port.h>
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
@@ -159,9 +160,11 @@
 			compatible = "mediatek,mt8173-drm";
 			larb = <&larb0>, <&larb4>;
 			iommus = <&iommu M4U_PORT_DISP_OVL0>,
-				 <&iommu M4U_PORT_DISP_RDMA0>;
-			connectors = <&dsi>;
-			crtcs = <&crtc_main>;
+				 <&iommu M4U_PORT_DISP_RDMA0>,
+				 <&iommu M4U_PORT_DISP_OVL1>,
+				 <&iommu M4U_PORT_DISP_RDMA1>;
+			connectors = <&dsi>, <&hdmi0>;
+			crtcs = <&crtc_main>, <&crtc_ext>;
 		};
 
 		topckgen: clock-controller@10000000 {
@@ -200,6 +203,15 @@
 			interrupts = <GIC_SPI 145 IRQ_TYPE_LEVEL_HIGH>,
 				     <GIC_SPI 146 IRQ_TYPE_LEVEL_HIGH>,
 				     <GIC_SPI 147 IRQ_TYPE_LEVEL_HIGH>;
+
+			hdmi_pin: xxx {
+				pins1 {
+					pinmux = <MT8173_PIN_21_HTPLG__FUNC_GPIO21>;
+					input-enable;
+					bias-pull-down;
+				};
+			};
+
 			i2c0_pins_a: i2c0@0 {
 				pins1 {
 					pinmux = <MT8173_PIN_45_SDA0__FUNC_SDA0>,
@@ -322,6 +334,50 @@
 			compatible = "mediatek,mt8173-apmixedsys";
 			reg = <0 0x10209000 0 0x1000>;
 			#clock-cells = <1>;
+		};
+
+		hdmi0: hdmi@10209100 {
+			compatible = "mediatek,mt8173-drm-hdmi";
+			clocks = <&apmixedsys CLK_APMIXED_TVDPLL>,
+				 <&topckgen CLK_TOP_DPI0_SEL>,
+				 <&topckgen CLK_TOP_TVDPLL_D2>,
+				 <&topckgen CLK_TOP_TVDPLL_D4>,
+				 <&topckgen CLK_TOP_TVDPLL_D8>,
+				 <&topckgen CLK_TOP_HDMI_SEL>,
+				 <&topckgen CLK_TOP_HDMITX_DIG_CTS>,
+				 <&topckgen CLK_TOP_HDMITXPLL_D2>,
+				 <&topckgen CLK_TOP_HDMITXPLL_D3>,
+				 <&mmsys CLK_MM_HDMI_PIXEL>,
+				 <&mmsys CLK_MM_HDMI_PLLCK>,
+				 <&mmsys CLK_MM_DPI_PIXEL>,
+				 <&mmsys CLK_MM_DPI_ENGINE>,
+				 <&mmsys CLK_MM_HDMI_AUDIO>,
+				 <&mmsys CLK_MM_HDMI_SPDIF>;
+			clock-names = "tvdpll-clk",
+				      "dpi-clk-mux",
+				      "dpi-clk-div2",
+				      "dpi-clk-div4",
+				      "dpi-clk-div8",
+				      "hdmitx-clk-mux",
+				      "hdmitx-clk-div1",
+				      "hdmitx-clk-div2",
+				      "hdmitx-clk-div3",
+				      "hdmi-id-clk-gate",
+				      "hdmi-pll-clk-gate",
+				      "dpi-clk-gate",
+				      "dpi-eng-clk-gate",
+				      "aud-bclk-gate",
+				      "aud-spdif-gate";
+			prenode = <&hdmidpi0>;
+			i2cnode = <&hdmiddc0>;
+			gpios = <&pio 42 GPIO_ACTIVE_HIGH>, /* flt_n_5v */
+				<&pio 127 GPIO_ACTIVE_HIGH>,/* 5v enable */
+				<&pio 21 GPIO_ACTIVE_HIGH>; /* htplg */
+			reg = <0 0x14000900 0 0x8>,
+			      <0 0x10209100 0 0x20>,
+			      <0 0x14025000 0 0x400>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&hdmi_pin>;
 		};
 
 		dsi: dsi@10215000 {
@@ -453,6 +509,15 @@
 				 <&pericfg CLK_PERI_AP_DMA>;
 			clock-names = "main", "dma";
 			status = "disabled";
+		};
+
+		hdmiddc0: hdmiddc@11012000 {
+			compatible = "mediatek,8173-hdmi-ddc";
+			gpios = <&pio 19 GPIO_ACTIVE_HIGH>, /* hdmi sck */
+				<&pio 20 GPIO_ACTIVE_HIGH>; /* hdmi sd  */
+			reg = <0 0x11012000 0 0x1C>;
+			clocks = <&pericfg CLK_PERI_I2C5>;
+			clock-names = "ddc-i2c";
 		};
 
 		i2c6: i2c6@11013000 {
@@ -638,6 +703,31 @@
 				      "ufoe_disp",
 				      "od_disp";
 			ddp = <&ddp>;
+		};
+
+		crtc_ext: crtc1@1400d000 {
+			compatible = "mediatek,mt8173-crtc-ext";
+			interrupts = <GIC_SPI 181 IRQ_TYPE_LEVEL_LOW>;
+			reg = <0 0x1400d000 0 0x1000>,	/* OVL1 */
+			      <0 0x1400f000 0 0x1000>,	/* RDMA1 */
+			      <0 0x14014000 0 0x1000>,	/* COLOR1 */
+			      <0 0x14016000 0 0x1000>;	/* GAMMA */
+			clocks = <&mmsys CLK_MM_DISP_OVL1>,
+				 <&mmsys CLK_MM_DISP_RDMA1>,
+				 <&mmsys CLK_MM_DISP_COLOR1>,
+				 <&mmsys CLK_MM_DISP_GAMMA>;
+			clock-names = "ovl1_disp",
+				      "rdma1_disp",
+				      "color1_disp",
+				      "gamma_disp";
+			ddp = <&ddp>;
+		};
+
+		hdmidpi0: hdmidpi@1401d000 {
+			compatible = "mediatek,mt8173-hdmi-dpi";
+			interrupts = <GIC_SPI 174 IRQ_TYPE_LEVEL_LOW>;
+			reg = <0 0x1401d000 0 0xF0>;
+			clocks = <&apmixedsys CLK_APMIXED_TVDPLL>;
 		};
 
 		pwm0: pwm@1401e000 {
