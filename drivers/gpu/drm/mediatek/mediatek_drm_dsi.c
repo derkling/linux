@@ -919,11 +919,13 @@ static const struct drm_encoder_funcs mtk_dsi_encoder_funcs = {
 
 static void mtk_dsi_encoder_dpms(struct drm_encoder *encoder, int mode)
 {
+#if 0
 	struct mtk_dsi *dsi = encoder_to_dsi(encoder);
 	struct drm_panel *panel = dsi->panel;
+#endif
 
 	mtk_dsi_info("%s dpms mode = %d !\n", __func__, mode);
-
+#if 0
 	if (mode != DRM_MODE_DPMS_ON) {
 		drm_panel_disable(panel);
 		mtk_output_dsi_disable(dsi);
@@ -931,6 +933,7 @@ static void mtk_dsi_encoder_dpms(struct drm_encoder *encoder, int mode)
 		mtk_output_dsi_enable(dsi);
 		drm_panel_enable(panel);
 	}
+#endif
 }
 
 static bool mtk_dsi_encoder_mode_fixup(struct drm_encoder *encoder,
@@ -1243,10 +1246,22 @@ static int mtk_dsi_probe(struct platform_device *pdev)
 		return PTR_ERR(dsi->dsi0_engine_clk_cg);
 	}
 
+	err = clk_prepare_enable(dsi->dsi0_engine_clk_cg);
+	if (err < 0) {
+		dev_err(dev, "cannot enable dsi0_engine_clk_cg\n");
+		return err;
+	}
+
 	dsi->dsi0_digital_clk_cg = devm_clk_get(dev, "dsi0_digital_disp_ck");
 	if (IS_ERR(dsi->dsi0_digital_clk_cg)) {
 		dev_err(dev, "cannot get dsi0_digital_disp_ck\n");
 		return PTR_ERR(dsi->dsi0_digital_clk_cg);
+	}
+
+	err = clk_prepare_enable(dsi->dsi0_digital_clk_cg);
+	if (err < 0) {
+		dev_err(dev, "cannot enable dsi0_digital_disp_ck clock\n");
+		return err;
 	}
 
 	regs = platform_get_resource(pdev, IORESOURCE_MEM, 0);

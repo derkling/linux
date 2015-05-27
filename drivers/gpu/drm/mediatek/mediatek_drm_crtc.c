@@ -142,8 +142,9 @@ static void mtk_drm_crtc_update_cb(struct drm_reservation_cb *rcb, void *params)
 	struct drm_device *dev = mtk_crtc->base.dev;
 	unsigned long flags;
 
-	mediatek_drm_crtc_pending_ovl_config(mtk_crtc, true,
-		mtk_crtc->flip_buffer->mva_addr);
+	if (mtk_crtc->ops && mtk_crtc->ops->ovl_layer_addr)
+		mtk_crtc->ops->ovl_layer_addr(mtk_crtc,
+			mtk_crtc->flip_buffer->mva_addr);
 
 	spin_lock_irqsave(&dev->event_lock, flags);
 	if (mtk_crtc->event) {

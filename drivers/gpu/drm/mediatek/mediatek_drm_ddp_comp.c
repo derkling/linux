@@ -132,6 +132,7 @@ static void mediatek_ovl_start(void __iomem *ovl_base)
 static void mediatek_ovl_roi(void __iomem *ovl_base,
 		unsigned int w, unsigned int h, unsigned int bg_color)
 {
+	if (w != 0 && h != 0)
 	writel(h << 16 | w, ovl_base + DISP_REG_OVL_ROI_SIZE);
 	writel(bg_color, ovl_base + DISP_REG_OVL_ROI_BGCLR);
 }
@@ -224,6 +225,12 @@ static unsigned int ovl_fmt_convert(unsigned int fmt)
 	}
 }
 
+void mediatek_ovl_layer_addr(void __iomem *ovl_base,
+	unsigned int addr)
+{
+	writel(addr, ovl_base + DISP_REG_OVL_L0_ADDR);
+}
+
 void mediatek_ovl_layer_config(void __iomem *ovl_base, bool enabled,
 		unsigned int addr, unsigned int width, unsigned int height,
 		unsigned int pitch, unsigned int format)
@@ -236,6 +243,7 @@ void mediatek_ovl_layer_config(void __iomem *ovl_base, bool enabled,
 	bool alpha_en = 0;
 	unsigned char alpha = 0x0;
 	unsigned int src_con, new_set;
+	unsigned int roi_w = ((width + 3) >> 2) << 2;
 
 	unsigned int rgb_swap, bpp;
 	unsigned int fmt = ovl_fmt_convert(format);
@@ -274,6 +282,7 @@ void mediatek_ovl_layer_config(void __iomem *ovl_base, bool enabled,
 	else
 		new_set = src_con & ~(0x1);
 
+	mediatek_ovl_roi(ovl_base, roi_w, height, 0x00000000);
 	writel(0x1, ovl_base + DISP_REG_OVL_RST);
 	writel(0x0, ovl_base + DISP_REG_OVL_RST);
 

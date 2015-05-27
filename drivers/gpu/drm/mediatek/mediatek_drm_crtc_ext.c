@@ -47,6 +47,8 @@ struct crtc_ext_context {
 
 	bool			pending_ovl_config;
 	bool			pending_ovl_enable;
+	bool			pending_ovl_addr_field;
+	bool			pending_ovl_all_fields;
 	unsigned int		pending_ovl_addr;
 	unsigned int		pending_ovl_width;
 	unsigned int		pending_ovl_height;
@@ -153,6 +155,16 @@ static void crtc_ext_disable_vblank(struct mtk_drm_crtc *crtc)
 	mediatek_ovl_disable_vblank(ctx->ovl1_regs);
 }
 
+static void crtc_ext_ovl_layer_addr(struct mtk_drm_crtc *crtc,
+	unsigned int addr)
+{
+	struct crtc_ext_context *ctx = (struct crtc_main_context *)crtc->ctx;
+
+	ctx->pending_ovl_addr = addr;
+	ctx->pending_ovl_addr_field = true;
+	ctx->pending_ovl_config = true;
+}
+
 static void crtc_ext_ovl_layer_config(struct mtk_drm_crtc *crtc,
 	bool enable, unsigned int addr)
 {
@@ -170,6 +182,7 @@ static void crtc_ext_ovl_layer_config(struct mtk_drm_crtc *crtc,
 		ctx->pending_ovl_pitch = pitch;
 		ctx->pending_ovl_format = crtc->base.primary->fb->pixel_format;
 	}
+	ctx->pending_ovl_all_fields = true;
 	ctx->pending_ovl_config = true;
 }
 
@@ -213,13 +226,25 @@ static void crtc_ext_irq(struct crtc_ext_context *ctx)
 #ifndef MEDIATEK_DRM_UPSTREAM
 	if (ctx->pending_ovl_cursor_config) {
 		ctx->pending_ovl_cursor_config = false;
-		mediatek_ovl_layer_config_cursor(ctx->ovl1_regs,
-			ctx->pending_ovl_cursor_enable,
-			ctx->pending_ovl_cursor_addr,
-			ctx->pending_ovl_cursor_x,
-			ctx->pending_ovl_cursor_y,
-			ctx->pending_ovl_width,
-			ctx->pending_ovl_height);
+
+		if (ctx->pending_ovl_all_fields) {
+			ctx->pending_ovl_all_fields = false;
+
+			mediatek_ovl_layer_config_cursor(ctx->ovl1_regs,
+				ctx->pending_ovl_cursor_enable,
+				ctx->pending_ovl_cursor_addr,
+				ctx->pending_ovl_cursor_x,
+				ctx->pending_ovl_cursor_y,
+				ctx->pending_ovl_width,
+				ctx->pending_ovl_height);
+		}
+
+		if (ctx->pending_ovl_addr_field) {
+			ctx->pending_ovl_addr_field = false;
+
+			mediatek_ovl_layer_addr(ctx->ovl1_regs,
+				ctx->pending_ovl_addr);
+		}
 	}
 #endif /* MEDIATEK_DRM_UPSTREAM */
 
