@@ -14,6 +14,7 @@
 #include <dt-bindings/clock/mt8173-clk.h>
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/power/mt8173-power.h>
 #include <dt-bindings/reset-controller/mt8173-resets.h>
 #include "mt8173-pinfunc.h"
 
@@ -426,6 +427,30 @@
 			compatible = "mediatek,mt8173-audiosys", "syscon";
 			reg = <0 0x11220000 0 0x1000>;
 			#clock-cells = <1>;
+		};
+
+		usb: usb30@11270000 {
+			compatible = "mediatek,mt8173-xhci", "generic-xhci";
+			reg = <0 0x11270000 0 0x1000>;
+			interrupts = <GIC_SPI 115 IRQ_TYPE_LEVEL_LOW>;
+			usb-phy = <&u3phy>;
+			usb3-lpm-capable;
+		};
+
+		u3phy: usb-phy@11271000 {
+			compatible = "mediatek,mt8173-u3phy";
+			reg = <0 0x11271000 0 0x3000>,
+			      <0 0x11280000 0 0x20000>;
+			power-domains = <&scpsys MT8173_POWER_DOMAIN_USB>;
+			reg-vusb33-supply = <&mt6397_vusb_reg>;
+			clocks = <&pericfg CLK_PERI_USB0>,
+				 <&pericfg CLK_PERI_USB1>,
+				 <&topckgen CLK_TOP_USB30_SEL>,
+				 <&apmixedsys CLK_APMIXED_REF2USB_TX>;
+			clock-names = "wakeup_deb_p0",
+				      "wakeup_deb_p1",
+				      "sys_mac",
+				      "u3phya_ref";
 		};
 
 		mfgsys: mfgsys@13fff000 {
