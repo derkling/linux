@@ -69,7 +69,7 @@ static u64 margin_read(struct cgroup_subsys_state *css, struct cftype *cft)
 }
 
 static int margin_write(struct cgroup_subsys_state *css, struct cftype *cft,
-			  int margin)
+			  u64 margin)
 {
 	struct schedtune *st = css_st(css);
 	int err = 0;
@@ -84,6 +84,20 @@ static int margin_write(struct cgroup_subsys_state *css, struct cftype *cft,
 out:
 	return err;
 }
+
+int schedtune_margin(struct task_struct *p)
+{
+	struct schedtune *ct;
+	int task_margin;
+
+	rcu_read_lock();
+	ct = task_schedtune(p);
+	task_margin = ct->margin;
+	rcu_read_unlock();
+
+	return task_margin;
+}
+
 
 static struct cftype files[] = {
 	{
