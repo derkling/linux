@@ -989,6 +989,15 @@ config RESOURCE_COUNTERS
 	  This option enables controller independent resource accounting
 	  infrastructure that works with cgroups.
 
+config CGROUP_SCHEDTUNE
+       bool "Simple EAS scheduler tuning cgroup subsystem"
+       help
+         Provides a simple resource controller to tune the Energy Aware
+         scheduler for group of tasks.
+
+config PAGE_COUNTER
+       bool
+
 config MEMCG
 	bool "Memory Resource Controller for Control Groups"
 	depends on RESOURCE_COUNTERS
