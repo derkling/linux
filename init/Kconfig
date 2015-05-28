@@ -983,6 +983,12 @@ config CGROUP_CPUACCT
 	  Provides a simple Resource Controller for monitoring the
 	  total CPU consumed by the tasks in a cgroup.
 
+config CGROUP_SCHEDTUNE
+	bool "Simple EAS scheduler tuning cgroup subsystem"
+	help
+	  Provides a simple resource controller to tune the Energy Aware
+	  scheduler for group of tasks.
+
 config RESOURCE_COUNTERS
 	bool "Resource counters"
 	help
