@@ -726,6 +726,7 @@ static int cpufreq_interactive_input_connect(struct input_handler *handler,
 		    dev->name, error);
 		goto err;
 	}
+	pr_debug("%s: registered %s\n", __func__, dev->name);
 
 	error = input_open_device(handle);
 	if (error) {
@@ -733,6 +734,7 @@ static int cpufreq_interactive_input_connect(struct input_handler *handler,
 		    handle->dev->name, error);
 		goto err_unregister;
 	}
+	pr_debug("%s: open(%s) succeded\n", __func__, handle->dev->name);
 	return 0;
 err_unregister:
 	input_unregister_handle(handle);
@@ -1299,6 +1301,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 			}
 			return rc;
 		}
+		pr_debug("%s: tunables configured\n", __func__);
 
 		rc = input_register_handler(&cpufreq_interactive_input_handler);
 		if (rc)
@@ -1310,6 +1313,8 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 			cpufreq_register_notifier(&cpufreq_notifier_block,
 					CPUFREQ_TRANSITION_NOTIFIER);
 		}
+
+		pr_debug("%s: governor registered\n", __func__);
 
 		break;
 
@@ -1363,6 +1368,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		}
 
 		mutex_unlock(&gov_lock);
+		pr_debug("%s: governor started\n", __func__);
 		break;
 
 	case CPUFREQ_GOV_STOP:
@@ -1377,6 +1383,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		}
 
 		mutex_unlock(&gov_lock);
+		pr_debug("%s: governor stopped\n", __func__);
 		break;
 
 	case CPUFREQ_GOV_LIMITS:
@@ -1469,6 +1476,9 @@ static int __init cpufreq_interactive_init(void)
 
 	sched_setscheduler_nocheck(speedchange_task, SCHED_FIFO, &param);
 	get_task_struct(speedchange_task);
+
+	pr_debug("%s: speedchange_task %d\n",
+		  __func__, speedchange_task->pid);
 
 	/* NB: wake up so the thread does not look hung to the freezer */
 	wake_up_process(speedchange_task);
