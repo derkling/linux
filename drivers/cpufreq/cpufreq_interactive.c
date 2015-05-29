@@ -62,6 +62,7 @@ static struct task_struct *speedchange_task;
 static cpumask_t speedchange_cpumask;
 static spinlock_t speedchange_cpumask_lock;
 static struct mutex gov_lock;
+static int input_registered;
 
 /* Target load.  Lower values result in higher CPU speeds. */
 #define DEFAULT_TARGET_LOAD 90
@@ -1303,10 +1304,19 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		}
 		pr_debug("%s: tunables configured\n", __func__);
 
-		rc = input_register_handler(&cpufreq_interactive_input_handler);
-		if (rc)
-			pr_warn("%s: failed to register input handler\n",
-				__func__);
+		mutex_lock(&gov_lock);
+		if (!input_registered) {
+			rc = input_register_handler(&cpufreq_interactive_input_handler);
+			if (rc) {
+				pr_warn("%s: failed to register input handler\n",
+					__func__);
+			}
+			else {
+				pr_debug("%s: uinput registered\n", __func__);
+				input_registered++;
+			}
+		}
+		mutex_unlock(&gov_lock);
 
 		if (!policy->governor->initialized) {
 			idle_notifier_register(&cpufreq_interactive_idle_nb);
@@ -1324,8 +1334,14 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 				cpufreq_unregister_notifier(&cpufreq_notifier_block,
 						CPUFREQ_TRANSITION_NOTIFIER);
 				idle_notifier_unregister(&cpufreq_interactive_idle_nb);
-				input_unregister_handler(
-					&cpufreq_interactive_input_handler);
+				mutex_lock(&gov_lock);
+				if (!--input_registered) {
+					input_unregister_handler(
+						&cpufreq_interactive_input_handler);
+					pr_debug("%s: uinput unregistered\n", __func__);
+				}
+				mutex_unlock(&gov_lock);
+				pr_debug("%s: governor unregistered\n", __func__);
 			}
 
 			sysfs_remove_group(get_governor_parent_kobj(policy),
