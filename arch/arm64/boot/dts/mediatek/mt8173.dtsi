@@ -186,6 +186,29 @@
 		clock-output-names = "clk32k";
 	};
 
+        thermal-zones {
+                cpu_thermal: cpu_thermal {
+                        polling-delay-passive = <1000>; /* milliseconds */
+                        polling-delay = <0>; /* milliseconds */
+
+                        thermal-sensors = <&thermal 0>;
+
+                        trips {
+                                cpu_passive: cpu_passive {
+                                        temperature = <47000>; /* millicelsius */
+                                        hysteresis = <2000>; /* millicelsius */
+                                        type = "passive";
+                                };
+
+                                cpu_crit {
+                                        temperature = <90000>; /* millicelsius */
+                                        hysteresis = <2000>; /* millicelsius */
+                                        type = "critical";
+                                };
+                        };
+                };
+        };
+
 	timer {
 		compatible = "arm,armv8-timer";
 		interrupt-parent = <&gic>;
