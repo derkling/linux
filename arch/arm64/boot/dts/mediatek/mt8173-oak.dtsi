@@ -149,6 +149,7 @@
 		interrupts = <3 IRQ_TYPE_EDGE_BOTH>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&rt5650_irq>;
+		realtek,jd-mode = <3>;
 		status = "okay";
 	};
 
