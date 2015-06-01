@@ -5201,6 +5201,9 @@ static inline bool __task_fits(struct task_struct *p, int cpu, int usage)
 
 	usage += task_utilization(p);
 
+	trace_printk("_tf: pid=%d cpu=%d capacity_of=%lu task_utilization=%lu\n",
+			p->pid, cpu, capacity, task_utilization(p));
+
 	return (capacity * 1024) > (usage * capacity_margin);
 }
 
@@ -5431,6 +5434,8 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 			sg_target = sg;
 			target_max_cap = capacity_of(max_cap_cpu);
 		}
+		trace_printk("eaw: pid=%d max_cap_cpu=%d capacity_of=%lu target_max_cap=%d\n",
+				p->pid, max_cap_cpu, capacity_of(max_cap_cpu), target_max_cap);
 	} while (sg = sg->next, sg != sd->groups);
 
 	/* Find cpu with sufficient capacity */
@@ -5441,6 +5446,9 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 		 * accouting. However, the blocked utilization may be zero.
 		 */
 		int new_usage = get_cpu_usage(i) + task_utilization(p);
+
+		trace_printk("eaw: pid=%d cpu=%d cpu_usage=%lu task_utilization=%lu\n",
+				p->pid, i, get_cpu_usage(i), task_utilization(p));
 
 		if (new_usage >	capacity_orig_of(i))
 			continue;
@@ -5455,6 +5463,8 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 		if (target_cpu == task_cpu(p))
 			target_cpu = i;
 	}
+
+	trace_printk("eaw: pid=%d target_cpu=%d\n", p->pid, target_cpu);
 
 	if (target_cpu != task_cpu(p)) {
 		struct energy_env eenv = {
