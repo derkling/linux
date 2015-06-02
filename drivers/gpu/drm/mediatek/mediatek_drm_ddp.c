@@ -112,6 +112,48 @@ void mediatek_ddp_main_path_setup(struct device *dev)
 	disp_config_main_path_mutex(ddp->mutex_regs);
 }
 
+static void disp_config_ext_path_connection(void __iomem *disp_base)
+{
+	/* OVL1 output to COLOR1 */
+	writel(0x1, disp_base + DISP_REG_CONFIG_DISP_OVL1_MOUT_EN);
+
+	/* GAMME output to RDMA1 */
+	writel(0x1, disp_base + DISP_REG_CONFIG_DISP_GAMMA_MOUT_EN);
+
+	/* PATH1 output to DPI */
+	writel(0x2, disp_base + DISP_REG_CONFIG_DISP_PATH1_SOUT_SEL_IN);
+
+	/* DPI input from PATH1 */
+	writel(0x1, disp_base + DISP_REG_CONFIG_DPI_SEL_IN);
+
+	/* COLOR1 input from OVL1 */
+	writel(0x1, disp_base + DISP_REG_CONFIG_DISP_COLOR1_SEL_IN);
+}
+
+static void disp_config_ext_path_mutex(void __iomem *mutex_base)
+{
+	unsigned int ID = 1;
+
+	/* Module: OVL1=12, RDMA1=14, COLOR1=19, GAMMA=21 */
+	writel((1 << 12 | 1 << 14 | 1 << 19 | 1 << 21),
+		mutex_base + DISP_REG_CONFIG_MUTEX_MOD(ID));
+
+	/* Clock source from DPI0 */
+	writel(3, mutex_base + DISP_REG_CONFIG_MUTEX_SOF(ID));
+	writel(1, mutex_base + DISP_REG_CONFIG_MUTEX_EN(ID));
+}
+
+void ext_disp_path_setup(struct device *dev)
+{
+	struct ddp_context *ddp = dev_get_drvdata(dev);
+
+	/* Setup main path connection */
+	disp_config_ext_path_connection(ddp->config_regs);
+
+	/* Setup main path mutex */
+	disp_config_ext_path_mutex(ddp->mutex_regs);
+}
+
 void mediatek_ddp_clock_on(struct device *dev)
 {
 	struct ddp_context *ddp = dev_get_drvdata(dev);

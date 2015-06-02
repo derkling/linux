@@ -109,6 +109,21 @@ enum {
 };
 
 
+void mediatek_ovl_enable_vblank(void __iomem *disp_base)
+{
+	writel(0x2, disp_base + DISP_REG_OVL_INTEN);
+}
+
+void mediatek_ovl_disable_vblank(void __iomem *disp_base)
+{
+	writel(0x0, disp_base + DISP_REG_OVL_INTEN);
+}
+
+void mediatek_ovl_clear_vblank(void __iomem *disp_base)
+{
+	writel(0x0, disp_base + DISP_REG_OVL_INTSTA);
+}
+
 static void mediatek_ovl_start(void __iomem *ovl_base)
 {
 	writel(0x01, ovl_base + DISP_REG_OVL_EN);
@@ -360,7 +375,6 @@ void main_disp_path_power_on(unsigned int width, unsigned int height,
 		void __iomem *od_base)
 {
 	mediatek_ovl_roi(ovl_base, width, height, 0x00000000);
-	mediatek_ovl_layer_switch(ovl_base, 0, 1);
 	mediatek_rdma_config_direct_link(rdma_base, width, height);
 
 	mediatek_ovl_start(ovl_base);
@@ -370,4 +384,21 @@ void main_disp_path_power_on(unsigned int width, unsigned int height,
 	mediatek_color_start(color_base);
 }
 
+void ext_disp_path_power_on(void __iomem *ovl_base,
+	void __iomem *rdma_base,
+	void __iomem *color_base)
+{
+	unsigned int width, height;
+
+	width = 1920;
+	height = 1080;
+	DRM_INFO("DBG_YT ExtDispPathSetup %d %d\n", width, height);
+
+	mediatek_ovl_start(ovl_base);
+	mediatek_rdma_start(rdma_base);
+
+	mediatek_ovl_roi(ovl_base, width, height, 0x00000000);
+	mediatek_rdma_config_direct_link(rdma_base, width, height);
+	mediatek_color_start(color_base);
+}
 

@@ -15,6 +15,7 @@
 #define MEDIATEK_DRM_DDP_H
 
 void mediatek_ddp_main_path_setup(struct device *dev);
+void ext_disp_path_setup(struct device *dev);
 
 void mediatek_ddp_clock_on(struct device *dev);
 void mediatek_ddp_clock_off(struct device *dev);

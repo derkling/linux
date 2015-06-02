@@ -14,7 +14,9 @@
 #ifndef MEDIATEK_DRM_DDP_COMP_H
 #define MEDIATEK_DRM_DDP_COMP_H
 
-
+void mediatek_ovl_enable_vblank(void __iomem *disp_base);
+void mediatek_ovl_disable_vblank(void __iomem *disp_base);
+void mediatek_ovl_clear_vblank(void __iomem *disp_base);
 void mediatek_od_enable_vblank(void __iomem *drm_disp_base);
 void mediatek_od_disable_vblank(void __iomem *drm_disp_base);
 void mediatek_od_clear_vblank(void __iomem *drm_disp_base);
@@ -28,6 +30,8 @@ void main_disp_path_power_on(unsigned int width, unsigned int height,
 		void __iomem *ovl_base,	void __iomem *rdma_base,
 		void __iomem *color_base, void __iomem *ufoe_base,
 		void __iomem *od_base);
+void ext_disp_path_power_on(void __iomem *ovl_base,
+		void __iomem *rdma_base, void __iomem *color_base);
 
 void mediatek_ovl_layer_switch(void __iomem *ovl_base,
 		unsigned layer, bool en);
