@@ -358,6 +358,12 @@ static int mediatek_drm_init(void)
 		return err;
 	}
 
+	err = platform_driver_register(&mediatek_crtc_ext_driver);
+	if (err < 0) {
+		DRM_DEBUG_DRIVER("register crtc_ext driver fail.\n");
+		return err;
+	}
+
 	err = platform_driver_register(&mediatek_drm_platform_driver);
 	if (err < 0)
 		return err;
@@ -368,6 +374,7 @@ static int mediatek_drm_init(void)
 static void mediatek_drm_exit(void)
 {
 	platform_driver_unregister(&mediatek_drm_platform_driver);
+	platform_driver_unregister(&mediatek_crtc_ext_driver);
 	platform_driver_unregister(&mediatek_crtc_main_driver);
 	platform_driver_unregister(&mtk_dsi_driver);
 	platform_driver_unregister(&mediatek_ddp_driver);
