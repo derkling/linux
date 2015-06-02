@@ -11,24 +11,13 @@
  * GNU General Public License for more details.
  */
 
-#ifndef MEDIATEK_DRM_DRV_H
-#define MEDIATEK_DRM_DRV_H
+#ifndef MEDIATEK_DRM_DDP_H
+#define MEDIATEK_DRM_DDP_H
 
-#define MAX_CRTC	2
-#define MAX_CONNECTOR	2
+void mediatek_ddp_main_path_setup(struct device *dev);
 
-extern struct platform_driver mediatek_ddp_driver;
+void mediatek_ddp_clock_on(struct device *dev);
+void mediatek_ddp_clock_off(struct device *dev);
 
-struct mtk_drm_private {
-	struct drm_fb_helper *fb_helper;
-
-	/*
-	 * created crtc object would be contained at this array and
-	 * this array is used to be aware of which crtc did it request vblank.
-	 */
-	struct drm_crtc *crtc[MAX_CRTC];
-	unsigned int pipe;
-};
-
-#endif /* MEDIATEK_DRM_DRV_H */
+#endif /* MEDIATEK_DRM_DDP_H */
 
