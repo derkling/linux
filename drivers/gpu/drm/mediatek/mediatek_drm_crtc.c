@@ -28,6 +28,11 @@ void mtk_crtc_finish_page_flip(struct mtk_drm_crtc *mtk_crtc)
 {
 	struct drm_device *dev = mtk_crtc->base.dev;
 
+	if (mtk_crtc->fence)
+		drm_fence_signal_and_put(&mtk_crtc->fence);
+	mtk_crtc->fence = mtk_crtc->pending_fence;
+	mtk_crtc->pending_fence = NULL;
+
 	drm_send_vblank_event(dev, mtk_crtc->event->pipe, mtk_crtc->event);
 	drm_crtc_vblank_put(&mtk_crtc->base);
 	mtk_crtc->event = NULL;
@@ -122,6 +127,75 @@ static int mtk_drm_crtc_cursor_move(struct drm_crtc *crtc, int x, int y)
 	return 0;
 }
 
+static void mtk_drm_crtc_update_cb(struct drm_reservation_cb *rcb, void *params)
+{
+	struct mtk_drm_crtc *mtk_crtc = params;
+	struct drm_device *dev = mtk_crtc->base.dev;
+	unsigned long flags;
+
+	if (mtk_crtc->ops && mtk_crtc->ops->ovl_layer_addr)
+		mtk_crtc->ops->ovl_layer_addr(mtk_crtc,
+			mtk_crtc->flip_obj->dma_addr);
+
+	spin_lock_irqsave(&dev->event_lock, flags);
+	if (mtk_crtc->event) {
+		mtk_crtc->pending_needs_vblank = true;
+	} else {
+		if (mtk_crtc->fence)
+			drm_fence_signal_and_put(&mtk_crtc->fence);
+		mtk_crtc->fence = mtk_crtc->pending_fence;
+		mtk_crtc->pending_fence = NULL;
+	}
+	spin_unlock_irqrestore(&dev->event_lock, flags);
+}
+
+static int mtk_drm_crtc_update_sync(struct mtk_drm_crtc *mtk_crtc,
+	struct reservation_object *resv)
+{
+	struct fence *fence;
+	int ret;
+	struct drm_device *dev = mtk_crtc->base.dev;
+	unsigned long flags;
+
+	ww_mutex_lock(&resv->lock, NULL);
+	ret = reservation_object_reserve_shared(resv);
+	if (ret < 0) {
+		DRM_ERROR("Reserving space for shared fence failed: %d.\n",
+			ret);
+		goto err_mutex;
+	}
+
+	fence = drm_sw_fence_new(mtk_crtc->fence_context,
+		atomic_add_return(1, &mtk_crtc->fence_seqno));
+	if (IS_ERR(fence)) {
+		ret = PTR_ERR(fence);
+		DRM_ERROR("Failed to create fence: %d.\n", ret);
+		goto err_mutex;
+	}
+	spin_lock_irqsave(&dev->event_lock, flags);
+	mtk_crtc->pending_fence = fence;
+	drm_reservation_cb_init(&mtk_crtc->rcb, mtk_drm_crtc_update_cb,
+		mtk_crtc);
+	ret = drm_reservation_cb_add(&mtk_crtc->rcb, resv, false);
+	if (ret < 0) {
+		DRM_ERROR("Adding reservation to callback failed: %d.\n", ret);
+		goto err_fence;
+	}
+	drm_reservation_cb_done(&mtk_crtc->rcb);
+	reservation_object_add_shared_fence(resv, mtk_crtc->pending_fence);
+	spin_unlock_irqrestore(&dev->event_lock, flags);
+	ww_mutex_unlock(&resv->lock);
+	return 0;
+err_fence:
+	spin_unlock_irqrestore(&dev->event_lock, flags);
+	fence_put(mtk_crtc->pending_fence);
+	mtk_crtc->pending_fence = NULL;
+err_mutex:
+	ww_mutex_unlock(&resv->lock);
+
+	return ret;
+}
+
 static int mtk_drm_crtc_page_flip(struct drm_crtc *crtc,
 		struct drm_framebuffer *fb,
 		struct drm_pending_vblank_event *event,
@@ -159,19 +233,37 @@ static int mtk_drm_crtc_page_flip(struct drm_crtc *crtc,
 	crtc->primary->fb = fb;
 	mtk_crtc->flip_obj = to_mtk_gem_obj(mtk_fb->gem_obj[0]);
 
-	mediatek_drm_crtc_pending_ovl_config(mtk_crtc, true,
-		mtk_crtc->flip_buffer->mva_addr);
+	if (mtk_fb->gem_obj[0]->dma_buf && mtk_fb->gem_obj[0]->dma_buf->resv) {
+		mtk_drm_crtc_update_sync(mtk_crtc,
+			mtk_fb->gem_obj[0]->dma_buf->resv);
+	} else {
+		mediatek_drm_crtc_pending_ovl_config(mtk_crtc, true,
+			mtk_crtc->flip_obj->dma_addr);
 
-	spin_lock_irqsave(&dev->event_lock, flags);
-	if (mtk_crtc->event)
-		mtk_crtc->pending_needs_vblank = true;
-	spin_unlock_irqrestore(&dev->event_lock, flags);
+		spin_lock_irqsave(&dev->event_lock, flags);
+		if (mtk_crtc->event)
+			mtk_crtc->pending_needs_vblank = true;
+		spin_unlock_irqrestore(&dev->event_lock, flags);
+	}
 
 	return ret;
 }
 
 static void mtk_drm_crtc_destroy(struct drm_crtc *crtc)
 {
+	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
+
+	struct drm_device *dev = crtc->dev;
+	unsigned long flags;
+
+	spin_lock_irqsave(&dev->event_lock, flags);
+	if (mtk_crtc->fence)
+		drm_fence_signal_and_put(&mtk_crtc->fence);
+
+	if (mtk_crtc->pending_fence)
+		drm_fence_signal_and_put(&mtk_crtc->pending_fence);
+	spin_unlock_irqrestore(&dev->event_lock, flags);
+
 	drm_crtc_cleanup(crtc);
 }
 
@@ -311,6 +403,9 @@ struct mtk_drm_crtc *mtk_drm_crtc_create(struct drm_device *drm_dev, int pipe,
 		goto err;
 
 	drm_crtc_helper_add(&mtk_crtc->base, &mediatek_crtc_helper_funcs);
+
+	mtk_crtc->fence_context = fence_context_alloc(1);
+	atomic_set(&mtk_crtc->fence_seqno, 0);
 
 	return mtk_crtc;
 err:
