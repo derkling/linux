@@ -36,6 +36,9 @@
 
 static struct drm_mode_config_funcs mediatek_drm_mode_config_funcs = {
 	.fb_create = mtk_drm_mode_fb_create,
+#ifdef CONFIG_DRM_MEDIATEK_FBDEV
+	.output_poll_changed = mtk_drm_mode_output_poll_changed,
+#endif
 };
 
 static int mtk_drm_kms_init(struct drm_device *dev)
@@ -102,6 +105,10 @@ static int mtk_drm_kms_init(struct drm_device *dev)
 	if (err)
 		DRM_ERROR("mtk_smi_larb_get fail %d\n", err);
 
+#ifdef CONFIG_DRM_MEDIATEK_FBDEV
+	mtk_fbdev_create(dev);
+#endif
+
 	return 0;
 err_crtc:
 	drm_mode_config_cleanup(dev);
@@ -126,6 +133,10 @@ static int mtk_drm_load(struct drm_device *dev, unsigned long flags)
 static void mtk_drm_kms_deinit(struct drm_device *dev)
 {
 	drm_kms_helper_poll_fini(dev);
+
+#ifdef CONFIG_DRM_MEDIATEK_FBDEV
+	mtk_fbdev_destroy(dev);
+#endif
 
 	drm_vblank_cleanup(dev);
 	drm_mode_config_cleanup(dev);

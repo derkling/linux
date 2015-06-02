@@ -56,6 +56,12 @@ struct crtc_main_context {
 	unsigned int		pending_ovl_height;
 	unsigned int		pending_ovl_pitch;
 	unsigned int		pending_ovl_format;
+
+	bool			pending_ovl_cursor_config;
+	bool			pending_ovl_cursor_enable;
+	unsigned int		pending_ovl_cursor_addr;
+	int			pending_ovl_cursor_x;
+	int			pending_ovl_cursor_y;
 };
 
 
@@ -204,11 +210,24 @@ static void crtc_main_ovl_layer_config(struct mtk_drm_crtc *crtc,
 	ctx->pending_ovl_config = true;
 }
 
+static void crtc_main_ovl_layer_config_cursor(struct mtk_drm_crtc *crtc,
+	bool enable, unsigned int addr)
+{
+	struct crtc_main_context *ctx = (struct crtc_main_context *)crtc->ctx;
+
+	ctx->pending_ovl_cursor_enable = enable;
+	ctx->pending_ovl_cursor_addr = addr;
+	ctx->pending_ovl_cursor_x = crtc->cursor_x;
+	ctx->pending_ovl_cursor_y = crtc->cursor_y;
+	ctx->pending_ovl_cursor_config = true;
+}
+
 static const struct mediatek_drm_crtc_ops crtc_main_crtc_ops = {
 	.dpms = crtc_main_dpms,
 	.enable_vblank = crtc_main_enable_vblank,
 	.disable_vblank = crtc_main_disable_vblank,
 	.ovl_layer_config = crtc_main_ovl_layer_config,
+	.ovl_layer_config_cursor = crtc_main_ovl_layer_config_cursor,
 };
 
 static void crtc_main_irq(struct crtc_main_context *ctx)
@@ -216,6 +235,17 @@ static void crtc_main_irq(struct crtc_main_context *ctx)
 	struct drm_device *dev = ctx->drm_dev;
 	struct mtk_drm_crtc *mtk_crtc = ctx->crtc;
 	unsigned long flags;
+
+	if (ctx->pending_ovl_cursor_config) {
+		ctx->pending_ovl_cursor_config = false;
+		mediatek_ovl_layer_config_cursor(ctx->ovl0_regs,
+			ctx->pending_ovl_cursor_enable,
+			ctx->pending_ovl_cursor_addr,
+			ctx->pending_ovl_cursor_x,
+			ctx->pending_ovl_cursor_y,
+			ctx->pending_ovl_width,
+			ctx->pending_ovl_height);
+	}
 
 	if (ctx->pending_ovl_config) {
 		ctx->pending_ovl_config = false;

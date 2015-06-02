@@ -42,6 +42,9 @@ struct mediatek_drm_crtc_ops {
 struct mtk_drm_crtc {
 	struct drm_crtc			base;
 
+	unsigned int			cursor_x, cursor_y;
+	unsigned int			cursor_w, cursor_h;
+	struct drm_gem_object		*cursor_obj;
 	unsigned int			pipe;
 	struct drm_pending_vblank_event	*event;
 	struct mtk_drm_gem_obj *flip_obj;
@@ -57,6 +60,11 @@ struct mtk_drm_crtc {
 	unsigned int pending_ovl_pitch;
 	unsigned int pending_ovl_format;
 
+	bool pending_ovl_cursor_config;
+	unsigned int pending_ovl_cursor_addr;
+	int pending_ovl_cursor_x;
+	int pending_ovl_cursor_y;
+	int pending_ovl_cursor_enabled;
 };
 
 #define to_mtk_crtc(x) container_of(x, struct mtk_drm_crtc, base)

@@ -137,6 +137,49 @@ void mediatek_ovl_layer_switch(void __iomem *ovl_base,
 	writel(0x0, ovl_base + DISP_REG_OVL_RST);
 }
 
+void mediatek_ovl_layer_config_cursor(void __iomem *ovl_base,
+	bool enable, unsigned int addr, int x, int y, int w, int h)
+{
+	unsigned int reg;
+/*	unsigned int layer = 1; */
+	unsigned int width = 64;
+	unsigned int height = 64;
+	unsigned int src_pitch = 64 * 4;
+	bool keyEn = 0;
+	bool aen = 1;			/* alpha enable */
+	unsigned char alpha = 0xFF;
+	unsigned int fmt = OVL_INFMT_RGBA8888;
+	unsigned int src_con, new_set;
+
+#if 1
+	if (width + x > w)
+		width = w - min(x, w);
+
+	if (height + y > h)
+		height = h - min(y, h);
+#endif
+
+	src_con = readl(ovl_base + DISP_REG_OVL_SRC_CON);
+	if (enable)
+		new_set = src_con | 0x2;
+	else
+		new_set = src_con & ~(0x2);
+
+	if (new_set != src_con) {
+		writel(new_set, ovl_base + DISP_REG_OVL_SRC_CON);
+		writel(0x00000001, ovl_base + DISP_REG_OVL_RDMA1_CTRL);
+		writel(0x40402020,
+			ovl_base + DISP_REG_OVL_RDMA1_MEM_GMC_SETTING);
+
+		reg = keyEn << 30 | fmt << 12 | aen << 8 | alpha;
+		writel(reg, ovl_base + DISP_REG_OVL_L1_CON);
+		writel(src_pitch & 0xFFFF, ovl_base + DISP_REG_OVL_L1_PITCH);
+	}
+	writel(height << 16 | width, ovl_base + DISP_REG_OVL_L1_SRC_SIZE);
+	writel(y << 16 | x, ovl_base + DISP_REG_OVL_L1_OFFSET);
+	writel(addr, ovl_base + DISP_REG_OVL_L1_ADDR);
+}
+
 static unsigned int ovl_fmt_convert(unsigned int fmt)
 {
 	switch (fmt) {
