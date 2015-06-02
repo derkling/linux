@@ -217,4 +217,6 @@ source "drivers/gpu/drm/panel/Kconfig"
 
 source "drivers/gpu/drm/sti/Kconfig"
 
+source "drivers/gpu/drm/mediatek/Kconfig"
+
 source "drivers/gpu/drm/img-rogue/Kconfig"
