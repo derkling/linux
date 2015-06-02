@@ -22,6 +22,10 @@
 	backlight_lcd: backlight_lcd {
 		enable-gpios = <&pio6397 23 1>;
 	};
+
+	sound {
+		status = "disabled";
+	};
 };
 
 &mt6397_vpca7_reg {
@@ -30,6 +34,22 @@
 
 &pmic {
 	interrupts = <5 IRQ_TYPE_LEVEL_HIGH>;
+};
+
+&rt5650 {
+	status = "disabled";
+};
+
+&rt5650_irq {
+	status = "disabled";
+};
+
+&rt5676 {
+	status = "disabled";
+};
+
+&rt5676_irq {
+	status = "disabled";
 };
 
 &trackpad {
