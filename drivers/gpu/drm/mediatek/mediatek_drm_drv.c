@@ -28,7 +28,7 @@
 #include "mediatek_drm_fb.h"
 #include "mediatek_drm_gem.h"
 #include "mediatek_drm_dmabuf.h"
-
+#include "mediatek_drm_debugfs.h"
 
 #define DRIVER_NAME "mediatek"
 #define DRIVER_DESC "Mediatek SoC DRM"
@@ -123,6 +123,9 @@ static int mtk_drm_kms_init(struct drm_device *dev)
 
 #ifdef CONFIG_DRM_MEDIATEK_FBDEV
 	mtk_fbdev_create(dev);
+#endif
+#ifdef CONFIG_DEBUG_FS
+	mediatek_drm_debugfs_init(dev);
 #endif
 
 	return 0;
