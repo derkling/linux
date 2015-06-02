@@ -34,17 +34,92 @@ void mtk_crtc_finish_page_flip(struct mtk_drm_crtc *mtk_crtc)
 }
 
 static void mediatek_drm_crtc_pending_ovl_config(struct mtk_drm_crtc *mtk_crtc,
-		bool enable, unsigned int addr)
+		bool enable, dma_addr_t addr)
 {
 	if (mtk_crtc->ops && mtk_crtc->ops->ovl_layer_config)
 		mtk_crtc->ops->ovl_layer_config(mtk_crtc, enable, addr);
 }
 
 static void mediatek_drm_crtc_pending_ovl_cursor_config(
-		struct mtk_drm_crtc *mtk_crtc, bool enable, unsigned int addr)
+		struct mtk_drm_crtc *mtk_crtc, bool enable, dma_addr_t addr)
 {
 	if (mtk_crtc->ops && mtk_crtc->ops->ovl_layer_config_cursor)
 		mtk_crtc->ops->ovl_layer_config_cursor(mtk_crtc, enable, addr);
+}
+
+static int mtk_drm_crtc_cursor_set(struct drm_crtc *crtc,
+	struct drm_file *file_priv,	uint32_t handle,
+	uint32_t width,	uint32_t height)
+{
+	struct drm_device *dev = crtc->dev;
+	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
+	struct drm_gem_object *obj;
+	struct mtk_drm_gem_obj *mtk_gem;
+
+	if (!handle) {
+		/* turn off cursor */
+		obj = NULL;
+		mtk_gem = NULL;
+		goto finish;
+	}
+
+	if ((width != 64) || (height != 64)) {
+		DRM_ERROR("bad cursor width or height %dx%d\n", width, height);
+		return -EINVAL;
+	}
+
+	obj = drm_gem_object_lookup(dev, file_priv, handle);
+	if (!obj) {
+		DRM_ERROR("not find cursor obj %x crtc %p\n", handle, mtk_crtc);
+		return -ENOENT;
+	}
+
+	mtk_gem = to_mtk_gem_obj(obj);
+
+finish:
+	if (mtk_crtc->cursor_obj)
+		drm_gem_object_unreference_unlocked(mtk_crtc->cursor_obj);
+
+	mtk_crtc->cursor_w = width;
+	mtk_crtc->cursor_h = height;
+	mtk_crtc->cursor_obj = obj;
+
+	if (mtk_gem) {
+		mediatek_drm_crtc_pending_ovl_cursor_config(mtk_crtc,
+			true, mtk_gem->dma_addr);
+	} else {
+		mediatek_drm_crtc_pending_ovl_cursor_config(mtk_crtc,
+			false, 0);
+	}
+
+	return 0;
+}
+
+static int mtk_drm_crtc_cursor_move(struct drm_crtc *crtc, int x, int y)
+{
+	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
+	struct mtk_drm_gem_obj *mtk_gem;
+
+	if (!mtk_crtc->cursor_obj) {
+		/* DRM_ERROR("mtk_drm_crtc_cursor_move no obj [%p]\n", crtc); */
+		return 0;
+	}
+
+	mtk_gem = to_mtk_gem_obj(mtk_crtc->cursor_obj);
+
+	if (x < 0)
+		x = 0;
+
+	if (y < 0)
+		y = 0;
+
+	mtk_crtc->cursor_x = x;
+	mtk_crtc->cursor_y = y;
+
+	mediatek_drm_crtc_pending_ovl_cursor_config(mtk_crtc,
+		true, mtk_gem->dma_addr);
+
+	return 0;
 }
 
 static int mtk_drm_crtc_page_flip(struct drm_crtc *crtc,
@@ -81,14 +156,8 @@ static int mtk_drm_crtc_page_flip(struct drm_crtc *crtc,
 		}
 	}
 
-	/*
-	 * the values related to a buffer of the drm framebuffer
-	 * to be applied should be set at here. because these values
-	 * first, are set to shadow registers and then to
-	 * real registers at vsync front porch period.
-	 */
 	crtc->primary->fb = fb;
-	mtk_crtc->flip_buffer = to_mtk_gem_obj(mtk_fb->gem_obj[0])->buffer;
+	mtk_crtc->flip_obj = to_mtk_gem_obj(mtk_fb->gem_obj[0]);
 
 	mediatek_drm_crtc_pending_ovl_config(mtk_crtc, true,
 		mtk_crtc->flip_buffer->mva_addr);
@@ -137,15 +206,14 @@ static int mtk_drm_crtc_mode_set(struct drm_crtc *crtc,
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
 	struct drm_framebuffer *fb;
 	struct mtk_drm_fb *mtk_fb;
-	struct mtk_drm_gem_buf *buffer;
+	struct mtk_drm_gem_obj *mtk_gem;
 
 	fb = crtc->primary->fb;
 	mtk_fb = to_mtk_fb(fb);
 
-	buffer = to_mtk_gem_obj(mtk_fb->gem_obj[0])->buffer;
+	mtk_gem = to_mtk_gem_obj(mtk_fb->gem_obj[0]);
 
-	mediatek_drm_crtc_pending_ovl_config(mtk_crtc, true,
-		buffer->mva_addr);
+	mediatek_drm_crtc_pending_ovl_config(mtk_crtc, true, mtk_gem->dma_addr);
 	/*
 	 * copy the mode data adjusted by mode_fixup() into crtc->mode
 	 * so that hardware can be seet to proper mode.
@@ -183,8 +251,10 @@ void mtk_drm_crtc_disable_vblank(struct drm_device *drm, int pipe)
 		(struct mtk_drm_private *)drm->dev_private;
 	struct mtk_drm_crtc *mtk_crtc;
 
-	if (pipe >= MAX_CRTC || pipe < 0)
+	if (pipe >= MAX_CRTC || pipe < 0) {
 		DRM_ERROR(" - %s: invalid crtc (%d)\n", __func__, pipe);
+		return;
+	}
 
 	mtk_crtc = to_mtk_crtc(priv->crtc[pipe]);
 	if (mtk_crtc->ops->disable_vblank)
@@ -202,9 +272,11 @@ static void mtk_drm_crtc_disable(struct drm_crtc *crtc)
 }
 
 static const struct drm_crtc_funcs mediatek_crtc_funcs = {
-	.set_config	= drm_crtc_helper_set_config,
-	.page_flip	= mtk_drm_crtc_page_flip,
-	.destroy	= mtk_drm_crtc_destroy,
+	.cursor_set		= mtk_drm_crtc_cursor_set,
+	.cursor_move	= mtk_drm_crtc_cursor_move,
+	.set_config		= drm_crtc_helper_set_config,
+	.page_flip		= mtk_drm_crtc_page_flip,
+	.destroy		= mtk_drm_crtc_destroy,
 };
 
 static struct drm_crtc_helper_funcs mediatek_crtc_helper_funcs = {
@@ -220,8 +292,9 @@ struct mtk_drm_crtc *mtk_drm_crtc_create(struct drm_device *drm_dev, int pipe,
 {
 	struct mtk_drm_private *priv = drm_dev->dev_private;
 	struct mtk_drm_crtc *mtk_crtc;
+	int ret;
 
-	mtk_crtc = devm_kzalloc(drm_dev->dev, sizeof(*mtk_crtc), GFP_KERNEL);
+	mtk_crtc = kzalloc(sizeof(*mtk_crtc), GFP_KERNEL);
 	if (!mtk_crtc) {
 		DRM_ERROR("failed to allocate mtk crtc\n");
 		return ERR_PTR(-ENOMEM);
@@ -233,9 +306,15 @@ struct mtk_drm_crtc *mtk_drm_crtc_create(struct drm_device *drm_dev, int pipe,
 
 	priv->crtc[pipe] = &mtk_crtc->base;
 
-	drm_crtc_init(drm_dev, &mtk_crtc->base, &mediatek_crtc_funcs);
+	ret = drm_crtc_init(drm_dev, &mtk_crtc->base, &mediatek_crtc_funcs);
+	if (ret)
+		goto err;
+
 	drm_crtc_helper_add(&mtk_crtc->base, &mediatek_crtc_helper_funcs);
 
 	return mtk_crtc;
+err:
+	kfree(mtk_crtc);
+	return ERR_PTR(ret);
 }
 

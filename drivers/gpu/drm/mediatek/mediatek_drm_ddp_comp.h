@@ -21,6 +21,8 @@ void mediatek_od_clear_vblank(void __iomem *drm_disp_base);
 void mediatek_ovl_layer_config(void __iomem *ovl_base, bool enabled,
 		unsigned int addr, unsigned int width, unsigned int height,
 		unsigned int pitch,	unsigned int format);
+void mediatek_ovl_layer_config_cursor(void __iomem *ovl_base,
+		bool enable, unsigned int addr, int x, int y, int w, int h);
 
 void main_disp_path_power_on(unsigned int width, unsigned int height,
 		void __iomem *ovl_base,	void __iomem *rdma_base,
