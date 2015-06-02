@@ -300,6 +300,12 @@ static int mediatek_drm_init(void)
 {
 	int err;
 
+	err = platform_driver_register(&mediatek_ddp_driver);
+	if (err < 0) {
+		DRM_DEBUG_DRIVER("register ddp driver fail.\n");
+		return err;
+	}
+
 	err = platform_driver_register(&mediatek_drm_platform_driver);
 	if (err < 0)
 		return err;
@@ -310,6 +316,7 @@ static int mediatek_drm_init(void)
 static void mediatek_drm_exit(void)
 {
 	platform_driver_unregister(&mediatek_drm_platform_driver);
+	platform_driver_unregister(&mediatek_ddp_driver);
 }
 
 module_init(mediatek_drm_init);

@@ -1,0 +1,34 @@
+/*
+ * Copyright (c) 2015 MediaTek Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#ifndef MEDIATEK_DRM_DDP_COMP_H
+#define MEDIATEK_DRM_DDP_COMP_H
+
+
+void mediatek_od_enable_vblank(void __iomem *drm_disp_base);
+void mediatek_od_disable_vblank(void __iomem *drm_disp_base);
+void mediatek_od_clear_vblank(void __iomem *drm_disp_base);
+void mediatek_ovl_layer_config(void __iomem *ovl_base, bool enabled,
+		unsigned int addr, unsigned int width, unsigned int height,
+		unsigned int pitch,	unsigned int format);
+
+void main_disp_path_power_on(unsigned int width, unsigned int height,
+		void __iomem *ovl_base,	void __iomem *rdma_base,
+		void __iomem *color_base, void __iomem *ufoe_base,
+		void __iomem *od_base);
+
+void mediatek_ovl_layer_switch(void __iomem *ovl_base,
+		unsigned layer, bool en);
+
+#endif /* MEDIATEK_DRM_DDP_COMP_H */
+
