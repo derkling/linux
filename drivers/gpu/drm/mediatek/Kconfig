@@ -26,3 +26,10 @@ config DRM_MEDIATEK_FBDEV
 	  fbdev support.  Note that this support also provides
 	  the Linux console on top of the Mediatek DRM mode
 	  setting driver.
+
+config DRM_MEDIATEK_HDMI
+	tristate "DRM HDMI Support for Mediatek SoCs"
+	depends on DRM_MEDIATEK || DRM_MEDIATEK_ROGUE
+	default y
+	help
+	  DRM/KMS HDMI driver for Mediatek SoCs
