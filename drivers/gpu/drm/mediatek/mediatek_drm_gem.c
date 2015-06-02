@@ -13,6 +13,7 @@
 
 #include <drm/drmP.h>
 #include <drm/drm_gem.h>
+#include <drm/mediatek_drm.h>
 
 #include "mediatek_drm_gem.h"
 
@@ -275,4 +276,40 @@ int mtk_drm_gem_mmap(struct file *filp, struct vm_area_struct *vma)
 
 	return ret;
 }
+
+int mediatek_gem_map_offset_ioctl(struct drm_device *drm, void *data,
+				  struct drm_file *file_priv)
+{
+	struct drm_mtk_gem_map_off *args = data;
+
+	return mtk_drm_gem_dumb_map_offset(file_priv, drm, args->handle,
+						&args->offset);
+}
+
+int mediatek_gem_create_ioctl(struct drm_device *dev, void *data,
+			      struct drm_file *file_priv)
+{
+	struct mtk_drm_gem_obj *mtk_gem;
+	struct drm_mtk_gem_create *args = data;
+	int ret;
+
+	mtk_gem = mtk_drm_gem_create(dev, 3, args->size);
+
+	if (IS_ERR(mtk_gem))
+		return PTR_ERR(mtk_gem);
+
+	/*
+	 * allocate a id of idr table where the obj is registered
+	 * and handle has the id what user can see.
+	 */
+	ret = drm_gem_handle_create(file_priv, &mtk_gem->base, &args->handle);
+	if (ret)
+		return ret;
+
+	/* drop reference from allocate - handle holds it now. */
+	drm_gem_object_unreference_unlocked(&mtk_gem->base);
+
+	return 0;
+}
+
 
