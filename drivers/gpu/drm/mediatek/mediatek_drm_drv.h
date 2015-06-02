@@ -18,6 +18,7 @@
 #define MAX_CONNECTOR	2
 
 extern struct platform_driver mediatek_ddp_driver;
+extern struct platform_driver mediatek_crtc_main_driver;
 
 struct mtk_drm_private {
 	struct drm_fb_helper *fb_helper;
