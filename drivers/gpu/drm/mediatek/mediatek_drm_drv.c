@@ -26,6 +26,7 @@
 #include "mediatek_drm_crtc.h"
 #include "mediatek_drm_fb.h"
 #include "mediatek_drm_gem.h"
+#include "mediatek_drm_dmabuf.h"
 
 
 #define DRIVER_NAME "mediatek"
@@ -184,7 +185,7 @@ static const struct file_operations mediatek_drm_fops = {
 };
 
 static struct drm_driver mediatek_drm_driver = {
-	.driver_features = DRIVER_MODESET | DRIVER_GEM,
+	.driver_features = DRIVER_MODESET | DRIVER_GEM | DRIVER_PRIME,
 	.load = mtk_drm_load,
 	.unload = mtk_drm_unload,
 	.open = mtk_drm_open,
@@ -202,6 +203,10 @@ static struct drm_driver mediatek_drm_driver = {
 	.dumb_map_offset = mtk_drm_gem_dumb_map_offset,
 	.dumb_destroy = drm_gem_dumb_destroy,
 
+	.prime_handle_to_fd = drm_gem_prime_handle_to_fd,
+	.prime_fd_to_handle = drm_gem_prime_fd_to_handle,
+	.gem_prime_export = mtk_dmabuf_prime_export,
+	.gem_prime_import = mtk_dmabuf_prime_import,
 	.num_ioctls = 0,
 	.fops = &mediatek_drm_fops,
 
