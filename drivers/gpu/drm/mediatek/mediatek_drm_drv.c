@@ -306,6 +306,12 @@ static int mediatek_drm_init(void)
 		return err;
 	}
 
+	err = platform_driver_register(&mtk_dsi_driver);
+	if (err < 0) {
+		DRM_DEBUG_DRIVER("register dsi driver fail.\n");
+		return err;
+	}
+
 	err = platform_driver_register(&mediatek_crtc_main_driver);
 	if (err < 0) {
 		DRM_DEBUG_DRIVER("register crtc_main driver fail.\n");
@@ -323,6 +329,7 @@ static void mediatek_drm_exit(void)
 {
 	platform_driver_unregister(&mediatek_drm_platform_driver);
 	platform_driver_unregister(&mediatek_crtc_main_driver);
+	platform_driver_unregister(&mtk_dsi_driver);
 	platform_driver_unregister(&mediatek_ddp_driver);
 }
 
