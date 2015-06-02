@@ -70,6 +70,12 @@ struct ddp_context {
 	unsigned int			pending_ovl_height;
 	unsigned int			pending_ovl_pitch;
 	unsigned int			pending_ovl_format;
+
+	bool pending_ovl_cursor_config;
+	bool pending_ovl_cursor_enable;
+	unsigned int pending_ovl_cursor_addr;
+	int pending_ovl_cursor_x;
+	int pending_ovl_cursor_y;
 };
 
 
