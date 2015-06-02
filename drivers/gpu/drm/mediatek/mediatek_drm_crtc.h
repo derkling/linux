@@ -15,6 +15,7 @@
 #ifndef MEDIATEL_DRM_CRTC_H
 #define MEDIATEL_DRM_CRTC_H
 
+#include <drm/drm_sync_helper.h>
 
 struct mtk_drm_crtc;
 struct mediatek_drm_crtc_ops {
@@ -50,6 +51,12 @@ struct mtk_drm_crtc {
 	struct mtk_drm_gem_obj *flip_obj;
 	const struct mediatek_drm_crtc_ops	*ops;
 	void				*ctx;
+
+	unsigned fence_context;
+	atomic_t fence_seqno;
+	struct fence *fence;
+	struct drm_reservation_cb rcb;
+	struct fence *pending_fence;
 	bool pending_needs_vblank;
 
 	bool pending_ovl_config;
