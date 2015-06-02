@@ -21,6 +21,7 @@
 #include <linux/mtk-smi.h>
 #include <linux/pm_runtime.h>
 #include <linux/dma-iommu.h>
+#include <drm/mediatek_drm.h>
 
 #include "mediatek_drm_drv.h"
 #include "mediatek_drm_crtc.h"
@@ -171,6 +172,14 @@ static const struct vm_operations_struct mediatek_drm_gem_vm_ops = {
 	.close = drm_gem_vm_close,
 };
 
+static const struct drm_ioctl_desc mtk_ioctls[] = {
+	DRM_IOCTL_DEF_DRV(MTK_GEM_CREATE, mediatek_gem_create_ioctl,
+			  DRM_UNLOCKED | DRM_AUTH),
+	DRM_IOCTL_DEF_DRV(MTK_GEM_MAP_OFFSET,
+			  mediatek_gem_map_offset_ioctl,
+			  DRM_UNLOCKED | DRM_AUTH),
+};
+
 static const struct file_operations mediatek_drm_fops = {
 	.owner = THIS_MODULE,
 	.open = drm_open,
@@ -207,7 +216,8 @@ static struct drm_driver mediatek_drm_driver = {
 	.prime_fd_to_handle = drm_gem_prime_fd_to_handle,
 	.gem_prime_export = mtk_dmabuf_prime_export,
 	.gem_prime_import = mtk_dmabuf_prime_import,
-	.num_ioctls = 0,
+	.ioctls = mtk_ioctls,
+	.num_ioctls = ARRAY_SIZE(mtk_ioctls),
 	.fops = &mediatek_drm_fops,
 
 	.set_busid = drm_platform_set_busid,
