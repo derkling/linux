@@ -133,7 +133,7 @@ static void mediatek_ovl_roi(void __iomem *ovl_base,
 		unsigned int w, unsigned int h, unsigned int bg_color)
 {
 	if (w != 0 && h != 0)
-	writel(h << 16 | w, ovl_base + DISP_REG_OVL_ROI_SIZE);
+		writel(h << 16 | w, ovl_base + DISP_REG_OVL_ROI_SIZE);
 	writel(bg_color, ovl_base + DISP_REG_OVL_ROI_BGCLR);
 }
 
@@ -243,10 +243,16 @@ void mediatek_ovl_layer_config(void __iomem *ovl_base, bool enabled,
 	bool alpha_en = 0;
 	unsigned char alpha = 0x0;
 	unsigned int src_con, new_set;
-	unsigned int roi_w = ((width + 3) >> 2) << 2;
+	unsigned int roi_w = width;
 
 	unsigned int rgb_swap, bpp;
 	unsigned int fmt = ovl_fmt_convert(format);
+
+#ifndef MEDIATEK_DRM_UPSTREAM
+		if (of_find_compatible_node(NULL, NULL, "ite,it6151") != NULL)
+			roi_w = ((width + 3) >> 2) << 2;
+#endif /* MEDIATEK_DRM_UPSTREAM */
+
 
 	if (fmt == OVL_INFMT_BGR888 || fmt == OVL_INFMT_BGR565 ||
 		fmt == OVL_INFMT_ABGR8888 || fmt == OVL_INFMT_BGRA8888) {

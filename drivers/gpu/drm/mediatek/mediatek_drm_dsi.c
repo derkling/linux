@@ -55,35 +55,35 @@
 #define DSI_START		0x00
 
 #define	DSI_CON_CTRL	0x10
-	#define DSI_RESET		(1)
+#define		DSI_RESET		(1)
 
-#define DSI_MODE_CTRL	0x14
-	#define  MODE		2
-		#define CMD_MODE                  0
-		#define SYNC_PULSE_MODE    1
-		#define SYNC_EVENT_MODE    2
-		#define BURST_MODE              3
-	#define  FRM_MODE    (1<<16)
-	#define  MIX_MODE     (1<<17)
+#define	DSI_MODE_CTRL	0x14
+#define		MODE	2
+#define		CMD_MODE	0
+#define		SYNC_PULSE_MODE	1
+#define		SYNC_EVENT_MODE	2
+#define		BURST_MODE	3
+#define		FRM_MODE	(1<<16)
+#define		MIX_MODE	(1<<17)
 
 #define DSI_TXRX_CTRL	0x18
-	#define VC_NUM	(2<<0)
-	#define LANE_NUM	(0xf<<2)
-	#define DIS_EOT		(1<<6)
-	#define NULL_EN		(1<<7)
-	#define TE_FREERUN		(1<<8)
-	#define EXT_TE_EN		(1<<9)
-	#define EXT_TE_EDGE		(1<<10)
-	#define MAX_RTN_SIZE		(0xf<<12)
-	#define HSTX_CKLP_EN		(1<<16)
+#define		VC_NUM	(2<<0)
+#define		LANE_NUM	(0xf<<2)
+#define		DIS_EOT		(1<<6)
+#define		NULL_EN		(1<<7)
+#define		TE_FREERUN	(1<<8)
+#define		EXT_TE_EN	(1<<9)
+#define		EXT_TE_EDGE	(1<<10)
+#define		MAX_RTN_SIZE	(0xf<<12)
+#define		HSTX_CKLP_EN	(1<<16)
 
 #define DSI_PSCTRL		0x1c
-	#define DSI_PS_WC		0x3fff
-	#define DSI_PS_SEL	 (2<<16)
-		#define PACKED_PS_16BIT_RGB565		(0<<16)
-		#define LOOSELY_PS_18BIT_RGB666		(1<<16)
-		#define PACKED_PS_18BIT_RGB666		(2<<16)
-		#define PACKED_PS_24BIT_RGB888		(3<<16)
+#define		DSI_PS_WC		0x3fff
+#define		DSI_PS_SEL	 (2<<16)
+#define			PACKED_PS_16BIT_RGB565		(0<<16)
+#define			LOOSELY_PS_18BIT_RGB666		(1<<16)
+#define			PACKED_PS_18BIT_RGB666		(2<<16)
+#define			PACKED_PS_24BIT_RGB888		(3<<16)
 
 #define DSI_VSA_NL		0x20
 #define DSI_VBP_NL		0x24
@@ -103,170 +103,169 @@
 	#define LC_WAKEUP_EN				(1<<2)
 
 #define DSI_PHY_LD0CON	0x108
-	#define LD0_HS_TX_EN				(1)
-	#define LD0_ULPM_EN					(1<<1)
-	#define LD0_WAKEUP_EN				(1<<2)
+#define		LD0_HS_TX_EN	(1)
+#define		LD0_ULPM_EN	(1<<1)
+#define		LD0_WAKEUP_EN	(1<<2)
 
-#define	DSI_PHY_TIMECON0			0x0110
-	#define LPX			(0xff<<0)
-	#define HS_PRPR		(0xff<<8)
-	#define HS_ZERO		(0xff<<16)
-	#define HS_TRAIL		(0xff<<24)
+#define	DSI_PHY_TIMECON0	0x0110
+#define		LPX		(0xff<<0)
+#define		HS_PRPR		(0xff<<8)
+#define		HS_ZERO		(0xff<<16)
+#define		HS_TRAIL	(0xff<<24)
 
-#define	DSI_PHY_TIMECON1			0x0114
-	#define TA_GO			(0xff<<0)
-	#define TA_SURE			(0xff<<8)
-	#define TA_GET			(0xff<<16)
-	#define DA_HS_EXIT		(0xff<<24)
+#define	DSI_PHY_TIMECON1	0x0114
+#define		TA_GO		(0xff<<0)
+#define		TA_SURE		(0xff<<8)
+#define		TA_GET		(0xff<<16)
+#define		DA_HS_EXIT	(0xff<<24)
 
-#define	DSI_PHY_TIMECON2			0x0118
-	#define CONT_DET		(0xff<<0)
-	#define CLK_ZERO		(0xff<<16)
-	#define CLK_TRAIL		(0xff<<24)
+#define	DSI_PHY_TIMECON2	0x0118
+#define		CONT_DET	(0xff<<0)
+#define		CLK_ZERO	(0xff<<16)
+#define		CLK_TRAIL	(0xff<<24)
 
-#define	DSI_PHY_TIMECON3			0x011c
-	#define CLK_HS_PRPR		(0xff<<0)
-	#define CLK_HS_POST		(0xff<<8)
-	#define CLK_HS_EXIT		(0xff<<16)
+#define	DSI_PHY_TIMECON3	0x011c
+#define		CLK_HS_PRPR	(0xff<<0)
+#define		CLK_HS_POST	(0xff<<8)
+#define		CLK_HS_EXIT	(0xff<<16)
 
-#define		MIPITX_DSI0_CON			0x00
-    #define RG_DSI0_LDOCORE_EN					(1)
-    #define RG_DSI0_CKG_LDOOUT_EN				(1<<1)
-    #define RG_DSI0_BCLK_SEL					(3<<2)
-    #define RG_DSI0_LD_IDX_SEL					(7<<4)
-    #define RG_DSI0_PHYCLK_SEL					(2<<8)
-    #define RG_DSI0_DSICLK_FREQ_SEL				(1<<10)
-    #define RG_DSI0_LPTX_CLMP_EN				(1<<11)
+#define	MIPITX_DSI0_CON		0x00
+#define		RG_DSI0_LDOCORE_EN	(1)
+#define		RG_DSI0_CKG_LDOOUT_EN	(1<<1)
+#define		RG_DSI0_BCLK_SEL	(3<<2)
+#define		RG_DSI0_LD_IDX_SEL	(7<<4)
+#define		RG_DSI0_PHYCLK_SEL	(2<<8)
+#define		RG_DSI0_DSICLK_FREQ_SEL	(1<<10)
+#define		RG_DSI0_LPTX_CLMP_EN	(1<<11)
 
-#define		MIPITX_DSI0_CLOCK_LANE	0x04
-    #define RG_DSI0_LNTC_LDOOUT_EN				(1)
-    #define RG_DSI0_LNTC_CKLANE_EN				(1<<1)
-    #define RG_DSI0_LNTC_LPTX_IPLUS1			(1<<2)
-    #define RG_DSI0_LNTC_LPTX_IPLUS2			(1<<3)
-    #define RG_DSI0_LNTC_LPTX_IMINUS			(1<<4)
-    #define RG_DSI0_LNTC_LPCD_IPLUS				(1<<5)
-    #define RG_DSI0_LNTC_LPCD_IMLUS				(1<<6)
-    #define RG_DSI0_LNTC_RT_CODE				(0xf<<8)
+#define	MIPITX_DSI0_CLOCK_LANE	0x04
+#define		RG_DSI0_LNTC_LDOOUT_EN		(1)
+#define		RG_DSI0_LNTC_CKLANE_EN		(1<<1)
+#define		RG_DSI0_LNTC_LPTX_IPLUS1	(1<<2)
+#define		RG_DSI0_LNTC_LPTX_IPLUS2	(1<<3)
+#define		RG_DSI0_LNTC_LPTX_IMINUS	(1<<4)
+#define		RG_DSI0_LNTC_LPCD_IPLUS		(1<<5)
+#define		RG_DSI0_LNTC_LPCD_IMLUS		(1<<6)
+#define		RG_DSI0_LNTC_RT_CODE		(0xf<<8)
 
-#define		MIPITX_DSI0_DATA_LANE0	0x08
-    #define RG_DSI0_LNT0_LDOOUT_EN				(1)
-    #define RG_DSI0_LNT0_CKLANE_EN				(1<<1)
-    #define RG_DSI0_LNT0_LPTX_IPLUS1			(1<<2)
-    #define RG_DSI0_LNT0_LPTX_IPLUS2			(1<<3)
-    #define RG_DSI0_LNT0_LPTX_IMINUS			(1<<4)
-    #define RG_DSI0_LNT0_LPCD_IPLUS				(1<<5)
-    #define RG_DSI0_LNT0_LPCD_IMINUS			(1<<6)
-    #define RG_DSI0_LNT0_RT_CODE				(0xf<<8)
+#define	MIPITX_DSI0_DATA_LANE0	0x08
+#define		RG_DSI0_LNT0_LDOOUT_EN		(1)
+#define		RG_DSI0_LNT0_CKLANE_EN		(1<<1)
+#define		RG_DSI0_LNT0_LPTX_IPLUS1	(1<<2)
+#define		RG_DSI0_LNT0_LPTX_IPLUS2	(1<<3)
+#define		RG_DSI0_LNT0_LPTX_IMINUS	(1<<4)
+#define		RG_DSI0_LNT0_LPCD_IPLUS		(1<<5)
+#define		RG_DSI0_LNT0_LPCD_IMINUS	(1<<6)
+#define		RG_DSI0_LNT0_RT_CODE		(0xf<<8)
 
-#define		MIPITX_DSI0_DATA_LANE1	0x0c
-    #define RG_DSI0_LNT1_LDOOUT_EN				(1)
-	#define RG_DSI0_LNT1_CKLANE_EN				(1<<1)
-	#define RG_DSI0_LNT1_LPTX_IPLUS1			(1<<2)
-	#define RG_DSI0_LNT1_LPTX_IPLUS2			(1<<3)
-	#define RG_DSI0_LNT1_LPTX_IMINUS			(1<<4)
-	#define RG_DSI0_LNT1_LPCD_IPLUS				(1<<5)
-	#define RG_DSI0_LNT1_LPCD_IMINUS			(1<<6)
-	#define RG_DSI0_LNT1_RT_CODE				(0xf<<8)
+#define	MIPITX_DSI0_DATA_LANE1	0x0c
+#define		RG_DSI0_LNT1_LDOOUT_EN		(1)
+#define		RG_DSI0_LNT1_CKLANE_EN		(1<<1)
+#define		RG_DSI0_LNT1_LPTX_IPLUS1	(1<<2)
+#define		RG_DSI0_LNT1_LPTX_IPLUS2	(1<<3)
+#define		RG_DSI0_LNT1_LPTX_IMINUS	(1<<4)
+#define		RG_DSI0_LNT1_LPCD_IPLUS		(1<<5)
+#define		RG_DSI0_LNT1_LPCD_IMINUS	(1<<6)
+#define		RG_DSI0_LNT1_RT_CODE		(0xf<<8)
 
-#define		MIPITX_DSI0_DATA_LANE2	0x10
-    #define RG_DSI0_LNT2_LDOOUT_EN				(1)
-	#define RG_DSI0_LNT2_CKLANE_EN				(1<<1)
-	#define RG_DSI0_LNT2_LPTX_IPLUS1			(1<<2)
-	#define RG_DSI0_LNT2_LPTX_IPLUS2			(1<<3)
-	#define RG_DSI0_LNT2_LPTX_IMINUS			(1<<4)
-	#define RG_DSI0_LNT2_LPCD_IPLUS				(1<<5)
-	#define RG_DSI0_LNT2_LPCD_IMINUS			(1<<6)
-	#define RG_DSI0_LNT2_RT_CODE				(0xf<<8)
+#define	MIPITX_DSI0_DATA_LANE2	0x10
+#define		RG_DSI0_LNT2_LDOOUT_EN		(1)
+#define		RG_DSI0_LNT2_CKLANE_EN		(1<<1)
+#define		RG_DSI0_LNT2_LPTX_IPLUS1	(1<<2)
+#define		RG_DSI0_LNT2_LPTX_IPLUS2	(1<<3)
+#define		RG_DSI0_LNT2_LPTX_IMINUS	(1<<4)
+#define		RG_DSI0_LNT2_LPCD_IPLUS		(1<<5)
+#define		RG_DSI0_LNT2_LPCD_IMINUS	(1<<6)
+#define		RG_DSI0_LNT2_RT_CODE		(0xf<<8)
 
-#define		MIPITX_DSI0_DATA_LANE3	0x14
-	#define RG_DSI0_LNT3_LDOOUT_EN				(1)
-	#define RG_DSI0_LNT3_CKLANE_EN				(1<<1)
-	#define RG_DSI0_LNT3_LPTX_IPLUS1			(1<<2)
-	#define RG_DSI0_LNT3_LPTX_IPLUS2			(1<<3)
-	#define RG_DSI0_LNT3_LPTX_IMINUS			(1<<4)
-	#define RG_DSI0_LNT3_LPCD_IPLUS				(1<<5)
-	#define RG_DSI0_LNT3_LPCD_IMINUS			(1<<6)
-	#define RG_DSI0_LNT3_RT_CODE				(0xf<<8)
+#define	MIPITX_DSI0_DATA_LANE3	0x14
+#define		RG_DSI0_LNT3_LDOOUT_EN		(1)
+#define		RG_DSI0_LNT3_CKLANE_EN		(1<<1)
+#define		RG_DSI0_LNT3_LPTX_IPLUS1	(1<<2)
+#define		RG_DSI0_LNT3_LPTX_IPLUS2	(1<<3)
+#define		RG_DSI0_LNT3_LPTX_IMINUS	(1<<4)
+#define		RG_DSI0_LNT3_LPCD_IPLUS		(1<<5)
+#define		RG_DSI0_LNT3_LPCD_IMINUS	(1<<6)
+#define		RG_DSI0_LNT3_RT_CODE		(0xf<<8)
 
-#define		MIPITX_DSI_TOP_CON	0x40
-	#define RG_DSI_LNT_INTR_EN			(1)
-	#define RG_DSI_LNT_HS_BIAS_EN			(1<<1)
-	#define RG_DSI_LNT_IMP_CAL_EN			(1<<2)
-	#define RG_DSI_LNT_TESTMODE_EN		(1<<3)
-	#define RG_DSI_LNT_IMP_CAL_CODE		(0xf<<4)
-	#define RG_DSI_LNT_AIO_SEL				(7<<8)
-	#define RG_DSI_PAD_TIE_LOW_EN			(1<<11)
-	#define RG_DSI_DEBUG_INPUT_EN			(1<<12)
-	#define RG_DSI_PRESERVE			       (7<<13)
+#define	MIPITX_DSI_TOP_CON	0x40
+#define		RG_DSI_LNT_INTR_EN		(1)
+#define		RG_DSI_LNT_HS_BIAS_EN		(1<<1)
+#define		RG_DSI_LNT_IMP_CAL_EN		(1<<2)
+#define		RG_DSI_LNT_TESTMODE_EN		(1<<3)
+#define		RG_DSI_LNT_IMP_CAL_CODE		(0xf<<4)
+#define		RG_DSI_LNT_AIO_SEL		(7<<8)
+#define		RG_DSI_PAD_TIE_LOW_EN		(1<<11)
+#define		RG_DSI_DEBUG_INPUT_EN		(1<<12)
+#define		RG_DSI_PRESERVE			(7<<13)
 
-#define		MIPITX_DSI_BG_CON		0x44
-	#define RG_DSI_BG_CORE_EN		1
-	#define RG_DSI_BG_CKEN			(1<<1)
-	#define RG_DSI_BG_DIV			(0x3<<2)
-	#define RG_DSI_BG_FAST_CHARGE		(1<<4)
-	#define RG_DSI_V12_SEL			 (7<<5)
-	#define RG_DSI_V10_SEL			 (7<<8)
-	#define RG_DSI_V072_SEL			 (7<<11)
-	#define RG_DSI_V04_SEL			 (7<<14)
-	#define RG_DSI_V032_SEL			 (7<<17)
-	#define RG_DSI_V02_SEL			 (7<<20)
-	#define rsv_23					 (1<<)
-	#define RG_DSI_BG_R1_TRIM		 (0xf<<24)
-	#define RG_DSI_BG_R2_TRIM		 (0xf<<28)
+#define	MIPITX_DSI_BG_CON	0x44
+#define		RG_DSI_BG_CORE_EN		1
+#define		RG_DSI_BG_CKEN			(1<<1)
+#define		RG_DSI_BG_DIV			(0x3<<2)
+#define		RG_DSI_BG_FAST_CHARGE		(1<<4)
+#define		RG_DSI_V12_SEL			(7<<5)
+#define		RG_DSI_V10_SEL			(7<<8)
+#define		RG_DSI_V072_SEL			(7<<11)
+#define		RG_DSI_V04_SEL			(7<<14)
+#define		RG_DSI_V032_SEL			(7<<17)
+#define		RG_DSI_V02_SEL			(7<<20)
+#define		RG_DSI_BG_R1_TRIM		(0xf<<24)
+#define		RG_DSI_BG_R2_TRIM		(0xf<<28)
 
-#define		MIPITX_DSI_PLL_CON0		0x50
-    #define RG_DSI0_MPPLL_PLL_EN			(1<<0)
-    #define RG_DSI0_MPPLL_PREDIV			(3<<1)
-    #define RG_DSI0_MPPLL_TXDIV0			(3<<3)
-    #define RG_DSI0_MPPLL_TXDIV1			(3<<5)
-    #define RG_DSI0_MPPLL_POSDIV		(7<<7)
-    #define RG_DSI0_MPPLL_MONVC_EN		(1<<10)
-    #define RG_DSI0_MPPLL_MONREF_EN		(1<<11)
-	#define RG_DSI0_MPPLL_VOD_EN		(1<<12)
+#define	MIPITX_DSI_PLL_CON0	0x50
+#define		RG_DSI0_MPPLL_PLL_EN		(1<<0)
+#define		RG_DSI0_MPPLL_PREDIV		(3<<1)
+#define		RG_DSI0_MPPLL_TXDIV0		(3<<3)
+#define		RG_DSI0_MPPLL_TXDIV1		(3<<5)
+#define		RG_DSI0_MPPLL_POSDIV		(7<<7)
+#define		RG_DSI0_MPPLL_MONVC_EN		(1<<10)
+#define		RG_DSI0_MPPLL_MONREF_EN		(1<<11)
+#define		RG_DSI0_MPPLL_VOD_EN		(1<<12)
 
-#define		MIPITX_DSI_PLL_CON1		0x54
-    #define RG_DSI0_MPPLL_SDM_FRA_EN			(1)
-    #define RG_DSI0_MPPLL_SDM_SSC_PH_INIT			(1<<1)
-    #define RG_DSI0_MPPLL_SDM_SSC_EN			(1<<2)
-    #define RG_DSI0_MPPLL_SDM_SSC_PRD			(0xffff<<16)
+#define	MIPITX_DSI_PLL_CON1	0x54
+#define		RG_DSI0_MPPLL_SDM_FRA_EN	(1)
+#define		RG_DSI0_MPPLL_SDM_SSC_PH_INIT	(1<<1)
+#define		RG_DSI0_MPPLL_SDM_SSC_EN	(1<<2)
+#define		RG_DSI0_MPPLL_SDM_SSC_PRD	(0xffff<<16)
 
-#define		MIPITX_DSI_PLL_CON2	0x58
+#define	MIPITX_DSI_PLL_CON2	0x58
 
-#define		MIPITX_DSI_PLL_PWR		0x68
-	#define RG_DSI_MPPLL_SDM_PWR_ON			(1<<0)
-	#define RG_DSI_MPPLL_SDM_ISO_EN			(1<<1)
-	#define RG_DSI_MPPLL_SDM_PWR_ACK		(1<<8)
+#define	MIPITX_DSI_PLL_PWR	0x68
+#define		RG_DSI_MPPLL_SDM_PWR_ON		(1<<0)
+#define		RG_DSI_MPPLL_SDM_ISO_EN		(1<<1)
+#define		RG_DSI_MPPLL_SDM_PWR_ACK	(1<<8)
 
-#define		MIPITX_DSI_SW_CTRL		0x80
-	#define SW_CTRL_EN		(1<<0)
+#define	MIPITX_DSI_SW_CTRL	0x80
+#define		SW_CTRL_EN			(1<<0)
 
-#define		MIPITX_DSI_SW_CTRL_CON0	0x84
-    #define SW_LNTC_LPTX_PRE_OE		(1<<0)
-    #define SW_LNTC_LPTX_OE			(1<<1)
-    #define SW_LNTC_LPTX_P			(1<<2)
-    #define SW_LNTC_LPTX_N			(1<<3)
-    #define SW_LNTC_HSTX_PRE_OE		(1<<4)
-    #define SW_LNTC_HSTX_OE			(1<<5)
-    #define SW_LNTC_HSTX_ZEROCLK	(1<<6)
-    #define SW_LNT0_LPTX_PRE_OE		(1<<7)
-    #define SW_LNT0_LPTX_OE			(1<<8)
-    #define SW_LNT0_LPTX_P			(1<<9)
-    #define SW_LNT0_LPTX_N			(1<<10)
-    #define SW_LNT0_HSTX_PRE_OE		(1<<11)
-    #define SW_LNT0_HSTX_OE			(1<<12)
-    #define SW_LNT0_LPRX_EN			(1<<13)
-    #define SW_LNT1_LPTX_PRE_OE		(1<<14)
-    #define SW_LNT1_LPTX_OE			(1<<15)
-    #define SW_LNT1_LPTX_P			(1<<16)
-    #define SW_LNT1_LPTX_N			(1<<17)
-    #define SW_LNT1_HSTX_PRE_OE		(1<<18)
-    #define SW_LNT1_HSTX_OE			(1<<19)
-    #define SW_LNT2_LPTX_PRE_OE		(1<<20)
-    #define SW_LNT2_LPTX_OE			(1<<21)
-    #define SW_LNT2_LPTX_P			(1<<22)
-    #define SW_LNT2_LPTX_N			(1<<23)
-    #define SW_LNT2_HSTX_PRE_OE		(1<<24)
-    #define SW_LNT2_HSTX_OE			(1<<25)
+#define	MIPITX_DSI_SW_CTRL_CON0	0x84
+#define		SW_LNTC_LPTX_PRE_OE		(1<<0)
+#define		SW_LNTC_LPTX_OE			(1<<1)
+#define		SW_LNTC_LPTX_P			(1<<2)
+#define		SW_LNTC_LPTX_N			(1<<3)
+#define		SW_LNTC_HSTX_PRE_OE		(1<<4)
+#define		SW_LNTC_HSTX_OE			(1<<5)
+#define		SW_LNTC_HSTX_ZEROCLK		(1<<6)
+#define		SW_LNT0_LPTX_PRE_OE		(1<<7)
+#define		SW_LNT0_LPTX_OE			(1<<8)
+#define		SW_LNT0_LPTX_P			(1<<9)
+#define		SW_LNT0_LPTX_N			(1<<10)
+#define		SW_LNT0_HSTX_PRE_OE		(1<<11)
+#define		SW_LNT0_HSTX_OE			(1<<12)
+#define		SW_LNT0_LPRX_EN			(1<<13)
+#define		SW_LNT1_LPTX_PRE_OE		(1<<14)
+#define		SW_LNT1_LPTX_OE			(1<<15)
+#define		SW_LNT1_LPTX_P			(1<<16)
+#define		SW_LNT1_LPTX_N			(1<<17)
+#define		SW_LNT1_HSTX_PRE_OE		(1<<18)
+#define		SW_LNT1_HSTX_OE			(1<<19)
+#define		SW_LNT2_LPTX_PRE_OE		(1<<20)
+#define		SW_LNT2_LPTX_OE			(1<<21)
+#define		SW_LNT2_LPTX_P			(1<<22)
+#define		SW_LNT2_LPTX_N			(1<<23)
+#define		SW_LNT2_HSTX_PRE_OE		(1<<24)
+#define		SW_LNT2_HSTX_OE			(1<<25)
 
 #define NS_TO_CYCLE(n, c)    ((n) / c + (((n) % c) ? 1 : 0))
 
@@ -283,52 +282,16 @@ static inline void mtk_dsi_writel(struct mtk_dsi *dsi, unsigned long value,
 	writel(value, dsi->dsi_reg_base + (reg << 2));
 }
 
-static int mtk_dsi_of_read_u32(const struct device_node *np,
-				  const char *propname, u32 *out_value)
-{
-	int ret = of_property_read_u32(np, propname, out_value);
-
-	if (ret < 0)
-		DRM_ERROR("%s: failed to get '%s' property\n", np->full_name,
-		       propname);
-
-	return ret;
-}
-
 static void dsi_phy_clk_switch_off(struct mtk_dsi *dsi)
 {
 	u32 tmp_reg;
-
-	tmp_reg = readl(dsi->dsi_tx_reg_base + MIPITX_DSI_SW_CTRL_CON0);
-
-	tmp_reg = tmp_reg  | (SW_LNTC_LPTX_PRE_OE | SW_LNTC_LPTX_OE |
-		SW_LNTC_HSTX_PRE_OE | SW_LNTC_HSTX_OE |
-		SW_LNT0_LPTX_PRE_OE | SW_LNT0_LPTX_OE |
-		SW_LNT0_HSTX_PRE_OE | SW_LNT0_HSTX_OE |
-		SW_LNT1_LPTX_PRE_OE | SW_LNT1_LPTX_OE |
-		SW_LNT1_HSTX_PRE_OE | SW_LNT1_HSTX_OE |
-		SW_LNT2_LPTX_PRE_OE | SW_LNT2_LPTX_OE |
-		SW_LNT2_HSTX_PRE_OE | SW_LNT2_HSTX_OE);
-	writel(tmp_reg, dsi->dsi_tx_reg_base + MIPITX_DSI_SW_CTRL_CON0);
-
-
-
-	tmp_reg = readl(dsi->dsi_tx_reg_base + MIPITX_DSI_SW_CTRL);
-	tmp_reg = (tmp_reg | SW_CTRL_EN);
-	writel(tmp_reg, dsi->dsi_tx_reg_base + MIPITX_DSI_SW_CTRL);
-
 
 	tmp_reg = readl(dsi->dsi_tx_reg_base + MIPITX_DSI_PLL_CON0);
 	tmp_reg = (tmp_reg & (~RG_DSI0_MPPLL_PLL_EN));
 	writel(tmp_reg, dsi->dsi_tx_reg_base + MIPITX_DSI_PLL_CON0);
 
-
-	udelay(100);
-
 	tmp_reg = readl(dsi->dsi_tx_reg_base + MIPITX_DSI_TOP_CON);
-	tmp_reg = (tmp_reg & (~(RG_DSI_LNT_HS_BIAS_EN |
-		RG_DSI_LNT_IMP_CAL_EN |
-		RG_DSI_LNT_TESTMODE_EN)));
+		tmp_reg = (tmp_reg | (RG_DSI_PAD_TIE_LOW_EN));
 	writel(tmp_reg, dsi->dsi_tx_reg_base + MIPITX_DSI_TOP_CON);
 
 	tmp_reg = readl(dsi->dsi_tx_reg_base + MIPITX_DSI0_CLOCK_LANE);
@@ -351,8 +314,18 @@ static void dsi_phy_clk_switch_off(struct mtk_dsi *dsi)
 	tmp_reg = tmp_reg & (~RG_DSI0_LNT3_LDOOUT_EN);
 	writel(tmp_reg, dsi->dsi_tx_reg_base + MIPITX_DSI0_DATA_LANE3);
 
+	tmp_reg = readl(dsi->dsi_tx_reg_base + MIPITX_DSI_PLL_PWR);
+	tmp_reg = tmp_reg | RG_DSI_MPPLL_SDM_ISO_EN;
+	writel(tmp_reg, dsi->dsi_tx_reg_base + MIPITX_DSI_PLL_PWR);
 
-	udelay(100);
+	tmp_reg = readl(dsi->dsi_tx_reg_base + MIPITX_DSI_PLL_PWR);
+	tmp_reg = tmp_reg & (~RG_DSI_MPPLL_SDM_PWR_ON);
+	writel(tmp_reg, dsi->dsi_tx_reg_base + MIPITX_DSI_PLL_PWR);
+
+
+		tmp_reg = readl(dsi->dsi_tx_reg_base + MIPITX_DSI_TOP_CON);
+		tmp_reg = (tmp_reg & (~(RG_DSI_LNT_HS_BIAS_EN)));
+		writel(tmp_reg, dsi->dsi_tx_reg_base + MIPITX_DSI_TOP_CON);
 
 	tmp_reg = readl(dsi->dsi_tx_reg_base + MIPITX_DSI0_CON);
 	tmp_reg = tmp_reg & (~(RG_DSI0_CKG_LDOOUT_EN |
@@ -363,17 +336,16 @@ static void dsi_phy_clk_switch_off(struct mtk_dsi *dsi)
 	tmp_reg = tmp_reg & (~(RG_DSI_BG_CKEN | RG_DSI_BG_CORE_EN));
 	writel(tmp_reg, dsi->dsi_tx_reg_base + MIPITX_DSI_BG_CON);
 
-
-	udelay(100);
-
 	tmp_reg = readl(dsi->dsi_tx_reg_base + MIPITX_DSI_PLL_CON0);
-	tmp_reg = (tmp_reg & (~RG_DSI0_MPPLL_PLL_EN));
+		tmp_reg = (tmp_reg & (~(RG_DSI0_MPPLL_PREDIV |
+			RG_DSI0_MPPLL_TXDIV0 | RG_DSI0_MPPLL_TXDIV1 |
+			RG_DSI0_MPPLL_POSDIV)));
 	writel(tmp_reg, dsi->dsi_tx_reg_base + MIPITX_DSI_PLL_CON0);
 }
 
 static void dsi_phy_clk_setting(struct mtk_dsi *dsi)
 {
-	unsigned int data_rate = dsi->pll_clk_rate * 2;
+	unsigned int data_rate = dsi->vm.pixelclock * 3 * 21/(1 * 1000 * 10);
 	unsigned int txdiv = 0;
 	unsigned int txdiv0 = 0;
 	unsigned int txdiv1 = 0;
@@ -837,11 +809,11 @@ static void dsi_config_vdo_timing(struct mtk_dsi *dsi)
 		horizontal_backporch_byte = ((vm->hback_porch + vm->hsync_len) *
 			dsi_tmp_buf_bpp - 10);
 
-	horizontal_frontporch_byte = (vm->vfront_porch * dsi_tmp_buf_bpp - 12);
+	horizontal_frontporch_byte = (vm->hfront_porch * dsi_tmp_buf_bpp - 12);
 
-	writel(vm->hsync_len, dsi->dsi_reg_base + DSI_HSA_WC);
-	writel(vm->hback_porch, dsi->dsi_reg_base + DSI_HBP_WC);
-	writel(vm->hfront_porch, dsi->dsi_reg_base + DSI_HFP_WC);
+	writel(horizontal_sync_active_byte, dsi->dsi_reg_base + DSI_HSA_WC);
+	writel(horizontal_backporch_byte, dsi->dsi_reg_base + DSI_HBP_WC);
+	writel(horizontal_frontporch_byte, dsi->dsi_reg_base + DSI_HFP_WC);
 
 	dsi_ps_control(dsi);
 }
@@ -862,16 +834,25 @@ static void mtk_dsi_poweroff(struct mtk_dsi *dsi)
 	dsi_phy_clk_switch_off(dsi);
 }
 
-static int mtk_output_dsi_enable(struct mtk_dsi *dsi)
+static void mtk_output_dsi_enable(struct mtk_dsi *dsi)
 {
 	int ret;
 
+	mtk_dsi_info("dsi->enabled = %d\n", dsi->enabled);
+
 	if (dsi->enabled == true)
-		return 0;
+		return;
+
+	if (dsi->panel) {
+		if (drm_panel_prepare(dsi->panel)) {
+			DRM_ERROR("failed to setup the panel\n");
+			return;
+		}
+	}
 
 	ret = mtk_dsi_poweron(dsi);
 	if (ret < 0)
-		return ret;
+		return;
 
 	dsi_rxtx_control(dsi);
 
@@ -889,14 +870,22 @@ static int mtk_output_dsi_enable(struct mtk_dsi *dsi)
 	mtk_dsi_start(dsi);
 
 	dsi->enabled = true;
-
-	return 0;
 }
 
-static int mtk_output_dsi_disable(struct mtk_dsi *dsi)
+static void mtk_output_dsi_disable(struct mtk_dsi *dsi)
 {
+
+	mtk_dsi_info("dsi->enabled = %d\n", dsi->enabled);
+
 	if (dsi->enabled == false)
-		return 0;
+		return;
+
+	if (dsi->panel) {
+		if (drm_panel_disable(dsi->panel)) {
+			DRM_ERROR("failed to disable the panel\n");
+			return;
+		}
+	}
 
 	dsi_lane0_ulp_mode(dsi, 1);
 	dsi_clk_ulp_mode_enter(dsi);
@@ -904,8 +893,6 @@ static int mtk_output_dsi_disable(struct mtk_dsi *dsi)
 	dsi_phy_clk_switch_off(dsi);
 
 	dsi->enabled = false;
-
-	return 0;
 }
 
 static void mtk_dsi_encoder_destroy(struct drm_encoder *encoder)
@@ -919,21 +906,22 @@ static const struct drm_encoder_funcs mtk_dsi_encoder_funcs = {
 
 static void mtk_dsi_encoder_dpms(struct drm_encoder *encoder, int mode)
 {
-#if 0
 	struct mtk_dsi *dsi = encoder_to_dsi(encoder);
-	struct drm_panel *panel = dsi->panel;
-#endif
 
 	mtk_dsi_info("%s dpms mode = %d !\n", __func__, mode);
-#if 0
-	if (mode != DRM_MODE_DPMS_ON) {
-		drm_panel_disable(panel);
-		mtk_output_dsi_disable(dsi);
-	} else {
+
+	switch (mode) {
+	case DRM_MODE_DPMS_ON:
 		mtk_output_dsi_enable(dsi);
-		drm_panel_enable(panel);
+		break;
+	case DRM_MODE_DPMS_STANDBY:
+	case DRM_MODE_DPMS_SUSPEND:
+	case DRM_MODE_DPMS_OFF:
+		mtk_output_dsi_disable(dsi);
+		break;
+	default:
+		break;
 	}
-#endif
 }
 
 static bool mtk_dsi_encoder_mode_fixup(struct drm_encoder *encoder,
@@ -945,17 +933,44 @@ static bool mtk_dsi_encoder_mode_fixup(struct drm_encoder *encoder,
 
 static void mtk_dsi_encoder_prepare(struct drm_encoder *encoder)
 {
-	/* drm framework doesn't check NULL. */
+	struct mtk_dsi *dsi = encoder_to_dsi(encoder);
+
+	mtk_output_dsi_disable(dsi);
 }
 
 static void mtk_dsi_encoder_mode_set(struct drm_encoder *encoder,
 	struct drm_display_mode *mode, struct drm_display_mode *adjusted)
 {
+	struct mtk_dsi *dsi = encoder_to_dsi(encoder);
+
+
+	dsi->vm.pixelclock = adjusted->clock;
+	dsi->vm.hactive  = adjusted->hdisplay;
+	dsi->vm.hback_porch = adjusted->htotal - adjusted->hsync_end;
+	dsi->vm.hfront_porch = adjusted->hsync_start - adjusted->hdisplay;
+	dsi->vm.hsync_len = adjusted->hsync_end - adjusted->hsync_start;
+
+	dsi->vm.vactive   = adjusted->vdisplay;
+	dsi->vm.vback_porch = adjusted->vtotal - adjusted->vsync_end;
+	dsi->vm.vfront_porch = adjusted->vsync_start - adjusted->vdisplay;
+	dsi->vm.vsync_len = adjusted->vsync_end - adjusted->vsync_start;
+
+#ifndef MEDIATEK_DRM_UPSTREAM
+	if (of_find_compatible_node(NULL, NULL, "ite,it6151") != NULL) {
+		dsi->vm.hactive  = dsi->vm.hactive + 2;
+		dsi->vm.hsync_len = dsi->vm.hsync_len - 2;
+		DRM_ERROR("mtk_dsi_encoder_mode_set adjust for it6151\n");
+	}
+#endif /* MEDIATEK_DRM_UPSTREAM */
 }
 
 static void mtk_dsi_encoder_commit(struct drm_encoder *encoder)
 {
-	/* DRM_MODE_DPMS_ON? */
+	struct mtk_dsi *dsi = encoder_to_dsi(encoder);
+
+	mtk_dsi_info("Commit dsi\n");
+	mtk_output_dsi_enable(dsi);
+
 }
 
 static enum drm_connector_status mtk_dsi_connector_detect(
@@ -1193,40 +1208,13 @@ static int mtk_dsi_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct device_node *panel_node, *bridge_node, *endpoint;
 	struct resource *regs;
-	int err;
 	int ret;
 
 	dsi = kzalloc(sizeof(struct mtk_dsi), GFP_KERNEL);
 
-	dsi->mode_flags = MIPI_DSI_MODE_VIDEO;
+	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_SYNC_PULSE;
 	dsi->format = MIPI_DSI_FMT_RGB888;
 	dsi->lanes = 4;
-
-	dsi->vm.pixelclock = 76000;
-	dsi->vm.hactive	 = 1368;
-	dsi->vm.hback_porch = 100;
-	dsi->vm.hfront_porch = 106;
-	dsi->vm.hsync_len = 26;
-	dsi->vm.vactive   = 768;
-	dsi->vm.vback_porch = 10;
-	dsi->vm.vfront_porch = 10;
-	dsi->vm.vsync_len = 12;
-
-	err = mtk_dsi_of_read_u32(dev->of_node, "mediatek,width",
-				     &dsi->vm.hactive);
-	if (err < 0)
-		return err;
-
-	err = mtk_dsi_of_read_u32(dev->of_node, "mediatek,height",
-				     &dsi->vm.vactive);
-	if (err < 0)
-		return err;
-
-	err = mtk_dsi_of_read_u32(dev->of_node, "mediatek,mipi-tx-burst-freq",
-				     &dsi->pll_clk_rate);
-
-	if (err < 0)
-		return err;
 
 	endpoint = of_graph_get_next_endpoint(dev->of_node, NULL);
 	if (endpoint) {
@@ -1246,22 +1234,11 @@ static int mtk_dsi_probe(struct platform_device *pdev)
 		return PTR_ERR(dsi->dsi0_engine_clk_cg);
 	}
 
-	err = clk_prepare_enable(dsi->dsi0_engine_clk_cg);
-	if (err < 0) {
-		dev_err(dev, "cannot enable dsi0_engine_clk_cg\n");
-		return err;
-	}
 
 	dsi->dsi0_digital_clk_cg = devm_clk_get(dev, "dsi0_digital_disp_ck");
 	if (IS_ERR(dsi->dsi0_digital_clk_cg)) {
 		dev_err(dev, "cannot get dsi0_digital_disp_ck\n");
 		return PTR_ERR(dsi->dsi0_digital_clk_cg);
-	}
-
-	err = clk_prepare_enable(dsi->dsi0_digital_clk_cg);
-	if (err < 0) {
-		dev_err(dev, "cannot enable dsi0_digital_disp_ck clock\n");
-		return err;
 	}
 
 	regs = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -1279,32 +1256,13 @@ static int mtk_dsi_probe(struct platform_device *pdev)
 		return PTR_ERR(dsi->dsi_tx_reg_base);
 	}
 
-	dsi->disp_supplies = devm_regulator_get(&pdev->dev, "disp-bdg");
-	if (IS_ERR(dsi->disp_supplies)) {
-		dev_err(dev, "cannot get dsi->disp_supplies\n");
-		return PTR_ERR(dsi->disp_supplies);
-	}
-
-	ret = regulator_set_voltage(dsi->disp_supplies, 1800000, 1800000);
-	if (ret != 0)	{
-		dev_err(dev, "lcm failed to set lcm_vgp voltage:  %d\n", ret);
-		return PTR_ERR(dsi->disp_supplies);
-	}
-
-	ret = regulator_enable(dsi->disp_supplies);
-	if (ret != 0) {
-		dev_err(dev, "Failed to enable lcm_vgp: %d\n", ret);
-		return PTR_ERR(dsi->disp_supplies);
-	}
-
 	panel_node = of_parse_phandle(dev->of_node, "mediatek,panel", 0);
 	if (panel_node) {
 		dsi->panel = of_drm_find_panel(panel_node);
 		of_node_put(panel_node);
 		if (!dsi->panel)
 			return -EPROBE_DEFER;
-	} else
-		return -EPROBE_DEFER;
+	}
 
 	platform_set_drvdata(pdev, dsi);
 
