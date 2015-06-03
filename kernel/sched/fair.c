@@ -5355,17 +5355,43 @@ schedtune_boost(unsigned long signal, unsigned long margin,
 
 }
 
+static unsigned int
+get_cpu_margin(int cpu, unsigned long usage)
+{
+	unsigned int margin;
+	int boostmode;
+	unsigned long boost;
+
+	margin = schedtune_root_margin();
+	boostmode = schedtune_root_boostmode();
+
+	boost = schedtune_boost(usage, margin, boostmode);
+
+	return boost;
+}
+
+#else /* CONFIG_CGROUP_SCHEDTUNE */
+
+static unsigned int
+get_cpu_margin(int cpu, unsigned long usage)
+{
+	return 0;
+}
+
 #endif
 
 static unsigned long
 get_expected_capacity(int cpu, struct task_struct *task)
 {
 	unsigned long cpu_capacity;
+	unsigned long cpu_margin;
 
 	cpu_capacity = get_cpu_usage(cpu);
 	if (task != NULL)
 		cpu_capacity += task_utilization(task);
+	cpu_margin = get_cpu_margin(cpu, cpu_capacity);
 
+	cpu_capacity += cpu_margin;
 	return cpu_capacity;
 }
 
