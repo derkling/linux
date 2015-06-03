@@ -34,6 +34,7 @@
 #include <trace/events/sched.h>
 
 #include "sched.h"
+#include "schedtune.h"
 
 /*
  * Targeted preemption latency for CPU-bound tasks:
@@ -4884,6 +4885,68 @@ static inline bool task_fits_cpu(struct task_struct *p, int cpu)
 {
 	return __task_fits(p, cpu, get_cpu_usage(cpu));
 }
+
+#ifdef CONFIG_CGROUP_SCHEDTUNE
+
+static unsigned long
+schedtune_boost(unsigned long signal, unsigned long margin,
+		int boostmode)
+{
+	unsigned long boost = 0;
+
+	/*
+	 * The following code is NOT OPTIMIZED and for DEBUG purposes only:
+	 * - we support multiple boosting modes to experiment and verify the
+	 *   differences on system behaviors when switching between them
+	 * - the computation of the boost contribution uses some divisions which
+	 *   will be optimized once we identify the best mode to be used
+	 */
+
+	switch (boostmode) {
+	case SCHEDTUNE_BOOSTMODE_SPC:
+		/*
+		 * Signal proportional compensation (SPC)
+		 *
+		 * In this semantic the BF value is used to compute a quantity
+		 * which is proportional to the complement of the OS. This
+		 * quantity is then added to the OS to be inflated, i.e.
+		 *
+		 * BS = OS + BF*(1024-OS) = 1024*BF + OS*(1-BF)
+		 */
+		boost = ((SCHED_LOAD_SCALE - signal) * margin) / 100;
+		break;
+
+	case SCHEDTUNE_BOOSTMODE_SPA:
+		/*
+		 * Signal proportional addition (SPA)
+		 *
+		 * In this semantic the BF value is used to compute a quantity
+		 * which is proportional to the OS. This quantity is then
+		 * added to the OS to be inflated, i.e.
+		 *
+		 * BS = OS + BF*OS = OS*(1+BF)
+		 */
+		boost = (signal * margin) / 100;
+		break;
+
+	case SCHEDTUNE_BOOSTMODE_PSB:
+		/*
+		 * Proportional signal biasing (PSB)
+		 *
+		 * In this semantic the BF value is used as a bias to be
+		 * added to the OS to inflate, i.e.
+		 *
+		 * BS = OS + 1024*BF
+		 */
+		boost = (SCHED_LOAD_SCALE * margin) / 100;
+		break;
+	}
+
+	return boost;
+
+}
+
+#endif
 
 static unsigned long
 get_expected_capacity(int cpu, struct task_struct *task)
