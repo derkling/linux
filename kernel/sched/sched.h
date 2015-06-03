@@ -931,7 +931,7 @@ static inline void check_sched_energy_data(int cpu, sched_domain_energy_f fn,
 	}
 }
 
-unsigned long get_cpu_usage(int cpu);
+unsigned long get_expected_capacity(int cpu, struct task_struct *task);
 unsigned long capacity_orig_of(int cpu);
 #else
 
