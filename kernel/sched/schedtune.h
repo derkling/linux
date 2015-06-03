@@ -13,6 +13,8 @@ enum schedtune_boostmode {
 
 extern int schedtune_taskgroup_margin(struct task_struct *tsk);
 extern int schedtune_taskgroup_boostmode(struct task_struct *tsk);
+extern int schedtune_root_margin(void);
+extern int schedtune_root_boostmode(void);
 
 #else
 
@@ -23,6 +25,16 @@ static int schedtune_taskgroup_margin(struct task_struct *tsk)
 
 static int schedtune_taskgroup_boostmode(struct task_struct *tsk);
 
+{
+	return SCHEDTUNE_BOOSTMODE_NONE;
+}
+
+static int schedtune_root_margin(void)
+{
+	return 0;
+}
+
+static int schedtune_root_boostmode(void)
 {
 	return SCHEDTUNE_BOOSTMODE_NONE;
 }
