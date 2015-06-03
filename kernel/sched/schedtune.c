@@ -89,6 +89,31 @@ out:
 	return err;
 }
 
+static u64 boostmode_read(struct cgroup_subsys_state *css, struct cftype *cft)
+{
+	struct schedtune *st = css_st(css);
+	return st->boostmode;
+}
+
+static int boostmode_write(struct cgroup_subsys_state *css, struct cftype *cft,
+			  u64 boostmode)
+{
+	struct schedtune *st = css_st(css);
+	int err = 0;
+
+	if (boostmode < SCHEDTUNE_BOOSTMODE_NONE ||
+		boostmode >= SCHEDTUNE_BOOSTMODE_COUNT) {
+		err = -EINVAL;
+		goto out;
+	}
+
+	st->boostmode = boostmode;
+
+out:
+	return err;
+}
+
+
 int schedtune_taskgroup_margin(struct task_struct *p)
 {
 	struct schedtune *ct;
@@ -115,6 +140,19 @@ int schedtune_taskgroup_boostmode(struct task_struct *p)
 	return boostmode;
 }
 
+int schedtune_root_margin(void)
+{
+	int root_margin;
+	root_margin = root_schedtune.margin;
+	return root_margin;
+}
+
+int schedtune_root_boostmode(void)
+{
+	int root_boostmode;
+	root_boostmode = root_schedtune.boostmode;
+	return root_boostmode;
+}
 
 static struct cftype files[] = {
 	{
