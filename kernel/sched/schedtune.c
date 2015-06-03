@@ -8,14 +8,17 @@
 #include <linux/err.h>
 
 #include "sched.h"
+#include "schedtune.h"
 
 /*
  * EAS scheduler tunables for task groups.
  */
 
+
 /* Scheduer tunables for a group of tasks and its child groups */
 struct schedtune {
 	struct cgroup_subsys_state css;
+	int boostmode;
 	int margin;
 };
 
@@ -36,6 +39,7 @@ static inline struct schedtune *parent_st(struct schedtune *st)
 
 static struct schedtune root_schedtune = {
 	.margin		= 0,
+	.boostmode	= SCHEDTUNE_BOOSTMODE_NONE,
 };
 
 static struct cgroup_subsys_state *
@@ -98,12 +102,30 @@ int schedtune_taskgroup_margin(struct task_struct *p)
 	return task_margin;
 }
 
+int schedtune_taskgroup_boostmode(struct task_struct *p)
+{
+	struct schedtune *ct;
+	int boostmode;
+
+	rcu_read_lock();
+	ct = task_schedtune(p);
+	boostmode = ct->boostmode;
+	rcu_read_unlock();
+
+	return boostmode;
+}
+
 
 static struct cftype files[] = {
 	{
 		.name = "margin",
 		.read_u64 = margin_read,
 		.write_u64 = margin_write,
+	},
+	{
+		.name = "boostmode",
+		.read_u64 = boostmode_read,
+		.write_u64 = boostmode_write,
 	},
 	{ }	/* terminate */
 };
