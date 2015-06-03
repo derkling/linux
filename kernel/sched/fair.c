@@ -8597,9 +8597,8 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 	if (sched_energy_freq() &&
 	    (capacity_curr_of(cpu) < capacity_orig_of(cpu)) &&
 	    ((capacity_curr_of(cpu) * 100) <
-	     (task_utilization(curr) * MARGIN_PCT))) {
+	     (get_cpu_usage(cpu) * MARGIN_PCT)))
 		gov_cfs_update_cpu(cpu_of(rq), SCHED_LOAD_SCALE);
-	}
 }
 
 /*
