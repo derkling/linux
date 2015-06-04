@@ -192,6 +192,60 @@ int schedtune_root_boostmode(void)
 	return root_boostmode;
 }
 
+int schedtune_accept_deltas(int nrg_delta, int cap_delta, struct task_struct *task) {
+	struct schedtune *ct;
+	int perf_boost_idx;
+	int perf_constrain_idx;
+	int energy_payoff;
+
+	/* Optimal (O) region */
+	if (nrg_delta < 0 && cap_delta > 0) {
+		return INT_MAX;
+	}
+
+	/* Suboptimal (S) region */
+	if (nrg_delta > 0 && cap_delta < 0) {
+		return -INT_MAX;
+	}
+
+	/* Get task specific perf Boost/Constraints indexes */
+	rcu_read_lock();
+	ct = task_schedtune(task);
+	perf_boost_idx = ct->perf_boost_idx;
+	perf_constrain_idx = ct->perf_constrain_idx;
+	rcu_read_unlock();
+
+	/* Performance Boost (B) region */
+	if (nrg_delta > 0 && cap_delta > 0) {
+		/*
+		 * energy_payoff criteria:
+		 *    cap_delta / nrg_delta > cap_gain / nrg_gain
+		 * which is:
+		 *    nrg_delta * cap_gain < cap_delta * nrg_gain
+		 */
+		energy_payoff  = cap_delta * threshold_gains[perf_boost_idx].nrg_gain;
+		energy_payoff -= nrg_delta * threshold_gains[perf_boost_idx].cap_gain;
+
+		return energy_payoff;
+	}
+
+	/* Performance Constraint (C) region */
+	if (nrg_delta < 0 && cap_delta < 0) {
+		/*
+		 * energy_payoff criteria:
+		 *    cap_delta / nrg_delta < cap_gain / nrg_gain
+		 * which is:
+		 *    nrg_delta * cap_gain > cap_delta * nrg_gain
+		 */
+		energy_payoff  = nrg_delta * threshold_gains[perf_constrain_idx].cap_gain;
+		energy_payoff -= cap_delta * threshold_gains[perf_constrain_idx].nrg_gain;
+
+		return energy_payoff;
+	}
+
+	return -INT_MAX;
+}
+
 static struct cftype files[] = {
 	{
 		.name = "margin",
