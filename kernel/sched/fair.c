@@ -4858,11 +4858,12 @@ static inline unsigned long task_utilization(struct task_struct *p)
 	return p->se.avg.utilization_avg_contrib;
 }
 
+static unsigned long get_boosted_task_utilization(struct task_struct *task);
 static inline bool __task_fits(struct task_struct *p, int cpu, int usage)
 {
 	unsigned long capacity = capacity_of(cpu);
 
-	usage += task_utilization(p);
+	usage += get_boosted_task_utilization(p);
 
 	return (capacity * 1024) > (usage * capacity_margin);
 }
@@ -5236,7 +5237,7 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 		 * so prev_cpu will receive a negative bias due the double
 		 * accouting. However, the blocked utilization may be zero.
 		 */
-		int new_usage = get_cpu_usage(i) + task_utilization(p);
+		int new_usage = get_cpu_usage(i) + get_boosted_task_utilization(p);
 
 		if (new_usage >	capacity_orig_of(i))
 			continue;
