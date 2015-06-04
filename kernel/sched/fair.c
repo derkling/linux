@@ -4946,6 +4946,23 @@ schedtune_boost(unsigned long signal, unsigned long margin,
 
 }
 
+static unsigned long
+get_taskgroup_margin(struct task_struct *task)
+{
+	unsigned long utilization;
+	unsigned int margin;
+	int boostmode;
+	unsigned long boost;
+
+	utilization = task_utilization(task);
+	margin = schedtune_taskgroup_margin(task);
+	boostmode = schedtune_taskgroup_boostmode(task);
+
+	boost = schedtune_boost(utilization, margin, boostmode);
+
+	return boost;
+}
+
 static unsigned int
 get_cpu_margin(unsigned long usage)
 {
@@ -4966,6 +4983,11 @@ get_cpu_margin(unsigned long usage)
 static unsigned int
 get_cpu_margin(int cpu)
 {
+	return 0;
+}
+
+static unsigned int
+get_taskgroup_margin(struct task_struct *task) {
 	return 0;
 }
 
