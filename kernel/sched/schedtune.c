@@ -20,6 +20,31 @@ struct schedtune {
 	struct cgroup_subsys_state css;
 	int boostmode;
 	int margin;
+
+	/* Performance Boost (B) region threshold params */
+	int perf_boost_idx;
+
+	/* Performance Constraint (C) region threshold params */
+	int perf_constrain_idx;
+
+};
+
+struct threshold_params {
+	int nrg_gain;
+	int cap_gain;
+};
+
+struct threshold_params threshold_gains[] = {
+	{ 0, 4 }, /* >=  0% */
+	{ 1, 4 }, /* >= 10% */
+	{ 2, 4 }, /* >= 20% */
+	{ 3, 4 }, /* >= 30% */
+	{ 4, 4 }, /* >= 40% */
+	{ 4, 3 }, /* >= 50% */
+	{ 4, 2 }, /* >= 60% */
+	{ 4, 1 }, /* >= 70% */
+	{ 4, 0 }, /* >= 80% */
+	{ 4, 0 }  /* >= 90% */
 };
 
 static inline struct schedtune *css_st(struct cgroup_subsys_state *css)
@@ -40,6 +65,8 @@ static inline struct schedtune *parent_st(struct schedtune *st)
 static struct schedtune root_schedtune = {
 	.margin		= 0,
 	.boostmode	= SCHEDTUNE_BOOSTMODE_NONE,
+	.perf_boost_idx 	= 0,
+	.perf_constrain_idx 	= 0,
 };
 
 static struct cgroup_subsys_state *
@@ -84,6 +111,17 @@ static int margin_write(struct cgroup_subsys_state *css, struct cftype *cft,
 	}
 
 	st->margin = margin;
+
+	if (margin == 100)
+		margin = 99;
+
+	/* Performance Boost (B) region threshold params */
+	st->perf_boost_idx  = margin;
+	st->perf_boost_idx /= 10;
+
+	/* Performance Constraint (C) region threshold params */
+	st->perf_constrain_idx  = 100 - margin;
+	st->perf_constrain_idx /= 10;
 
 out:
 	return err;
