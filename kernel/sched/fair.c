@@ -5372,6 +5372,19 @@ get_taskgroup_margin(struct task_struct *task)
 	return boost;
 }
 
+static unsigned long
+get_boosted_task_utilization(struct task_struct *task)
+{
+	unsigned long utilization;
+
+	utilization = task_utilization(task);
+
+	if (!task_rq(task)->rd->overutilized)
+		utilization += get_taskgroup_margin(task);
+
+	return utilization;
+}
+
 static unsigned int
 get_cpu_margin(int cpu, unsigned long usage)
 {
