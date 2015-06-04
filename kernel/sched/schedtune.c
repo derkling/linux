@@ -214,11 +214,13 @@ int schedtune_accept_deltas(int nrg_delta, int cap_delta, struct task_struct *ta
 
 	/* Optimal (O) region */
 	if (nrg_delta < 0 && cap_delta > 0) {
+		trace_printk("region=O ngain=0 pgain=0 nrg_payoff=-1");
 		return INT_MAX;
 	}
 
 	/* Suboptimal (S) region */
 	if (nrg_delta > 0 && cap_delta < 0) {
+		trace_printk("region=S ngain=0 pgain=0 nrg_payoff=1");
 		return -INT_MAX;
 	}
 
@@ -240,6 +242,11 @@ int schedtune_accept_deltas(int nrg_delta, int cap_delta, struct task_struct *ta
 		energy_payoff  = cap_delta * threshold_gains[perf_boost_idx].nrg_gain;
 		energy_payoff -= nrg_delta * threshold_gains[perf_boost_idx].cap_gain;
 
+		trace_printk("region=B ngain=%d pgain=%d nrg_payoff=%d",
+				threshold_gains[perf_boost_idx].nrg_gain,
+				threshold_gains[perf_boost_idx].cap_gain,
+				energy_payoff);
+
 		return energy_payoff;
 	}
 
@@ -253,6 +260,11 @@ int schedtune_accept_deltas(int nrg_delta, int cap_delta, struct task_struct *ta
 		 */
 		energy_payoff  = nrg_delta * threshold_gains[perf_constrain_idx].cap_gain;
 		energy_payoff -= cap_delta * threshold_gains[perf_constrain_idx].nrg_gain;
+
+		trace_printk("region=C ngain=%d pgain=%d nrg_payoff=%d",
+				threshold_gains[perf_constrain_idx].nrg_gain,
+				threshold_gains[perf_constrain_idx].cap_gain,
+				energy_payoff);
 
 		return energy_payoff;
 	}
