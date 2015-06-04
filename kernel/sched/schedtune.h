@@ -16,6 +16,9 @@ extern int schedtune_taskgroup_boostmode(struct task_struct *tsk);
 extern int schedtune_root_margin(void);
 extern int schedtune_root_boostmode(void);
 
+extern int schedtune_accept_deltas(int nrg_delta, int cap_delta,
+		struct task_struct *task);
+
 #else
 
 static int schedtune_taskgroup_margin(struct task_struct *tsk)
@@ -37,6 +40,14 @@ static int schedtune_root_margin(void)
 static int schedtune_root_boostmode(void)
 {
 	return SCHEDTUNE_BOOSTMODE_NONE;
+}
+
+static int schedtune_accept_deltas(int nrg_delta, int cap_delta,
+		struct task_struct *task)
+{
+	if (nrg_delta < 0)
+		return INT_MAX;
+	return -INT_MAX;
 }
 
 #endif
