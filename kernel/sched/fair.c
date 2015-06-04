@@ -5414,6 +5414,9 @@ get_taskgroup_margin(struct task_struct *task)
 
 	boost = schedtune_boost(utilization, margin, boostmode);
 
+	trace_printk("task=%d utilizaton=%lu boostmode=%d boost=%lu\n",
+			task->pid, utilization, boostmode, boost);
+
 	return boost;
 }
 
