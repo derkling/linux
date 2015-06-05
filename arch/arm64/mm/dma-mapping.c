@@ -480,7 +480,7 @@ static void *__iommu_alloc_atomic(struct device *dev, size_t size,
 	struct page *page;
 	void *addr;
 
-	addr = __alloc_from_pool(size, &page);
+	addr = __alloc_from_pool(size, &page, GFP_ATOMIC);
 	if (!addr)
 		return NULL;
 
