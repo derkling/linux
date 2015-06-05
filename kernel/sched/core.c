@@ -6114,7 +6114,7 @@ static void init_sched_energy(int cpu, struct sched_domain *sd,
 			      struct sched_domain_topology_level *tl)
 {
 	struct sched_group *sg = sd->groups;
-	struct sched_group_energy *energy = sg->sge;
+	struct sched_group_energy *sge = sg->sge;
 	sched_domain_energy_f fn = tl->energy;
 	struct cpumask *mask = sched_group_cpus(sg);
 	int nr_idle_states_below = 0;
@@ -6138,7 +6138,6 @@ static void init_sched_energy(int cpu, struct sched_domain *sd,
 
 	atomic_set(&sg->sge->ref, 1); /* for claim_allocations */
 
-
 	if (cpumask_weight(mask) > 1)
 		check_sched_energy_data(cpu, fn, mask);
 
@@ -6152,13 +6151,21 @@ static void init_sched_energy(int cpu, struct sched_domain *sd,
 			nr_idle_states_below--;
 	}
 
-	energy->nr_idle_states = fn(cpu)->nr_idle_states;
-	memcpy(energy->idle_states, fn(cpu)->idle_states,
-	       energy->nr_idle_states*sizeof(struct idle_state));
-	energy->nr_idle_states_below = nr_idle_states_below;
-	energy->nr_cap_states = fn(cpu)->nr_cap_states;
-	memcpy(energy->cap_states, fn(cpu)->cap_states,
-	       energy->nr_cap_states*sizeof(struct capacity_state));
+	sge->nr_idle_states = fn(cpu)->nr_idle_states;
+	sge->nr_idle_states_below = nr_idle_states_below;
+	sge->nr_cap_states = fn(cpu)->nr_cap_states;
+	sge->idle_states = (struct idle_state *)
+		           ((void *)&sge->cap_states +
+			    sizeof(sge->cap_states));
+	sge->cap_states = (struct capacity_state *)
+			  ((void *)&sge->cap_states +
+			   sizeof(sge->cap_states) +
+			   sge->nr_idle_states *
+			   sizeof(struct idle_state));
+	memcpy(sge->idle_states, fn(cpu)->idle_states,
+	       sge->nr_idle_states*sizeof(struct idle_state));
+	memcpy(sge->cap_states, fn(cpu)->cap_states,
+	       sge->nr_cap_states*sizeof(struct capacity_state));
 }
 
 /*
@@ -6770,16 +6777,6 @@ static int __sdt_alloc(const struct cpumask *cpu_map)
 
 			if (!sge)
 				return -ENOMEM;
-
-			sge->idle_states = (struct idle_state *)
-					   ((void *)&sge->cap_states +
-					    sizeof(sge->cap_states));
-
-			sge->cap_states = (struct capacity_state *)
-					  ((void *)&sge->cap_states +
-					   sizeof(sge->cap_states) +
-					   nr_idle_states*
-					   sizeof(struct idle_state));
 
 			*per_cpu_ptr(sdd->sge, j) = sge;
 		}
