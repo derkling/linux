@@ -144,6 +144,14 @@
 				arm,psci-suspend-param = <0x0010000>;
 			};
 		};
+
+		system-suspend {
+			compatible = "arm,system-suspend";
+			entry-method = "arm,psci";
+			arm,psci-suspend-param = <0x2010000>;
+		};
+
+
 	};
 
 	psci {
