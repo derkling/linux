@@ -7,6 +7,8 @@
 #include <linux/rcupdate.h>
 #include <linux/err.h>
 
+#include <trace/events/sched.h>
+
 #include "sched.h"
 #include "schedtune.h"
 
@@ -123,6 +125,12 @@ static int margin_write(struct cgroup_subsys_state *css, struct cftype *cft,
 	st->perf_constrain_idx  = 100 - margin;
 	st->perf_constrain_idx /= 10;
 
+	trace_schedtune(st->margin, st->boostmode,
+			threshold_gains[st->perf_boost_idx].nrg_gain,
+			threshold_gains[st->perf_boost_idx].cap_gain,
+			threshold_gains[st->perf_constrain_idx].nrg_gain,
+			threshold_gains[st->perf_constrain_idx].cap_gain);
+
 out:
 	return err;
 }
@@ -146,6 +154,12 @@ static int boostmode_write(struct cgroup_subsys_state *css, struct cftype *cft,
 	}
 
 	st->boostmode = boostmode;
+
+	trace_schedtune(st->margin, st->boostmode,
+			threshold_gains[st->perf_boost_idx].nrg_gain,
+			threshold_gains[st->perf_boost_idx].cap_gain,
+			threshold_gains[st->perf_constrain_idx].nrg_gain,
+			threshold_gains[st->perf_constrain_idx].cap_gain);
 
 out:
 	return err;
