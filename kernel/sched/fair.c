@@ -4891,6 +4891,8 @@ struct energy_env {
 	int			src_cpu;
 	int			dst_cpu;
 	int			energy;
+	int			energy_payoff;
+	struct task_struct	*task;
 	struct {
 		int before;
 		int after;
@@ -5110,6 +5112,35 @@ next_cpu:
 	return total_energy;
 }
 
+#ifdef CONFIG_CGROUP_SCHEDTUNE
+static int schedtune_enabled(struct task_struct *task)
+{
+	int boostmode;
+	boostmode = schedtune_taskgroup_boostmode(task);
+	if (boostmode == SCHEDTUNE_BOOSTMODE_NONE)
+		return 0;
+	return 1;
+}
+
+static int energy_diff_evaluate(struct energy_env *eenv)
+{
+	int nrg_delta;
+
+	/* Compute normalized energy diff */
+	nrg_delta = schedtune_normalize_energy(eenv->nrg.diff);
+	eenv->nrg.delta = nrg_delta;
+
+	eenv->energy_payoff = schedtune_accept_deltas(
+			eenv->nrg.delta,
+			eenv->cap.delta,
+			eenv->task);
+	return eenv->energy_payoff;
+}
+#else
+#define schedtune_enabled(task) 0
+#define energy_diff_evaluate(eenv)
+#endif
+
 /*
  * energy_diff(): Estimate the energy impact of changing the utilization
  * distribution. eenv specifies the change: utilisation amount, source, and
@@ -5168,6 +5199,10 @@ static int energy_diff(struct energy_env *eenv)
 	eenv->nrg.before = energy_before;
 	eenv->nrg.after = energy_after;
 	eenv->nrg.diff = eenv->nrg.after - eenv->nrg.before;
+	eenv->energy_payoff = 0;
+
+	if (schedtune_enabled(eenv->task))
+		return energy_diff_evaluate(eenv);
 
 	return eenv->nrg.diff;
 }
@@ -5672,6 +5707,7 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 			.usage_delta	= task_utilization(p),
 			.src_cpu	= task_cpu(p),
 			.dst_cpu	= target_cpu,
+			.task		= p,
 		};
 
 		/* Not enough spare capacity on previous cpu */
