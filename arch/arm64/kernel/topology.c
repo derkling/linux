@@ -18,8 +18,9 @@
 #include <linux/node.h>
 #include <linux/nodemask.h>
 #include <linux/of.h>
-#include <linux/sched.h>
 #include <linux/slab.h>
+#include <linux/sched.h>
+#include <linux/sched_energy.h>
 
 #include <asm/cputype.h>
 #include <asm/topology.h>
@@ -280,7 +281,6 @@ static void update_cpu_capacity(unsigned int cpu)
 
 	set_capacity_scale(cpu, capacity);
 }
-#endif
 
 static void __init parse_dt_cpu_capacity(void)
 {
@@ -334,6 +334,7 @@ static void __init parse_dt_cpu_capacity(void)
 		min_cpu_perf = 0;
 	}
 }
+#endif
 
 /*
  * Scheduler load-tracking scale-invariance
@@ -397,10 +398,51 @@ unsigned long arch_get_cur_cpu_capacity(int cpu)
 struct cpu_topology cpu_topology[NR_CPUS];
 EXPORT_SYMBOL_GPL(cpu_topology);
 
+/* sd energy functions */
+static inline
+const struct sched_group_energy * const cpu_cluster_energy(int cpu)
+{
+	struct sched_group_energy *sge = sge_array[cpu][SD_LEVEL1];
+
+	if (!sge) {
+		pr_warn("Invalid sched_group_energy for Cluster%d\n", cpu);
+		return NULL;
+	}
+
+	return sge;
+}
+
+static inline
+const struct sched_group_energy * const cpu_core_energy(int cpu)
+{
+	struct sched_group_energy *sge = sge_array[cpu][SD_LEVEL0];
+
+	if (!sge) {
+		pr_warn("Invalid sched_group_energy for CPU%d\n", cpu);
+		return NULL;
+	}
+
+	return sge;
+}
+
 const struct cpumask *cpu_coregroup_mask(int cpu)
 {
 	return &cpu_topology[cpu].core_sibling;
 }
+
+static inline int cpu_corepower_flags(void)
+{
+	return SD_SHARE_PKG_RESOURCES  | SD_SHARE_POWERDOMAIN | \
+	       SD_SHARE_CAP_STATES;
+}
+
+static struct sched_domain_topology_level arm64_topology[] = {
+#ifdef CONFIG_SCHED_MC
+	{ cpu_coregroup_mask, cpu_corepower_flags, cpu_core_energy, SD_INIT_NAME(MC) },
+#endif
+	{ cpu_cpu_mask, NULL, cpu_cluster_energy, SD_INIT_NAME(DIE) },
+	{ NULL, },
+};
 
 static void update_cpu_capacity(unsigned int cpu)
 {
@@ -505,10 +547,6 @@ static void __init reset_cpu_topology(void)
 }
 
 static int cpu_topology_init;
-/*
- * init_cpu_topology is called at boot when only one cpu is running
- * which prevent simultaneous write access to cpu_topology array
- */
 
 /*
  * init_cpu_topology is called at boot when only one cpu is running
@@ -526,8 +564,14 @@ void __init init_cpu_topology(void)
 	 */
 	if (parse_dt_topology())
 		reset_cpu_topology();
+	else
+		set_sched_topology(arm64_topology);
 
+	init_sched_energy_costs();
+
+#if 0
 	parse_dt_cpu_capacity();
+#endif
 
 }
 
