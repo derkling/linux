@@ -693,6 +693,41 @@ TRACE_EVENT(sched_energy_diff,
 		__entry->nrgn, __entry->nrgp)
 );
 
+/*
+ * Tracepoint for schedtune settings
+ */
+TRACE_EVENT(schedtune,
+
+	TP_PROTO(int margin, int boostmode, int pb_nrg_gain, int pb_cap_gain, int pc_nrg_gain, int pc_cap_gain),
+
+	TP_ARGS(margin, boostmode, pb_nrg_gain, pb_cap_gain, pc_nrg_gain, pc_cap_gain),
+
+	TP_STRUCT__entry(
+		__field( int,	margin		)
+		__field( int,	boostmode	)
+		__field( int,	pb_nrg_gain	)
+		__field( int,	pb_cap_gain	)
+		__field( int,	pc_nrg_gain	)
+		__field( int,	pc_cap_gain	)
+	),
+
+	TP_fast_assign(
+		__entry->margin 	= margin;
+		__entry->boostmode	= boostmode;
+		__entry->pb_nrg_gain	= pb_nrg_gain;
+		__entry->pb_cap_gain	= pb_cap_gain;
+		__entry->pc_nrg_gain	= pc_nrg_gain;
+		__entry->pc_cap_gain	= pc_cap_gain;
+	),
+
+	TP_printk("margin=%d boostmode=%d "
+			"pb_nrg_gain=%d pb_cap_gain=%d "
+			"pc_nrg_gain=%d pc_cap_gain=%d\n",
+		__entry->margin, __entry->boostmode,
+		__entry->pb_nrg_gain, __entry->pb_cap_gain,
+		__entry->pc_nrg_gain, __entry->pc_cap_gain)
+);
+
 #endif /* _TRACE_SCHED_H */
 
 /* This part must be outside protection */
