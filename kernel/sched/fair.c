@@ -5133,6 +5133,22 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 	return target_cpu;
 }
 
+static bool
+compare_group_capacity(struct sched_group *sg, struct sched_group *local)
+{
+	unsigned long sg_total = 0, local_total = 0;
+	int cpu;
+
+	for_each_cpu(cpu, sched_group_cpus(sg))
+		sg_total += capacity_of(cpu);
+
+	for_each_cpu(cpu, sched_group_cpus(local))
+		local_total += capacity_of(cpu);
+
+	return ((sg_total * local->group_weight) <
+		 (local_total * sg->group_weight));
+}
+
 /*
  * select_task_rq_fair: Select target runqueue for the waking task in domains
  * that have the 'sd_flag' flag set. In practice, this is SD_BALANCE_WAKE,
@@ -6793,6 +6809,21 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 		    (sgs->sum_nr_running > 1)) {
 			sgs->group_no_capacity = 1;
 			sgs->group_type = group_overloaded;
+		}
+
+		/*
+		 * In case there is group with higher capacity CPUs available
+		 * and the current group has saturated CPUs (CPUs that are being
+		 * overutilized potentially by a single task. This differentiates
+		 * from the case when the CPU has many "small" tasks running.
+		 * The task would be better off running on the higher capacity
+		 * CPUs, if their group has availble capacity.
+		 */
+		if (sds->local && compare_group_capacity(sg, sds->local)
+		    && group_has_capacity(env, &sds->local_stat)
+		    && (sgs->nr_saturated >= 1)) {
+		    sgs->group_no_capacity = 1;
+		    sgs->group_type = group_overloaded;
 		}
 
 		if (update_sd_pick_busiest(env, sds, sg, sgs)) {
