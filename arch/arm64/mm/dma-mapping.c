@@ -778,6 +778,14 @@ static void __iommu_setup_dma_ops(struct device *dev, u64 dma_base, u64 size,
 	mutex_unlock(&iommu_dma_notifier_lock);
 }
 
+void arch_teardown_dma_ops(struct device *dev)
+{
+	if (dev->archdata.dma_domain) {
+		iommu_dma_detach_device(dev);
+		dev->archdata.dma_ops = NULL;
+	}
+}
+
 #else
 
 static void __iommu_setup_dma_ops(struct device *dev, u64 dma_base, u64 size,
@@ -785,3 +793,10 @@ static void __iommu_setup_dma_ops(struct device *dev, u64 dma_base, u64 size,
 { }
 
 #endif  /* CONFIG_IOMMU_DMA */
+
+void arch_setup_dma_ops(struct device *dev, u64 dma_base, u64 size,
+			struct iommu_ops *iommu, bool coherent)
+{
+	dev->archdata.dma_coherent = coherent;
+	__iommu_setup_dma_ops(dev, dma_base, size, iommu);
+}
