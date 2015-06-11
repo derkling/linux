@@ -442,7 +442,6 @@
 			reg = <0 0x11271000 0 0x3000>,
 			      <0 0x11280000 0 0x20000>;
 			power-domains = <&scpsys MT8173_POWER_DOMAIN_USB>;
-			reg-vusb33-supply = <&mt6397_vusb_reg>;
 			clocks = <&pericfg CLK_PERI_USB0>,
 				 <&pericfg CLK_PERI_USB1>,
 				 <&topckgen CLK_TOP_USB30_SEL>,
