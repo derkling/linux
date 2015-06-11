@@ -61,6 +61,20 @@ static inline bool is_device_dma_coherent(struct device *dev)
 }
 
 #include <asm-generic/dma-mapping-common.h>
+#include <linux/dma-iommu.h>
+
+#ifdef CONFIG_IOMMU_DMA
+static inline struct iommu_dma_domain *arch_get_dma_domain(struct device *dev)
+{
+	return dev->archdata.dma_domain;
+}
+
+static inline void arch_set_dma_domain(struct device *dev,
+				  struct iommu_dma_domain *dma_domain)
+{
+	dev->archdata.dma_domain = dma_domain;
+}
+#endif
 
 static inline dma_addr_t phys_to_dma(struct device *dev, phys_addr_t paddr)
 {

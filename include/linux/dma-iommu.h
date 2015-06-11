@@ -79,8 +79,6 @@ static inline int iommu_dma_init(void)
 	return 0;
 }
 
-#endif  /* CONFIG_IOMMU_DMA */
-
 static inline struct iommu_dma_domain *arch_get_dma_domain(struct device *dev)
 {
 	return NULL;
@@ -89,6 +87,8 @@ static inline struct iommu_dma_domain *arch_get_dma_domain(struct device *dev)
 static inline void arch_set_dma_domain(struct device *dev,
 		struct iommu_dma_domain *dma_domain)
 { }
+
+#endif	/* CONFIG_IOMMU_DMA */
 
 #endif	/* __KERNEL__ */
 #endif	/* __DMA_IOMMU_H */
