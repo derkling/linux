@@ -732,6 +732,35 @@ TRACE_EVENT(schedtune,
 		__entry->pc_nrg_gain, __entry->pc_cap_gain)
 );
 
+/*
+ * Tracepoint for accounting task boosted utilization
+ */
+TRACE_EVENT(sched_task_boost,
+
+	TP_PROTO(struct task_struct *tsk, unsigned long utilization, unsigned long boost),
+
+	TP_ARGS(tsk, utilization, boost),
+
+	TP_STRUCT__entry(
+		__array( char,	comm,	TASK_COMM_LEN		)
+		__field( pid_t,		pid			)
+		__field( unsigned long,	utilization		)
+		__field( unsigned long,	boost			)
+	),
+
+	TP_fast_assign(
+		memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
+		__entry->pid		= tsk->pid;
+		__entry->utilization	= utilization;
+		__entry->boost		= boost;
+	),
+
+	TP_printk("comm=%s pid=%d utilization=%lu boost=%lu",
+		  __entry->comm, __entry->pid,
+		  __entry->utilization,
+		  __entry->boost)
+);
+
 #endif /* _TRACE_SCHED_H */
 
 /* This part must be outside protection */
