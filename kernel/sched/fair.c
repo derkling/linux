@@ -5027,12 +5027,16 @@ static unsigned long
 get_boosted_task_utilization(struct task_struct *task)
 {
 	unsigned long utilization;
+	unsigned long boost = 0;
 
 	utilization = task_utilization(task);
 
 	if (!task_rq(task)->rd->overutilized)
-		utilization += get_taskgroup_margin(task);
+		boost = get_taskgroup_margin(task);
 
+	trace_sched_task_boost(task, utilization, boost);
+
+	utilization += boost;
 	return utilization;
 }
 
