@@ -6218,6 +6218,7 @@ static int sched_domains_curr_level;
 	 SD_NUMA |			\
 	 SD_ASYM_PACKING |		\
 	 SD_SHARE_POWERDOMAIN |		\
+	 SD_FORK_HIGHEST_CAP |		\
 	 SD_SHARE_CAP_STATES)
 
 static struct sched_domain *
