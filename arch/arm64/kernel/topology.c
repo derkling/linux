@@ -273,11 +273,16 @@ static inline int cpu_corepower_flags(void)
 	       SD_SHARE_CAP_STATES;
 }
 
+static inline int arm64_die_flags(void)
+{
+	return SD_FORK_HIGHEST_CAP;
+}
+
 static struct sched_domain_topology_level arm64_topology[] = {
 #ifdef CONFIG_SCHED_MC
 	{ cpu_coregroup_mask, cpu_corepower_flags, cpu_core_energy, SD_INIT_NAME(MC) },
 #endif
-	{ cpu_cpu_mask, 0, cpu_cluster_energy, SD_INIT_NAME(DIE) },
+	{ cpu_cpu_mask, arm64_die_flags, cpu_cluster_energy, SD_INIT_NAME(DIE) },
 	{ NULL, },
 };
 
