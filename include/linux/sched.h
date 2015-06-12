@@ -877,6 +877,7 @@ enum cpu_idle_type {
 #define SD_OVERLAP		0x2000	/* sched_domains of this level overlap */
 #define SD_NUMA			0x4000	/* cross-node balancing */
 #define SD_SHARE_CAP_STATES	0x8000  /* Domain members share capacity state */
+#define SD_FORK_HIGHEST_CAP	(1L << 20)  /* FORK on group with highest group_max_capacity */
 
 #ifdef CONFIG_SCHED_SMT
 static inline int cpu_smt_flags(void)
