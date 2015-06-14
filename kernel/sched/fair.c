@@ -6271,6 +6271,7 @@ struct sg_lb_stats {
 	unsigned long sum_weighted_load; /* Weighted load of group's tasks */
 	unsigned long load_per_task;
 	unsigned long group_capacity;
+	unsigned long nr_saturated;
 	unsigned long group_usage; /* Total usage of the group */
 	unsigned int sum_nr_running; /* Nr tasks running in the group */
 	unsigned int idle_cpus;
@@ -6560,6 +6561,41 @@ static enum group_type group_classify(struct lb_env *env,
 }
 
 /**
+ * A CPU is said to be saturated if it is overutilized due a single
+ * running task. cpu_saturated does not take blocked load into
+ * account and is an indicator of the scenario when a single
+ * task is using the CPUs capacity over a certain threshold.
+ * This threshold is controlled by capacity_margin.
+ *
+ * The capacity of the CPU may differ from it's original
+ * capacity due to pressure from Real Time tasks and IRQ's
+ * capacity_of(cpu) <= capacity_orig_of(cpu).
+ *
+ * The saturation check uses capacity_of since saturation
+ * must be checked against the capacity available to the
+ * CFS sched class.
+ */
+static bool cpu_saturated(int cpu)
+{
+	unsigned long usage = cpu_rq(cpu)->cfs.utilization_load_avg;
+	unsigned long capacity_orig = capacity_orig_of(cpu);
+
+	/* Clamp the utilization to the capacity */
+	if (usage > capacity_orig)
+		usage = capacity_orig;
+
+	/* The condition below translates to:
+	 *
+	 *      utilization_load_avg           capacity_margin
+         *    - ---------------------    <    -----------------
+         *   capacity_of(cpu) * nr_running          1024
+	 *
+	 */
+	return (capacity_of(cpu) * 1024 * cpu_rq(cpu)->nr_running) <
+			(usage * capacity_margin);
+}
+
+/**
  * update_sg_lb_stats - Update sched_group's statistics for load balancing.
  * @env: The load balancing environment.
  * @group: sched_group whose statistics are to be updated.
@@ -6605,6 +6641,10 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 
 		if (cpu_overutilized(i))
 			*overutilized = true;
+
+		if (cpu_saturated(i))
+			sgs->nr_saturated += 1;
+
 	}
 
 	/* Adjust by relative CPU capacity of the group */
