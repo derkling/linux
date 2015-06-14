@@ -682,6 +682,20 @@ struct iommu_dma_notifier_data {
 static LIST_HEAD(iommu_dma_masters);
 static DEFINE_MUTEX(iommu_dma_notifier_lock);
 
+/* If the iommu_ops is the same, it's the same iommu domain.
+ *
+ * "struct iommu_ops *" can't be added in "iommu_dma_notifier_data".
+ * we add a new struction for it.
+ * work around by yong@20150613, don't add mutex now.
+ */
+struct iommu_dma_ops_data {
+	struct list_head list;
+	struct iommu_dma_notifier_data *dmanotifydata;
+	struct iommu_ops *ops;
+	struct iommu_dma_domain *dma_domain;
+};
+static LIST_HEAD(iommu_dma_ops_head);
+
 static int __iommu_attach_notifier(struct notifier_block *nb,
 				   unsigned long action, void *data)
 {
@@ -757,6 +771,8 @@ static void __iommu_setup_dma_ops(struct device *dev, u64 dma_base, u64 size,
 				  const struct iommu_ops *ops)
 {
 	struct iommu_dma_notifier_data *iommudata;
+	struct iommu_dma_ops_data *opsdata;
+	struct iommu_dma_ops_data *opscur, *tmp;
 
 	if (!ops)
 		return;
@@ -764,6 +780,21 @@ static void __iommu_setup_dma_ops(struct device *dev, u64 dma_base, u64 size,
 	iommudata = kzalloc(sizeof(*iommudata), GFP_KERNEL);
 	if (!iommudata)
 		return;
+
+	list_for_each_entry_safe(opscur, tmp, &iommu_dma_ops_head, list) {
+		if (opscur->ops == ops)	{
+			iommudata->dev = dev;
+			iommudata->dma_domain = opscur->dma_domain;
+			list_add_tail(&iommudata->list, &iommu_dma_masters);
+			return;
+		}
+	}
+
+	opsdata = kzalloc(sizeof(*opsdata), GFP_KERNEL);
+	if (!opsdata) {
+		kfree(iommudata);
+		return;
+	}
 
 	iommudata->dev = dev;
 	iommudata->dma_domain = iommu_dma_create_domain(ops, dma_base, size);
@@ -773,6 +804,11 @@ static void __iommu_setup_dma_ops(struct device *dev, u64 dma_base, u64 size,
 		kfree(iommudata);
 		return;
 	}
+
+	opsdata->ops = (struct iommu_ops *)ops;
+	opsdata->dma_domain = iommudata->dma_domain;
+	list_add(&opsdata->list, &iommu_dma_ops_head);
+
 	mutex_lock(&iommu_dma_notifier_lock);
 	list_add(&iommudata->list, &iommu_dma_masters);
 	mutex_unlock(&iommu_dma_notifier_lock);
