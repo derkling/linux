@@ -246,6 +246,37 @@ int schedtune_accept_deltas(int nrg_delta, int cap_delta, struct task_struct *ta
 	return -INT_MAX;
 }
 
+static struct {
+	unsigned long min_power;
+	unsigned long max_power;
+	unsigned long nrg_shift;
+	unsigned long nrg_mult;
+} schedtune_target_nrg = {
+	/* TC2 Min CPUs power:
+	 * all CPUs idle, all clusters in deep idle:
+	 *   0 * 3 + 0 * 2 + 10 + 25
+	 */
+	.min_power = 35,
+
+	/*
+	 * TC2 Max CPUs power:
+	 * all CPUs fully utilized while running at max OPP:
+	 *   1024 * 3 + 6997 * 2 + 4905 + 15200
+	 */
+	.max_power = 37171,
+	/*
+	 * Integer division constants definition:
+	 *  Constant: Max - Min          (C) = 37136
+	 *  Precision: 0.1%              (P) = 0.1
+	 *  Reference: C * 100 / P       (R) = 3713600
+	 * Thus:
+	 *  Shift bifs: ceil(log(R,2))   (S) = 26
+	 *  Mult const: round(2^S/C)     (M) = 1807
+	 */
+	.nrg_shift = 26,	/* S */
+	.nrg_mult  = 1807,	/* M */
+};
+
 static struct cftype files[] = {
 	{
 		.name = "margin",
