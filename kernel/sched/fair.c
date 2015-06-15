@@ -8178,6 +8178,17 @@ static inline bool nohz_kick_needed(struct rq *rq)
 	if (time_before(now, nohz.next_balance))
 		return false;
 
+	/* If the CPU is saturated (overutilized by a
+	 * single task and is not the highest capacity
+	 * CPU in the system. It is worth initiating a
+	 * a nohz kick, so that rebalance domains can
+	 * place this task on a higher capacity CPU
+	 */
+	if (energy_aware()
+	    && cpu_saturated(cpu)
+	    && capacity_orig_of(cpu) != SCHED_CAPACITY_SCALE)
+		return true;
+
 	if (rq->nr_running >= 2 &&
 	    (!energy_aware() || cpu_overutilized(cpu)))
 		return true;
