@@ -5132,6 +5132,11 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 	return target_cpu;
 }
 
+static unsigned long group_max_capacity(struct sched_group *sg)
+{
+	return capacity_orig_of(cpumask_first(sched_group_cpus(sg)));
+}
+
 static bool
 compare_group_capacity(struct sched_group *sg, struct sched_group *local)
 {
@@ -5146,6 +5151,53 @@ compare_group_capacity(struct sched_group *sg, struct sched_group *local)
 
 	return ((sg_total * local->group_weight) <
 		 (local_total * sg->group_weight));
+}
+
+static int sg_nr_running_tasks(struct sched_group *group)
+{
+	int cpu, sum_nr_running = 0;
+
+	for_each_cpu(cpu, sched_group_cpus(group)) {
+		struct rq *rq = cpu_rq(cpu);
+		sum_nr_running += rq->nr_running;
+	}
+
+	return sum_nr_running;
+}
+
+/* This function returns the group with the CPUs having the
+ * maximum capacity in the sched_domain. The group is only returned
+ * if the number of tasks running in the group is less than or
+ * equal to the weight of the group.
+ *
+ *      sum_nr_running <= group_weight
+ *
+ * The equality in the above condition is debatable as it should
+ * try to maintain a 1 task per CPU dynamic rather than relying on
+ * on the load balance code to move the extraneous task to a group
+ * with idle CPUs.
+ *
+ * The reason why this equality is there is that
+ * all tasks may not run continuously and the extra task gives
+ * the scheduler a better chance to move the right task away.
+ */
+struct sched_group* highest_capacity_group(struct sched_domain *sd) {
+
+	struct sched_group *highest = NULL, *sg = sd->groups;
+	int highest_cap = 0;
+
+	do {
+		int capacity = group_max_capacity(sg);
+		if ((capacity > highest_cap)
+		    && (sg_nr_running_tasks(sg) <= sg->group_weight)) {
+			highest = sg;
+			highest_cap = capacity;
+		}
+
+	}
+	while (sg = sg->next, sg != sd->groups);
+
+	return highest;
 }
 
 /*
@@ -5219,7 +5271,21 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 			continue;
 		}
 
-		group = find_idlest_group(sd, p, cpu, sd_flag);
+		/* If the domain has SD_FORK_HIGHEST_CAP set
+		 * try to start the task on the group with
+		 * the highest capacity CPUs. If the
+		 * highest capacity group is returned as NULL
+		 * because >= group_weight tasks are running on the group
+		 * use find_idlest_group to select the target group
+		 */
+		if (sd->flags & SD_FORK_HIGHEST_CAP) {
+			group = highest_capacity_group(sd);
+			if (!group)
+				group = find_idlest_group(sd, p, cpu, sd_flag);
+		}
+		else
+			group = find_idlest_group(sd, p, cpu, sd_flag);
+
 		if (!group) {
 			sd = sd->child;
 			continue;
