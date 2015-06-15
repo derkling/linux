@@ -19,6 +19,8 @@ extern int schedtune_root_boostmode(void);
 extern int schedtune_accept_deltas(int nrg_delta, int cap_delta,
 		struct task_struct *task);
 
+extern int schedtune_normalize_energy(int energy);
+
 #else
 
 static int schedtune_taskgroup_margin(struct task_struct *tsk)
@@ -48,6 +50,11 @@ static int schedtune_accept_deltas(int nrg_delta, int cap_delta,
 	if (nrg_delta < 0)
 		return INT_MAX;
 	return -INT_MAX;
+}
+
+static int schedtune_normalize_energy(int energy)
+{
+	return energy;
 }
 
 #endif

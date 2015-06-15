@@ -277,6 +277,26 @@ static struct {
 	.nrg_mult  = 1807,	/* M */
 };
 
+int schedtune_normalize_energy(int energy_diff)
+{
+	long long normalized_nrg = energy_diff;
+	int max_delta;
+
+	/* Check for boundaries */
+	max_delta  = schedtune_target_nrg.max_power;
+	max_delta -= schedtune_target_nrg.min_power;
+	WARN_ON(abs(energy_diff) >= max_delta);
+
+	/* Scale by energy magnitude */
+	normalized_nrg <<= SCHED_LOAD_SHIFT;
+
+	/* Normalize on max energy for that platform */
+	normalized_nrg  *= schedtune_target_nrg.nrg_mult;
+	normalized_nrg >>= schedtune_target_nrg.nrg_shift;
+
+	return normalized_nrg;
+}
+
 static struct cftype files[] = {
 	{
 		.name = "margin",
