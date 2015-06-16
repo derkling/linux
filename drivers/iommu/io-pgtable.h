@@ -9,6 +9,7 @@ enum io_pgtable_fmt {
 	ARM_32_LPAE_S2,
 	ARM_64_LPAE_S1,
 	ARM_64_LPAE_S2,
+	ARM_SHORT_DESC,
 	IO_PGTABLE_NUM_FMTS,
 };
 
@@ -44,6 +45,7 @@ struct iommu_gather_ops {
  */
 struct io_pgtable_cfg {
 	#define IO_PGTABLE_QUIRK_ARM_NS	(1 << 0)	/* Set NS bit in PTEs */
+	#define IO_PGTABLE_QUIRK_SHORT_SUPERSECTION     (1 << 1)
 	int				quirks;
 	unsigned long			pgsize_bitmap;
 	unsigned int			ias;
@@ -62,6 +64,13 @@ struct io_pgtable_cfg {
 			u64	vttbr;
 			u64	vtcr;
 		} arm_lpae_s2_cfg;
+
+		struct {
+			u32	ttbr[2];
+			u32	tcr;
+			u32	nmrr;
+			u32	prrr;
+		} arm_short_cfg;
 	};
 };
 
