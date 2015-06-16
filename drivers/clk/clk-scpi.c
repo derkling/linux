@@ -30,6 +30,8 @@ struct scpi_clk {
 	struct clk_hw hw;
 	struct scpi_dvfs_info *info;
 	struct scpi_ops *scpi_ops;
+	unsigned long rate_min;
+	unsigned long rate_max;
 };
 
 #define to_scpi_clk(clk) container_of(clk, struct scpi_clk, hw)
@@ -47,6 +49,13 @@ static unsigned long scpi_clk_recalc_rate(struct clk_hw *hw,
 static long scpi_clk_round_rate(struct clk_hw *hw, unsigned long rate,
 				unsigned long *parent_rate)
 {
+	struct scpi_clk *clk = to_scpi_clk(hw);
+
+	if (clk->rate_min && rate < clk->rate_min)
+		rate = clk->rate_min;
+	if (clk->rate_max && rate > clk->rate_max)
+		rate = clk->rate_max;
+
 	return rate;
 }
 
@@ -151,8 +160,6 @@ scpi_clk_ops_init(struct device *dev, const struct of_device_id *match,
 		  struct scpi_clk *sclk)
 {
 	struct clk_init_data init;
-	struct clk *clk;
-	unsigned long min = 0, max = 0;
 
 	init.name = sclk->name;
 	init.flags = CLK_IS_ROOT;
@@ -166,16 +173,14 @@ scpi_clk_ops_init(struct device *dev, const struct of_device_id *match,
 		if (IS_ERR(sclk->info))
 			return NULL;
 	} else if (init.ops == &scpi_clk_ops) {
-		if (sclk->scpi_ops->clk_get_range(sclk->id, &min, &max) || !max)
+		if (sclk->scpi_ops->clk_get_range(sclk->id, &sclk->rate_min,
+				      &sclk->rate_max) || !sclk->rate_max)
 			return NULL;
 	} else {
 		return NULL;
 	}
 
-	clk = devm_clk_register(dev, &sclk->hw);
-	if (!IS_ERR(clk) && max)
-		clk_set_rate_range(clk, min, max);
-	return clk;
+	return devm_clk_register(dev, &sclk->hw);
 }
 
 static int scpi_clk_add(struct device *dev, struct device_node *np,
