@@ -21,6 +21,7 @@
 #include <linux/gpio/consumer.h>
 #include <linux/acpi.h>
 #include <linux/dmi.h>
+#include <linux/regulator/consumer.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
@@ -3159,6 +3160,7 @@ static int rt5645_i2c_probe(struct i2c_client *i2c,
 {
 	struct rt5645_platform_data *pdata = dev_get_platdata(&i2c->dev);
 	struct rt5645_priv *rt5645;
+	struct regulator *reg_avdd;
 	int ret;
 	unsigned int val;
 
@@ -3190,6 +3192,26 @@ static int rt5645_i2c_probe(struct i2c_client *i2c,
 		ret = PTR_ERR(rt5645->regmap);
 		dev_err(&i2c->dev, "Failed to allocate register map: %d\n",
 			ret);
+		return ret;
+	}
+
+	/* set AVDD/DACREF/DBVDD voltage */
+	reg_avdd = devm_regulator_get(&i2c->dev, "avdd");
+	if (IS_ERR(reg_avdd)) {
+		dev_err(&i2c->dev, "failed to get avdd\n");
+		return PTR_ERR(reg_avdd);
+	}
+	ret = regulator_set_voltage(reg_avdd, 1710000, 1900000);
+	if (ret != 0) {
+		dev_err(&i2c->dev, "Failed to set avdd: %d\n", ret);
+		return ret;
+	}
+	dev_info(&i2c->dev, "avdd = %d uv\n",
+		 regulator_get_voltage(reg_avdd));
+
+	ret = regulator_enable(reg_avdd);
+	if (ret != 0) {
+		dev_err(&i2c->dev, "Failed to enable avdd: %d\n", ret);
 		return ret;
 	}
 
