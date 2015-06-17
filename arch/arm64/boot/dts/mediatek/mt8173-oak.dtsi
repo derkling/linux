@@ -83,7 +83,6 @@
 		mediatek,audio-codec = <&rt5650 &rt5676>;
 		rt5650-clk-en-gpios = <&pio6397 16 GPIO_ACTIVE_HIGH>;
 		rt5676-clk-en-gpios = <&pio6397 17 GPIO_ACTIVE_HIGH>;
-		avdd-supply = <&mt6397_vgp1_reg>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&aud_i2s2>;
 		status = "okay";
@@ -151,6 +150,7 @@
 	rt5650: audio-codec@1a {
 		compatible = "realtek,rt5650";
 		reg = <0x1a>;
+		avdd-supply = <&mt6397_vgp1_reg>;
 		interrupt-parent = <&pio>;
 		interrupts = <3 IRQ_TYPE_EDGE_BOTH>;
 		pinctrl-names = "default";
