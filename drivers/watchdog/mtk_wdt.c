@@ -65,6 +65,7 @@ struct mtk_wdt_dev {
 	struct watchdog_device wdt_dev;
 	void __iomem *wdt_base;
 	struct notifier_block restart_handler;
+	bool started;
 };
 
 static int mtk_reset_handler(struct notifier_block *this, unsigned long mode,
@@ -125,6 +126,8 @@ static int mtk_wdt_stop(struct watchdog_device *wdt_dev)
 	reg &= ~WDT_MODE_EN;
 	iowrite32(reg, wdt_base + WDT_MODE);
 
+	mtk_wdt->started = false;
+
 	return 0;
 }
 
@@ -134,6 +137,8 @@ static int mtk_wdt_start(struct watchdog_device *wdt_dev)
 	struct mtk_wdt_dev *mtk_wdt = watchdog_get_drvdata(wdt_dev);
 	void __iomem *wdt_base = mtk_wdt->wdt_base;
 	u32 ret;
+
+	mtk_wdt->started = true;
 
 	ret = mtk_wdt_set_timeout(wdt_dev, wdt_dev->timeout);
 	if (ret < 0)
@@ -173,6 +178,8 @@ static int mtk_wdt_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	platform_set_drvdata(pdev, mtk_wdt);
+
+	mtk_wdt->started = false;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	mtk_wdt->wdt_base = devm_ioremap_resource(&pdev->dev, res);
@@ -221,6 +228,35 @@ static int mtk_wdt_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_PM
+static int mtk_wdt_suspend(struct platform_device *pdev, pm_message_t state)
+{
+	struct mtk_wdt_dev *mtk_wdt = platform_get_drvdata(pdev);
+
+	if (mtk_wdt->started) {
+		mtk_wdt_stop(&mtk_wdt->wdt_dev);
+		mtk_wdt->started = true;
+	}
+
+	return 0;
+}
+
+static int mtk_wdt_resume(struct platform_device *pdev)
+{
+	struct mtk_wdt_dev *mtk_wdt = platform_get_drvdata(pdev);
+
+	if (mtk_wdt->started) {
+		mtk_wdt_start(&mtk_wdt->wdt_dev);
+		mtk_wdt_ping(&mtk_wdt->wdt_dev);
+	}
+
+	return 0;
+}
+#else
+#define	mtk_wdt_suspend	NULL
+#define	mtk_wdt_resume	NULL
+#endif
+
 static const struct of_device_id mtk_wdt_dt_ids[] = {
 	{ .compatible = "mediatek,mt6589-wdt" },
 	{ /* sentinel */ }
@@ -230,6 +266,8 @@ MODULE_DEVICE_TABLE(of, mtk_wdt_dt_ids);
 static struct platform_driver mtk_wdt_driver = {
 	.probe		= mtk_wdt_probe,
 	.remove		= mtk_wdt_remove,
+	.suspend	= mtk_wdt_suspend,
+	.resume		= mtk_wdt_resume,
 	.driver		= {
 		.name		= DRV_NAME,
 		.of_match_table	= mtk_wdt_dt_ids,
