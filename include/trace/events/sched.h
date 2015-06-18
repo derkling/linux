@@ -760,6 +760,33 @@ TRACE_EVENT(sched_task_boost,
 		  __entry->boost)
 );
 
+/*
+ * Tracepoint for accounting CPU  boosted utilization
+ */
+TRACE_EVENT(sched_cpu_boost,
+
+	TP_PROTO(int cpu, unsigned long usage, unsigned long boost),
+
+	TP_ARGS(cpu, usage, boost),
+
+	TP_STRUCT__entry(
+		__field( int,		cpu			)
+		__field( unsigned long,	usage			)
+		__field( unsigned long,	boost			)
+	),
+
+	TP_fast_assign(
+		__entry->cpu	= cpu;
+		__entry->usage	= usage;
+		__entry->boost	= boost;
+	),
+
+	TP_printk("cpu=%d usage=%lu boost=%lu",
+		  __entry->cpu,
+		  __entry->usage,
+		  __entry->boost)
+);
+
 #endif /* _TRACE_SCHED_H */
 
 /* This part must be outside protection */

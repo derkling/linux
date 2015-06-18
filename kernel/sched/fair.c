@@ -5493,6 +5493,8 @@ get_expected_capacity(int cpu, struct task_struct *task)
 		cpu_capacity += task_utilization(task);
 	cpu_margin = get_cpu_margin(cpu, cpu_capacity);
 
+	trace_sched_cpu_boost(cpu, cpu_capacity, cpu_margin);
+
 	cpu_capacity += cpu_margin;
 	return cpu_capacity;
 }
