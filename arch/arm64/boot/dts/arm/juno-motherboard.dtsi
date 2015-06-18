@@ -221,6 +221,102 @@
 						label = "vexpress:7";
 						default-state = "off";
 					};
+					current@d0 {
+						compatible = "arm,vexpress-amp";
+						offset = <0xd0>;
+						divisor = <761>;
+						label = "sys_curr";
+					};
+					current@d4 {
+						compatible = "arm,vexpress-amp";
+						offset = <0xd4>;
+						divisor = <381>;
+						label = "a57_curr";
+					};
+					current@d8 {
+						compatible = "arm,vexpress-amp";
+						offset = <0xd8>;
+						divisor = <761>;
+						label = "a53_curr";
+					};
+					current@dc {
+						compatible = "arm,vexpress-amp";
+						offset = <0xdc>;
+						divisor = <381>;
+						label = "gpu_curr";
+					};
+					volt@e0 {
+						compatible = "arm,vexpress-volt";
+						offset = <0xe0>;
+						divisor = <1622>;
+						label = "sys_volt";
+					};
+					volt@e4 {
+						compatible = "arm,vexpress-volt";
+						offset = <0xe4>;
+						divisor = <1622>;
+						label = "a57_volt";
+					};
+					volt@e8 {
+						compatible = "arm,vexpress-volt";
+						offset = <0xe8>;
+						divisor = <1622>;
+						label = "a53_volt";
+					};
+					volt@ec {
+						compatible = "arm,vexpress-volt";
+						offset = <0xec>;
+						divisor = <1622>;
+						label = "gpu_volt";
+					};
+					power@f0 {
+						compatible = "arm,vexpress-power";
+						offset = <0xf0>;
+						divisor = <1234803>;
+						label = "sys_power";
+					};
+					power@f4 {
+						compatible = "arm,vexpress-power";
+						offset = <0xf4>;
+						divisor = <617402>;
+						label = "a57_power";
+					};
+					power@f8 {
+						compatible = "arm,vexpress-power";
+						offset = <0xf8>;
+						divisor = <1234803>;
+						label = "a53_power";
+					};
+					power@fc {
+						compatible = "arm,vexpress-power";
+						offset = <0xfc>;
+						divisor = <617402>;
+						label = "gpu_power";
+					};
+					energy@100 {
+						compatible = "arm,vexpress-energy";
+						offset = <0x100>;
+						divisor = <1234803>;
+						label = "sys_energy";
+					};
+					energy@108 {
+						compatible = "arm,vexpress-energy";
+						offset = <0x108>;
+						divisor = <617402>;
+						label = "a57_energy";
+					};
+					energy@110 {
+						compatible = "arm,vexpress-energy";
+						offset = <0x110>;
+						divisor = <1234803>;
+						label = "a53_energy";
+					};
+					energy@118 {
+						compatible = "arm,vexpress-energy";
+						offset = <0x118>;
+						divisor = <617402>;
+						label = "gpu_energy";
+					};
 				};
 
 				mmci@050000 {
