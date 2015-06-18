@@ -270,6 +270,11 @@ static int max_sched_tunable_scaling = SCHED_TUNABLESCALING_END-1;
 #endif /* CONFIG_SMP */
 #endif /* CONFIG_SCHED_DEBUG */
 
+#ifdef CONFIG_CFS_BOOST
+static int min_sched_cfs_boost = 0;	/*   0% CFS tasks boosting */
+static int max_sched_cfs_boost = 100; 	/* 100% CFS tasks boosting */
+#endif /* CONFIG_CFS_BOOST */
+
 #ifdef CONFIG_COMPACTION
 static int min_extfrag_threshold;
 static int max_extfrag_threshold = 1000;
@@ -440,6 +445,17 @@ static struct ctl_table kern_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_minmax,
 		.extra1		= &one,
+	},
+#endif
+#ifdef CONFIG_CFS_BOOST
+	{
+		.procname	= "sched_cfs_boost",
+		.data		= &sysctl_sched_cfs_boost,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= sched_proc_update_handler,
+		.extra1		= &min_sched_cfs_boost,
+		.extra2		= &max_sched_cfs_boost,
 	},
 #endif
 #ifdef CONFIG_PROVE_LOCKING
