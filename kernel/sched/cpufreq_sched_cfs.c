@@ -271,12 +271,14 @@ static void gov_cfs_start(struct cpufreq_policy *policy)
 	init_irq_work(&gd->irq_work, gov_cfs_irq_work);
 	policy->governor_data = gd;
 	gd->policy = policy;
+	set_sched_energy_freq();
 }
 
 static void gov_cfs_stop(struct cpufreq_policy *policy)
 {
 	struct gov_data *gd;
 
+	clear_sched_energy_freq();
 	gd = policy->governor_data;
 	kthread_stop(gd->task);
 

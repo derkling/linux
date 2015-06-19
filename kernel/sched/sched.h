@@ -1480,13 +1480,26 @@ unsigned long arch_scale_cpu_capacity(struct sched_domain *sd, int cpu)
 #endif
 unsigned long capacity_curr_of(int cpu);
 
+extern struct static_key __sched_energy_freq;
 static inline bool sched_energy_freq(void)
 {
-	return sched_feat(SCHED_ENERGY_FREQ);
+	return static_key_false(&__sched_energy_freq);
 }
 
 #define MARGIN_PCT 125 /* taken from imbalance_pct = 125 */
 #ifdef CONFIG_CPU_FREQ_GOV_SCHED_CFS
+static inline void set_sched_energy_freq(void)
+{
+	if (!sched_energy_freq())
+		static_key_slow_inc(&__sched_energy_freq);
+}
+
+static inline void clear_sched_energy_freq(void)
+{
+	if (sched_energy_freq())
+		static_key_slow_dec(&__sched_energy_freq);
+}
+
 void gov_cfs_update_cpu(int cpu, unsigned long capacity);
 void gov_cfs_reset_cpu(int cpu);
 #else

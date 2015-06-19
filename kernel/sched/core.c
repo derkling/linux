@@ -1418,6 +1418,8 @@ out:
 	return dest_cpu;
 }
 
+struct static_key __sched_energy_freq __read_mostly = STATIC_KEY_INIT_FALSE;
+
 /*
  * The caller (fork, wakeup) owns p->pi_lock, ->cpus_allowed is stable.
  */
