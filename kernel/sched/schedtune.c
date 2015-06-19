@@ -6,6 +6,7 @@
 #include <linux/seq_file.h>
 #include <linux/rcupdate.h>
 #include <linux/err.h>
+#include <linux/printk.h>
 
 #include <trace/events/sched.h>
 
@@ -20,6 +21,10 @@
 /* Scheduer tunables for a group of tasks and its child groups */
 struct schedtune {
 	struct cgroup_subsys_state css;
+
+	/* Boostgroup allocated ID */
+	int idx;
+
 	int boostmode;
 	int margin;
 
@@ -71,20 +76,162 @@ static struct schedtune root_schedtune = {
 	.perf_constrain_idx 	= 0,
 };
 
+/* The maximum number of boost groups to support */
+#define BOOSTGROUPS_COUNT 16
+
+/* Array of configured boostgroups */
+static struct schedtune *allocated_group[BOOSTGROUPS_COUNT] = {
+	&root_schedtune,
+	NULL,
+};
+
+struct boost_groups {
+	unsigned margin_max;
+	struct {
+		/* The margin for tasks on that boostgroup */
+		unsigned margin;
+		/* Count of RUNNABLE tasks on that boostgroup */
+		unsigned tasks;
+	} group[BOOSTGROUPS_COUNT];
+};
+
+DEFINE_PER_CPU(struct boost_groups, cpu_boost_groups);
+
+static void
+schedtune_update_cpu_margin(int cpu)
+{
+	struct boost_groups *bg;
+	unsigned margin_max;
+	int idx;
+
+	bg = &per_cpu(cpu_boost_groups, cpu);
+
+	/* The root boost group is alwasy active */
+	margin_max = bg->group[0].margin;
+	for (idx = 1; idx < BOOSTGROUPS_COUNT; ++idx) {
+		/*
+		 * A boostgroup affects a CPU only if there are
+		 * RUNNABLE tasks on that CPU
+		 */
+		if (bg->group[idx].tasks == 0)
+			continue;
+		margin_max = max(margin_max, bg->group[idx].margin);
+	}
+
+	bg->margin_max = margin_max;
+	trace_printk("cpu_update: cpu=%d max_margin=%d\n", cpu, bg->margin_max);
+}
+
+static int
+schedtune_boostgroup_update(int idx, int margin)
+{
+	struct boost_groups *bg;
+	int cur_margin_max;
+	int old_margin;
+	int cpu;
+
+	trace_printk("bgr_update: idx=%d margin=%d\n", idx, margin);
+
+	/* Update the per CPU boost groups */
+	for_each_possible_cpu(cpu) {
+		bg = &per_cpu(cpu_boost_groups, cpu);
+
+		/* Keep track of current CPU margins */
+		cur_margin_max = bg->margin_max;
+		old_margin = bg->group[idx].margin;
+
+		/* Update this boost group margin */
+		bg->group[idx].margin = margin;
+
+		/* Check if this update increase current max */
+		if (margin > cur_margin_max && bg->group[idx].tasks) {
+			bg->margin_max = margin;
+
+			trace_printk("cpu_update=%d max_margin=%d\n", cpu, margin);
+
+			continue;
+		}
+
+		/* Check if this update has decreased current max */
+		if (cur_margin_max == old_margin && old_margin > margin) {
+			schedtune_update_cpu_margin(cpu);
+		}
+
+		trace_printk("cpu_update: cpu=%d max_margin=%d\n", cpu, bg->margin_max);
+
+	}
+
+
+	return 0;
+}
+
+static int
+schedtune_boostgroup_init(struct schedtune *st)
+{
+	struct boost_groups *bg;
+	int cpu;
+
+	/* Keep track of allocated boost group */
+	allocated_group[st->idx] = st;
+
+	/* Initialize the per CPU boost groups */
+	for_each_possible_cpu(cpu) {
+		bg = &per_cpu(cpu_boost_groups, cpu);
+		bg->group[st->idx].margin = 0;
+		bg->group[st->idx].tasks = 0;
+	}
+
+	return 0;
+}
+
+static void
+schedtune_boostgroup_release(struct schedtune *st)
+{
+	/* Reset this group margin */
+	schedtune_boostgroup_update(st->idx, 0);
+
+	/* Keep track of allocated boost group */
+	allocated_group[st->idx] = NULL;
+}
+
 static struct cgroup_subsys_state *
 schedtune_css_alloc(struct cgroup_subsys_state *parent_css)
 {
 	struct schedtune *st;
+	int idx;
 
 	if (!parent_css)
 		return &root_schedtune.css;
+
+	/* Allows only single level hierachies */
+	if (parent_css != &root_schedtune.css) {
+		pr_err("Nested SchedTune boosting groups not allowed\n");
+		return ERR_PTR(-ENOMEM);
+	}
+
+	/* Allows only a limited number of boosting groups */
+	for (idx = 1; idx < BOOSTGROUPS_COUNT; ++idx)
+		if (allocated_group[idx] == NULL)
+			break;
+	if (idx == BOOSTGROUPS_COUNT) {
+		pr_err("Trying to create more than %d SchedTune boosting groups\n",
+				BOOSTGROUPS_COUNT);
+		return ERR_PTR(-ENOSPC);
+	}
 
 	st = kzalloc(sizeof(*st), GFP_KERNEL);
 	if (!st)
 		goto out;
 
+	/* Initialize per CPUs boost group support */
+	st->idx = idx;
+	if (schedtune_boostgroup_init(st))
+		goto release;
+
 	return &st->css;
 
+release:
+	kfree(st);
 out:
 	return ERR_PTR(-ENOMEM);
 }
@@ -92,6 +239,7 @@ out:
 static void schedtune_css_free(struct cgroup_subsys_state *css)
 {
 	struct schedtune *st = css_st(css);
+	schedtune_boostgroup_release(st);
 	kfree(st);
 }
 
@@ -124,6 +272,9 @@ static int margin_write(struct cgroup_subsys_state *css, struct cftype *cft,
 	/* Performance Constraint (C) region threshold params */
 	st->perf_constrain_idx  = 100 - margin;
 	st->perf_constrain_idx /= 10;
+
+	/* Update CPU margin */
+	schedtune_boostgroup_update(st->idx, st->margin);
 
 	trace_schedtune(st->margin, st->boostmode,
 			threshold_gains[st->perf_boost_idx].nrg_gain,
@@ -163,6 +314,62 @@ static int boostmode_write(struct cgroup_subsys_state *css, struct cftype *cft,
 
 out:
 	return err;
+}
+
+/* NOTE: This function must be called while holding the lock on the CPU RQ */
+static int
+schedtune_update_runnable_tasks(struct task_struct *p, int cpu, int task_count)
+{
+	struct boost_groups *bg;
+	struct schedtune *st;
+	int tasks;
+	int idx;
+
+	/* Get task boost group */
+	rcu_read_lock();
+	st = task_schedtune(p);
+	idx = st->idx;
+	rcu_read_unlock();
+
+	bg = &per_cpu(cpu_boost_groups, cpu);
+
+	/* Update boosted tasks count while avoiding to make it negative */
+	if (task_count < 0 && bg->group[idx].tasks <= -task_count)
+		bg->group[idx].tasks = 0;
+	else
+		bg->group[idx].tasks += task_count;
+
+	/* Boost group activation or deactivation on that RQ */
+	tasks = bg->group[idx].tasks;
+	trace_printk("cpu=%d tasks=%d\n", cpu, tasks);
+	if (tasks == 1 || tasks == 0)
+		schedtune_update_cpu_margin(cpu);
+
+	return 0;
+}
+
+/*
+ * NOTE: This function must be called while holding the lock on the CPU RQ
+ */
+int
+schedtune_enqueue_task(struct task_struct *p, int cpu)
+{
+	int result;
+
+	result = schedtune_update_runnable_tasks(p, cpu, 1);
+	return result;
+}
+
+/*
+ * NOTE: This function must be called while holding the lock on the CPU RQ
+ */
+int
+schedtune_dequeue_task(struct task_struct *p, int cpu)
+{
+	int result;
+
+	result = schedtune_update_runnable_tasks(p, cpu, -1);
+	return result;
 }
 
 
@@ -206,6 +413,14 @@ int schedtune_root_boostmode(void)
 	return root_boostmode;
 }
 
+int schedtune_cpu_margin(int cpu)
+{
+	struct boost_groups *bg;
+	bg = &per_cpu(cpu_boost_groups, cpu);
+	return 	bg->margin_max;
+}
+
+
 int schedtune_accept_deltas(int nrg_delta, int cap_delta, struct task_struct *task) {
 	struct schedtune *ct;
 	int perf_boost_idx;
@@ -241,6 +456,9 @@ int schedtune_accept_deltas(int nrg_delta, int cap_delta, struct task_struct *ta
 		 */
 		energy_payoff  = cap_delta * threshold_gains[perf_boost_idx].nrg_gain;
 		energy_payoff -= nrg_delta * threshold_gains[perf_boost_idx].cap_gain;
+
+/* TODO: we should add a threshold value here to compensate caches energy
+ * consumption due to jumping among two CPUs on the same cluster */
 
 		trace_printk("region=B ngain=%d pgain=%d nrg_payoff=%d",
 				threshold_gains[perf_boost_idx].nrg_gain,

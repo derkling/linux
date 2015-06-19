@@ -15,6 +15,10 @@ extern int schedtune_taskgroup_margin(struct task_struct *tsk);
 extern int schedtune_taskgroup_boostmode(struct task_struct *tsk);
 extern int schedtune_root_margin(void);
 extern int schedtune_root_boostmode(void);
+extern int schedtune_cpu_margin(int cpu);
+
+extern int schedtune_enqueue_task(struct task_struct *p, int cpu);
+extern int schedtune_dequeue_task(struct task_struct *p, int cpu);
 
 extern int schedtune_accept_deltas(int nrg_delta, int cap_delta,
 		struct task_struct *task);
