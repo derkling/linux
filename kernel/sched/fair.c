@@ -2570,9 +2570,6 @@ static __always_inline int __update_entity_runnable_avg(u64 now, int cpu,
 	int delta_w, scaled_delta_w, decayed = 0;
 	unsigned long scale_factor;
 
-	trace_sched_contrib_scale_f(cpu, scale_freq, scale_cpu);
-
-
 	delta = now - sa->last_runnable_update;
 	/*
 	 * This should only happen when time goes backwards, which it
