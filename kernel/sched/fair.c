@@ -4400,6 +4400,8 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		update_rq_runnable_avg(rq, 1);
 	}
 
+	schedtune_dequeue_task(p, cpu_of(rq));
+
 	if(sched_energy_freq()) {
 		/*
 		 * Ask for an update only if we are not going idle.
@@ -5438,8 +5440,14 @@ get_cpu_margin(int cpu, unsigned long usage)
 	int boostmode;
 	unsigned long boost;
 
-	margin = schedtune_root_margin();
-	boostmode = schedtune_root_boostmode();
+	/* margin = schedtune_root_margin(); */
+	/* boostmode = schedtune_root_boostmode(); */
+	margin = schedtune_cpu_margin(cpu);
+	if (margin == 0) {
+		trace_printk("get_cpu_margin: usage=%lu boostmode=-1 boost=-1\n", usage);
+		return 0;
+	}
+	boostmode = 1;
 
 	boost = schedtune_boost(usage, margin, boostmode);
 
@@ -5470,6 +5478,9 @@ get_expected_capacity(int cpu, struct task_struct *task)
 	cpu_capacity = get_cpu_usage(cpu);
 	if (task != NULL)
 		cpu_capacity += task_utilization(task);
+	if (cpu_capacity > SCHED_LOAD_SCALE)
+		return SCHED_LOAD_SCALE;
+
 	cpu_margin = get_cpu_margin(cpu, cpu_capacity);
 
 	cpu_capacity += cpu_margin;
@@ -5828,6 +5839,8 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	}
 unlock:
 	rcu_read_unlock();
+
+	schedtune_enqueue_task(p, new_cpu);
 
 	/*
 	 * If the task is put to run on prev_cpu it is already contributing
