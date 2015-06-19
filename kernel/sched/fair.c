@@ -5471,7 +5471,7 @@ get_cpu_margin(int cpu, unsigned long usage)
 
 	boost = schedtune_boost(usage, margin, boostmode);
 
-	trace_printk("usage=%lu boostmode=%d boost=%lu\n",
+	trace_printk("get_cpu_margin: usage=%lu boostmode=%d boost=%lu\n",
 			usage, boostmode, boost);
 
 	return boost;

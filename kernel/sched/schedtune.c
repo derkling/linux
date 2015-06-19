@@ -119,6 +119,7 @@ schedtune_update_cpu_margin(int cpu)
 	}
 
 	bg->margin_max = margin_max;
+	trace_printk("cpu_update: cpu=%d max_margin=%d\n", cpu, bg->margin_max);
 }
 
 static int
@@ -128,6 +129,8 @@ schedtune_boostgroup_update(int idx, int margin)
 	int cur_margin_max;
 	int old_margin;
 	int cpu;
+
+	trace_printk("bgr_update: idx=%d margin=%d\n", idx, margin);
 
 	/* Update the per CPU boost groups */
 	for_each_possible_cpu(cpu) {
@@ -143,6 +146,9 @@ schedtune_boostgroup_update(int idx, int margin)
 		/* Check if this update increase current max */
 		if (margin > cur_margin_max && bg->group[idx].tasks) {
 			bg->margin_max = margin;
+
+			trace_printk("cpu_update=%d max_margin=%d\n", cpu, margin);
+
 			continue;
 		}
 
@@ -150,6 +156,9 @@ schedtune_boostgroup_update(int idx, int margin)
 		if (cur_margin_max == old_margin && old_margin > margin) {
 			schedtune_update_cpu_margin(cpu);
 		}
+
+		trace_printk("cpu_update: cpu=%d max_margin=%d\n", cpu, bg->margin_max);
+
 	}
 
 
@@ -332,6 +341,7 @@ schedtune_update_runnable_tasks(struct task_struct *p, int cpu, int task_count)
 
 	/* Boost group activation or deactivation on that RQ */
 	tasks = bg->group[idx].tasks;
+	trace_printk("cpu=%d tasks=%d\n", cpu, tasks);
 	if (tasks == 1 || tasks == 0)
 		schedtune_update_cpu_margin(cpu);
 
