@@ -529,7 +529,7 @@ static int __iommu_mmap_attrs(struct device *dev, struct vm_area_struct *vma,
 		return ret;
 
 	area = find_vm_area(cpu_addr);
-	if (WARN_ON(!area || area->pages))
+	if (WARN_ON(!area || !area->pages))
 		return -ENXIO;
 
 	return iommu_dma_mmap(area->pages, size, vma);
