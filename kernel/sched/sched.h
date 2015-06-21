@@ -931,6 +931,8 @@ static inline void check_sched_energy_data(int cpu, sched_domain_energy_f fn,
 	}
 }
 
+unsigned long get_expected_capacity(int cpu, struct task_struct *task);
+
 #else
 
 static inline void sched_ttwu_pending(void) { }
