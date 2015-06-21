@@ -1481,6 +1481,7 @@ static inline unsigned long capacity_of(int cpu)
 	return cpu_rq(cpu)->cpu_capacity;
 }
 
+unsigned long get_expected_capacity(int cpu, struct task_struct *task);
 unsigned long capacity_orig_of(int cpu);
 extern unsigned int capacity_margin;
 unsigned long get_cpu_usage(int cpu);
