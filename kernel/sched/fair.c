@@ -2978,6 +2978,9 @@ static inline void dequeue_entity_load_avg(struct cfs_rq *cfs_rq,
 	} /* migrations, e.g. sleep=0 leave decay_count == 0 */
 }
 
+unsigned long
+get_expected_capacity(int cpu, struct task_struct *task);
+
 /*
  * Update the rq's load with the elapsed running time before entering
  * idle. if the last scheduled task is not a CFS task, idle_enter will
@@ -4400,7 +4403,8 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	}
 
 	if(sched_energy_freq())
-		cpufreq_cfs_update_cpu(cpu_of(rq), get_cpu_usage(cpu_of(rq)));
+		cpufreq_cfs_update_cpu(cpu_of(rq),
+			get_expected_capacity(cpu_of(rq), NULL));
 
 	hrtick_update(rq);
 }
@@ -5242,6 +5246,20 @@ static inline bool task_fits_cpu(struct task_struct *p, int cpu)
 	return __task_fits(p, cpu, get_cpu_usage(cpu));
 }
 
+unsigned long
+get_expected_capacity(int cpu, struct task_struct *task)
+{
+	unsigned long capacity;
+
+	capacity = get_cpu_usage(cpu);
+	if (task != NULL)
+		capacity += task_utilization(task);
+	if (capacity > SCHED_LOAD_SCALE)
+		return SCHED_LOAD_SCALE;
+
+	return capacity;
+}
+
 /*
  * find_idlest_group finds and returns the least busy CPU group within the
  * domain.
@@ -5603,8 +5621,8 @@ unlock:
 		 * pre-decayed utilization and add it to new_cpu's usage.
 		 */
 		new_capacity = new_cpu != prev_cpu ?
-			get_cpu_usage(new_cpu) + task_utilization(p) :
-			get_cpu_usage(new_cpu);
+			get_expected_capacity(new_cpu, p) :
+			get_expected_capacity(new_cpu, NULL);
 		cpufreq_cfs_update_cpu(new_cpu, new_capacity);
 	}
 
@@ -7716,13 +7734,14 @@ more_balance:
 		if (cur_ld_moved) {
 			attach_tasks(&env);
 			ld_moved += cur_ld_moved;
-			if (sched_energy_freq())
+			if (sched_energy_freq()) {
 				/*
 				 * dequeue_task_fair() already took care
 				 * of src_cpu.
 				 */
 				cpufreq_cfs_update_cpu(env.dst_cpu,
-						get_cpu_usage(env.dst_cpu));
+					get_expected_capacity(env.dst_cpu, NULL));
+			}
 		}
 
 		local_irq_restore(flags);
@@ -8095,7 +8114,7 @@ out_unlock:
 		attach_one_task(target_rq, p);
 		if (sched_energy_freq())
 			cpufreq_cfs_update_cpu(target_cpu,
-					get_cpu_usage(target_cpu));
+				get_expected_capacity(target_cpu, NULL));
 	}
 
 	local_irq_enable();
