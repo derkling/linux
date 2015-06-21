@@ -2975,6 +2975,9 @@ static inline void dequeue_entity_load_avg(struct cfs_rq *cfs_rq,
 	} /* migrations, e.g. sleep=0 leave decay_count == 0 */
 }
 
+unsigned long
+get_expected_capacity(int cpu, struct task_struct *task);
+
 /*
  * Update the rq's load with the elapsed running time before entering
  * idle. if the last scheduled task is not a CFS task, idle_enter will
@@ -4348,6 +4351,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &p->se;
 	int task_sleep = flags & DEQUEUE_SLEEP;
+	int new_capacity = 0;
 
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
@@ -4401,11 +4405,12 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		 * If we are going idle we just need to clear our
 		 * current request.
 		 */
-		if (rq->cfs.nr_running)
-			gov_cfs_update_cpu(cpu_of(rq),
-				rq->cfs.utilization_load_avg);
-		else
+		if (rq->cfs.nr_running) {
+			new_capacity = get_expected_capacity(cpu_of(rq), NULL);
+			gov_cfs_update_cpu(cpu_of(rq), new_capacity);
+		} else {
 			gov_cfs_reset_cpu(cpu_of(rq));
+		}
 	}
 
 	hrtick_update(rq);
@@ -5253,6 +5258,20 @@ static inline bool task_fits_cpu(struct task_struct *p, int cpu)
 	return __task_fits(p, cpu, get_cpu_usage(cpu));
 }
 
+unsigned long
+get_expected_capacity(int cpu, struct task_struct *task)
+{
+	unsigned long capacity;
+
+	capacity = get_cpu_usage(cpu);
+	if (task != NULL)
+		capacity += task_utilization(task);
+	if (capacity > SCHED_LOAD_SCALE)
+		return SCHED_LOAD_SCALE;
+
+	return capacity;
+}
+
 /*
  * find_idlest_group finds and returns the least busy CPU group within the
  * domain.
@@ -5526,6 +5545,7 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	struct sched_domain *tmp, *affine_sd = NULL, *sd = NULL;
 	int cpu = smp_processor_id();
 	int new_cpu = cpu;
+	int new_capacity = 0;
 	int want_affine = 0;
 	int want_sibling = true;
 	int sync = wake_flags & WF_SYNC;
@@ -5604,11 +5624,20 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 unlock:
 	rcu_read_unlock();
 
-	/* We want to consider the pre-decayed utilization */
-	if(sched_energy_freq())
-		gov_cfs_update_cpu(new_cpu,
-				   cpu_rq(new_cpu)->cfs.utilization_load_avg +
-				   task_utilization(p));
+	/*
+	 * If the task is put to run on prev_cpu it is already contributing
+	 * to prev_cpu's blocked_utilization (don't double account for it
+	 * in get_expected_capacity). Otherwise the best we are conservative
+	 * in considering p's pre-decayed utilization and add it to new_cpu's
+	 * usage.
+	 */
+	if (sched_energy_freq()) {
+		new_capacity = new_cpu != prev_cpu ?
+			       get_expected_capacity(new_cpu, p) :
+			       get_expected_capacity(new_cpu, NULL);
+		gov_cfs_update_cpu(new_cpu, new_capacity);
+	}
+
 	return new_cpu;
 }
 
@@ -7635,6 +7664,7 @@ static int load_balance(int this_cpu, struct rq *this_rq,
 	struct rq *busiest;
 	unsigned long flags;
 	struct cpumask *cpus = this_cpu_cpumask_var_ptr(load_balance_mask);
+	int new_capacity = 0;
 
 	struct lb_env env = {
 		.sd		= sd,
@@ -7717,13 +7747,14 @@ more_balance:
 		if (cur_ld_moved) {
 			attach_tasks(&env);
 			ld_moved += cur_ld_moved;
-			if (sched_energy_freq())
+			if (sched_energy_freq()) {
 				/*
 				 * dequeue_task_fair() already took care
 				 * of src_cpu
 				 */
-				gov_cfs_update_cpu(env.dst_cpu,
-					get_cpu_usage(env.dst_cpu));
+				new_capacity = get_expected_capacity(env.dst_cpu, NULL);
+				gov_cfs_update_cpu(env.dst_cpu, new_capacity);
+			}
 
 		}
 
@@ -8043,6 +8074,7 @@ static int active_load_balance_cpu_stop(void *data)
 	struct rq *target_rq = cpu_rq(target_cpu);
 	struct sched_domain *sd;
 	struct task_struct *p = NULL;
+	int new_capacity = 0;
 
 	raw_spin_lock_irq(&busiest_rq->lock);
 
@@ -8095,9 +8127,10 @@ out_unlock:
 
 	if (p) {
 		attach_one_task(target_rq, p);
-		if (sched_energy_freq())
-			gov_cfs_update_cpu(target_cpu,
-				get_cpu_usage(target_cpu));
+		if (sched_energy_freq()) {
+			new_capacity = get_expected_capacity(target_cpu, NULL);
+			gov_cfs_update_cpu(target_cpu, new_capacity);
+		}
 	}
 
 	local_irq_enable();

@@ -1433,7 +1433,7 @@ int select_task_rq(struct task_struct *p, int cpu, int sd_flags, int wake_flags)
 		 * If p is pinned, it is already contributing to cpu's blocked
 		 * utilization.
 		 */
-		gov_cfs_update_cpu(cpu, get_cpu_usage(cpu));
+		gov_cfs_update_cpu(cpu, get_expected_capacity(cpu, NULL));
 
 	/*
 	 * In order not to call set_task_cpu() on a blocking task we need
