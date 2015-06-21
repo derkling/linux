@@ -5267,6 +5267,47 @@ schedtune_margin(unsigned long signal, unsigned long boost)
 
 }
 
+static unsigned long
+schedtune_task_margin(struct task_struct *task)
+{
+	unsigned int boost;
+	unsigned long utilization;
+	unsigned long margin;
+	boost = get_sysctl_sched_cfs_boost();
+	if (boost == 0)
+		return 0;
+	utilization = task_utilization(task);
+	margin = schedtune_margin(utilization, boost);
+	return margin;
+}
+
+static unsigned long
+get_boosted_task_utilization(struct task_struct *task)
+{
+	unsigned long utilization;
+	unsigned long margin = 0;
+
+	utilization = task_utilization(task);
+
+	/*
+	 * Boosting of task utilization is enabled only when the scheduler is
+	 * working in energy-aware mode.
+	 */
+	if (!task_rq(task)->rd->overutilized)
+		margin = schedtune_task_margin(task);
+
+	utilization += margin;
+	return utilization;
+}
+
+#else /* CONFIG_SCHED_TUNE */
+
+static unsigned long
+get_boosted_task_utilization(struct task_struct *task)
+{
+	return task_utilization(task);
+}
+
 #endif /* CONFIG_SCHED_TUNE */
 
 static inline bool __task_fits(struct task_struct *p, int cpu, int usage)
