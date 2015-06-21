@@ -5368,6 +5368,7 @@ unsigned long
 get_expected_capacity(int cpu, struct task_struct *task)
 {
 	unsigned long capacity;
+	unsigned long margin;
 
 	capacity = get_cpu_usage(cpu);
 	if (task != NULL)
@@ -5375,6 +5376,9 @@ get_expected_capacity(int cpu, struct task_struct *task)
 	if (capacity > SCHED_LOAD_SCALE)
 		return SCHED_LOAD_SCALE;
 
+	margin = schedtune_cpu_margin(cpu, capacity);
+
+	capacity += margin;
 	return capacity;
 }
 
