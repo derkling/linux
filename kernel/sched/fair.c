@@ -4403,6 +4403,8 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		update_rq_runnable_avg(rq, 1);
 	}
 
+	schedtune_dequeue_task(p, cpu_of(rq));
+
 	if(sched_energy_freq())
 		cpufreq_cfs_update_cpu(cpu_of(rq),
 			get_expected_capacity(cpu_of(rq), NULL));
@@ -5804,6 +5806,8 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	}
 unlock:
 	rcu_read_unlock();
+
+	schedtune_enqueue_task(p, new_cpu);
 
 	if(sched_energy_freq()) {
 		unsigned long new_capacity;
@@ -7933,15 +7937,9 @@ more_balance:
 				 * dequeue_task_fair() already took care
 				 * of src_cpu.
 				 */
-<<<<<<< HEAD
 				cpufreq_cfs_update_cpu(env.dst_cpu,
-						get_cpu_usage(env.dst_cpu));
-=======
-				gov_cfs_update_cpu(env.dst_cpu,
 					get_expected_capacity(env.dst_cpu, NULL));
 			}
-
->>>>>>> WIP: sched/cpufreq_sched_cfs: add the get_expected_capacity function
 		}
 
 		local_irq_restore(flags);
@@ -8312,16 +8310,9 @@ out_unlock:
 
 	if (p) {
 		attach_one_task(target_rq, p);
-<<<<<<< HEAD
 		if (sched_energy_freq())
 			cpufreq_cfs_update_cpu(target_cpu,
-					get_cpu_usage(target_cpu));
-=======
-		if (sched_energy_freq()) {
-			gov_cfs_update_cpu(target_cpu,
 				get_expected_capacity(target_cpu, NULL));
-		}
->>>>>>> WIP: sched/cpufreq_sched_cfs: add the get_expected_capacity function
 	}
 
 	local_irq_enable();
