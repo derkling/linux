@@ -5030,6 +5030,8 @@ get_boosted_cpu_usage(int cpu)
 	usage = get_cpu_usage(cpu);
 	margin = schedtune_cpu_margin(cpu, usage);
 
+	trace_sched_boost_cpu(cpu, usage, margin);
+
 	usage += margin;
 	return usage;
 }
