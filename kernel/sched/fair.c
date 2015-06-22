@@ -5154,18 +5154,6 @@ compare_group_capacity(struct sched_group *sg, struct sched_group *local)
 		 (local_total * sg->group_weight));
 }
 
-static int sg_nr_running_tasks(struct sched_group *group)
-{
-	int cpu, sum_nr_running = 0;
-
-	for_each_cpu(cpu, sched_group_cpus(group)) {
-		struct rq *rq = cpu_rq(cpu);
-		sum_nr_running += rq->nr_running;
-	}
-
-	return sum_nr_running;
-}
-
 /* This function returns the group with the CPUs having the
  * maximum capacity in the sched_domain. The group is only returned
  * if the number of tasks running in the group is less than or
@@ -5189,8 +5177,7 @@ struct sched_group* highest_capacity_group(struct sched_domain *sd) {
 
 	do {
 		int capacity = group_max_capacity(sg);
-		if ((capacity > highest_cap)
-		    && (sg_nr_running_tasks(sg) <= sg->group_weight)) {
+		if (capacity > highest_cap) {
 			highest = sg;
 			highest_cap = capacity;
 		}
@@ -5279,11 +5266,8 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 		 * because >= group_weight tasks are running on the group
 		 * use find_idlest_group to select the target group
 		 */
-		if (sd->flags & SD_FORK_HIGHEST_CAP) {
+		if (sd->flags & SD_FORK_HIGHEST_CAP)
 			group = highest_capacity_group(sd);
-			if (!group)
-				group = find_idlest_group(sd, p, cpu, sd_flag);
-		}
 		else
 			group = find_idlest_group(sd, p, cpu, sd_flag);
 
