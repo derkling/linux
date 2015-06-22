@@ -5473,6 +5473,8 @@ get_expected_capacity(int cpu, struct task_struct *task)
 
 	margin = schedtune_cpu_margin(cpu, capacity);
 
+	trace_sched_boost_cpu(cpu, capacity, margin);
+
 	capacity += margin;
 	return capacity;
 }
