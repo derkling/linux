@@ -5705,17 +5705,26 @@ unsigned long boosted_cpu_util(int cpu)
 	unsigned long util = cpu_rq(cpu)->cfs.avg.util_avg;
 	unsigned long capacity = capacity_orig_of(cpu);
 	int boost = schedtune_cpu_boost(cpu);
+	long margin = 0L;
 
 	/* Do not boost saturated utilizations */
-	if (boost >= 0 && util >= capacity)
+	if (boost >= 0 && util >= capacity) {
+		trace_sched_boost_cpu(cpu, capacity, 0);
 		return capacity;
+	}
 
 	/* Add margin to current CPU's capacity */
-	util += schedtune_cpu_margin(util, cpu);
-	if (util >= capacity)
-		return capacity;
+	margin = schedtune_cpu_margin(util, cpu);
 
-	return util;
+	/* Never boost more than original capacity */
+	if (util + margin >= capacity) {
+		trace_sched_boost_cpu(cpu, util, capacity - util);
+		return capacity;
+	}
+
+	trace_sched_boost_cpu(cpu, util, margin);
+
+	return util + margin;
 }
 
 static inline int task_util(struct task_struct *p)
