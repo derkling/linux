@@ -232,6 +232,14 @@ void schedtune_dequeue_task(struct task_struct *p, int cpu)
 	schedtune_tasks_update(p, cpu, idx, -1);
 }
 
+int schedtune_cpu_boost(int cpu)
+{
+	struct boost_groups *bg;
+
+	bg = &per_cpu(cpu_boost_groups, cpu);
+	return bg->boost_max;
+}
+
 static u64
 boost_read(struct cgroup_subsys_state *css, struct cftype *cft)
 {

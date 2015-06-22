@@ -4962,10 +4962,15 @@ schedtune_margin(unsigned long signal, unsigned long boost)
 }
 
 static inline unsigned int
-schedtune_cpu_margin(unsigned long usage)
+schedtune_cpu_margin(int cpu, unsigned long usage)
 {
-	unsigned int boost = get_sysctl_sched_cfs_boost();
+	unsigned int boost;
 
+#ifdef CONFIG_CGROUP_SCHEDTUNE
+	boost = schedtune_cpu_boost(cpu);
+#else
+	boost = get_sysctl_sched_cfs_boost();
+#endif
 	if (boost == 0)
 		return 0;
 
@@ -4975,7 +4980,7 @@ schedtune_cpu_margin(unsigned long usage)
 #else /* CONFIG_SCHED_TUNE */
 
 static inline unsigned int
-schedtune_cpu_margin(unsigned long usage)
+schedtune_cpu_margin(int cpu, unsigned long usage)
 {
 	return 0;
 }
@@ -4989,7 +4994,7 @@ get_boosted_cpu_usage(int cpu)
 	unsigned long margin;
 
 	usage = get_cpu_usage(cpu);
-	margin = schedtune_cpu_margin(usage);
+	margin = schedtune_cpu_margin(cpu, usage);
 
 	usage += margin;
 	return usage;
@@ -5170,7 +5175,6 @@ done:
  * capacity_curr (but not capacity_orig) as it useful for predicting the
  * capacity required after task migrations (scheduler-driven DVFS).
  */
-
 static int get_cpu_usage(int cpu)
 {
 	int sum;
