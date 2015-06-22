@@ -145,10 +145,9 @@ static void cpufreq_cfs_irq_work(struct irq_work *irq_work)
 void cpufreq_cfs_update_cpu(int cpu, unsigned long util)
 {
 	unsigned long util_new, util_old, util_max, capacity_new;
-	unsigned int freq_new, freq_tmp, cpu_tmp;
+	unsigned int freq_new, cpu_tmp;
 	struct cpufreq_policy *policy;
 	struct gov_data *gd;
-	struct cpufreq_frequency_table *pos;
 
 	/* handle rounding errors */
 	util_new = util > SCHED_LOAD_SCALE ? SCHED_LOAD_SCALE : util;
@@ -209,24 +208,6 @@ void cpufreq_cfs_update_cpu(int cpu, unsigned long util)
 	 */
 	capacity_new = util_new * capacity_margin >> SCHED_CAPACITY_SHIFT;
 	freq_new = (capacity_new * policy->max) / capacity_orig_of(cpu);
-
-	/*
-	 * If a frequency table is available then find the frequency
-	 * corresponding to freq_new.
-	 *
-	 * For cpufreq drivers without a frequency table, use the frequency
-	 * directly computed from capacity_new + 25% margin.
-	 */
-	if (policy->freq_table) {
-		freq_tmp = policy->max;
-		cpufreq_for_each_entry(pos, policy->freq_table) {
-			if (pos->frequency >= freq_new &&
-					pos->frequency < freq_tmp)
-				freq_tmp = pos->frequency;
-		}
-		freq_new = freq_tmp;
-		capacity_new = (freq_new << SCHED_CAPACITY_SHIFT) / policy->max;
-	}
 
 	/* No change in frequency? Bail and return current capacity. */
 	if (freq_new == policy->cur)
