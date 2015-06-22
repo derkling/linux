@@ -5477,14 +5477,17 @@ static inline unsigned long
 boosted_cpu_util(int cpu)
 {
 	unsigned long util;
+	unsigned long margin;
 
 	if (use_util_est())
 		util = cpu_util_est(cpu);
 	else
 		util = cpu_util(cpu);
-	util += schedtune_cpu_margin(util, cpu);
+	margin = schedtune_cpu_margin(util, cpu);
 
-	return util;
+	trace_sched_boost_cpu(cpu, util, margin);
+
+	return util + margin;
 }
 
 static inline unsigned long
