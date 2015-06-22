@@ -5329,20 +5329,48 @@ static inline unsigned long task_utilization(struct task_struct *p)
 #ifdef CONFIG_SCHED_TUNE
 
 static unsigned long
-schedtune_margin(unsigned long signal, unsigned long boost)
+schedtune_margin(unsigned long signal, unsigned long boost, int boostmode)
 {
 	unsigned long long margin = 0;
 
-	/*
-	 * Signal proportional compensation (SPC)
-	 *
-	 * The Boost (B) value is used to compute a Maring (M) which is
-	 * proportional to the complement of the original Signal (S):
-	 *   M = B * (1024-S)
-	 * The obtained M could be used by the caller to "boost" S.
-	 */
-	margin  = SCHED_LOAD_SCALE - signal;
-	margin *= boost;
+	switch (boostmode) {
+	case SCHEDTUNE_BOOSTMODE_SPC:
+		/*
+		 * Signal proportional compensation (SPC)
+		 *
+		 * The Boost (B) value is used to compute a Maring (M) which is
+		 * proportional to the complement of the original Signal (S):
+		 *   M = B * (1024-S)
+		 * The obtained M could be used by the caller to "boost" S.
+		 */
+		margin  = SCHED_LOAD_SCALE - signal;
+		margin *= boost;
+		break;
+	case SCHEDTUNE_BOOSTMODE_SPA:
+		/*
+		 * Signal proportional compensation (SPC)
+		 *
+		 * The Boost (B) value is used to compute a Maring (M) which is
+		 * proportional to the original Signal (S):
+		 *   M = B * S
+		 * The obtained M could be used by the caller to "boost" S.
+		 */
+		margin = signal;
+		margin *= boost;
+		break;
+	case SCHEDTUNE_BOOSTMODE_PSB:
+		/*
+		 * Proportional signal biasing (SPB)
+		 *
+		 * The Boost (B) value is used as a bias to to added to the
+		 * original Signal (S):
+		 *   M = B * 1024
+		 * The obtained M could be used by the caller to "boost" S.
+		 */
+		margin = SCHED_LOAD_SCALE;
+		margin *= boost;
+		break;
+	}
 
 	/*
 	 * Fast integer division by constant:
@@ -5369,6 +5397,7 @@ schedtune_task_margin(struct task_struct *task)
 	unsigned int boost;
 	unsigned long utilization;
 	unsigned long margin;
+	int boostmode;
 
 #ifdef CONFIG_CGROUP_SCHEDTUNE
 	boost = schedtune_taskgroup_boost(task);
@@ -5378,7 +5407,10 @@ schedtune_task_margin(struct task_struct *task)
 	if (boost == 0)
 		return 0;
 	utilization = task_utilization(task);
-	margin = schedtune_margin(utilization, boost);
+	boostmode = schedtune_taskgroup_boostmode(task);
+
+	margin = schedtune_margin(utilization, boost, boostmode);
+
 	return margin;
 }
 
@@ -5448,6 +5480,7 @@ schedtune_cpu_margin(int cpu, unsigned long usage)
 {
 	unsigned int boost;
 	unsigned long margin;
+	int boostmode;
 
 #ifdef CONFIG_CGROUP_SCHEDTUNE
 	boost = schedtune_cpu_boost(cpu);
@@ -5456,7 +5489,9 @@ schedtune_cpu_margin(int cpu, unsigned long usage)
 #endif
 	if (boost == 0)
 		return 0;
-	margin = schedtune_margin(usage, boost);
+	boostmode = schedtune_cpu_boostmode(task);
+
+	margin = schedtune_margin(usage, boost, boostmode);
 
 	return margin;
 }

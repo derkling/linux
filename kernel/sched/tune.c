@@ -183,6 +183,9 @@ struct schedtune {
 	/* Boost group allocated ID */
 	int idx;
 
+	/* The boosting strategy to use for tasks on that SchedTune CGroup */
+	int boostmode;
+
 	/* Boost value for tasks on that SchedTune CGroup */
 	int boost;
 
@@ -221,6 +224,7 @@ static inline struct schedtune *parent_st(struct schedtune *st)
 static struct schedtune
 root_schedtune = {
 	.boost			= 0,
+	.boostmode		= SCHEDTUNE_BOOSTMODE_NONE,
 	.perf_boost_idx 	= 0,
 	.perf_constrain_idx 	= 0,
 };
@@ -431,6 +435,51 @@ int schedtune_taskgroup_boost(struct task_struct *p)
 	return task_boost;
 }
 
+int schedtune_taskgroup_boostmode(struct task_struct *p)
+{
+	struct schedtune *ct;
+	int boostmode;
+
+	rcu_read_lock();
+	ct = task_schedtune(p);
+	boostmode = ct->boostmode;
+	rcu_read_unlock();
+
+	return boostmode;
+}
+
+static u64
+boostmode_read(struct cgroup_subsys_state *css, struct cftype *cft)
+{
+	struct schedtune *st = css_st(css);
+	return st->boostmode;
+}
+
+static int
+boostmode_write(struct cgroup_subsys_state *css, struct cftype *cft,
+			  u64 boostmode)
+{
+	struct schedtune *st = css_st(css);
+	int err = 0;
+
+	if (boostmode < SCHEDTUNE_BOOSTMODE_NONE ||
+		boostmode >= SCHEDTUNE_BOOSTMODE_COUNT) {
+		err = -EINVAL;
+		goto out;
+	}
+
+	st->boostmode = boostmode;
+
+	trace_sched_tune_config(st->boost, st->boostmode,
+			threshold_gains[st->perf_boost_idx].nrg_gain,
+			threshold_gains[st->perf_boost_idx].cap_gain,
+			threshold_gains[st->perf_constrain_idx].nrg_gain,
+			threshold_gains[st->perf_constrain_idx].cap_gain);
+
+out:
+	return err;
+}
+
 int schedtune_cpu_boost(int cpu)
 {
 	struct boost_groups *bg;
@@ -472,7 +521,7 @@ boost_write(struct cgroup_subsys_state *css, struct cftype *cft,
 	/* Update CPU boost */
 	schedtune_boostgroup_update(st->idx, st->boost);
 
-	trace_sched_tune_config(st->boost,
+	trace_sched_tune_config(st->boost, st->boostmode,
 			threshold_gains[st->perf_boost_idx].nrg_gain,
 			threshold_gains[st->perf_boost_idx].cap_gain,
 			threshold_gains[st->perf_constrain_idx].nrg_gain,
@@ -487,6 +536,11 @@ static struct cftype files[] = {
 		.name = "boost",
 		.read_u64 = boost_read,
 		.write_u64 = boost_write,
+	},
+	{
+		.name = "boostmode",
+		.read_u64 = boostmode_read,
+		.write_u64 = boostmode_write,
 	},
 	{ }	/* terminate */
 };
