@@ -160,6 +160,8 @@ unsigned long cpufreq_cfs_update_cpu(int cpu, unsigned long util)
 
 	/* avoid locking policy for now; accessing .cpus only */
 	policy = per_cpu(pcpu_policy, cpu);
+	if (!policy)
+		return capacity_of(cpu);
 
 	/* find max utilization of cpus in this policy */
 	util_max = 0;
