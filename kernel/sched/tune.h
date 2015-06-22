@@ -5,6 +5,18 @@ extern int schedtune_normalize_energy(int energy);
 
 #ifdef CONFIG_CGROUP_SCHEDTUNE
 
+enum schedtune_boostmode {
+	SCHEDTUNE_BOOSTMODE_NONE = 0,
+
+	SCHEDTUNE_BOOSTMODE_SPC,
+	SCHEDTUNE_BOOSTMODE_SPA,
+	SCHEDTUNE_BOOSTMODE_PSB,
+
+	/* Must be last entry */
+	SCHEDTUNE_BOOSTMODE_COUNT,
+};
+extern int schedtune_taskgroup_boostmode(struct task_struct *tsk);
+
 extern int schedtune_taskgroup_boost(struct task_struct *tsk);
 extern int schedtune_cpu_boost(int cpu);
 
