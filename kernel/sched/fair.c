@@ -4400,6 +4400,8 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		update_rq_runnable_avg(rq, 1);
 	}
 
+	schedtune_dequeue_task(p, cpu_of(rq));
+
 	if(sched_energy_freq())
 		cpufreq_cfs_update_cpu(cpu_of(rq),
 			get_expected_capacity(cpu_of(rq), NULL));
@@ -5819,6 +5821,15 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	}
 unlock:
 	rcu_read_unlock();
+
+	/*
+	 * @Morten: This call is going to be moved into enqueue_task_fair()
+	 * which should fix a bug on "schedtune" (i.e. we do not account the
+	 * enqueue of CPU pinned tasks) as well as to fit better for scheddvfs
+	 * to update the CPU freq... I'll update this patch hopefully by the
+	 * end of this week and/or next integration branch release.
+	 */
+	schedtune_enqueue_task(p, new_cpu);
 
 	if(sched_energy_freq()) {
 		unsigned long new_capacity;
