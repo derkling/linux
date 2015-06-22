@@ -17,6 +17,7 @@
 #include <dt-bindings/reset-controller/mt8173-resets.h>
 #include <dt-bindings/power/mt8173-power.h>
 #include "mt8173-pinfunc.h"
+#include <dt-bindings/thermal/thermal.h>
 
 / {
 	compatible = "mediatek,mt8173";
@@ -187,21 +188,97 @@
 	};
 
         thermal-zones {
-                cpu_thermal: cpu_thermal {
+                cpu_thermal0: cpu_thermal0 {
                         polling-delay-passive = <1000>; /* milliseconds */
                         polling-delay = <0>; /* milliseconds */
 
                         thermal-sensors = <&thermal 0>;
 
                         trips {
-                                cpu_passive: cpu_passive {
-                                        temperature = <47000>; /* millicelsius */
+                                cpu_passive0: cpu_passive0 {
+                                        temperature = <68000>; /* millicelsius */
+                                        hysteresis = <2000>; /* millicelsius */
+                                        type = "passive";
+                                };
+                                cpu_crit0 {
+                                        temperature = <100000>; /* millicelsius */
+                                        hysteresis = <2000>; /* millicelsius */
+                                        type = "critical";
+                                };
+                        };
+
+			cooling-maps {
+				map0 {
+					trip = <&cpu_passive0>;
+					cooling-device = <&cpu0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+				};
+			};
+                };
+
+                cpu_thermal1: cpu_thermal1 {
+                        polling-delay-passive = <1000>; /* milliseconds */
+                        polling-delay = <0>; /* milliseconds */
+
+                        thermal-sensors = <&thermal 1>;
+
+                        trips {
+                                cpu_passive1: cpu_passive1 {
+                                        temperature = <68000>; /* millicelsius */
                                         hysteresis = <2000>; /* millicelsius */
                                         type = "passive";
                                 };
 
-                                cpu_crit {
-                                        temperature = <90000>; /* millicelsius */
+                                cpu_crit1 {
+                                        temperature = <100000>; /* millicelsius */
+                                        hysteresis = <2000>; /* millicelsius */
+                                        type = "critical";
+                                };
+                        };
+                };
+
+                cpu_thermal2: cpu_thermal2 {
+                        polling-delay-passive = <1000>; /* milliseconds */
+                        polling-delay = <0>; /* milliseconds */
+
+                        thermal-sensors = <&thermal 2>;
+
+                        trips {
+                                cpu_passive2: cpu_passive2 {
+                                        temperature = <68000>; /* millicelsius */
+                                        hysteresis = <2000>; /* millicelsius */
+                                        type = "passive";
+                                };
+
+                                cpu_crit2 {
+                                        temperature = <100000>; /* millicelsius */
+                                        hysteresis = <2000>; /* millicelsius */
+                                        type = "critical";
+                                };
+			};
+
+                        cooling-maps {
+                                map2 {
+                                        trip = <&cpu_passive2>;
+                                        cooling-device = <&cpu2 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+                                };
+                        };
+                };
+
+                cpu_thermal3: cpu_thermal3 {
+                        polling-delay-passive = <1000>; /* milliseconds */
+                        polling-delay = <0>; /* milliseconds */
+
+                        thermal-sensors = <&thermal 3>;
+
+                        trips {
+                                cpu_passive3: cpu_passive3 {
+                                        temperature = <68000>; /* millicelsius */
+                                        hysteresis = <2000>; /* millicelsius */
+                                        type = "passive";
+                                };
+
+                                cpu_crit3 {
+                                        temperature = <100000>; /* millicelsius */
                                         hysteresis = <2000>; /* millicelsius */
                                         type = "critical";
                                 };
