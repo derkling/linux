@@ -655,6 +655,27 @@ TRACE_EVENT(sched_load_avg_task,
 		  (unsigned int)__entry->util_sum,
 		  (unsigned int)__entry->period_contrib)
 );
+
+/*
+ * Tracepoint for sched_tune_config settings
+ */
+TRACE_EVENT(sched_tune_config,
+
+	TP_PROTO(int boost),
+
+	TP_ARGS(boost),
+
+	TP_STRUCT__entry(
+		__field( int,	boost		)
+	),
+
+	TP_fast_assign(
+		__entry->boost 	= boost;
+	),
+
+	TP_printk("boost=%d ", __entry->boost)
+);
+
 #endif /* _TRACE_SCHED_H */
 
 /* This part must be outside protection */
