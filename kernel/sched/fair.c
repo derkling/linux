@@ -5507,6 +5507,8 @@ get_boosted_cpu_usage(int cpu)
 		return SCHED_LOAD_SCALE;
 	margin = schedtune_cpu_margin(cpu, capacity);
 
+	trace_sched_boost_cpu(cpu, capacity, margin);
+
 	capacity += margin;
 	return capacity;
 }
