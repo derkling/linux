@@ -5108,12 +5108,16 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 						cpumask_test_cpu(eenv->src_cpu, sched_group_cpus(sg))) {
 						eenv->cap.before = sg->sge->cap_states[cap_idx].cap;
 						eenv->cap.delta -= eenv->cap.before;
+						trace_printk("schedtune_cap_before: cpu=%d cap_idx=%d cap=%d delta=%d\n",
+								eenv->src_cpu, cap_idx, eenv->cap.before, eenv->cap.delta);
 					}
 					/* Add capacity of dst CPU  (after task move) */
 					if (eenv->usage_delta != 0 &&
 						cpumask_test_cpu(eenv->dst_cpu, sched_group_cpus(sg))) {
 						eenv->cap.after = sg->sge->cap_states[cap_idx].cap;
 						eenv->cap.delta += eenv->cap.after;
+						trace_printk("schedtune_cap_after: cpu=%d cap_idx=%d cap=%d delta=%d\n",
+								eenv->dst_cpu, cap_idx, eenv->cap.after, eenv->cap.delta);
 					}
 				}
 
