@@ -4400,6 +4400,8 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		update_rq_runnable_avg(rq, 1);
 	}
 
+	schedtune_dequeue_task(p, cpu_of(rq));
+
 	if(sched_energy_freq()) {
 		/*
 		 * Ask for an update only if we are not going idle.
@@ -4889,6 +4891,7 @@ struct energy_env {
 	int			dst_cpu;
 	int			energy;
 	int			energy_payoff;
+	struct task_struct	*task;
 	struct {
 		int before;
 		int after;
@@ -5073,12 +5076,16 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 						cpumask_test_cpu(eenv->src_cpu, sched_group_cpus(sg))) {
 						eenv->cap.before = sg->sge->cap_states[cap_idx].cap;
 						eenv->cap.delta -= eenv->cap.before;
+						trace_printk("gtk_cap_before: cpu=%d cap_idx=%d cap=%d delta=%d\n",
+								eenv->src_cpu, cap_idx, eenv->cap.before, eenv->cap.delta);
 					}
 					/* Add capacity of dst CPU  (after task move) */
 					if (eenv->usage_delta != 0 &&
 						cpumask_test_cpu(eenv->dst_cpu, sched_group_cpus(sg))) {
 						eenv->cap.after = sg->sge->cap_states[cap_idx].cap;
 						eenv->cap.delta += eenv->cap.after;
+						trace_printk("gtk_cap_after: cpu=%d cap_idx=%d cap=%d delta=%d\n",
+								eenv->dst_cpu, cap_idx, eenv->cap.after, eenv->cap.delta);
 					}
 				}
 
@@ -5115,7 +5122,11 @@ static int energy_diff_evaluate(struct energy_env *eenv)
 	int nrg_delta;
 
 	/* Return energy diff when boost margin is 0 */
+#ifdef CONFIG_CGROUP_SCHEDTUNE
+	boost = schedtune_taskgroup_boost(eenv->task);
+#else
 	boost = get_sysctl_sched_cfs_boost();
+#endif
 	if (boost == 0)
 		return eenv->nrg.diff;
 
@@ -5123,9 +5134,16 @@ static int energy_diff_evaluate(struct energy_env *eenv)
 	nrg_delta = schedtune_normalize_energy(eenv->nrg.diff);
 	eenv->nrg.delta = nrg_delta;
 
+#ifdef CONFIG_CGROUP_SCHEDTUNE
+	eenv->energy_payoff = schedtune_accept_deltas(
+			eenv->nrg.delta,
+			eenv->cap.delta,
+			eenv->task);
+#else
 	eenv->energy_payoff = schedtune_accept_deltas(
 			eenv->nrg.delta,
 			eenv->cap.delta);
+#endif
 
 	/*
 	 * When SchedTune is enabled, the energy_diff() function will return
@@ -5140,6 +5158,7 @@ static int energy_diff_evaluate(struct energy_env *eenv)
 #else /* CONFIG_SCHED_TUNE */
 #define energy_diff_evaluate(eenv) eenv->nrg.diff
 #endif
+
 
 /*
  * energy_diff(): Estimate the energy impact of changing the utilization
@@ -5203,6 +5222,11 @@ static int energy_diff(struct energy_env *eenv)
 	eenv->energy_payoff = 0;
 
 	result = energy_diff_evaluate(eenv);
+	trace_sched_energy_diff(eenv->task,
+			eenv->src_cpu, eenv->dst_cpu, eenv->usage_delta,
+			eenv->nrg.before, eenv->nrg.after, eenv->nrg.diff,
+			eenv->cap.before, eenv->cap.after, eenv->cap.delta,
+			eenv->nrg.delta, eenv->energy_payoff);
 
 	return result;
 }
@@ -5350,11 +5374,32 @@ schedtune_task_margin(struct task_struct *task)
 	unsigned int boost;
 	unsigned long utilization;
 	unsigned long margin;
+	/* int boostmode; */
+
+#ifdef CONFIG_CGROUP_SCHEDTUNE
+	boost = schedtune_taskgroup_boost(task);
+#else
 	boost = get_sysctl_sched_cfs_boost();
+#endif
 	if (boost == 0)
 		return 0;
+	/* if (margin == 0) { */
+	/* 	trace_printk("schedtune_task_margin: task=%s utilization=-1 boost=-1\n", */
+	/* 		task->pid); */
+	/* 	return 0; */
+	/* } */
+
 	utilization = task_utilization(task);
+	/* boostmode = schedtune_taskgroup_boostmode(task); */
+
 	margin = schedtune_margin(utilization, boost);
+	/* margin = schedtune_marginn(utilization, boost, boostmode); */
+
+	/* trace_printk("task=%d utilizaton=%lu boostmode=%d margin=%lu\n", */
+	/* 		task->pid, utilization, boostmode, margin); */
+	trace_printk("task=%d utilization=%lu margin=%lu\n",
+			task->pid, utilization, margin);
+
 	return margin;
 }
 
@@ -5372,6 +5417,8 @@ get_boosted_task_utilization(struct task_struct *task)
 	 */
 	if (!task_rq(task)->rd->overutilized)
 		margin = schedtune_task_margin(task);
+
+	trace_sched_boost_task(task, utilization, margin);
 
 	utilization += margin;
 	return utilization;
@@ -5422,11 +5469,28 @@ schedtune_cpu_margin(int cpu, unsigned long usage)
 {
 	unsigned int boost;
 	unsigned long margin;
+	/* int boostmode; */
 
+#ifdef CONFIG_CGROUP_SCHEDTUNE
+	boost = schedtune_cpu_boost(cpu);
+#else
 	boost = get_sysctl_sched_cfs_boost();
+#endif
 	if (boost == 0)
 		return 0;
+	/* if (margin == 0) { */
+	/* 	trace_printk("schedtune_cpu_boost: usage=%lu boostmode=-1 boost=-1\n", usage); */
+	/* 	return 0; */
+	/* } */
+
+	/* boostmode = schedtune_schedtune_cpu_marginmode(task); */
+	/* boost = schedtune_boost(usage, margin, boostmode); */
 	margin = schedtune_margin(usage, boost);
+
+	/* trace_printk("schedtune_cpu_margin: usage=%lu boostmode=%d margin=%lu\n", */
+	/* 		usage, boostmode, margin); */
+	trace_printk("schedtune_cpu_margin: usage=%lu margin=%lu\n",
+			usage, margin);
 
 	return margin;
 }
@@ -5454,6 +5518,8 @@ get_expected_capacity(int cpu, struct task_struct *task)
 		return SCHED_LOAD_SCALE;
 
 	margin = schedtune_cpu_margin(cpu, capacity);
+
+	trace_sched_boost_cpu(cpu, capacity, margin);
 
 	capacity += margin;
 	return capacity;
@@ -5697,6 +5763,7 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 			.usage_delta	= task_utilization(p),
 			.src_cpu	= task_cpu(p),
 			.dst_cpu	= target_cpu,
+			.task		= p,
 		};
 
 		/* Not enough spare capacity on previous cpu */
@@ -5811,6 +5878,8 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 unlock:
 	rcu_read_unlock();
 
+	schedtune_enqueue_task(p, new_cpu);
+
 	/*
 	 * If the task is put to run on prev_cpu it is already contributing
 	 * to prev_cpu's blocked_utilization (don't double account for it
@@ -5827,6 +5896,7 @@ unlock:
 
 	return new_cpu;
 }
+
 
 /*
  * Called immediately before a task is migrated to a new cpu; task_cpu(p) and

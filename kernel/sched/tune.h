@@ -2,11 +2,47 @@
 #ifdef CONFIG_SCHED_TUNE
 
 extern int schedtune_normalize_energy(int energy);
+
+#ifdef CONFIG_CGROUP_SCHEDTUNE
+
+// enum schedtune_boostmode {
+// 	SCHEDTUNE_BOOSTMODE_NONE = 0,
+//
+// 	SCHEDTUNE_BOOSTMODE_SPC,
+// 	SCHEDTUNE_BOOSTMODE_SPA,
+// 	SCHEDTUNE_BOOSTMODE_PSB,
+//
+// 	/* Must be last entry */
+// 	SCHEDTUNE_BOOSTMODE_COUNT,
+// };
+// extern int schedtune_taskgroup_boostmode(struct task_struct *tsk);
+// extern int schedtune_root_boostmode(void);
+// extern int schedtune_root_boost(void);
+
+extern int schedtune_taskgroup_boost(struct task_struct *tsk);
+extern int schedtune_cpu_boost(int cpu);
+
+extern int schedtune_enqueue_task(struct task_struct *p, int cpu);
+extern int schedtune_dequeue_task(struct task_struct *p, int cpu);
+
+extern int schedtune_accept_deltas(int nrg_delta, int cap_delta,
+		struct task_struct *task);
+
+#else /* CONFIG_CGROUP_SCHEDTUNE */
+
 extern int schedtune_accept_deltas(int nrg_delta, int cap_delta);
+
+#define schedtune_enqueue_task(task, cpu) while(0){}
+#define schedtune_dequeue_task(task, cpu) while(0){}
+
+#endif /* CONFIG_CGROUP_SCHEDTUNE */
 
 #else /* CONFIG_SCHED_TUNE */
 
 #define schedtune_normalize_energy(energy) energy
 #define schedtune_accept_deltas(nrg_delta, cap_delta) nrg_delta
+
+#define schedtune_enqueue_task(task, cpu) while(0){}
+#define schedtune_dequeue_task(task, cpu) while(0){}
 
 #endif /* CONFIG_SCHED_TUNE */
