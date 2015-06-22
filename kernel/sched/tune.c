@@ -3,6 +3,7 @@
 #include <linux/kernel.h>
 #include <linux/percpu.h>
 #include <linux/printk.h>
+#include <linux/rcupdate.h>
 #include <linux/slab.h>
 
 #include "sched.h"
@@ -339,6 +340,56 @@ schedtune_boostgroup_update(int idx, int boost)
 	}
 
 	return 0;
+}
+
+static int
+schedtune_tasks_update(struct task_struct *p, int cpu, int task_count)
+{
+	struct boost_groups *bg;
+	struct schedtune *st;
+	int tasks;
+	int idx;
+
+	/* Get task boost group */
+	rcu_read_lock();
+	st = task_schedtune(p);
+	idx = st->idx;
+	rcu_read_unlock();
+
+	bg = &per_cpu(cpu_boost_groups, cpu);
+
+	/* Update boosted tasks count while avoiding to make it negative */
+	if (task_count < 0 && bg->group[idx].tasks <= -task_count)
+		bg->group[idx].tasks = 0;
+	else
+		bg->group[idx].tasks += task_count;
+
+	/* Boost group activation or deactivation on that RQ */
+	tasks = bg->group[idx].tasks;
+	if (tasks == 1 || tasks == 0)
+		schedtune_cpu_update(cpu);
+
+	return 0;
+}
+
+/*
+ * NOTE: This function must be called while holding the lock on the CPU RQ
+ */
+int schedtune_enqueue_task(struct task_struct *p, int cpu)
+{
+	int result;
+	result = schedtune_tasks_update(p, cpu, 1);
+	return result;
+}
+
+/*
+ * NOTE: This function must be called while holding the lock on the CPU RQ
+ */
+int schedtune_dequeue_task(struct task_struct *p, int cpu)
+{
+	int result;
+	result = schedtune_tasks_update(p, cpu, -1);
+	return result;
 }
 
 static u64
