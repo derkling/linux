@@ -5323,10 +5323,37 @@ static inline bool task_fits_cpu(struct task_struct *p, int cpu)
 	return __task_fits(p, cpu, get_cpu_usage(cpu));
 }
 
+#ifdef CONFIG_SCHED_TUNE
+
+static unsigned int
+schedtune_cpu_margin(int cpu, unsigned long usage)
+{
+	unsigned int boost;
+	unsigned long margin;
+
+	boost = get_sysctl_sched_cfs_boost();
+	if (boost == 0)
+		return 0;
+	margin = schedtune_margin(usage, boost);
+
+	return margin;
+}
+
+#else /* CONFIG_SCHED_TUNE */
+
+static unsigned int
+schedtune_cpu_margin(int cpu, unsigned long usage)
+{
+	return 0;
+}
+
+#endif /* CONFIG_SCHED_TUNE */
+
 unsigned long
 get_expected_capacity(int cpu, struct task_struct *task)
 {
 	unsigned long capacity;
+	unsigned long margin;
 
 	capacity = get_cpu_usage(cpu);
 	if (task != NULL)
@@ -5334,6 +5361,9 @@ get_expected_capacity(int cpu, struct task_struct *task)
 	if (capacity > SCHED_LOAD_SCALE)
 		return SCHED_LOAD_SCALE;
 
+	margin = schedtune_cpu_margin(cpu, capacity);
+
+	capacity += margin;
 	return capacity;
 }
 
