@@ -1488,12 +1488,9 @@ static inline bool sched_energy_freq(void)
 }
 
 #ifdef CONFIG_CPU_FREQ_GOV_CFS
-unsigned long cpufreq_cfs_update_cpu(int cpu, unsigned long util);
+void cpufreq_cfs_update_cpu(int cpu, unsigned long util);
 #else
-static inline unsigned long cpufreq_cfs_update_cpu(int cpu, unsigned long util)
-{
-	return SCHED_LOAD_SCALE;
-}
+static inline void cpufreq_cfs_update_cpu(int cpu, unsigned long util) { }
 #endif
 
 static inline void sched_rt_avg_update(struct rq *rq, u64 rt_delta)
@@ -1504,10 +1501,7 @@ static inline void sched_rt_avg_update(struct rq *rq, u64 rt_delta)
 #else
 static inline void sched_rt_avg_update(struct rq *rq, u64 rt_delta) { }
 static inline void sched_avg_update(struct rq *rq) { }
-static inline unsigned long cpufreq_cfs_update_cpu(int cpu, unsigned long util)
-{
-	return SCHED_LOAD_SCALE;
-}
+static inline void cpufreq_cfs_update_cpu(int cpu, unsigned long util) { }
 #endif
 
 extern void start_bandwidth_timer(struct hrtimer *period_timer, ktime_t period);
