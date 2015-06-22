@@ -330,6 +330,8 @@ schedtune_boostgroup_update(int idx, int boost)
 	int old_boost;
 	int cpu;
 
+	trace_printk("bgr_update: idx=%d boost=%d\n", idx, boost);
+
 	/* Update per CPU boost groups */
 	for_each_possible_cpu(cpu) {
 		bg = &per_cpu(cpu_boost_groups, cpu);
@@ -348,6 +350,7 @@ schedtune_boostgroup_update(int idx, int boost)
 		/* Check if this update increase current max */
 		if (boost > cur_boost_max && bg->group[idx].tasks) {
 			bg->boost_max = boost;
+			trace_printk("cpu_update: cpu=%d max_boost=%d\n", cpu, boost);
 			continue;
 		}
 
@@ -355,6 +358,8 @@ schedtune_boostgroup_update(int idx, int boost)
 		if (cur_boost_max == old_boost && old_boost > boost) {
 			schedtune_cpu_update(cpu);
 		}
+
+		trace_printk("cpu_update: cpu=%d max_boost=%d\n", cpu, bg->boost_max);
 	}
 
 	return 0;
