@@ -249,6 +249,18 @@ out:
 	return capacity_new;
 }
 
+static inline void set_sched_energy_freq(void)
+{
+	if (!sched_energy_freq())
+		static_key_slow_inc(&__sched_energy_freq);
+}
+
+static inline void clear_sched_energy_freq(void)
+{
+	if (sched_energy_freq())
+		static_key_slow_dec(&__sched_energy_freq);
+}
+
 static void cpufreq_cfs_start(struct cpufreq_policy *policy)
 {
 	struct gov_data *gd;
@@ -285,12 +297,14 @@ static void cpufreq_cfs_start(struct cpufreq_policy *policy)
 	init_irq_work(&gd->irq_work, cpufreq_cfs_irq_work);
 	policy->governor_data = gd;
 	gd->policy = policy;
+	set_sched_energy_freq();
 }
 
 static void cpufreq_cfs_stop(struct cpufreq_policy *policy)
 {
 	struct gov_data *gd;
 
+	clear_sched_energy_freq();
 	gd = policy->governor_data;
 	kthread_stop(gd->task);
 
