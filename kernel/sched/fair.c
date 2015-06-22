@@ -4282,11 +4282,7 @@ static inline void hrtick_update(struct rq *rq)
 #endif
 
 static bool cpu_overutilized(int cpu);
-
-static inline bool sched_energy_freq(void)
-{
-	return sched_feat(SCHED_ENERGY_FREQ);
-}
+struct static_key __sched_energy_freq __read_mostly = STATIC_KEY_INIT_FALSE;
 
 /*
  * The enqueue_task method is called before nr_running is
