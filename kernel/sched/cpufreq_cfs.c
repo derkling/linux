@@ -143,7 +143,7 @@ static void cpufreq_cfs_irq_work(struct irq_work *irq_work)
  * Returns the newly chosen capacity. Note that this may not reflect reality if
  * the hardware fails to transition to this new capacity state.
  */
-unsigned long cpufreq_cfs_update_cpu(int cpu, unsigned long util)
+void cpufreq_cfs_update_cpu(int cpu, unsigned long util)
 {
 	unsigned long util_new, util_old, util_max, capacity_new;
 	unsigned int freq_new, freq_tmp, cpu_tmp;
@@ -161,7 +161,7 @@ unsigned long cpufreq_cfs_update_cpu(int cpu, unsigned long util)
 	/* avoid locking policy for now; accessing .cpus only */
 	policy = per_cpu(pcpu_policy, cpu);
 	if (!policy)
-		return capacity_of(cpu);
+		return;
 
 	/* find max utilization of cpus in this policy */
 	util_max = 0;
@@ -179,7 +179,7 @@ unsigned long cpufreq_cfs_update_cpu(int cpu, unsigned long util)
 	 * capacity.
 	 */
 	if (util_max > util_new)
-		return capacity_of(cpu);
+		return;
 
 	/*
 	 * We are going to request a new capacity, which might result in a new
@@ -187,21 +187,17 @@ unsigned long cpufreq_cfs_update_cpu(int cpu, unsigned long util)
 	 * policy and the governor private data.
 	 */
 	policy = cpufreq_cpu_get(cpu);
-	if (IS_ERR_OR_NULL(policy)) {
-		return capacity_of(cpu);
-	}
+	if (IS_ERR_OR_NULL(policy))
+		return;
 
-	capacity_new = capacity_of(cpu);
-	if (!policy->governor_data) {
+	if (!policy->governor_data)
 		goto out;
-	}
 
 	gd = policy->governor_data;
 
 	/* bail early if we are throttled */
-	if (ktime_before(ktime_get(), gd->throttle)) {
+	if (ktime_before(ktime_get(), gd->throttle))
 		goto out;
-	}
 
 	/*
 	 * Convert the new maximum capacity utilization into a cpu frequency
@@ -233,10 +229,8 @@ unsigned long cpufreq_cfs_update_cpu(int cpu, unsigned long util)
 	}
 
 	/* No change in frequency? Bail and return current capacity. */
-	if (freq_new == policy->cur) {
-		capacity_new = capacity_of(cpu);
+	if (freq_new == policy->cur)
 		goto out;
-	}
 
 	/* store the new frequency and kick the thread */
 	gd->freq = freq_new;
@@ -246,7 +240,7 @@ unsigned long cpufreq_cfs_update_cpu(int cpu, unsigned long util)
 
 out:
 	cpufreq_cpu_put(policy);
-	return capacity_new;
+	return;
 }
 
 static inline void set_sched_energy_freq(void)
