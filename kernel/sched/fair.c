@@ -4399,6 +4399,8 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		update_rq_runnable_avg(rq, 1);
 	}
 
+	schedtune_dequeue_task(p, cpu_of(rq));
+
 	if(sched_energy_freq()) {
 		/*
 		 * Ask for an update only if we are not going idle.
@@ -5815,6 +5817,8 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	}
 unlock:
 	rcu_read_unlock();
+
+	schedtune_enqueue_task(p, new_cpu);
 
 	/*
 	 * If the task is put to run on prev_cpu it is already contributing
