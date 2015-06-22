@@ -1481,6 +1481,12 @@ static inline unsigned long capacity_of(int cpu)
 	return cpu_rq(cpu)->cpu_capacity;
 }
 
+extern struct static_key __sched_energy_freq;
+static inline bool sched_energy_freq(void)
+{
+	return static_key_false(&__sched_energy_freq);
+}
+
 #ifdef CONFIG_CPU_FREQ_GOV_CFS
 unsigned long cpufreq_cfs_update_cpu(int cpu, unsigned long util);
 #else
