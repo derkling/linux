@@ -4917,6 +4917,7 @@ struct energy_env {
 	int			dst_cpu;
 	int			energy;
 	int			energy_payoff;
+	struct task_struct	*task;
 	struct {
 		int before;
 		int after;
@@ -5141,7 +5142,11 @@ static int energy_diff_evaluate(struct energy_env *eenv)
 	int nrg_delta;
 
 	/* Return energy diff when boost margin is 0 */
+#ifdef CONFIG_CGROUP_SCHEDTUNE
+	boost = schedtune_taskgroup_boost(eenv->task);
+#else
 	boost = get_sysctl_sched_cfs_boost();
+#endif
 	if (boost == 0)
 		return eenv->nrg.diff;
 
@@ -5384,7 +5389,11 @@ schedtune_task_margin(struct task_struct *task)
 	unsigned long utilization;
 	unsigned long margin;
 
+#ifdef CONFIG_CGROUP_SCHEDTUNE
+	boost = schedtune_taskgroup_boost(task);
+#else
 	boost = get_sysctl_sched_cfs_boost();
+#endif
 	if (boost == 0)
 		return 0;
 
@@ -5455,12 +5464,16 @@ static inline bool task_fits_cpu(struct task_struct *p, int cpu)
 #ifdef CONFIG_SCHED_TUNE
 
 static inline unsigned int
-schedtune_cpu_margin(unsigned long usage)
+schedtune_cpu_margin(int cpu, unsigned long usage)
 {
 	unsigned int boost;
 	unsigned long margin;
 
+#ifdef CONFIG_CGROUP_SCHEDTUNE
+	boost = schedtune_cpu_boost(cpu);
+#else
 	boost = get_sysctl_sched_cfs_boost();
+#endif
 	if (boost == 0)
 		return 0;
 	margin = schedtune_margin(usage, boost);
@@ -5471,7 +5484,7 @@ schedtune_cpu_margin(unsigned long usage)
 #else /* CONFIG_SCHED_TUNE */
 
 static inline unsigned int
-schedtune_cpu_margin(unsigned long usage)
+schedtune_cpu_margin(int cpu, unsigned long usage)
 {
 	return 0;
 }
@@ -5485,7 +5498,7 @@ get_boosted_cpu_usage(int cpu)
 	unsigned long margin;
 
 	usage = get_cpu_usage(cpu);
-	margin = schedtune_cpu_margin(usage);
+	margin = schedtune_cpu_margin(cpu, usage);
 
 	usage += margin;
 	return usage;
@@ -5729,6 +5742,7 @@ static int energy_aware_wake_cpu(struct task_struct *p)
 			.usage_delta	= task_utilization(p),
 			.src_cpu	= task_cpu(p),
 			.dst_cpu	= target_cpu,
+			.task		= p,
 		};
 
 		/* Not enough spare capacity on previous cpu */
