@@ -5,6 +5,8 @@
 #include <linux/rcupdate.h>
 #include <linux/slab.h>
 
+#include <trace/events/sched.h>
+
 #include "sched.h"
 
 unsigned int sysctl_sched_cfs_boost __read_mostly = 0;
@@ -283,6 +285,8 @@ boost_write(struct cgroup_subsys_state *css, struct cftype *cft,
 
 	/* Update CPU boost */
 	schedtune_boostgroup_update(st->idx, st->boost);
+
+	trace_sched_tune_config(st->boost);
 
 out:
 	return err;
