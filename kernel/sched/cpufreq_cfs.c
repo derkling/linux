@@ -161,7 +161,7 @@ unsigned long cpufreq_cfs_update_cpu(int cpu, unsigned long util)
 	/* avoid locking policy for now; accessing .cpus only */
 	policy = per_cpu(pcpu_policy, cpu);
 	if (!policy)
-		return capacity_of(cpu);
+		return capacity_curr_of(cpu);
 
 	/* find max utilization of cpus in this policy */
 	util_max = 0;
@@ -179,7 +179,7 @@ unsigned long cpufreq_cfs_update_cpu(int cpu, unsigned long util)
 	 * capacity.
 	 */
 	if (util_max > util_new)
-		return capacity_of(cpu);
+		return capacity_curr_of(cpu);
 
 	/*
 	 * We are going to request a new capacity, which might result in a new
@@ -188,10 +188,10 @@ unsigned long cpufreq_cfs_update_cpu(int cpu, unsigned long util)
 	 */
 	policy = cpufreq_cpu_get(cpu);
 	if (IS_ERR_OR_NULL(policy)) {
-		return capacity_of(cpu);
+		return capacity_curr_of(cpu);
 	}
 
-	capacity_new = capacity_of(cpu);
+	capacity_new = capacity_curr_of(cpu);
 	if (!policy->governor_data) {
 		goto out;
 	}
@@ -234,7 +234,7 @@ unsigned long cpufreq_cfs_update_cpu(int cpu, unsigned long util)
 
 	/* No change in frequency? Bail and return current capacity. */
 	if (freq_new == policy->cur) {
-		capacity_new = capacity_of(cpu);
+		capacity_new = capacity_curr_of(cpu);
 		goto out;
 	}
 
