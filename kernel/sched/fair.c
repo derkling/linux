@@ -4773,10 +4773,15 @@ schedtune_margin(unsigned long signal, unsigned long boost)
 }
 
 static inline unsigned int
-schedtune_cpu_margin(unsigned long usage)
+schedtune_cpu_margin(int cpu, unsigned long usage)
 {
-	unsigned int boost = get_sysctl_sched_cfs_boost();
+	unsigned int boost;
 
+#ifdef CONFIG_CGROUP_SCHEDTUNE
+	boost = schedtune_cpu_boost(cpu);
+#else
+	boost = get_sysctl_sched_cfs_boost();
+#endif
 	if (boost == 0)
 		return 0;
 
@@ -4786,7 +4791,7 @@ schedtune_cpu_margin(unsigned long usage)
 #else /* CONFIG_SCHED_TUNE */
 
 static inline unsigned int
-schedtune_cpu_margin(unsigned long usage)
+schedtune_cpu_margin(int cpu, unsigned long usage)
 {
 	return 0;
 }
@@ -4797,11 +4802,11 @@ static inline unsigned long
 boosted_cpu_util(int cpu)
 {
 	unsigned long util = cpu_util(cpu);
-	unsigned long margin = schedtune_cpu_margin(usage);
+	unsigned long margin = schedtune_cpu_margin(cpu, util);
 
 	util += margin;
 
-	return util + margin;
+	return util;
 }
 
 /*
