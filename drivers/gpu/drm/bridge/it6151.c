@@ -162,9 +162,11 @@ struct it6151_bridge {
 	struct drm_bridge bridge;
 	struct i2c_client *client;
 	struct it6151_driver_data *driver_data;
+	struct regulator *power_supplies;
 	void *edid;
 	int edid_len;
 	int gpio_rst_n;
+	int gpio_pwr_n;
 	u16 rx_reg;
 	u16 tx_reg;
 	bool enabled;
@@ -444,8 +446,9 @@ static void it6151_enable(struct drm_bridge *bridge)
 		container_of(bridge, struct it6151_bridge, bridge);
 
 	gpio_direction_output(ite_bridge->gpio_rst_n, 0);
-	udelay(15);
+	usleep_range(10, 20);
 	gpio_direction_output(ite_bridge->gpio_rst_n, 1);
+	usleep_range(10, 20);
 
 	it6151_bdg_enable(ite_bridge);
 
@@ -597,6 +600,35 @@ static int it6151_probe(struct i2c_client *client,
 			return ret;
 	}
 
+	ite_bridge->gpio_pwr_n =
+		of_get_named_gpio(dev->of_node, "power-gpio", 0);
+	if (gpio_is_valid(ite_bridge->gpio_pwr_n)) {
+		ret = gpio_request_one(ite_bridge->gpio_pwr_n,
+			GPIOF_OUT_INIT_HIGH, "mtk_pwr");
+		if (ret)
+			return ret;
+	}
+
+	ite_bridge->power_supplies = devm_regulator_get(dev, "disp-bdg");
+	if (IS_ERR(ite_bridge->power_supplies)) {
+		dev_err(dev, "cannot get ite_bridge->power_supplies\n");
+		return PTR_ERR(ite_bridge->power_supplies);
+	}
+
+	ret = regulator_set_voltage(ite_bridge->power_supplies,
+		1800000, 1800000);
+	if (ret != 0)	{
+		dev_err(dev, "failed to set ite_bridge voltage:  %d\n", ret);
+		return PTR_ERR(ite_bridge->power_supplies);
+	}
+
+	ret = regulator_enable(ite_bridge->power_supplies);
+	if (ret != 0) {
+		dev_err(dev, "Failed to enable ite_bridge voltage: %d\n", ret);
+		return PTR_ERR(ite_bridge->power_supplies);
+	}
+
+
 	ret = of_property_read_u32(dev->of_node, "reg",	&tx_reg);
 	if (ret) {
 		DRM_ERROR("Can't read reg value\n");
@@ -618,6 +650,9 @@ static int it6151_probe(struct i2c_client *client,
 		goto err;
 
 	i2c_set_clientdata(client, ite_bridge);
+
+
+	gpio_direction_output(ite_bridge->gpio_pwr_n, 1);
 
 	return 0;
 
