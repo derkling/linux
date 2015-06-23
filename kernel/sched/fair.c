@@ -7727,6 +7727,13 @@ more_balance:
 		if (cur_ld_moved) {
 			attach_tasks(&env);
 			ld_moved += cur_ld_moved;
+			if (sched_energy_freq())
+				/*
+				 * dequeue_task_fair() already took care
+				 * of src_cpu.
+				 */
+				cpufreq_cfs_update_cpu(env.dst_cpu,
+						get_cpu_usage(env.dst_cpu));
 		}
 
 		local_irq_restore(flags);
@@ -8095,8 +8102,12 @@ out_unlock:
 	busiest_rq->active_balance = 0;
 	raw_spin_unlock(&busiest_rq->lock);
 
-	if (p)
+	if (p) {
 		attach_one_task(target_rq, p);
+		if (sched_energy_freq())
+			cpufreq_cfs_update_cpu(target_cpu,
+					get_cpu_usage(target_cpu));
+	}
 
 	local_irq_enable();
 
