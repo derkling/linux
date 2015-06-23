@@ -1426,6 +1426,14 @@ int select_task_rq(struct task_struct *p, int cpu, int sd_flags, int wake_flags)
 {
 	if (p->nr_cpus_allowed > 1)
 		cpu = p->sched_class->select_task_rq(p, cpu, sd_flags, wake_flags);
+	else if (sched_energy_freq() &&
+		 !task_has_rt_policy(p) &&
+		 !task_has_dl_policy(p))
+		/*
+		 * If p is pinned on cpu, it is already contributing to cpu's
+		 * blocked utilization.
+		 */
+		cpufreq_cfs_update_cpu(cpu, get_cpu_usage(cpu));
 
 	/*
 	 * In order not to call set_task_cpu() on a blocking task we need
