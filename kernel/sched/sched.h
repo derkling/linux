@@ -1483,6 +1483,7 @@ static inline unsigned long capacity_of(int cpu)
 
 unsigned long capacity_orig_of(int cpu);
 extern unsigned int capacity_margin;
+unsigned long get_cpu_usage(int cpu);
 
 extern struct static_key __sched_energy_freq;
 static inline bool sched_energy_freq(void)
