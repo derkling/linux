@@ -4286,7 +4286,6 @@ static inline void hrtick_update(struct rq *rq)
 
 static bool cpu_overutilized(int cpu);
 struct static_key __sched_energy_freq __read_mostly = STATIC_KEY_INIT_FALSE;
-static unsigned long get_cpu_usage(int cpu);
 
 /*
  * The enqueue_task method is called before nr_running is
@@ -4337,9 +4336,6 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		    cpu_overutilized(rq->cpu))
 			rq->rd->overutilized = true;
 	}
-
-	if(sched_energy_freq())
-		cpufreq_cfs_update_cpu(cpu_of(rq), get_cpu_usage(cpu_of(rq)));
 
 	hrtick_update(rq);
 }
@@ -4857,7 +4853,7 @@ static unsigned long __get_cpu_usage(int cpu, int delta)
 	return sum;
 }
 
-static unsigned long get_cpu_usage(int cpu)
+unsigned long get_cpu_usage(int cpu)
 {
 	return __get_cpu_usage(cpu, 0);
 }
@@ -5610,6 +5606,21 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	}
 unlock:
 	rcu_read_unlock();
+
+	if(sched_energy_freq()) {
+		unsigned long new_capacity;
+
+		/*
+		 * If p is put to run on prev_cpu, it is already contributing
+		 * to prev_cpu's blocked utilization (don't double account for
+		 * it). Otherwise we are conservative in considering p's
+		 * pre-decayed utilization and add it to new_cpu's usage.
+		 */
+		new_capacity = new_cpu != prev_cpu ?
+			get_cpu_usage(new_cpu) + task_utilization(p) :
+			get_cpu_usage(new_cpu);
+		cpufreq_cfs_update_cpu(new_cpu, new_capacity);
+	}
 
 	return new_cpu;
 }
