@@ -8536,6 +8536,7 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 {
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &curr->se;
+	int cpu = cpu_of(rq);
 
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
@@ -8550,8 +8551,11 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 	if (!rq->rd->overutilized && cpu_overutilized(task_cpu(curr)))
 		rq->rd->overutilized = true;
 
-	if(sched_energy_freq())
-		cpufreq_cfs_update_cpu(cpu_of(rq), get_cpu_usage(cpu_of(rq));
+	if(sched_energy_freq() &&
+	   capacity_curr_of(cpu) < capacity_orig_of(cpu) &&
+	   (capacity_curr_of(cpu) * 1024) <
+	   (get_cpu_usage(cpu) * capacity_margin))
+		cpufreq_cfs_update_cpu(cpu, SCHED_LOAD_SCALE);
 }
 
 /*
