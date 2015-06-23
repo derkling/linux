@@ -4967,7 +4967,7 @@ static int find_new_capacity(struct energy_env *eenv,
 	return idx;
 }
 
-static unsigned int capacity_margin = 1280; /* ~20% margin */
+unsigned int capacity_margin = 1280; /* ~20% margin */
 
 static bool cpu_overutilized(int cpu)
 {
