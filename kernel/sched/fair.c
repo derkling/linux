@@ -4286,6 +4286,7 @@ static inline void hrtick_update(struct rq *rq)
 
 static bool cpu_overutilized(int cpu);
 struct static_key __sched_energy_freq __read_mostly = STATIC_KEY_INIT_FALSE;
+static unsigned long get_cpu_usage(int cpu);
 
 /*
  * The enqueue_task method is called before nr_running is
@@ -4338,8 +4339,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	}
 
 	if(sched_energy_freq())
-		cpufreq_cfs_update_cpu(cpu_of(rq),
-				rq->cfs.utilization_load_avg);
+		cpufreq_cfs_update_cpu(cpu_of(rq), get_cpu_usage(cpu_of(rq)));
 
 	hrtick_update(rq);
 }
@@ -4404,8 +4404,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	}
 
 	if(sched_energy_freq())
-		cpufreq_cfs_update_cpu(cpu_of(rq),
-				rq->cfs.utilization_load_avg);
+		cpufreq_cfs_update_cpu(cpu_of(rq), get_cpu_usage(cpu_of(rq)));
 
 	hrtick_update(rq);
 }
@@ -8552,8 +8551,7 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 		rq->rd->overutilized = true;
 
 	if(sched_energy_freq())
-		cpufreq_cfs_update_cpu(cpu_of(rq),
-				rq->cfs.utilization_load_avg);
+		cpufreq_cfs_update_cpu(cpu_of(rq), get_cpu_usage(cpu_of(rq));
 }
 
 /*
