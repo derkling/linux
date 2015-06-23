@@ -14,7 +14,6 @@
 
 #include "sched.h"
 
-#define MARGIN_PCT		125 /* taken from imbalance_pct = 125 */
 #define THROTTLE_NSEC		50000000 /* 50ms default */
 
 static DEFINE_PER_CPU(unsigned long, pcpu_util);
@@ -203,11 +202,12 @@ void cpufreq_cfs_update_cpu(int cpu, unsigned long util)
 	 * Convert the new maximum capacity utilization into a cpu frequency
 	 *
 	 * It is possible to convert capacity utilization directly into a
-	 * frequency, but that implies that we would be 100% utilized. Instead,
-	 * first add a margin (default 25% capacity increase) to the new
-	 * capacity request. This provides some head room if load increases.
+	 * frequency, but that implies that we could be already saturating
+	 * the selected OPP. Instead, first add a margin (same as
+	 * cpu_overutilized()) to the new capacity request. This provides
+	 * some head room if utilization increases.
 	 */
-	capacity_new = util_new + (SCHED_CAPACITY_SCALE >> 2);
+	capacity_new = util_new * capacity_margin >> SCHED_CAPACITY_SHIFT;
 	freq_new = (capacity_new * policy->max) / capacity_orig_of(cpu);
 
 	/*
