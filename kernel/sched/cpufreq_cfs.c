@@ -208,7 +208,7 @@ void cpufreq_cfs_update_cpu(int cpu, unsigned long util)
 	 * capacity request. This provides some head room if load increases.
 	 */
 	capacity_new = util_new + (SCHED_CAPACITY_SCALE >> 2);
-	freq_new = capacity_new * policy->max >> SCHED_CAPACITY_SHIFT;
+	freq_new = (capacity_new * policy->max) / capacity_orig_of(cpu);
 
 	/*
 	 * If a frequency table is available then find the frequency
