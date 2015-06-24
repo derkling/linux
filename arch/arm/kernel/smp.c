@@ -730,7 +730,8 @@ static int cpufreq_callback(struct notifier_block *nb,
 					freq->new);
 	}
 
-	scale_freq_capacity(cpu, freq->new, max);
+	if (val == CPUFREQ_PRECHANGE)
+		scale_freq_capacity(cpu, freq->new, max);
 
 	return NOTIFY_OK;
 }
