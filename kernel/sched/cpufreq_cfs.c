@@ -144,7 +144,7 @@ static void cpufreq_cfs_irq_work(struct irq_work *irq_work)
  */
 void cpufreq_cfs_update_cpu(int cpu, unsigned long util)
 {
-	unsigned long util_new, util_old, util_max, capacity_new;
+	unsigned long util_new, util_max, capacity_new;
 	unsigned int freq_new, cpu_tmp;
 	struct cpufreq_policy *policy;
 	struct gov_data *gd;
@@ -153,8 +153,7 @@ void cpufreq_cfs_update_cpu(int cpu, unsigned long util)
 	util_new = util > SCHED_LOAD_SCALE ? SCHED_LOAD_SCALE : util;
 
 	/* update per-cpu utilization */
-	util_old = __this_cpu_read(pcpu_util);
-	__this_cpu_write(pcpu_util, util_new);
+	per_cpu(pcpu_util, cpu) = util_new;
 
 	/* avoid locking policy for now; accessing .cpus only */
 	policy = per_cpu(pcpu_policy, cpu);
