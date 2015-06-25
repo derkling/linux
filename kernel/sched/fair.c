@@ -8119,6 +8119,7 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 {
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &curr->se;
+	int cpu = cpu_of(rq);
 
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
@@ -8129,6 +8130,20 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 		task_tick_numa(rq, curr);
 
 	update_rq_runnable_avg(rq, 1);
+
+	/*
+	 * To make free room for a task that is builing up its "real"
+	 * utilization and to harm its performance the least, request a
+	 * jump to max OPP as soon as get_cpu_usage() crosses the UP
+	 * threshold. The UP threshold is built relative to the current
+	 * capacity (OPP), by using same margin used to tell if a cpu
+	 * is overutilized (capacity_margin).
+	 */
+	if (sched_energy_freq() &&
+	    capacity_curr_of(cpu) < capacity_orig_of(cpu) &&
+	    (capacity_curr_of(cpu) * SCHED_LOAD_SCALE) <
+	    (get_cpu_usage(cpu) * capacity_margin))
+		cpufreq_sched_set_cap(cpu, SCHED_LOAD_SCALE);
 }
 
 /*
