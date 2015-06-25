@@ -5413,6 +5413,7 @@ static inline bool __task_fits(struct task_struct *p, int cpu, int usage)
 
 	usage += get_boosted_task_utilization(p);
 
+	trace_printk("task_fits: cap=%ld, usage=%d", capacity, usage);
 	return (capacity * 1024) > (usage * capacity_margin);
 }
 
@@ -5424,8 +5425,11 @@ static inline bool task_fits_capacity(struct task_struct *p, int cpu)
 	if (capacity == max_capacity)
 		return true;
 
-	if (capacity * capacity_margin > max_capacity * 1024)
+	if (capacity * capacity_margin > max_capacity * 1024) {
+		trace_printk("task_fits: cap=%ld cap_mrg=%d max_cap=%ld",
+				capacity, capacity_margin, max_capacity);
 		return true;
+	}
 
 	return __task_fits(p, cpu, 0);
 }
