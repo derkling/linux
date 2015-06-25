@@ -4126,6 +4126,27 @@ static inline void hrtick_update(struct rq *rq)
 #endif
 
 static bool cpu_overutilized(int cpu);
+
+/*
+ * ~20% capacity margin that we add to every capacity change
+ * request to provide some head room if task utilization further
+ * increases.
+ */
+static unsigned int capacity_margin = 1280;
+static unsigned long capacity_orig_of(int cpu);
+static unsigned long cpu_util(int cpu);
+
+static void update_capacity_of(int cpu)
+{
+	unsigned long req_cap;
+
+	if (!sched_energy_freq())
+		return;
+
+	req_cap = cpu_util(cpu) * capacity_margin / capacity_orig_of(cpu);
+	cpufreq_sched_set_cap(cpu, req_cap);
+}
+
 struct static_key __sched_energy_freq __read_mostly = STATIC_KEY_INIT_FALSE;
 
 /*
@@ -4175,6 +4196,19 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		if (!task_new && !rq->rd->overutilized &&
 		    cpu_overutilized(rq->cpu))
 			rq->rd->overutilized = true;
+
+		/*
+		 * We want to potentially trigger a freq switch request only for
+                 * tasks that are waking up; this is because we get here also during
+		 * load balancing, but in these cases it seems wise to trigger
+		 * as single request after load balancing is done.
+		 *
+		 * XXX: how about fork()? Do we need a special flag/something
+		 *      to tell if we are here after a fork() (wakeup_task_new)?
+		 *
+		 */
+		if (!task_new)
+			update_capacity_of(cpu_of(rq));
 	}
 	hrtick_update(rq);
 }
@@ -4233,9 +4267,18 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		update_cfs_shares(cfs_rq);
 	}
 
-	if (!se)
+	if (!se) {
 		sub_nr_running(rq, 1);
 
+		/*
+		 * We want to potentially trigger a freq switch request only for
+		 * tasks that are going to sleep; this is because we get here also
+		 * during load balancing, but in these cases it seems wise to trigger
+		 * as single request after load balancing is done.
+		 */
+		if (task_sleep)
+			update_capacity_of(cpu_of(rq));
+	}
 	hrtick_update(rq);
 }
 
@@ -5034,8 +5077,6 @@ static inline unsigned long task_util(struct task_struct *p)
 {
 	return p->se.avg.util_avg;
 }
-
-static unsigned int capacity_margin = 1280; /* ~20% margin */
 
 static inline bool __task_fits(struct task_struct *p, int cpu, int util)
 {
