@@ -4360,6 +4360,8 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 			unsigned long req_cap = get_cpu_usage(cpu_of(rq));
 
 			req_cap = req_cap * capacity_margin >> SCHED_CAPACITY_SHIFT;
+			trace_printk("cpu=%d task=%d usage=%lu req_cap=%lu",
+					cpu_of(rq), p->pid, get_cpu_usage(cpu_of(rq)), req_cap);
 			cpufreq_sched_set_cap(cpu_of(rq), req_cap);
 		}
 	}
@@ -4437,6 +4439,8 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 			unsigned long req_cap = get_cpu_usage(cpu_of(rq));
 
 			req_cap = req_cap * capacity_margin >> SCHED_CAPACITY_SHIFT;
+			trace_printk("cpu=%d task=%d usage=%lu req_cap=%lu",
+					cpu_of(rq), p->pid, get_cpu_usage(cpu_of(rq)), req_cap);
 			cpufreq_sched_set_cap(cpu_of(rq), req_cap);
 		}
 	}
@@ -7735,6 +7739,8 @@ more_balance:
 			unsigned long req_cap = get_cpu_usage(env.src_cpu);
 
 			req_cap = req_cap * capacity_margin >> SCHED_CAPACITY_SHIFT;
+			trace_printk("src_cpu=%d usage=%lu req_cap=%lu",
+					env.src_cpu, get_cpu_usage(env.src_cpu), req_cap);
 			cpufreq_sched_set_cap(env.src_cpu, req_cap);
 		}
 
@@ -7762,6 +7768,8 @@ more_balance:
 				unsigned long req_cap = get_cpu_usage(env.dst_cpu);
 
 				req_cap = req_cap * capacity_margin >> SCHED_CAPACITY_SHIFT;
+				trace_printk("dst_cpu=%d usage=%lu req_cap=%lu",
+						env.dst_cpu, get_cpu_usage(env.dst_cpu), req_cap);
 				cpufreq_sched_set_cap(env.dst_cpu, req_cap);
 			}
 		}
@@ -8135,6 +8143,8 @@ static int active_load_balance_cpu_stop(void *data)
 				unsigned long req_cap = get_cpu_usage(env.src_cpu);
 
 				req_cap = req_cap * capacity_margin >> SCHED_CAPACITY_SHIFT;
+				trace_printk("src_cpu=%d usage=%lu req_cap=%lu",
+						env.src_cpu, get_cpu_usage(env.src_cpu), req_cap);
 				cpufreq_sched_set_cap(env.src_cpu, req_cap);
 			}
 		}
@@ -8159,6 +8169,8 @@ out_unlock:
 			unsigned long req_cap = get_cpu_usage(target_cpu);
 
 			req_cap = req_cap * capacity_margin >> SCHED_CAPACITY_SHIFT;
+			trace_printk("target_cpu=%d usage=%lu req_cap=%lu",
+					target_cpu, get_cpu_usage(target_cpu), req_cap);
 			cpufreq_sched_set_cap(target_cpu, req_cap);
 		}
 	}
@@ -8635,8 +8647,11 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 	if (sched_energy_freq() &&
 	    capacity_curr_of(cpu) < capacity_orig_of(cpu) &&
 	    (capacity_curr_of(cpu) * SCHED_LOAD_SCALE) <
-	    (get_cpu_usage(cpu) * capacity_margin))
+	    (get_cpu_usage(cpu) * capacity_margin)) {
+		trace_printk("cpu=%d task=%d usage=%lu req_cap=%lu",
+				cpu, curr->pid, get_cpu_usage(cpu), SCHED_LOAD_SCALE);
 		cpufreq_sched_set_cap(cpu, SCHED_LOAD_SCALE);
+	}
 }
 
 /*

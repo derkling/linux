@@ -52,7 +52,9 @@ static void cpufreq_sched_try_driver_target(struct cpufreq_policy *policy, unsig
 	if (!down_write_trylock(&policy->rwsem))
 		return;
 
+	trace_printk("asks freq=%u", freq);
 	__cpufreq_driver_target(policy, freq, CPUFREQ_RELATION_L);
+	trace_printk("gets freq=%u", freq);
 
 	gd->throttle = ktime_add_ns(ktime_get(), gd->throttle_nsec);
 	up_write(&policy->rwsem);
@@ -164,12 +166,16 @@ void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
 	gd = policy->governor_data;
 
 	/* bail early if we are throttled */
-	if (ktime_before(ktime_get(), gd->throttle))
+	if (ktime_before(ktime_get(), gd->throttle)) {
+		trace_printk("kthread=%d throttled", gd->task->pid);
 		goto out;
+	}
 
 	/* find max capacity requested by cpus in this policy */
-	for_each_cpu(cpu_tmp, policy->cpus)
+	for_each_cpu(cpu_tmp, policy->cpus) {
+		trace_printk("cpu=%d cap=%lu", cpu_tmp, per_cpu(pcpu_capacity, cpu_tmp));
 		capacity_max = max(capacity_max, per_cpu(pcpu_capacity, cpu_tmp));
+	}
 
 	/*
 	 * We only change frequency if this cpu's capacity request represents a
@@ -180,11 +186,14 @@ void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
 	 *
 	 * If this cpu is not the new maximum then bail
 	 */
-	if (capacity_max > capacity)
+	if (capacity_max > capacity) {
+		trace_printk("cap_max=%lu > cap=%lu bail", capacity_max, capacity);
 		goto out;
+	}
 
 	/* Convert the new maximum capacity request into a cpu frequency */
 	freq_new = (capacity * policy->max) / capacity_orig_of(cpu);
+	trace_printk("freq_new=%u", freq_new);
 
 	/* No change in frequency? Bail and return current capacity. */
 	if (freq_new == policy->cur)
