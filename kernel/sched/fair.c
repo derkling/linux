@@ -4201,7 +4201,6 @@ static inline void hrtick_update(struct rq *rq)
 
 static bool cpu_overutilized(int cpu);
 static unsigned long capacity_orig_of(int cpu);
-static unsigned long cpu_util(int cpu);
 
 static void update_capacity_of(int cpu)
 {
@@ -4602,15 +4601,6 @@ static unsigned long target_load(int cpu, int type)
 	return max(rq->cpu_load[type-1], total);
 }
 
-static unsigned long capacity_of(int cpu)
-{
-	return cpu_rq(cpu)->cpu_capacity;
-}
-
-static unsigned long capacity_orig_of(int cpu)
-{
-	return cpu_rq(cpu)->cpu_capacity_orig;
-}
 
 static unsigned long cpu_avg_load_per_task(int cpu)
 {
@@ -4828,7 +4818,7 @@ static unsigned long __cpu_util(int cpu, int delta)
 	return (delta >= capacity) ? capacity : delta;
 }
 
-static unsigned long cpu_util(int cpu)
+unsigned long cpu_util(int cpu)
 {
 	return __cpu_util(cpu, 0);
 }
