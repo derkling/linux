@@ -4281,6 +4281,8 @@ static inline void hrtick_update(struct rq *rq)
 }
 #endif
 
+struct static_key __sched_energy_freq __read_mostly = STATIC_KEY_INIT_FALSE;
+
 /*
  * The enqueue_task method is called before nr_running is
  * increased. Here we update the fair scheduling stats and
