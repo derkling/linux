@@ -2867,6 +2867,8 @@ void scheduler_tick(void)
 	trigger_load_balance(rq);
 #endif
 	rq_last_tick_reset(rq);
+
+	sched_freq_tick(cpu);
 }
 
 #ifdef CONFIG_NO_HZ_FULL
