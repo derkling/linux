@@ -4257,6 +4257,8 @@ static inline void hrtick_update(struct rq *rq)
 }
 #endif
 
+static unsigned int capacity_margin = 1280; /* ~20% margin */
+static int get_cpu_usage(int cpu);
 struct static_key __sched_energy_freq __read_mostly = STATIC_KEY_INIT_FALSE;
 
 /*
@@ -4269,6 +4271,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &p->se;
+	int task_new = !(flags & ENQUEUE_WAKEUP);
 
 	for_each_sched_entity(se) {
 		if (se->on_rq)
@@ -4303,6 +4306,27 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	if (!se) {
 		update_rq_runnable_avg(rq, rq->nr_running);
 		add_nr_running(rq, 1);
+
+		/*
+		 * We want to trigger a freq switch request only for tasks that
+		 * are waking up; this is because we get here also during
+		 * load balancing, but in these cases it seems wise to trigger
+		 * as single request after load balancing is done.
+		 *
+		 * XXX: how about fork()? Do we need a special flag/something
+		 *      to tell if we are here after a fork() (wakeup_task_new)?
+		 *
+		 * Also, we add a margin (same ~20% used for the tipping point)
+		 * to our request to provide some head room if p's utilization
+		 * further increases.
+		 */
+		if (sched_energy_freq() && !task_new) {
+			unsigned long req_cap = get_cpu_usage(cpu_of(rq));
+
+			req_cap = req_cap * capacity_margin
+					>> SCHED_CAPACITY_SHIFT;
+			cpufreq_sched_set_cap(cpu_of(rq), req_cap);
+		}
 	}
 	hrtick_update(rq);
 }
@@ -4364,6 +4388,23 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	if (!se) {
 		sub_nr_running(rq, 1);
 		update_rq_runnable_avg(rq, 1);
+		/*
+		 * We want to trigger a freq switch request only for tasks that
+		 * are going to sleep; this is because we get here also during
+		 * load balancing, but in these cases it seems wise to trigger
+		 * as single request after load balancing is done.
+		 *
+		 * Also, we add a margin (same ~20% used for the tipping point)
+		 * to our request to provide some head room if p's utilization
+		 * further increases.
+		 */
+		if (sched_energy_freq() && task_sleep) {
+			unsigned long req_cap = get_cpu_usage(cpu_of(rq));
+
+			req_cap = req_cap * capacity_margin
+					>> SCHED_CAPACITY_SHIFT;
+			cpufreq_sched_set_cap(cpu_of(rq), req_cap);
+		}
 	}
 	hrtick_update(rq);
 }
