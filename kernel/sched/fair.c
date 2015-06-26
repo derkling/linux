@@ -4261,6 +4261,8 @@ static unsigned int capacity_margin = 1280; /* ~20% margin */
 static int get_cpu_usage(int cpu);
 struct static_key __sched_energy_freq __read_mostly = STATIC_KEY_INIT_FALSE;
 
+static inline unsigned long get_boosted_cpu_usage(int cpu);
+
 /*
  * The enqueue_task method is called before nr_running is
  * increased. Here we update the fair scheduling stats and
@@ -4319,7 +4321,8 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		 * further increases.
 		 */
 		if (sched_energy_freq() && (task_new || task_wakeup)) {
-			unsigned long req_cap = get_cpu_usage(cpu_of(rq));
+			unsigned long req_cap =
+				get_boosted_cpu_usage(cpu_of(rq));
 
 			req_cap = req_cap * capacity_margin
 					>> SCHED_CAPACITY_SHIFT;
@@ -4397,7 +4400,8 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		 * further increases.
 		 */
 		if (sched_energy_freq() && task_sleep) {
-			unsigned long req_cap = get_cpu_usage(cpu_of(rq));
+			unsigned long req_cap =
+				get_boosted_cpu_usage(cpu_of(rq));
 
 			if (rq->cfs.nr_running) {
 				req_cap = req_cap * capacity_margin
@@ -4954,7 +4958,42 @@ schedtune_margin(unsigned long signal, unsigned long boost)
 
 }
 
+static inline unsigned int
+schedtune_cpu_margin(unsigned long usage)
+{
+	unsigned int boost;
+	unsigned long margin;
+
+	boost = get_sysctl_sched_cfs_boost();
+	if (boost == 0)
+		return 0;
+	margin = schedtune_margin(usage, boost);
+
+	return margin;
+}
+
+#else /* CONFIG_SCHED_TUNE */
+
+static inline unsigned int
+schedtune_cpu_margin(unsigned long usage)
+{
+	return 0;
+}
+
 #endif /* CONFIG_SCHED_TUNE */
+
+static inline unsigned long
+get_boosted_cpu_usage(int cpu)
+{
+	unsigned long usage;
+	unsigned long margin;
+
+	usage = get_cpu_usage(cpu);
+	margin = schedtune_cpu_margin(usage);
+
+	usage += margin;
+	return usage;
+}
 
 /*
  * find_idlest_group finds and returns the least busy CPU group within the
@@ -7285,7 +7324,8 @@ more_balance:
 		 * tasks.
 		 */
 		if (sched_energy_freq() && cur_ld_moved) {
-			unsigned long req_cap = get_cpu_usage(env.src_cpu);
+			unsigned long req_cap =
+				get_boosted_cpu_usage(env.src_cpu);
 
 			req_cap = req_cap * capacity_margin
 					>> SCHED_CAPACITY_SHIFT;
@@ -7314,7 +7354,7 @@ more_balance:
 			 */
 			if (sched_energy_freq()) {
 				unsigned long req_cap =
-					get_cpu_usage(env.dst_cpu);
+					get_boosted_cpu_usage(env.dst_cpu);
 
 				req_cap = req_cap * capacity_margin
 						>> SCHED_CAPACITY_SHIFT;
@@ -7685,7 +7725,7 @@ static int active_load_balance_cpu_stop(void *data)
 			 */
 			if (sched_energy_freq()) {
 				unsigned long req_cap =
-					get_cpu_usage(env.src_cpu);
+					get_boosted_cpu_usage(env.src_cpu);
 
 				req_cap = req_cap * capacity_margin
 						>> SCHED_CAPACITY_SHIFT;
@@ -7710,7 +7750,8 @@ out_unlock:
 		 * further increases.
 		 */
 		if (sched_energy_freq()) {
-			unsigned long req_cap = get_cpu_usage(target_cpu);
+			unsigned long req_cap =
+				get_boosted_cpu_usage(target_cpu);
 
 			req_cap = req_cap * capacity_margin
 					>> SCHED_CAPACITY_SHIFT;
