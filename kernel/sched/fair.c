@@ -4264,6 +4264,7 @@ static inline void hrtick_update(struct rq *rq)
  */
 static unsigned int capacity_margin = 1280;
 static int get_cpu_usage(int cpu);
+static inline unsigned long get_boosted_cpu_usage(int cpu);
 
 static void update_capacity_of(int cpu)
 {
@@ -4272,7 +4273,8 @@ static void update_capacity_of(int cpu)
 	if (!sched_energy_freq())
 		return;
 
-	req_cap = get_cpu_usage(cpu) * capacity_margin
+	req_cap = get_boosted_cpu_usage(cpu);
+	req_cap = req_cap * capacity_margin
 			>> SCHED_CAPACITY_SHIFT;
 	cpufreq_sched_set_cap(cpu, req_cap);
 }
@@ -4953,7 +4955,39 @@ schedtune_margin(unsigned long signal, unsigned long boost)
 	return margin;
 }
 
+static inline unsigned int
+schedtune_cpu_margin(unsigned long usage)
+{
+	unsigned int boost = get_sysctl_sched_cfs_boost();
+
+	if (boost == 0)
+		return 0;
+
+	return schedtune_margin(usage, boost);
+}
+
+#else /* CONFIG_SCHED_TUNE */
+
+static inline unsigned int
+schedtune_cpu_margin(unsigned long usage)
+{
+	return 0;
+}
+
 #endif /* CONFIG_SCHED_TUNE */
+
+static inline unsigned long
+get_boosted_cpu_usage(int cpu)
+{
+	unsigned long usage;
+	unsigned long margin;
+
+	usage = get_cpu_usage(cpu);
+	margin = schedtune_cpu_margin(usage);
+
+	usage += margin;
+	return usage;
+}
 
 /*
  * find_idlest_group finds and returns the least busy CPU group within the
