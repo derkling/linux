@@ -4285,6 +4285,7 @@ static unsigned int capacity_margin = 1280; /* ~20% margin */
 
 static bool cpu_overutilized(int cpu);
 static unsigned long get_cpu_usage(int cpu);
+static unsigned long get_boosted_cpu_usage(int cpu);
 struct static_key __sched_energy_freq __read_mostly = STATIC_KEY_INIT_FALSE;
 
 /*
@@ -4349,7 +4350,8 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		 * further increases.
 		 */
 		if (sched_energy_freq() && !task_new) {
-			unsigned long req_cap = get_cpu_usage(cpu_of(rq));
+			unsigned long req_cap =
+				get_boosted_cpu_usage(cpu_of(rq));
 
 			req_cap = req_cap * capacity_margin >> SCHED_CAPACITY_SHIFT;
 			cpufreq_sched_set_cap(cpu_of(rq), req_cap);
@@ -4426,7 +4428,8 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		 * further increases.
 		 */
 		if (sched_energy_freq() && task_sleep) {
-			unsigned long req_cap = get_cpu_usage(cpu_of(rq));
+			unsigned long req_cap =
+				get_boosted_cpu_usage(cpu_of(rq));
 
 			req_cap = req_cap * capacity_margin >> SCHED_CAPACITY_SHIFT;
 			cpufreq_sched_set_cap(cpu_of(rq), req_cap);
@@ -5353,6 +5356,47 @@ static inline bool task_fits_capacity(struct task_struct *p, int cpu)
 static inline bool task_fits_cpu(struct task_struct *p, int cpu)
 {
 	return __task_fits(p, cpu, get_cpu_usage(cpu));
+}
+
+#ifdef CONFIG_SCHED_TUNE
+
+static unsigned int
+schedtune_cpu_margin(int cpu, unsigned long usage)
+{
+	unsigned int boost;
+	unsigned long margin;
+
+	boost = get_sysctl_sched_cfs_boost();
+	if (boost == 0)
+		return 0;
+	margin = schedtune_margin(usage, boost);
+
+	return margin;
+}
+
+#else /* CONFIG_SCHED_TUNE */
+
+static unsigned int
+schedtune_cpu_margin(int cpu, unsigned long usage)
+{
+	return 0;
+}
+
+#endif /* CONFIG_SCHED_TUNE */
+
+static unsigned long
+get_boosted_cpu_usage(int cpu)
+{
+	unsigned long capacity;
+	unsigned long margin;
+
+	capacity = get_cpu_usage(cpu);
+	if (capacity > SCHED_LOAD_SCALE)
+		return SCHED_LOAD_SCALE;
+	margin = schedtune_cpu_margin(cpu, capacity);
+
+	capacity += margin;
+	return capacity;
 }
 
 /*
@@ -7808,7 +7852,8 @@ more_balance:
 		 * further increases.
 		 */
 		if (sched_energy_freq() && cur_ld_moved) {
-			unsigned long req_cap = get_cpu_usage(env.src_cpu);
+			unsigned long req_cap =
+				get_boosted_cpu_usage(env.src_cpu);
 
 			req_cap = req_cap * capacity_margin >> SCHED_CAPACITY_SHIFT;
 			cpufreq_sched_set_cap(env.src_cpu, req_cap);
@@ -7835,7 +7880,8 @@ more_balance:
 			 * further increases.
 			 */
 			if (sched_energy_freq()) {
-				unsigned long req_cap = get_cpu_usage(env.dst_cpu);
+				unsigned long req_cap =
+					get_boosted_cpu_usage(env.dst_cpu);
 
 				req_cap = req_cap * capacity_margin >> SCHED_CAPACITY_SHIFT;
 				cpufreq_sched_set_cap(env.dst_cpu, req_cap);
@@ -8208,7 +8254,8 @@ static int active_load_balance_cpu_stop(void *data)
 			 * further increases.
 			 */
 			if (sched_energy_freq()) {
-				unsigned long req_cap = get_cpu_usage(env.src_cpu);
+				unsigned long req_cap =
+					get_boosted_cpu_usage(env.src_cpu);
 
 				req_cap = req_cap * capacity_margin >> SCHED_CAPACITY_SHIFT;
 				cpufreq_sched_set_cap(env.src_cpu, req_cap);
@@ -8232,7 +8279,8 @@ out_unlock:
 		 * further increases.
 		 */
 		if (sched_energy_freq()) {
-			unsigned long req_cap = get_cpu_usage(target_cpu);
+			unsigned long req_cap =
+				get_boosted_cpu_usage(target_cpu);
 
 			req_cap = req_cap * capacity_margin >> SCHED_CAPACITY_SHIFT;
 			cpufreq_sched_set_cap(target_cpu, req_cap);
