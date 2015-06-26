@@ -18,6 +18,8 @@
 void mediatek_od_enable_vblank(void __iomem *drm_disp_base);
 void mediatek_od_disable_vblank(void __iomem *drm_disp_base);
 void mediatek_od_clear_vblank(void __iomem *drm_disp_base);
+void mediatek_ovl_layer_addr(void __iomem *ovl_base,
+	unsigned int addr);
 void mediatek_ovl_layer_config(void __iomem *ovl_base, bool enabled,
 		unsigned int addr, unsigned int width, unsigned int height,
 		unsigned int pitch,	unsigned int format);
