@@ -51,6 +51,8 @@ struct crtc_main_context {
 
 	bool			pending_ovl_config;
 	bool			pending_ovl_enable;
+	bool			pending_ovl_addr_field;
+	bool			pending_ovl_all_fields;
 	unsigned int		pending_ovl_addr;
 	unsigned int		pending_ovl_width;
 	unsigned int		pending_ovl_height;
@@ -190,6 +192,16 @@ static void crtc_main_disable_vblank(struct mtk_drm_crtc *crtc)
 	mediatek_od_disable_vblank(ctx->od_regs);
 }
 
+static void crtc_main_ovl_layer_addr(struct mtk_drm_crtc *crtc,
+	dma_addr_t addr)
+{
+	struct crtc_main_context *ctx = (struct crtc_main_context *)crtc->ctx;
+
+	ctx->pending_ovl_addr = addr;
+	ctx->pending_ovl_addr_field = true;
+	ctx->pending_ovl_config = true;
+}
+
 static void crtc_main_ovl_layer_config(struct mtk_drm_crtc *crtc,
 	bool enable, dma_addr_t addr)
 {
@@ -207,11 +219,12 @@ static void crtc_main_ovl_layer_config(struct mtk_drm_crtc *crtc,
 		ctx->pending_ovl_pitch = pitch;
 		ctx->pending_ovl_format = crtc->base.primary->fb->pixel_format;
 	}
+	ctx->pending_ovl_all_fields = true;
 	ctx->pending_ovl_config = true;
 }
 
 static void crtc_main_ovl_layer_config_cursor(struct mtk_drm_crtc *crtc,
-	bool enable, unsigned int addr)
+	bool enable, dma_addr_t addr)
 {
 	struct crtc_main_context *ctx = (struct crtc_main_context *)crtc->ctx;
 
@@ -226,6 +239,7 @@ static const struct mediatek_drm_crtc_ops crtc_main_crtc_ops = {
 	.dpms = crtc_main_dpms,
 	.enable_vblank = crtc_main_enable_vblank,
 	.disable_vblank = crtc_main_disable_vblank,
+	.ovl_layer_addr = crtc_main_ovl_layer_addr,
 	.ovl_layer_config = crtc_main_ovl_layer_config,
 	.ovl_layer_config_cursor = crtc_main_ovl_layer_config_cursor,
 };
@@ -238,6 +252,7 @@ static void crtc_main_irq(struct crtc_main_context *ctx)
 
 	if (ctx->pending_ovl_cursor_config) {
 		ctx->pending_ovl_cursor_config = false;
+
 		mediatek_ovl_layer_config_cursor(ctx->ovl0_regs,
 			ctx->pending_ovl_cursor_enable,
 			ctx->pending_ovl_cursor_addr,
@@ -249,13 +264,25 @@ static void crtc_main_irq(struct crtc_main_context *ctx)
 
 	if (ctx->pending_ovl_config) {
 		ctx->pending_ovl_config = false;
-		mediatek_ovl_layer_config(ctx->ovl0_regs,
-			ctx->pending_ovl_enable,
-			ctx->pending_ovl_addr,
-			ctx->pending_ovl_width,
-			ctx->pending_ovl_height,
-			ctx->pending_ovl_pitch,
-			ctx->pending_ovl_format);
+
+		if (ctx->pending_ovl_all_fields) {
+			ctx->pending_ovl_all_fields = false;
+
+			mediatek_ovl_layer_config(ctx->ovl0_regs,
+				ctx->pending_ovl_enable,
+				ctx->pending_ovl_addr,
+				ctx->pending_ovl_width,
+				ctx->pending_ovl_height,
+				ctx->pending_ovl_pitch,
+				ctx->pending_ovl_format);
+		}
+
+		if (ctx->pending_ovl_addr_field) {
+			ctx->pending_ovl_addr_field = false;
+
+			mediatek_ovl_layer_addr(ctx->ovl0_regs,
+				ctx->pending_ovl_addr);
+		}
 	}
 
 	drm_handle_vblank(ctx->drm_dev, ctx->pipe);

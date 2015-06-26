@@ -22,6 +22,8 @@ struct mediatek_drm_crtc_ops {
 	void (*dpms)(struct mtk_drm_crtc *crtc, int mode);
 	int (*enable_vblank)(struct mtk_drm_crtc *crtc);
 	void (*disable_vblank)(struct mtk_drm_crtc *crtc);
+	void (*ovl_layer_addr)(struct mtk_drm_crtc *crtc,
+		dma_addr_t addr);
 	void (*ovl_layer_config)(struct mtk_drm_crtc *crtc,
 		bool enable, dma_addr_t addr);
 	void (*ovl_layer_config_cursor)(struct mtk_drm_crtc *crtc,
