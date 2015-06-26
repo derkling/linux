@@ -146,6 +146,8 @@ static int __init arm_idle_init(void)
 			kfree(dev);
 			goto out_fail;
 		}
+
+		dev->states_usage[1].disable=1;
 	}
 
 	return 0;
