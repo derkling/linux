@@ -699,6 +699,8 @@ void do_exit(long code)
 	}
 
 	exit_signals(tsk);  /* sets PF_EXITING */
+	trace_printk("pid=%d comm=%s status=PF_EXITING", tsk->pid, tsk->comm);
+
 	/*
 	 * tsk->flags are checked in the futex code to protect against
 	 * an exiting task cleaning up the robust pi futexes.
@@ -821,6 +823,8 @@ void do_exit(long code)
 	/* causes final put_task_struct in finish_task_switch(). */
 	tsk->state = TASK_DEAD;
 	tsk->flags |= PF_NOFREEZE;	/* tell freezer to ignore us */
+	trace_printk("pid=%d comm=%s status=DEAD", tsk->pid, tsk->comm);
+
 	schedule();
 	BUG();
 	/* Avoid "noreturn function does return".  */
