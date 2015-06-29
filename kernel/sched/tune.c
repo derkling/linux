@@ -412,6 +412,7 @@ void schedtune_enqueue_task(struct task_struct *p, int cpu)
 	idx = st->idx;
 	rcu_read_unlock();
 
+	trace_printk("pid=%d comm=%s cpu=%d", p->pid, p->comm, cpu);
 	schedtune_tasks_update(p, cpu, idx, 1);
 }
 
@@ -439,6 +440,7 @@ void schedtune_dequeue_task(struct task_struct *p, int cpu)
 	idx = st->idx;
 	rcu_read_unlock();
 
+	trace_printk("pid=%d comm=%s cpu=%d", p->pid, p->comm, cpu);
 	schedtune_tasks_update(p, cpu, idx, -1);
 }
 
@@ -622,7 +624,11 @@ schedtune_exit(struct cgroup_subsys_state *css,
 		struct task_struct *tsk)
 {
 	struct schedtune *old_st = css_st(old_css);
+	struct schedtune *st = css_st(css);
 	int cpu = task_cpu(tsk);
+
+	trace_printk("pid=%d comm=%s cpu=%d old_idx=%d idx=%d",
+			tsk->pid, tsk->comm, cpu, old_st->idx, st->idx);
 
 	schedtune_tasks_update(tsk, cpu, old_st->idx, -1);
 }
