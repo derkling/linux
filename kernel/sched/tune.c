@@ -414,6 +414,7 @@ int schedtune_enqueue_task(struct task_struct *p, int cpu)
 	idx = st->idx;
 	rcu_read_unlock();
 
+	trace_printk("pid=%d comm=%s cpu=%d", p->pid, p->comm, cpu);
 	result = schedtune_tasks_update(p, cpu, idx, 1);
 	return result;
 }
@@ -443,6 +444,7 @@ int schedtune_dequeue_task(struct task_struct *p, int cpu)
 	idx = st->idx;
 	rcu_read_unlock();
 
+	trace_printk("pid=%d comm=%s cpu=%d", p->pid, p->comm, cpu);
 	result = schedtune_tasks_update(p, cpu, idx, -1);
 	return result;
 }
