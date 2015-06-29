@@ -4273,8 +4273,12 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		 * during load balancing, but in these cases it seems wise to trigger
 		 * as single request after load balancing is done.
 		 */
-		if (task_sleep)
-			update_capacity_of(cpu_of(rq));
+		if (task_sleep) {
+			if (rq->cfs.nr_running)
+				update_capacity_of(cpu_of(rq));
+			else if (sched_energy_freq())
+				cpufreq_sched_reset_cap(cpu_of(rq));
+		}
 	}
 	hrtick_update(rq);
 }
