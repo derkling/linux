@@ -451,6 +451,15 @@
 			status = "disabled";
 		};
 
+		spi: spi@1100a000 {
+			compatible = "mediatek,mt8173-spi";
+			reg = <0 0x1100a000 0 0x1000>;
+			interrupts = <GIC_SPI 110 IRQ_TYPE_LEVEL_LOW>;
+			clocks = <&pericfg CLK_PERI_SPI0>;
+			clock-names = "main";
+			status = "disabled";
+		};
+
 		i2c3: i2c3@11010000 {
 			compatible = "mediatek,mt8173-i2c";
 			reg = <0 0x11010000 0 0x70>,
