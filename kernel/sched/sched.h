@@ -1404,6 +1404,56 @@ unsigned long arch_scale_cpu_capacity(struct sched_domain *sd, int cpu)
 }
 #endif
 
+extern struct static_key __sched_freq;
+static inline bool sched_freq(void)
+{
+	return static_key_false(&__sched_freq);
+}
+
+extern unsigned int capacity_margin;
+
+#ifdef CONFIG_CPU_FREQ_GOV_SCHED
+DECLARE_PER_CPU(struct sched_capacity_reqs, cpu_sched_capacity_reqs);
+void update_cpu_capacity_request(int cpu, bool request);
+
+static inline void set_cfs_cpu_capacity(int cpu, bool request,
+					unsigned long capacity)
+{
+	if (per_cpu(cpu_sched_capacity_reqs, cpu).cfs != capacity) {
+		per_cpu(cpu_sched_capacity_reqs, cpu).cfs = capacity;
+		update_cpu_capacity_request(cpu, request);
+	}
+}
+
+static inline void set_rt_cpu_capacity(int cpu, bool request,
+				       unsigned long capacity)
+{
+	if (per_cpu(cpu_sched_capacity_reqs, cpu).rt != capacity) {
+		per_cpu(cpu_sched_capacity_reqs, cpu).rt = capacity;
+		update_cpu_capacity_request(cpu, request);
+	}
+}
+
+static inline void set_dl_cpu_capacity(int cpu, bool request,
+				       unsigned long capacity)
+{
+	if (per_cpu(cpu_sched_capacity_reqs, cpu).dl != capacity) {
+		per_cpu(cpu_sched_capacity_reqs, cpu).dl = capacity;
+		update_cpu_capacity_request(cpu, request);
+	}
+}
+#else
+static inline void set_cfs_cpu_capacity(int cpu, bool request,
+					unsigned long capacity)
+{ }
+static inline void set_rt_cpu_capacity(int cpu, bool request,
+				       unsigned long capacity)
+{ }
+static inline void set_dl_cpu_capacity(int cpu, bool request,
+				       unsigned long capacity)
+{ }
+#endif
+
 static inline void sched_rt_avg_update(struct rq *rq, u64 rt_delta)
 {
 	rq->rt_avg += rt_delta * arch_scale_freq_capacity(NULL, cpu_of(rq));
@@ -1412,6 +1462,7 @@ static inline void sched_rt_avg_update(struct rq *rq, u64 rt_delta)
 #else
 static inline void sched_rt_avg_update(struct rq *rq, u64 rt_delta) { }
 static inline void sched_avg_update(struct rq *rq) { }
+static inline void gov_cfs_update_cpu(int cpu) {}
 #endif
 
 /*
