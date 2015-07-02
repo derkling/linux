@@ -4291,6 +4291,7 @@ static inline void hrtick_update(struct rq *rq)
 #endif
 
 static unsigned int capacity_margin = 1280; /* ~20% margin */
+static unsigned int capacity_margin_dvfs = 1064; /* ~5% margin */
 
 static bool cpu_overutilized(int cpu);
 static unsigned long get_cpu_usage(int cpu);
@@ -4365,7 +4366,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 			unsigned long req_cap =
 				get_boosted_cpu_usage(cpu_of(rq));
 
-			req_cap = req_cap * capacity_margin >> SCHED_CAPACITY_SHIFT;
+			req_cap = req_cap * capacity_margin_dvfs >> SCHED_CAPACITY_SHIFT;
 			cpufreq_sched_set_cap(cpu_of(rq), req_cap);
 		}
 	}
@@ -4446,7 +4447,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 			unsigned long req_cap =
 				get_boosted_cpu_usage(cpu_of(rq));
 
-			req_cap = req_cap * capacity_margin >> SCHED_CAPACITY_SHIFT;
+			req_cap = req_cap * capacity_margin_dvfs >> SCHED_CAPACITY_SHIFT;
 			cpufreq_sched_set_cap(cpu_of(rq), req_cap);
 		}
 	}
@@ -8020,7 +8021,7 @@ more_balance:
 			unsigned long req_cap =
 				get_boosted_cpu_usage(env.src_cpu);
 
-			req_cap = req_cap * capacity_margin >> SCHED_CAPACITY_SHIFT;
+			req_cap = req_cap * capacity_margin_dvfs >> SCHED_CAPACITY_SHIFT;
 			cpufreq_sched_set_cap(env.src_cpu, req_cap);
 		}
 
@@ -8048,7 +8049,7 @@ more_balance:
 				unsigned long req_cap =
 					get_boosted_cpu_usage(env.dst_cpu);
 
-				req_cap = req_cap * capacity_margin >> SCHED_CAPACITY_SHIFT;
+				req_cap = req_cap * capacity_margin_dvfs >> SCHED_CAPACITY_SHIFT;
 				cpufreq_sched_set_cap(env.dst_cpu, req_cap);
 			}
 		}
@@ -8422,7 +8423,7 @@ static int active_load_balance_cpu_stop(void *data)
 				unsigned long req_cap =
 					get_boosted_cpu_usage(env.src_cpu);
 
-				req_cap = req_cap * capacity_margin >> SCHED_CAPACITY_SHIFT;
+				req_cap = req_cap * capacity_margin_dvfs >> SCHED_CAPACITY_SHIFT;
 				cpufreq_sched_set_cap(env.src_cpu, req_cap);
 			}
 		}
@@ -8447,7 +8448,7 @@ out_unlock:
 			unsigned long req_cap =
 				get_boosted_cpu_usage(target_cpu);
 
-			req_cap = req_cap * capacity_margin >> SCHED_CAPACITY_SHIFT;
+			req_cap = req_cap * capacity_margin_dvfs >> SCHED_CAPACITY_SHIFT;
 			cpufreq_sched_set_cap(target_cpu, req_cap);
 		}
 	}
@@ -8924,7 +8925,7 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 	if (sched_energy_freq() &&
 	    capacity_curr_of(cpu) < capacity_orig_of(cpu) &&
 	    (capacity_curr_of(cpu) * SCHED_LOAD_SCALE) <
-	    (get_cpu_usage(cpu) * capacity_margin))
+	    (get_cpu_usage(cpu) * capacity_margin_dvfs))
 		cpufreq_sched_set_cap(cpu, SCHED_LOAD_SCALE);
 }
 
