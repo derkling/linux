@@ -24,7 +24,7 @@
 #include <drm/drm_crtc.h>
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_panel.h>
-
+#include <drm/drm_edid.h>
 
 #define PAGE4_REV_L		0xf0
 #define PAGE4_REV_H		0xf1
@@ -130,6 +130,28 @@ static int ps8640_regw(struct i2c_client *client, u16 i2c_addr,
 	return 0;
 }
 
+static int ps8640_read_bytes(struct i2c_client *client, u16 i2c_addr,
+		u8 reg, int len, u8 *buf)
+{
+	int ret;
+
+	client->addr = i2c_addr;
+
+	ret = i2c_master_send(client, &reg, 1);
+	if (ret <= 0) {
+		DRM_ERROR("Failed to send i2c command, ret=%d\n", ret);
+		return ret;
+	}
+
+	ret = i2c_master_recv(client, buf, len);
+	if (ret <= 0) {
+		DRM_ERROR("Failed to recv i2c data, ret=%d\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
 static int ps8640_check_valid_id(struct ps8640_bridge *ps_bridge)
 {
 	struct i2c_client *client = ps_bridge->client;
@@ -158,6 +180,27 @@ static int ps8640_check_valid_id(struct ps8640_bridge *ps_bridge)
 		return 1;
 
 	return 0;
+}
+
+static int ps8640_get_edid(struct ps8640_bridge *ps_bridge, u8 *edid)
+{
+	struct i2c_client *client = ps_bridge->client;
+	u16 page2_reg = ps_bridge->page2_reg;
+	int ret;
+	u16 i;
+
+	DRM_INFO("ps8640_get_edid\n");
+
+	ps8640_regw(client, page2_reg, 0xea, 0xd0);
+	ret = ps8640_read_bytes(client, DDC_ADDR, 0, EDID_LENGTH, edid);
+
+	for (i = 0; i < 128; i = i + 8) {
+		DRM_INFO("edid %02x %02x %02x %02x %02x %02x %02x %02x\n",
+			edid[i + 0], edid[i + 1], edid[i + 2], edid[i + 3],
+			edid[i + 4], edid[i + 5], edid[i + 6], edid[i + 7]);
+	}
+
+	return ret;
 }
 
 static int ps8640_bdg_enable(struct ps8640_bridge *ps_bridge)
@@ -264,15 +307,40 @@ static void ps8640_post_disable(struct drm_bridge *bridge)
 static int ps8640_get_modes(struct drm_connector *connector)
 {
 	struct ps8640_bridge *ps_bridge;
-	int num_modes = 0;
+	u8 *edid;
+	int num_modes;
+	bool power_off;
+	int ret;
+
+	DRM_INFO("ps8640_get_modes\n");
 
 	ps_bridge = container_of(connector, struct ps8640_bridge, connector);
 
-	if (ps_bridge->edid) {
-		drm_mode_connector_update_edid_property(connector,
-			ps_bridge->edid);
-		num_modes = drm_add_edid_modes(connector, ps_bridge->edid);
+	if (ps_bridge->edid)
+		return drm_add_edid_modes(connector, ps_bridge->edid);
+
+	power_off = !ps_bridge->enabled;
+	ps8640_pre_enable(&ps_bridge->bridge);
+
+	edid = kmalloc(EDID_LENGTH, GFP_KERNEL);
+	if (!edid) {
+		DRM_ERROR("Failed to allocate EDID\n");
+		return 0;
 	}
+
+	ret = ps8640_get_edid(ps_bridge, edid);
+	if (ret) {
+		kfree(edid);
+		goto out;
+	}
+
+	ps_bridge->edid = (struct edid *)edid;
+	drm_mode_connector_update_edid_property(connector, ps_bridge->edid);
+	num_modes = drm_add_edid_modes(connector, ps_bridge->edid);
+
+out:
+	if (power_off)
+		ps8640_disable(&ps_bridge->bridge);
 
 	return num_modes;
 }
