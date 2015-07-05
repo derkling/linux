@@ -523,3 +523,11 @@
 	vdd33-supply = <&ldo9_reg>;
 	vdd10-supply = <&ldo11_reg>;
 };
+
+&cpu0 {
+	cpu-cluster.0-supply = <&buck2_reg>;
+};
+
+&cpu4 {
+	cpu-cluster.1-supply = <&buck6_reg>;
+};
