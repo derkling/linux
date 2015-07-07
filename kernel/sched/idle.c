@@ -108,12 +108,20 @@ static int call_cpuidle(struct cpuidle_driver *drv, struct cpuidle_device *dev,
 		return -EBUSY;
 	}
 
+       /* Take note of the planned idle state. */
+        idle_set_state(this_rq(), &drv->states[next_state]);
+        idle_set_state_idx(this_rq(), next_state);
+
 	/*
 	 * Enter the idle state previously returned by the governor decision.
 	 * This function will block until an interrupt occurs and will take
 	 * care of re-enabling the local interrupts
 	 */
 	return cpuidle_enter(drv, dev, next_state);
+
+	idle_set_state(this_rq(), NULL);
+	idle_set_state_idx(this_rq(), -1);
+
 }
 
 /**
