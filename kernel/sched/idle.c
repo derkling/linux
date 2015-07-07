@@ -92,6 +92,8 @@ void default_idle_call(void)
 static int call_cpuidle(struct cpuidle_driver *drv, struct cpuidle_device *dev,
 		      int next_state)
 {
+	int entered_state;
+
 	/* Fall back to the default arch idle method on errors. */
 	if (next_state < 0) {
 		default_idle_call();
@@ -108,12 +110,18 @@ static int call_cpuidle(struct cpuidle_driver *drv, struct cpuidle_device *dev,
 		return -EBUSY;
 	}
 
+	idle_set_state_idx(this_rq(), next_state);
+
 	/*
 	 * Enter the idle state previously returned by the governor decision.
 	 * This function will block until an interrupt occurs and will take
 	 * care of re-enabling the local interrupts
 	 */
-	return cpuidle_enter(drv, dev, next_state);
+	entered_state = cpuidle_enter(drv, dev, next_state);
+
+	idle_set_state_idx(this_rq(), -1);
+
+	return entered_state;
 }
 
 /**
