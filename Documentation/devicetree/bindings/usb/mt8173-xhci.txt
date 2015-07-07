@@ -1,0 +1,27 @@
+MT65XX xhci
+
+The device node for Mediatek SOC usb3.0 host controller
+
+Required properties:
+ - compatible : supports "mediatek,mt8173-xhci"
+ - reg        : Offset and length of registers
+ - interrupts : Interrupt mode, number and trigger mode
+ - reg-vusb33-supply:  regulator of usb avdd3.3v
+ - reg-vbus-supply : regulator of vbus;
+ - usb-phy : the phy that xhci will bind
+ - usb3-lpm-capable: supports USB3 LPM
+ - clocks     : must support all clocks that xhci needs
+ - clock-names: should be "sys_mac" for sys and mac clocks
+
+Example:
+usb: usb30@11270000 {
+	compatible = "mediatek,mt8173-xhci";
+	reg = <0 0x11270000 0 0x1000>;
+	interrupts = <GIC_SPI 115 IRQ_TYPE_LEVEL_LOW>;
+	reg-vusb33-supply = <&mt6397_vusb_reg>;
+	reg-vbus-supply = <&usb_p1_vbus>;
+	usb-phy = <&u3phy>;
+	usb3-lpm-capable;
+	clocks = <&topckgen CLK_TOP_USB30_SEL>;
+	clock-names = "sys_mac";
+};
