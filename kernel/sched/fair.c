@@ -34,6 +34,7 @@
 #include <trace/events/sched.h>
 
 #include "sched.h"
+#include "tune.h"
 
 /*
  * Targeted preemption latency for CPU-bound tasks:
@@ -4028,6 +4029,8 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		if (!task_new && !rq->rd->overutilized &&
 		    cpu_overutilized(rq->cpu))
 			rq->rd->overutilized = true;
+
+		schedtune_enqueue_task(p, cpu_of(rq));
 #endif
 	}
 	hrtick_update(rq);
@@ -4087,9 +4090,12 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		update_cfs_shares(cfs_rq);
 	}
 
-	if (!se)
+	if (!se) {
 		sub_nr_running(rq, 1);
-
+#ifdef CONFIG_SMP
+		schedtune_dequeue_task(p, cpu_of(rq));
+#endif
+	}
 	hrtick_update(rq);
 }
 
@@ -4962,10 +4968,15 @@ schedtune_margin(unsigned long signal, unsigned long boost)
 }
 
 static inline unsigned int
-schedtune_cpu_margin(unsigned long util)
+schedtune_cpu_margin(unsigned long util, int cpu)
 {
-	unsigned int boost = get_sysctl_sched_cfs_boost();
+	unsigned int boost;
 
+#ifdef CONFIG_CGROUP_SCHEDTUNE
+	boost = schedtune_cpu_boost(cpu);
+#else
+	boost = get_sysctl_sched_cfs_boost();
+#endif
 	if (boost == 0)
 		return 0;
 
@@ -4975,7 +4986,7 @@ schedtune_cpu_margin(unsigned long util)
 #else /* CONFIG_SCHED_TUNE */
 
 static inline unsigned int
-schedtune_cpu_margin(unsigned long util)
+schedtune_cpu_margin(unsigned long util, int cpu)
 {
 	return 0;
 }
@@ -4986,7 +4997,7 @@ static inline unsigned long
 boosted_cpu_util(int cpu)
 {
 	unsigned long util = cpu_util(cpu);
-	unsigned long margin = schedtune_cpu_margin(util);
+	unsigned long margin = schedtune_cpu_margin(util, cpu);
 
 	return util + margin;
 }
