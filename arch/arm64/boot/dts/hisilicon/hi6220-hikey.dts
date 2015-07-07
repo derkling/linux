@@ -7,9 +7,6 @@
 
 /dts-v1/;
 
-/*Reserved 1MB memory for MCU*/
-/memreserve/ 0x05e00000 0x00100000;
-
 #include "hi6220.dtsi"
 
 / {
@@ -27,5 +24,22 @@
 	memory@0 {
 		device_type = "memory";
 		reg = <0x0 0x0 0x0 0x40000000>;
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		mcu-buf@05e00000 {
+			no-map;
+			reg = <0x0 0x0740f000 0x0 0x00001000>,	/* MCU firmware section */
+			      <0x0 0x05e00000 0x0 0x00100000>;	/* MCU firmware buffer */
+		};
+
+		mbox-buf@06dff000 {
+			no-map;
+			reg = <0x0 0x06dff000 0x0 0x00001000>;	/* Mailbox message buf */
+		};
 	};
 };
