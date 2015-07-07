@@ -34,6 +34,7 @@
 #include <trace/events/sched.h>
 
 #include "sched.h"
+#include "tune.h"
 
 /*
  * Targeted preemption latency for CPU-bound tasks:
@@ -4310,6 +4311,8 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		update_rq_runnable_avg(rq, rq->nr_running);
 		add_nr_running(rq, 1);
 
+		schedtune_enqueue_task(p, cpu_of(rq));
+
 		/*
 		 * We want to trigger a freq switch request only for tasks that
 		 * are waking up; this is because we get here also during
@@ -4391,6 +4394,9 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	if (!se) {
 		sub_nr_running(rq, 1);
 		update_rq_runnable_avg(rq, 1);
+
+		schedtune_dequeue_task(p, cpu_of(rq));
+
 		/*
 		 * We want to trigger a freq switch request only for tasks that
 		 * are going to sleep; this is because we get here also during
