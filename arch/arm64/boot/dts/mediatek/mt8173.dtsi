@@ -54,6 +54,7 @@
 			reg = <0x000>;
 			enable-method = "psci";
 			cpu-idle-states = <&CPU_SLEEP_0>;
+			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_0>;
 			clocks = <&infracfg CLK_INFRA_CA53SEL>,
 				 <&apmixedsys CLK_APMIXED_MAINPLL>;
 			clock-names = "cpu", "intermediate";
@@ -78,6 +79,7 @@
 			reg = <0x001>;
 			enable-method = "psci";
 			cpu-idle-states = <&CPU_SLEEP_0>;
+			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_0>;
 			clocks = <&infracfg CLK_INFRA_CA53SEL>,
 				 <&apmixedsys CLK_APMIXED_MAINPLL>;
 			clock-names = "cpu", "intermediate";
@@ -102,6 +104,7 @@
 			reg = <0x100>;
 			enable-method = "psci";
 			cpu-idle-states = <&CPU_SLEEP_0>;
+			sched-energy-costs = <&CPU_COST_1 &CLUSTER_COST_1>;
 			clocks = <&infracfg CLK_INFRA_CA57SEL>,
 				 <&apmixedsys CLK_APMIXED_MAINPLL>;
 			clock-names = "cpu", "intermediate";
@@ -126,6 +129,7 @@
 			reg = <0x101>;
 			enable-method = "psci";
 			cpu-idle-states = <&CPU_SLEEP_0>;
+			sched-energy-costs = <&CPU_COST_1 &CLUSTER_COST_1>;
 			clocks = <&infracfg CLK_INFRA_CA57SEL>,
 				 <&apmixedsys CLK_APMIXED_MAINPLL>;
 			clock-names = "cpu", "intermediate";
@@ -156,6 +160,8 @@
 				arm,psci-suspend-param = <0x0010000>;
 			};
 		};
+
+		/include/ "mt8173-sched-energy.dtsi"
 	};
 
 	psci {
