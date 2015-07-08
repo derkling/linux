@@ -6163,7 +6163,7 @@ static void init_sched_energy(int cpu, struct sched_domain *sd,
 	struct cpumask *mask = sched_group_cpus(sg);
 	int nr_idle_states_below = 0;
 
-	if (fn && sd->child && !sd->child->groups->sge) {
+	if (fn && fn(cpu) && sd->child && !sd->child->groups->sge) {
 		pr_err("BUG: EAS setup broken for CPU%d\n", cpu);
 #ifdef CONFIG_SCHED_DEBUG
 		pr_err("     energy data on %s but not on %s domain\n",
