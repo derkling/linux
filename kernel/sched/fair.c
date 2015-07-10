@@ -4261,7 +4261,7 @@ static unsigned int capacity_margin = 1280; /* ~20% margin */
 
 static bool cpu_overutilized(int cpu);
 static unsigned long get_cpu_usage(int cpu);
-struct static_key __sched_energy_freq __read_mostly = STATIC_KEY_INIT_FALSE;
+struct static_key_deferred __sched_energy_freq __read_mostly;
 
 /*
  * The enqueue_task method is called before nr_running is
