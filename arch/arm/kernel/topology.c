@@ -169,10 +169,17 @@ static void __init parse_dt_topology(void)
  */
 static void update_cpu_capacity(unsigned int cpu)
 {
-	if (!cpu_capacity(cpu) || cap_from_dt)
-		return;
+	if (cpu_core_energy(cpu)) {
+		unsigned long capacity;
+		int max_cap_idx = cpu_core_energy(cpu)->nr_cap_states - 1;
+		capacity = cpu_core_energy(cpu)->cap_states[max_cap_idx].cap;
+		atd_set_capacity_scale(cpu, capacity);
+	} else {
+		if (!cpu_capacity(cpu) || cap_from_dt)
+			return;
 
-	atd_set_capacity_scale(cpu, cpu_capacity(cpu) / middle_capacity);
+                atd_set_capacity_scale(cpu, cpu_capacity(cpu) / middle_capacity);
+	}
 
 	pr_info("CPU%u: update cpu_capacity %lu\n",
 		cpu, atd_scale_cpu_capacity(NULL, cpu));
