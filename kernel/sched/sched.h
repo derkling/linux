@@ -9,6 +9,7 @@
 #include <linux/irq_work.h>
 #include <linux/tick.h>
 #include <linux/slab.h>
+#include <linux/jump_label_ratelimit.h>
 
 #include "cpupri.h"
 #include "cpudeadline.h"
@@ -1489,10 +1490,10 @@ unsigned long arch_scale_cpu_capacity(struct sched_domain *sd, int cpu)
 
 unsigned long capacity_orig_of(int cpu);
 
-extern struct static_key __sched_energy_freq;
+extern struct static_key_deferred __sched_energy_freq;
 static inline bool sched_energy_freq(void)
 {
-	return static_key_false(&__sched_energy_freq);
+	return static_key_false(&__sched_energy_freq.key);
 }
 
 #ifdef CONFIG_CPU_FREQ_GOV_SCHED

@@ -218,13 +218,13 @@ void cpufreq_sched_reset_cap(int cpu)
 static inline void set_sched_energy_freq(void)
 {
 	if (!sched_energy_freq())
-		static_key_slow_inc(&__sched_energy_freq);
+		static_key_slow_inc(&__sched_energy_freq.key);
 }
 
 static inline void clear_sched_energy_freq(void)
 {
 	if (sched_energy_freq())
-		static_key_slow_dec(&__sched_energy_freq);
+		static_key_slow_dec_deferred(&__sched_energy_freq);
 }
 
 static int cpufreq_sched_start(struct cpufreq_policy *policy)
@@ -320,6 +320,9 @@ struct cpufreq_governor cpufreq_gov_sched = {
 
 static int __init cpufreq_sched_init(void)
 {
+	/* do not patch jump label more than once per second */
+	jump_label_rate_limit(&__sched_energy_freq, HZ);
+
 	return cpufreq_register_governor(&cpufreq_gov_sched);
 }
 
