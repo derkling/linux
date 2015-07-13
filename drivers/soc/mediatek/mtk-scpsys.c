@@ -370,6 +370,11 @@ out:
 	return ret;
 }
 
+static bool scpsys_active_wakeup(struct device *dev)
+{
+	return true;
+}
+
 static int __init scpsys_probe(struct platform_device *pdev)
 {
 	struct genpd_onecell_data *pd_data;
@@ -433,6 +438,7 @@ static int __init scpsys_probe(struct platform_device *pdev)
 		genpd->name = data->name;
 		genpd->power_off = scpsys_power_off;
 		genpd->power_on = scpsys_power_on;
+		genpd->dev_ops.active_wakeup = scpsys_active_wakeup;
 
 		/*
 		 * Initially turn on all domains to make the domains usable
