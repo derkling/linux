@@ -156,9 +156,11 @@ static void mtk_timer_global_reset(struct mtk_clock_event_device *evt)
 	writel(0x3f, evt->gpt_base + GPT_IRQ_ACK_REG);
 }
 
-static void
-mtk_timer_setup(struct mtk_clock_event_device *evt, u8 timer, u8 option)
+static void mtk_timer_setup(struct mtk_clock_event_device *evt, u8 timer,
+			    u8 option, bool enable)
 {
+	u32 val;
+
 	writel(TIMER_CTRL_CLEAR | TIMER_CTRL_DISABLE,
 		evt->gpt_base + TIMER_CTRL_REG(timer));
 
@@ -167,8 +169,10 @@ mtk_timer_setup(struct mtk_clock_event_device *evt, u8 timer, u8 option)
 
 	writel(0x0, evt->gpt_base + TIMER_CMP_REG(timer));
 
-	writel(TIMER_CTRL_OP(option) | TIMER_CTRL_ENABLE,
-			evt->gpt_base + TIMER_CTRL_REG(timer));
+	val = TIMER_CTRL_OP(option);
+	if (enable)
+		val |= TIMER_CTRL_ENABLE;
+	writel(val, evt->gpt_base + TIMER_CTRL_REG(timer));
 }
 
 static void mtk_timer_enable_irq(struct mtk_clock_event_device *evt, u8 timer)
@@ -235,12 +239,12 @@ static void __init mtk_timer_init(struct device_node *node)
 	evt->ticks_per_jiffy = DIV_ROUND_UP(rate, HZ);
 
 	/* Configure clock source */
-	mtk_timer_setup(evt, GPT_CLK_SRC, TIMER_CTRL_OP_FREERUN);
+	mtk_timer_setup(evt, GPT_CLK_SRC, TIMER_CTRL_OP_FREERUN, true);
 	clocksource_mmio_init(evt->gpt_base + TIMER_CNT_REG(GPT_CLK_SRC),
 			node->name, rate, 300, 32, clocksource_mmio_readl_up);
 
 	/* Configure clock event */
-	mtk_timer_setup(evt, GPT_CLK_EVT, TIMER_CTRL_OP_REPEAT);
+	mtk_timer_setup(evt, GPT_CLK_EVT, TIMER_CTRL_OP_REPEAT, false);
 	clockevents_config_and_register(&evt->dev, rate, 0x3,
 					0xffffffff);
 
