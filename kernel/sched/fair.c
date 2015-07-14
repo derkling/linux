@@ -5446,8 +5446,8 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 	for_each_cpu_and(i, tsk_cpus_allowed(p), sched_group_cpus(sg_target)) {
 		/*
 		 * p's blocked utilization is still accounted for on prev_cpu
-		 * so prev_cpu will receive a negative bias due the double
-		 * accouting. However, the blocked utilization may be zero.
+		 * so prev_cpu will receive a negative bias due to the double
+		 * accounting. However, the blocked utilization may be zero.
 		 */
 		int new_usage = get_cpu_usage(i) + task_utilization(p);
 
