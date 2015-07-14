@@ -362,10 +362,10 @@ static bool match_die(struct cpuinfo_x86 *c, struct cpuinfo_x86 *o)
 
 static struct sched_domain_topology_level numa_inside_package_topology[] = {
 #ifdef CONFIG_SCHED_SMT
-	{ cpu_smt_mask, cpu_smt_flags, SD_INIT_NAME(SMT) },
+	{ cpu_smt_mask, cpu_smt_flags, NULL, SD_INIT_NAME(SMT) },
 #endif
 #ifdef CONFIG_SCHED_MC
-	{ cpu_coregroup_mask, cpu_core_flags, SD_INIT_NAME(MC) },
+	{ cpu_coregroup_mask, cpu_core_flags, NULL,  SD_INIT_NAME(MC) },
 #endif
 	{ NULL, },
 };

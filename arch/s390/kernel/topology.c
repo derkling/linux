@@ -447,10 +447,10 @@ static int __init early_parse_topology(char *p)
 early_param("topology", early_parse_topology);
 
 static struct sched_domain_topology_level s390_topology[] = {
-	{ cpu_thread_mask, cpu_smt_flags, SD_INIT_NAME(SMT) },
-	{ cpu_coregroup_mask, cpu_core_flags, SD_INIT_NAME(MC) },
-	{ cpu_book_mask, SD_INIT_NAME(BOOK) },
-	{ cpu_cpu_mask, SD_INIT_NAME(DIE) },
+	{ cpu_thread_mask, cpu_smt_flags, NULL, SD_INIT_NAME(SMT) },
+	{ cpu_coregroup_mask, cpu_core_flags, NULL, SD_INIT_NAME(MC) },
+	{ cpu_book_mask, NULL, NULL, SD_INIT_NAME(BOOK) },
+	{ cpu_cpu_mask, NULL, NULL, SD_INIT_NAME(DIE) },
 	{ NULL, },
 };
 

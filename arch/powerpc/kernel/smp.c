@@ -753,9 +753,9 @@ static int powerpc_smt_flags(void)
 
 static struct sched_domain_topology_level powerpc_topology[] = {
 #ifdef CONFIG_SCHED_SMT
-	{ cpu_smt_mask, powerpc_smt_flags, SD_INIT_NAME(SMT) },
+	{ cpu_smt_mask, powerpc_smt_flags, NULL, SD_INIT_NAME(SMT) },
 #endif
-	{ cpu_cpu_mask, SD_INIT_NAME(DIE) },
+	{ cpu_cpu_mask, NULL, NULL, SD_INIT_NAME(DIE) },
 	{ NULL, },
 };
 
