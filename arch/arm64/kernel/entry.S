@@ -630,6 +630,7 @@ work_pending:
 	bl	do_notify_resume
 	b	ret_to_user
 work_resched:
+	enable_irq
 	bl	schedule
 
 /*
