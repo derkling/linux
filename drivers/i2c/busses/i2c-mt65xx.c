@@ -59,6 +59,7 @@
 #define I2C_DMA_START_EN		0x0001
 #define I2C_DMA_INT_FLAG_NONE		0x0000
 #define I2C_DMA_CLR_FLAG		0x0000
+#define I2C_DMA_HARD_RST		0x0002
 
 #define I2C_DEFAULT_SPEED		100000	/* hz */
 #define MAX_FS_MODE_SPEED		400000
@@ -81,6 +82,7 @@ enum DMA_REGS_OFFSET {
 	OFFSET_INT_FLAG = 0x0,
 	OFFSET_INT_EN = 0x04,
 	OFFSET_EN = 0x08,
+	OFFSET_RST = 0x0c,
 	OFFSET_CON = 0x18,
 	OFFSET_TX_MEM_ADDR = 0x1c,
 	OFFSET_RX_MEM_ADDR = 0x20,
@@ -262,6 +264,10 @@ static void mtk_i2c_init_hw(struct mtk_i2c *i2c)
 		      I2C_CONTROL_CLK_EXT_EN | I2C_CONTROL_DMA_EN;
 	writew(control_reg, i2c->base + OFFSET_CONTROL);
 	writew(I2C_DELAY_LEN, i2c->base + OFFSET_DELAY_LEN);
+
+	writel(I2C_DMA_HARD_RST, i2c->pdmabase + OFFSET_RST);
+	udelay(50);
+	writel(I2C_DMA_CLR_FLAG, i2c->pdmabase + OFFSET_RST);
 }
 
 /*
@@ -554,6 +560,10 @@ static irqreturn_t mtk_i2c_irq(int irqno, void *dev_id)
 
 	if (i2c->dev_comp->auto_restart)
 		restart_flag = I2C_RS_TRANSFER;
+
+	/* Clear interrupt mask */
+	writew(~(restart_flag | I2C_HS_NACKERR | I2C_ACKERR
+		| I2C_TRANSAC_COMP), i2c->base + OFFSET_INTR_MASK);
 
 	i2c->irq_stat = readw(i2c->base + OFFSET_INTR_STAT);
 	writew(restart_flag | I2C_HS_NACKERR | I2C_ACKERR
