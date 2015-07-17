@@ -174,7 +174,7 @@ scpi_clk_ops_init(struct device *dev, const struct of_device_id *match,
 
 	clk = devm_clk_register(dev, &sclk->hw);
 	if (!IS_ERR(clk) && max)
-		clk_set_rate_range(clk, min, max);
+		clk_hw_set_rate_range(&sclk->hw, min, max);
 	return clk;
 }
 
