@@ -163,6 +163,7 @@ struct it6151_bridge {
 	struct i2c_client *client;
 	struct it6151_driver_data *driver_data;
 	struct regulator *power_supplies;
+	struct drm_panel *panel;
 	void *edid;
 	int edid_len;
 	int gpio_rst_n;
@@ -437,7 +438,13 @@ static int it6151_bdg_enable(struct it6151_bridge *ite_bridge)
 
 static void it6151_pre_enable(struct drm_bridge *bridge)
 {
-	/* drm framework doesn't check NULL. */
+	struct it6151_bridge *ite_bridge =
+		container_of(bridge, struct it6151_bridge, bridge);
+
+	if (drm_panel_prepare(ite_bridge->panel)) {
+		DRM_ERROR("failed to prepare panel\n");
+		return;
+	}
 }
 
 static void it6151_enable(struct drm_bridge *bridge)
@@ -460,6 +467,11 @@ static void it6151_enable(struct drm_bridge *bridge)
 
 	it6151_bdg_enable(ite_bridge);
 
+	if (drm_panel_enable(ite_bridge->panel)) {
+		DRM_ERROR("failed to enable panel\n");
+		return;
+	}
+
 	ite_bridge->enabled = true;
 }
 
@@ -473,6 +485,11 @@ static void it6151_disable(struct drm_bridge *bridge)
 
 	ite_bridge->enabled = false;
 
+	if (drm_panel_disable(ite_bridge->panel)) {
+		DRM_ERROR("failed to disable panel\n");
+		return;
+	}
+
 	regulator_disable(ite_bridge->power_supplies);
 
 	if (gpio_is_valid(ite_bridge->gpio_rst_n))
@@ -481,7 +498,14 @@ static void it6151_disable(struct drm_bridge *bridge)
 
 static void it6151_post_disable(struct drm_bridge *bridge)
 {
-	/* drm framework doesn't check NULL. */
+	struct it6151_bridge *ite_bridge =
+		container_of(bridge, struct it6151_bridge, bridge);
+
+	if (drm_panel_unprepare(ite_bridge->panel)) {
+		DRM_ERROR("failed to unprepare panel\n");
+		return;
+	}
+
 }
 
 static int it6151_get_modes(struct drm_connector *connector)
@@ -567,6 +591,9 @@ int it6151_bridge_attach(struct drm_bridge *bridge)
 	drm_mode_connector_attach_encoder(&ite_bridge->connector,
 		bridge->encoder);
 
+	if (ite_bridge->panel)
+		drm_panel_attach(ite_bridge->panel, &ite_bridge->connector);
+
 	return ret;
 }
 
@@ -594,6 +621,7 @@ static int it6151_probe(struct i2c_client *client,
 	struct device *dev = &client->dev;
 	struct it6151_bridge *ite_bridge;
 	struct device_node *np = dev->of_node;
+	struct device_node *panel_node;
 	int ret;
 	u32 rx_reg, tx_reg;
 	const u8 *edidp;
@@ -601,6 +629,14 @@ static int it6151_probe(struct i2c_client *client,
 	ite_bridge = devm_kzalloc(dev, sizeof(*ite_bridge), GFP_KERNEL);
 	if (!ite_bridge)
 		return -ENOMEM;
+
+	panel_node = of_parse_phandle(dev->of_node, "mediatek,panel", 0);
+	if (panel_node) {
+		ite_bridge->panel = of_drm_find_panel(panel_node);
+		of_node_put(panel_node);
+		if (!ite_bridge->panel)
+			return -EPROBE_DEFER;
+	}
 
 	ite_bridge->client = client;
 	ite_bridge->driver_data = it6151_get_driver_data();
