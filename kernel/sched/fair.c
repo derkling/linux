@@ -729,6 +729,7 @@ static u64 sched_vslice(struct cfs_rq *cfs_rq, struct sched_entity *se)
 
 static int select_idle_sibling(struct task_struct *p, int prev_cpu, int cpu);
 static unsigned long task_h_load(struct task_struct *p);
+static unsigned long capacity_of(int cpu);
 
 /* Give new sched_entity start runnable values to heavy its load in infant time */
 void init_entity_runnable_average(struct sched_entity *se)
@@ -3598,6 +3599,23 @@ static inline unsigned long cfs_rq_load_avg(struct cfs_rq *cfs_rq)
 
 static int idle_balance(struct rq *this_rq, struct rq_flags *rf);
 
+static inline int task_fits_capacity(struct task_struct *p, long capacity);
+
+static inline void update_misfit_status(struct task_struct *p, struct rq *rq)
+{
+	if (!p) {
+		rq->misfit_task_load = 0;
+		return;
+	}
+
+	if (task_fits_capacity(p, capacity_of(cpu_of(rq)))) {
+		rq->misfit_task_load = 0;
+		return;
+	}
+
+	rq->misfit_task_load = task_h_load(p);
+}
+
 #else /* CONFIG_SMP */
 
 static inline int
@@ -3634,6 +3652,8 @@ static inline int idle_balance(struct rq *rq, struct rq_flags *rf)
 {
 	return 0;
 }
+
+static inline void update_misfit_status(struct task_struct *p, struct rq *rq) {}
 
 #endif /* CONFIG_SMP */
 
@@ -7793,24 +7813,17 @@ preempt:
 		set_last_buddy(se);
 }
 
-static inline void update_misfit_task(struct rq *rq, struct task_struct *p)
-{
-#ifdef CONFIG_SMP
-	rq->misfit_task = !task_fits_capacity(p, capacity_of(rq->cpu));
-#endif
-}
-
 static inline void clear_rq_misfit(struct rq *rq)
 {
 #ifdef CONFIG_SMP
-	rq->misfit_task = 0;
+	rq->misfit_task_load = 0;
 #endif
 }
 
 static inline unsigned int rq_has_misfit(struct rq *rq)
 {
 #ifdef CONFIG_SMP
-	return rq->misfit_task;
+	return rq->misfit_task_load;
 #else
 	return 0;
 #endif
@@ -7906,7 +7919,7 @@ again:
 	if (hrtick_enabled(rq))
 		hrtick_start_fair(rq, p);
 
-	update_misfit_task(rq, p);
+	update_misfit_status(p, rq);
 
 	return p;
 simple:
@@ -7925,12 +7938,12 @@ simple:
 	if (hrtick_enabled(rq))
 		hrtick_start_fair(rq, p);
 
-	update_misfit_task(rq, p);
+	update_misfit_status(p, rq);
 
 	return p;
 
 idle:
-	clear_rq_misfit(rq);
+	update_misfit_status(NULL, rq);
 	new_tasks = idle_balance(rq, rf);
 
 	/*
@@ -8679,7 +8692,7 @@ struct sg_lb_stats {
 	unsigned int group_weight;
 	enum group_type group_type;
 	int group_no_capacity;
-	int group_misfit_task; /* A cpu has a task too big for its capacity */
+	int group_misfit_task_load; /* A cpu has a task too big for its capacity */
 #ifdef CONFIG_NUMA_BALANCING
 	unsigned int nr_numa_running;
 	unsigned int nr_preferred_running;
@@ -9010,7 +9023,7 @@ group_type group_classify(struct sched_group *group,
 	if (sg_imbalanced(group))
 		return group_imbalanced;
 
-	if (sgs->group_misfit_task)
+	if (sgs->group_misfit_task_load)
 		return group_misfit_task;
 
 	return group_other;
@@ -9065,8 +9078,8 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 			sgs->idle_cpus++;
 
 		if (env->sd->flags & SD_ASYM_CPUCAPACITY &&
-		    !sgs->group_misfit_task && rq_has_misfit(rq))
-			sgs->group_misfit_task = capacity_of(i);
+		    !sgs->group_misfit_task_load && rq->misfit_task_load)
+			sgs->group_misfit_task_load = rq->misfit_task_load;
 
 		if (cpu_overutilized(i)) {
 			*overutilized = true;
@@ -9549,7 +9562,7 @@ static inline void calculate_imbalance(struct lb_env *env, struct sd_lb_stats *s
 	/* Boost imbalance to allow misfit task to be balanced. */
 	if (busiest->group_type == group_misfit_task) {
 		env->imbalance = max_t(long, env->imbalance,
-				       busiest->group_misfit_task);
+				       busiest->group_misfit_task_load);
 	}
 
 	/*
@@ -10884,7 +10897,7 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 	if (static_branch_unlikely(&sched_numa_balancing))
 		task_tick_numa(rq, curr);
 
-	update_misfit_task(rq, curr);
+	update_misfit_status(curr, rq);
 
 	update_overutilized_status(rq);
 }
