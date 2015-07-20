@@ -458,6 +458,15 @@ config REGULATOR_MT6397
 	  This driver supports the control of different power rails of device
 	  through regulator interface.
 
+config REGULATOR_MT6311
+	tristate "MediaTek MT6311 PMIC"
+	depends on I2C
+	help
+	  Say y here to select this option to enable the power regulator of
+	  MediaTek MT6311 PMIC.
+	  This driver supports the control of different power rails of device
+	  through regulator interface.
+
 config REGULATOR_PALMAS
 	tristate "TI Palmas PMIC Regulators"
 	depends on MFD_PALMAS
