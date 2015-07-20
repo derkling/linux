@@ -20,33 +20,51 @@
 	compatible = "google,oak-rev2", "google,oak", "mediatek,mt8173";
 };
 
-&dsi_out {
-	remote-endpoint = <&dsi_in>;
+&backlight_lcd {
+	power-supply = <&mt6397_vio18_reg>;
 };
 
-&i2c4 {
-	ps8640: edp-bridge@18 {
-		compatible = "parade,ps8640";
-		reg = <0x18>;
-		edid_reg = <0x50>;
-		power-gpios = <&pio 116 GPIO_ACTIVE_HIGH>;
-		power-1v2-gpios = <&pio 30 GPIO_ACTIVE_HIGH>;
-		reset-gpios = <&pio 115 GPIO_ACTIVE_HIGH>;
-		mode-sel-gpios = <&pio 92 GPIO_ACTIVE_HIGH>;
-		disp-bdg-supply = <&mt6397_vgp2_reg>;
-		mediatek,panel = <&panel>;
-		edid = [00 ff ff ff ff ff ff 00 0d ae 32 11 00 00 00 00
-			13 17 01 04 95 1a 0e 78 02 14 35 92 55 53 95 29
-			24 50 54 00 00 00 01 01 01 01 01 01 01 01 01 01
-			01 01 01 01 01 01 da 1d 56 e2 50 00 20 30 88 1e
-			8c 00 00 90 10 00 00 18 00 00 00 fe 00 4e 31 31
-			36 42 47 45 2d 45 41 32 0a 20 00 00 00 fe 00 43
-			4d 4e 0a 20 20 20 20 20 20 20 20 20 00 00 00 fe
-			00 4e 31 31 36 42 47 45 2d 45 41 32 0a 20 00 48];
-		port {
-			dsi_in: endpoint {
-				remote-endpoint = <&dsi_out>;
+&bl_fixed_reg {
+	status = "disabled";
+};
+
+&cpu2 {
+	proc-supply = <&da9211_vcpu_reg>;
+};
+
+&cpu3 {
+	proc-supply = <&da9211_vcpu_reg>;
+};
+
+&i2c1 {
+	da9211: da9211@68 {
+		compatible = "dlg,da9211";
+		reg = <0x68>;
+
+		regulators {
+			da9211_vcpu_reg: BUCKA {
+				regulator-name = "VBUCKA";
+				regulator-min-microvolt = < 700000>;
+				regulator-max-microvolt = <1310000>;
+				regulator-min-microamp	= <2000000>;
+				regulator-max-microamp	= <4400000>;
+				regulator-ramp-delay = <10000>;
+				regulator-always-on;
+			};
+
+			da9211_vgpu_reg: BUCKB {
+				regulator-name = "VBUCKB";
+				regulator-min-microvolt = < 700000>;
+				regulator-max-microvolt = <1310000>;
+				regulator-min-microamp	= <2000000>;
+				regulator-max-microamp	= <3000000>;
+				regulator-ramp-delay = <10000>;
+				regulator-always-on;
 			};
 		};
 	};
+};
+
+&mt6311 {
+	status = "disabled";
 };

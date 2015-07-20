@@ -20,7 +20,16 @@
 	compatible = "google,oak-rev1", "google,oak", "mediatek,mt8173";
 };
 
+&backlight_lcd {
+	/delete-property/ power-supply; /* Not used on oak-rev1 */
+};
+
+&bl_fixed_reg {
+	status = "disabled";
+};
+
 &cpu2 {
+	proc-supply = <&da9211_vcpu_reg>;
 	operating-points = <
 		507000  828000
 		702000  867000
@@ -32,6 +41,7 @@
 };
 
 &cpu3 {
+	proc-supply = <&da9211_vcpu_reg>;
 	operating-points = <
 		507000  828000
 		702000  867000
@@ -43,10 +53,41 @@
 };
 
 &dsi_out {
-	remote-endpoint = <&dsi_in>;
+	remote-endpoint = <&ite6151_in>;
+};
+
+&i2c1 {
+	da9211: da9211@68 {
+		compatible = "dlg,da9211";
+		reg = <0x68>;
+
+		regulators {
+			da9211_vcpu_reg: BUCKA {
+				regulator-name = "VBUCKA";
+				regulator-min-microvolt = < 700000>;
+				regulator-max-microvolt = <1310000>;
+				regulator-min-microamp	= <2000000>;
+				regulator-max-microamp	= <4400000>;
+				regulator-ramp-delay = <10000>;
+				regulator-always-on;
+			};
+
+			da9211_vgpu_reg: BUCKB {
+				regulator-name = "VBUCKB";
+				regulator-min-microvolt = < 700000>;
+				regulator-max-microvolt = <1310000>;
+				regulator-min-microamp	= <2000000>;
+				regulator-max-microamp	= <3000000>;
+				regulator-ramp-delay = <10000>;
+				regulator-always-on;
+			};
+		};
+	};
 };
 
 &i2c3 {
+	status = "okay";
+
 	ite6151: edp-bridge@5c {
 		compatible = "ite,it6151";
 		reg = <0x5c>;
@@ -66,9 +107,25 @@
 			00 4e 31 31 36 42 47 45 2d 45 41 32 0a 20 00 48];
 
 		port {
-			dsi_in: endpoint {
+			ite6151_in: endpoint {
 				remote-endpoint = <&dsi_out>;
 			};
 		};
 	};
+};
+
+&mt6311 {
+	status = "disabled";
+};
+
+&panel {
+	/delete-property/ power-supply; /* Not used on oak-rev1 */
+};
+
+&panel_fixed_3v3 {
+	status = "disabled";
+};
+
+&ps8640 {
+	status = "disabled";
 };
