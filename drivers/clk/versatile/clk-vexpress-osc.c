@@ -10,7 +10,7 @@
  *
  * Copyright (C) 2012 ARM Limited
  */
-
+#define DEBUG 1
 #include <linux/clkdev.h>
 #include <linux/clk-provider.h>
 #include <linux/err.h>
@@ -58,6 +58,7 @@ static int vexpress_osc_set_rate(struct clk_hw *hw, unsigned long rate,
 {
 	struct vexpress_osc *osc = to_vexpress_osc(hw);
 
+	trace_printk("rate=%lu", rate);
 	return regmap_write(osc->reg, 0, rate);
 }
 

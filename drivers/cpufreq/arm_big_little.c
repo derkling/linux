@@ -31,6 +31,7 @@
 #include <linux/slab.h>
 #include <linux/topology.h>
 #include <linux/types.h>
+#include <linux/sched.h>
 
 #include "arm_big_little.h"
 
@@ -131,6 +132,7 @@ bL_cpufreq_set_rate(u32 cpu, u32 old_cluster, u32 new_cluster, u32 rate)
 	u32 new_rate, prev_rate;
 	int ret;
 	bool bLs = is_bL_switching_enabled();
+	unsigned long long elapsed;
 
 	mutex_lock(&cluster_lock[new_cluster]);
 
@@ -148,7 +150,11 @@ bL_cpufreq_set_rate(u32 cpu, u32 old_cluster, u32 new_cluster, u32 rate)
 	pr_debug("%s: cpu: %d, old cluster: %d, new cluster: %d, freq: %d\n",
 			__func__, cpu, old_cluster, new_cluster, new_rate);
 
+	elapsed = sched_clock();
 	ret = clk_set_rate(clk[new_cluster], new_rate * 1000);
+	elapsed = sched_clock() - elapsed;
+	trace_printk("cpu: %d, old cluster: %d, new cluster: %d, freq: %d, set_rate_elapsed: %llu\n",
+			cpu, old_cluster, new_cluster, new_rate, elapsed);
 	if (WARN_ON(ret)) {
 		pr_err("clk_set_rate failed: %d, new cluster: %d\n", ret,
 				new_cluster);

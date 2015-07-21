@@ -13,6 +13,8 @@
  * GNU General Public License for more details.
  */
 
+#define DEBUG 1
+
 #include <linux/interrupt.h>
 #include <linux/spinlock.h>
 #include <linux/mutex.h>
@@ -58,6 +60,7 @@ static irqreturn_t mhu_rx_interrupt(int irq, void *p)
 	if (!val)
 		return IRQ_NONE;
 
+	trace_printk("data=%u", val);
 	mbox_chan_received_data(chan, (void *)&val);
 
 	writel_relaxed(val, mlink->rx_reg + INTR_CLR_OFS);
@@ -79,6 +82,7 @@ static int mhu_send_data(struct mbox_chan *chan, void *data)
 	u32 *arg = data;
 
 	writel_relaxed(*arg, mlink->tx_reg + INTR_SET_OFS);
+	trace_printk("submitted chan=%p", (void *)chan);
 
 	return 0;
 }

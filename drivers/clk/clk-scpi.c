@@ -61,6 +61,7 @@ static int scpi_clk_set_rate(struct clk_hw *hw, unsigned long rate,
 {
 	struct scpi_clk *clk = to_scpi_clk(hw);
 
+	trace_printk("rate=%lu", rate);
 	return clk->scpi_ops->clk_set_val(clk->id, rate);
 }
 
@@ -129,8 +130,11 @@ static int scpi_dvfs_set_rate(struct clk_hw *hw, unsigned long rate,
 	struct scpi_clk *clk = to_scpi_clk(hw);
 	int ret = __scpi_find_dvfs_index(clk, rate);
 
-	if (ret < 0)
+	if (ret < 0) {
+		trace_printk("rate=%lu ERROR", rate);
 		return ret;
+	}
+	trace_printk("rate=%lu", rate);
 	return clk->scpi_ops->dvfs_set_idx(clk->id, (u8)ret);
 }
 

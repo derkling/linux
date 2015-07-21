@@ -257,6 +257,9 @@ static void scpi_process_cmd(struct scpi_chan *ch, u32 cmd)
 	}
 
 	list_for_each_entry(t, &ch->rx_pending, node)
+		trace_printk("pending completion=%p", (void *)&t->done);
+
+	list_for_each_entry(t, &ch->rx_pending, node)
 		if (CMD_XTRACT_UNIQ(t->cmd) == CMD_XTRACT_UNIQ(cmd)) {
 			list_del(&t->node);
 			match = t;
@@ -271,6 +274,7 @@ static void scpi_process_cmd(struct scpi_chan *ch, u32 cmd)
 		memcpy_fromio(match->rx_buf, mem->payload, len);
 		if (match->rx_len > len)
 			memset(match->rx_buf + len, 0, match->rx_len - len);
+		trace_printk("signal completion=%p", (void *)&match->done);
 		complete(&match->done);
 	}
 	spin_unlock_irqrestore(&ch->rx_lock, flags);
@@ -282,6 +286,7 @@ static void scpi_handle_remote_msg(struct mbox_client *c, void *msg)
 	struct scpi_shared_mem *mem = ch->rx_payload;
 	u32 cmd = le32_to_cpu(mem->command);
 
+	trace_printk("cmd=%u", cmd);
 	scpi_process_cmd(ch, cmd);
 }
 
@@ -350,15 +355,19 @@ static int scpi_send_message(u8 cmd, void *tx_buf, unsigned int tx_len,
 	msg->rx_len = rx_len;
 	init_completion(&msg->done);
 
+	trace_printk("msg=%u msg_done=%p", cmd, (void *)&msg->done);
 	ret = mbox_send_message(scpi_chan->chan, msg);
+	trace_printk("ret=%d done=%u", ret, msg->done.done);
 	if (ret < 0 || !rx_buf)
 		goto out;
 
+	trace_printk("wait=MAX_RX_TIMEOUT msg_done=%p", (void *)&msg->done);
 	if (!wait_for_completion_timeout(&msg->done, MAX_RX_TIMEOUT))
 		ret = -ETIMEDOUT;
 	else
 		/* first status word */
 		ret = le32_to_cpu(msg->status);
+	trace_printk("ret=%d", ret);
 out:
 	if (ret < 0 && rx_buf) /* remove entry from the list if timed-out */
 		scpi_process_cmd(scpi_chan, msg->cmd);
@@ -427,6 +436,7 @@ static int scpi_dvfs_set_idx(u8 domain, u8 index)
 	int stat;
 	struct dvfs_set dvfs = {domain, index};
 
+	trace_printk("domain=%u index=%u", domain, index);
 	return scpi_send_message(SCPI_CMD_SET_DVFS, &dvfs, sizeof(dvfs),
 				 &stat, sizeof(stat));
 }

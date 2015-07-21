@@ -956,8 +956,10 @@ EXPORT_SYMBOL_GPL(clk_get_accuracy);
 static unsigned long clk_recalc(struct clk_core *core,
 				unsigned long parent_rate)
 {
-	if (core->ops->recalc_rate)
+	if (core->ops->recalc_rate) {
+		trace_printk("clk_core_name=%s", core->name);
 		return core->ops->recalc_rate(core->hw, parent_rate);
+	}
 	return parent_rate;
 }
 
@@ -1407,15 +1409,20 @@ static void clk_change_rate(struct clk_core *core)
 
 	trace_clk_set_rate(core, core->new_rate);
 
-	if (!skip_set_rate && core->ops->set_rate)
+	if (!skip_set_rate && core->ops->set_rate) {
+		//trace_printk("name=%s rate=%lu", core->hw->init->name, core->new_rate);
 		core->ops->set_rate(core->hw, core->new_rate, best_parent_rate);
+	}
 
 	trace_clk_set_rate_complete(core, core->new_rate);
 
 	core->rate = clk_recalc(core, best_parent_rate);
+	trace_printk("rate=%lu", core->rate);
 
-	if (core->notifier_count && old_rate != core->rate)
+	if (core->notifier_count && old_rate != core->rate) {
 		__clk_notify(core, POST_RATE_CHANGE, old_rate, core->rate);
+		trace_printk("notified old_rate=%lu new_rate=%lu", old_rate, core->rate);
+	}
 
 	if (core->flags & CLK_RECALC_NEW_RATES)
 		(void)clk_calc_new_rates(core, core->new_rate);
@@ -1442,6 +1449,7 @@ static int clk_core_set_rate_nolock(struct clk_core *core,
 	struct clk_core *top, *fail_clk;
 	unsigned long rate = req_rate;
 	int ret = 0;
+	unsigned long long elapsed;
 
 	if (!core)
 		return 0;
@@ -1468,7 +1476,10 @@ static int clk_core_set_rate_nolock(struct clk_core *core,
 	}
 
 	/* change the rates */
+	elapsed = sched_clock();
 	clk_change_rate(top);
+	elapsed = sched_clock() - elapsed;
+	trace_printk("clk_core_set_rate_elapsed=%llu", elapsed);
 
 	core->req_rate = req_rate;
 

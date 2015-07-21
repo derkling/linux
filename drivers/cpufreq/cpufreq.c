@@ -1936,6 +1936,7 @@ static int __target_index(struct cpufreq_policy *policy,
 	unsigned int intermediate_freq = 0;
 	int retval = -EINVAL;
 	bool notify;
+	unsigned long long elapsed;
 
 	notify = !(cpufreq_driver->flags & CPUFREQ_ASYNC_NOTIFICATION);
 	if (notify) {
@@ -1958,7 +1959,11 @@ static int __target_index(struct cpufreq_policy *policy,
 		cpufreq_freq_transition_begin(policy, &freqs);
 	}
 
+	elapsed = sched_clock();
 	retval = cpufreq_driver->target_index(policy, index);
+	elapsed = sched_clock() - elapsed;
+	trace_printk("cpu: %d, oldfreq: %u, new freq: %u, elapsed: %llu\n",
+		 policy->cpu, freqs.old, freqs.new, elapsed);
 	if (retval)
 		pr_err("%s: Failed to change cpu frequency: %d\n", __func__,
 		       retval);

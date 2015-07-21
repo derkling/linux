@@ -62,8 +62,15 @@ static void msg_submit(struct mbox_chan *chan)
 
 	spin_lock_irqsave(&chan->lock, flags);
 
-	if (!chan->msg_count || chan->active_req)
+	if (chan->active_req)
+		trace_printk("chan=%p msg_count=%u ACTIVE", (void *)chan, chan->msg_count);
+	else
+		trace_printk("chan=%p msg_count=%u INACTIVE", (void *)chan, chan->msg_count);
+
+	if (!chan->msg_count || chan->active_req) {
+		trace_printk("chan=%p BAIL", (void *)chan);
 		goto exit;
+	}
 
 	count = chan->msg_count;
 	idx = chan->msg_free;
@@ -85,10 +92,12 @@ static void msg_submit(struct mbox_chan *chan)
 exit:
 	spin_unlock_irqrestore(&chan->lock, flags);
 
-	if (!err && (chan->txdone_method & TXDONE_BY_POLL))
+	if (!err && (chan->txdone_method & TXDONE_BY_POLL)) {
+		trace_printk("calling poll_txdone for chan %p", (void *)chan);
 		hrtimer_start(&chan->mbox->poll_hrt,
 			      ms_to_ktime(chan->mbox->txpoll_period),
 			      HRTIMER_MODE_REL);
+	}
 }
 
 static void tx_tick(struct mbox_chan *chan, int r)
@@ -101,6 +110,8 @@ static void tx_tick(struct mbox_chan *chan, int r)
 	chan->active_req = NULL;
 	spin_unlock_irqrestore(&chan->lock, flags);
 
+	trace_printk("chan=%p", (void *)chan);
+
 	/* Submit next message */
 	msg_submit(chan);
 
@@ -108,8 +119,10 @@ static void tx_tick(struct mbox_chan *chan, int r)
 	if (mssg && chan->cl->tx_done)
 		chan->cl->tx_done(chan->cl, mssg, r);
 
-	if (chan->cl->tx_block)
+	if (chan->cl->tx_block) {
+		trace_printk("signal completion=%p", (void *)&chan->tx_complete);
 		complete(&chan->tx_complete);
+	}
 }
 
 static enum hrtimer_restart txdone_hrtimer(struct hrtimer *hrtimer)
@@ -119,19 +132,23 @@ static enum hrtimer_restart txdone_hrtimer(struct hrtimer *hrtimer)
 	bool txdone, resched = false;
 	int i;
 
+	trace_printk("callback fired for mbox %p", (void *)mbox);
 	for (i = 0; i < mbox->num_chans; i++) {
 		struct mbox_chan *chan = &mbox->chans[i];
 
 		if (chan->active_req && chan->cl) {
 			txdone = chan->mbox->ops->last_tx_done(chan);
-			if (txdone)
+			if (txdone) {
+				trace_printk("call tx_tick for chan %p", (void *)chan);
 				tx_tick(chan, 0);
+			}
 			else
 				resched = true;
 		}
 	}
 
 	if (resched) {
+		trace_printk("next poll in %ums", mbox->txpoll_period);
 		hrtimer_forward_now(hrtimer, ms_to_ktime(mbox->txpoll_period));
 		return HRTIMER_RESTART;
 	}
@@ -174,6 +191,7 @@ void mbox_chan_txdone(struct mbox_chan *chan, int r)
 		return;
 	}
 
+	trace_printk("call tx_tick for chan %p", (void *)chan);
 	tx_tick(chan, r);
 }
 EXPORT_SYMBOL_GPL(mbox_chan_txdone);
@@ -194,6 +212,7 @@ void mbox_client_txdone(struct mbox_chan *chan, int r)
 		return;
 	}
 
+	trace_printk("call tx_tick for chan %p", (void *)chan);
 	tx_tick(chan, r);
 }
 EXPORT_SYMBOL_GPL(mbox_client_txdone);
@@ -270,9 +289,11 @@ int mbox_send_message(struct mbox_chan *chan, void *mssg)
 		else
 			wait = msecs_to_jiffies(chan->cl->tx_tout);
 
+		trace_printk("wait completion=%p", (void *)&chan->tx_complete);
 		ret = wait_for_completion_timeout(&chan->tx_complete, wait);
 		if (ret == 0) {
 			t = -EIO;
+			trace_printk("call tx_tick for chan %p", (void *)chan);
 			tx_tick(chan, -EIO);
 		}
 	}

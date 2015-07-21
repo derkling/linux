@@ -47,12 +47,17 @@ struct gov_data {
 static void cpufreq_sched_try_driver_target(struct cpufreq_policy *policy, unsigned int freq)
 {
 	struct gov_data *gd = policy->governor_data;
+	unsigned long long elapsed_time;
 
 	/* avoid race with cpufreq_sched_stop */
 	if (!down_write_trylock(&policy->rwsem))
 		return;
 
+	trace_printk("kthread=%d freq_req=%u", gd->task->pid, freq);
+	elapsed_time = sched_clock();
 	__cpufreq_driver_target(policy, freq, CPUFREQ_RELATION_L);
+	elapsed_time = sched_clock() - elapsed_time;
+	trace_printk("kthread=%d elapsed_time=%llu", gd->task->pid, elapsed_time);
 
 	gd->throttle = ktime_add_ns(ktime_get(), gd->throttle_nsec);
 	up_write(&policy->rwsem);
