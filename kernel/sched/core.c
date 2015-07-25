@@ -6909,7 +6909,7 @@ static int build_sched_domains(const struct cpumask *cpu_map,
 	enum s_alloc alloc_state;
 	struct sched_domain *sd;
 	struct s_data d;
-	struct rq *rq;
+	struct rq *rq = NULL;
 	int i, ret = -ENOMEM;
 
 	alloc_state = __visit_domain_allocation_hell(&d, cpu_map);
@@ -6972,8 +6972,8 @@ static int build_sched_domains(const struct cpumask *cpu_map,
 	}
 	rcu_read_unlock();
 
-	rq = cpu_rq(cpumask_first(cpu_map));
-	pr_info("Max cpu capacity: %lu\n", rq->rd->max_cpu_capacity);
+	if (rq)
+		pr_info("Max cpu capacity: %lu\n", rq->rd->max_cpu_capacity);
 
 	ret = 0;
 error:
