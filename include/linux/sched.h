@@ -2241,6 +2241,8 @@ extern int cpuset_cpumask_can_shrink(const struct cpumask *cur,
 				     const struct cpumask *trial);
 extern int task_can_attach(struct task_struct *p,
 			   const struct cpumask *cs_cpus_allowed);
+void sched_restore_dl_bw(struct task_struct *task,
+			 const struct cpumask *new_mask);
 #ifdef CONFIG_SMP
 extern void do_set_cpus_allowed(struct task_struct *p,
 			       const struct cpumask *new_mask);

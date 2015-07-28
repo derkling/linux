@@ -2277,6 +2277,23 @@ static inline int dl_bw_cpus(int i)
 }
 #endif
 
+void sched_restore_dl_bw(struct task_struct *task,
+			 const struct cpumask *new_mask)
+{
+	struct dl_bw *dl_b;
+	unsigned long flags;
+
+	if (!task_has_dl_policy(task))
+		return;
+
+	rcu_read_lock_sched();
+	dl_b = dl_bw_of(cpumask_any(new_mask));
+	raw_spin_lock_irqsave(&dl_b->lock, flags);
+	dl_b->total_bw += task->dl.dl_bw;
+	raw_spin_unlock_irqrestore(&dl_b->lock, flags);
+	rcu_read_unlock_sched();
+}
+
 /*
  * We must be sure that accepting a new task (or allowing changing the
  * parameters of an existing one) is consistent with the bandwidth
@@ -5635,6 +5652,17 @@ static void rq_attach_root(struct rq *rq, struct root_domain *rd)
 			set_rq_offline(rq);
 
 		cpumask_clear_cpu(rq->cpu, old_rd->span);
+
+		if (old_rd == &def_root_domain &&
+		    cpumask_empty(old_rd->span)) {
+			/*
+			 * def_root_domain is never freed, so we have to clean
+			 * it when it becomes empty.
+			 */
+			raw_spin_lock(&old_rd->dl_bw.lock);
+			old_rd->dl_bw.total_bw = 0;
+			raw_spin_unlock(&old_rd->dl_bw.lock);
+		}
 
 		/*
 		 * If we dont want to free the old_rd yet then

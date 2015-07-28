@@ -785,6 +785,44 @@ done:
 	return ndoms;
 }
 
+/**
+ * update_tasks_rd - Update tasks' root_domains status.
+ * @cs: the cpuset to which each task's root_domain belongs
+ *
+ * Iterate through each task of @cs updating state of its related
+ * root_domain.
+ */
+static void update_tasks_rd(struct cpuset *cs)
+{
+	struct css_task_iter it;
+	struct task_struct *task;
+
+	css_task_iter_start(&cs->css, &it);
+	while ((task = css_task_iter_next(&it)))
+		sched_restore_dl_bw(task, cs->effective_cpus);
+	css_task_iter_end(&it);
+}
+
+static void cpuset_update_rd(void)
+{
+	struct cpuset *cs;
+	struct cgroup_subsys_state *pos_css;
+
+	lockdep_assert_held(&cpuset_mutex);
+	rcu_read_lock();
+	cpuset_for_each_descendant_pre(cs, pos_css, &top_cpuset) {
+		if (!css_tryget_online(&cs->css))
+			continue;
+		rcu_read_unlock();
+
+		update_tasks_rd(cs);
+
+		rcu_read_lock();
+		css_put(&cs->css);
+	}
+	rcu_read_unlock();
+}
+
 /*
  * Rebuild scheduler domains.
  *
@@ -818,6 +856,7 @@ static void rebuild_sched_domains_locked(void)
 
 	/* Have scheduler rebuild the domains */
 	partition_sched_domains(ndoms, doms, attr);
+	cpuset_update_rd();
 out:
 	put_online_cpus();
 }
