@@ -5823,11 +5823,14 @@ static inline bool sched_debug(void)
 }
 #endif /* CONFIG_SCHED_DEBUG */
 
-static int sd_degenerate(struct sched_domain *sd)
+static int sd_degenerate(struct sched_domain *sd, int cpu)
 {
 	if (cpumask_weight(sched_domain_span(sd)) == 1) {
-		if (sd->groups->sge)
+		printk("%s:%d *** 1 ***, cpumask_weight = 1\n", sd->name, cpu);
+		if (sd->groups->sge) {
+			printk("%s:%d *** 2 ***, unset SD_LOAD_BALANCE\n", sd->name, cpu);
 			sd->flags &= ~SD_LOAD_BALANCE;
+		}
 		else
 			return 1;
 	}
@@ -5841,27 +5844,34 @@ static int sd_degenerate(struct sched_domain *sd)
 			 SD_SHARE_PKG_RESOURCES |
 			 SD_SHARE_POWERDOMAIN |
 			 SD_SHARE_CAP_STATES)) {
-		if (sd->groups != sd->groups->next)
+		if (sd->groups != sd->groups->next) {
+			printk("%s:%d *** 3 ***\n", sd->name, cpu);
 			return 0;
+		}
 	}
 
 	/* Following flags don't use groups */
-	if (sd->flags & (SD_WAKE_AFFINE))
+	if (sd->flags & (SD_WAKE_AFFINE)) {
+		printk("%s:%d *** 4 ***\n", sd->name, cpu);
 		return 0;
+	}
 
+	printk("%s:%d *** 5 ***\n", sd->name, cpu);
 	return 1;
 }
 
 static int
-sd_parent_degenerate(struct sched_domain *sd, struct sched_domain *parent)
+sd_parent_degenerate(struct sched_domain *sd, struct sched_domain *parent, int cpu)
 {
 	unsigned long cflags = sd->flags, pflags = parent->flags;
 
-	if (sd_degenerate(parent))
+	if (sd_degenerate(parent, cpu))
 		return 1;
 
-	if (!cpumask_equal(sched_domain_span(sd), sched_domain_span(parent)))
+	if (!cpumask_equal(sched_domain_span(sd), sched_domain_span(parent))) {
+		printk("%s:%d *** 11 ***\n", sd->name, cpu);
 		return 0;
+	}
 
 	/* Flags needing groups don't count if only 1 group in parent */
 	if (parent->groups == parent->groups->next) {
@@ -5874,16 +5884,25 @@ sd_parent_degenerate(struct sched_domain *sd, struct sched_domain *parent)
 				SD_PREFER_SIBLING |
 				SD_SHARE_POWERDOMAIN |
 				SD_SHARE_CAP_STATES);
+		printk("%s:%d *** 12 ***\n", sd->name, cpu);
+		printk("parent->groups=%p parent->groups->next=%p parent->span_weight=%d num_xxx_cpus=[%d %d %d %d]\n",
+		       parent->groups, parent->groups->next, parent->span_weight, num_online_cpus(), num_possible_cpus(), num_present_cpus(), num_active_cpus());
 		if (parent->groups->sge) {
+			printk("%s:%d *** 12.5 ***, unset SD_LOAD_BALANCE\n", parent->name, cpu);
 			parent->flags &= ~SD_LOAD_BALANCE;
 			return 0;
 		}
-		if (nr_node_ids == 1)
+		if (nr_node_ids == 1) {
+			printk("%s:%d *** 13 ***\n", sd->name, cpu);
 			pflags &= ~SD_SERIALIZE;
+		}
 	}
-	if (~cflags & pflags)
+	if (~cflags & pflags) {
+		printk("%s:%d *** 14 ***\n", sd->name, cpu);
 		return 0;
+	}
 
+	printk("%s:%d *** 15 ***\n", sd->name, cpu);
 	return 1;
 }
 
@@ -6119,7 +6138,9 @@ cpu_attach_domain(struct sched_domain *sd, struct root_domain *rd, int cpu)
 		if (!parent)
 			break;
 
-		if (sd_parent_degenerate(tmp, parent)) {
+		if (tmp)
+			printk("%s:%d calling sd_parent_degenerate()\n", tmp->name, cpu);
+		if (sd_parent_degenerate(tmp, parent, cpu)) {
 			tmp->parent = parent->parent;
 			if (parent->parent)
 				parent->parent->child = tmp;
@@ -6135,7 +6156,9 @@ cpu_attach_domain(struct sched_domain *sd, struct root_domain *rd, int cpu)
 			tmp = tmp->parent;
 	}
 
-	if (sd && sd_degenerate(sd)) {
+	if (sd)
+		printk("%s:%d calling sd_degenerate()\n", sd->name, cpu);
+	if (sd && sd_degenerate(sd, cpu)) {
 		tmp = sd;
 		sd = sd->parent;
 		destroy_sched_domain(tmp, cpu);
