@@ -119,6 +119,13 @@ static inline void setup_node_to_cpumask_map(void) { }
 
 extern const struct cpumask *cpu_coregroup_mask(int cpu);
 
+#define arch_scale_freq_capacity x86_arch_scale_freq_capacity
+struct sched_domain;
+extern
+unsigned long x86_arch_scale_freq_capacity(struct sched_domain *sd, int cpu);
+
+DECLARE_PER_CPU(atomic_long_t, cpu_freq_capacity);
+
 #define topology_physical_package_id(cpu)	(cpu_data(cpu).phys_proc_id)
 #define topology_core_id(cpu)			(cpu_data(cpu).cpu_core_id)
 
