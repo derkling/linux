@@ -1053,7 +1053,7 @@ static int intel_pstate_cpu_init(struct cpufreq_policy *policy)
 }
 
 static struct cpufreq_driver intel_pstate_driver = {
-	.flags		= CPUFREQ_CONST_LOOPS,
+	.flags		= CPUFREQ_CONST_LOOPS | CPUFREQ_DRIVER_WILL_NOT_SLEEP,
 	.verify		= intel_pstate_verify_policy,
 	.setpolicy	= intel_pstate_set_policy,
 	.get		= intel_pstate_get,
