@@ -6,6 +6,8 @@
  * published by the Free Software Foundation.
  */
 
+#define DEBUG
+
 #include <linux/cpufreq.h>
 #include <linux/module.h>
 #include <linux/kthread.h>

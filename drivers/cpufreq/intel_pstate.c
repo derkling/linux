@@ -10,6 +10,8 @@
  * of the License.
  */
 
+#define DEBUG
+
 #include <linux/kernel.h>
 #include <linux/kernel_stat.h>
 #include <linux/module.h>
@@ -42,7 +44,6 @@
 #define FRAC_BITS 8
 #define int_tofp(X) ((int64_t)(X) << FRAC_BITS)
 #define fp_toint(X) ((X) >> FRAC_BITS)
-
 
 static inline int32_t mul_fp(int32_t x, int32_t y)
 {
