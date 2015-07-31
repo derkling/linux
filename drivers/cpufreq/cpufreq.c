@@ -2032,6 +2032,9 @@ int __cpufreq_driver_target(struct cpufreq_policy *policy,
 	if (target_freq == policy->cur)
 		return 0;
 
+	pr_debug("switch freq for CPU %u to %u kHz\n",
+			policy->cpu, target_freq);
+
 	/* Save last value to restore later on errors */
 	policy->restore_freq = policy->cur;
 
