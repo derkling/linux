@@ -10,6 +10,8 @@
  * of the License.
  */
 
+#define DEBUG
+
 #include <linux/kernel.h>
 #include <linux/kernel_stat.h>
 #include <linux/module.h>
@@ -41,8 +43,6 @@
 #define FRAC_BITS 8
 #define int_tofp(X) ((int64_t)(X) << FRAC_BITS)
 #define fp_toint(X) ((X) >> FRAC_BITS)
-
-#define DEBUG
 
 static inline int32_t mul_fp(int32_t x, int32_t y)
 {
@@ -1034,6 +1034,9 @@ static int intel_pstate_tune_policy(struct cpufreq_policy *policy,
 	struct cpudata *cpu;
 	int cpu_num;
 	int delay;
+
+	pr_debug("%s: min_freq=%d kHz cpu=%*pbl\n",
+			__func__, target_freq, cpumask_pr_args(policy->cpus));
 
 	freqs.old = limits.min_perf_pct;
 	freq_to_pct = target_freq * 100 / policy->max;
