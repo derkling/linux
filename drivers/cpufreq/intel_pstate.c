@@ -43,6 +43,7 @@
 #define int_tofp(X) ((int64_t)(X) << FRAC_BITS)
 #define fp_toint(X) ((X) >> FRAC_BITS)
 
+#define DEBUG
 
 static inline int32_t mul_fp(int32_t x, int32_t y)
 {
