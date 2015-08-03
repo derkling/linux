@@ -953,6 +953,29 @@ static unsigned int intel_pstate_get(unsigned int cpu_num)
 	return sample->freq;
 }
 
+#ifdef CPU_FREQ_GOV_SCHED
+static int intel_pstate_target(struct cpufreq_policy *policy,
+			       unsigned int target_freq,
+			       unsigned int relation)
+{
+	struct cpufreq_freqs freqs;
+	unsigned int freq_to_pct;
+
+	freqs.old = limits.min_perf_pct;
+	freq_to_pct = target_freq * 100 / policy->max;
+	freqs.new = clamp_t(int, freq_to_pct, 0 , 100);
+	cpufreq_freq_transition_begin(policy, &freqs);
+	limits.min_sysfs_pct = freqs.new;
+	limits.min_perf_pct = max(limits.min_policy_pct, limits.min_sysfs_pct);
+	limits.min_perf = div_fp(int_tofp(limits.min_perf_pct), int_tofp(100));
+
+	if (hwp_active)
+		intel_pstate_hwp_set();
+	cpufreq_freq_transition_end(policy, &freqs, 0);
+
+	return 0;
+}
+#else /* CPU_FREQ_GOV_SCHED */
 static int intel_pstate_set_policy(struct cpufreq_policy *policy)
 {
 	if (!policy->cpuinfo.max_freq)
@@ -985,6 +1008,7 @@ static int intel_pstate_set_policy(struct cpufreq_policy *policy)
 
 	return 0;
 }
+#endif /* CPU_FREQ_GOV_SCHED */
 
 static int intel_pstate_verify_policy(struct cpufreq_policy *policy)
 {
@@ -1043,7 +1067,11 @@ static int intel_pstate_cpu_init(struct cpufreq_policy *policy)
 static struct cpufreq_driver intel_pstate_driver = {
 	.flags		= CPUFREQ_CONST_LOOPS,
 	.verify		= intel_pstate_verify_policy,
+#ifdef CPU_FREQ_GOV_SCHED
+	.target		= intel_pstate_target,
+#else
 	.setpolicy	= intel_pstate_set_policy,
+#endif
 	.get		= intel_pstate_get,
 	.init		= intel_pstate_cpu_init,
 	.stop_cpu	= intel_pstate_stop_cpu,
