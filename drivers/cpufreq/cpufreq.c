@@ -459,6 +459,7 @@ static struct cpufreq_governor *find_governor(const char *str_governor)
 static int cpufreq_parse_governor(char *str_governor, unsigned int *policy,
 				struct cpufreq_governor **governor)
 {
+	struct cpufreq_governor *t;
 	int err = -EINVAL;
 
 	if (!cpufreq_driver)
@@ -472,6 +473,22 @@ static int cpufreq_parse_governor(char *str_governor, unsigned int *policy,
 						CPUFREQ_NAME_LEN)) {
 			*policy = CPUFREQ_POLICY_POWERSAVE;
 			err = 0;
+		} else if (!strncasecmp(str_governor, "sched",
+					CPUFREQ_NAME_LEN)) {
+			pr_info("configuring [sched] policy\n");
+			*policy = CPUFREQ_POLICY_SCHED;
+
+			/*
+			 * This code is similar to the following one where we
+			 * should load the kernel module in case the governor
+			 * is not yet registered.
+			 */
+			t = find_governor(str_governor);
+			if (t != NULL) {
+				pr_info("governor [sched] found\n");
+				*governor = t;
+				err = 0;
+			}
 		}
 	} else {
 		struct cpufreq_governor *t;
@@ -587,6 +604,8 @@ static ssize_t show_scaling_governor(struct cpufreq_policy *policy, char *buf)
 		return sprintf(buf, "powersave\n");
 	else if (policy->policy == CPUFREQ_POLICY_PERFORMANCE)
 		return sprintf(buf, "performance\n");
+	else if (policy->policy == CPUFREQ_POLICY_SCHED)
+		return sprintf(buf, "sched\n");
 	else if (policy->governor)
 		return scnprintf(buf, CPUFREQ_NAME_PLEN, "%s\n",
 				policy->governor->name);
@@ -644,7 +663,7 @@ static ssize_t show_scaling_available_governors(struct cpufreq_policy *policy,
 	struct cpufreq_governor *t;
 
 	if (!has_target()) {
-		i += sprintf(buf, "performance powersave");
+		i += sprintf(buf, "performance powersave sched");
 		goto out;
 	}
 
@@ -2203,10 +2222,8 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
 	if (cpufreq_driver->setpolicy) {
 		policy->policy = new_policy->policy;
 		pr_debug("setting range\n");
-		return cpufreq_driver->setpolicy(new_policy);
-	}
-
-	if (new_policy->governor == policy->governor)
+		ret = cpufreq_driver->setpolicy(new_policy);
+	} else if (new_policy->governor == policy->governor)
 		goto out;
 
 	pr_debug("governor switch\n");
@@ -2220,6 +2237,14 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
 		__cpufreq_governor(policy, CPUFREQ_GOV_POLICY_EXIT);
 		down_write(&policy->rwsem);
 	}
+
+	/*
+	 * For drivers implementing the .setpolicy callback a new governor
+	 * should be started only if it is the SCHED governor
+	 */
+	if (cpufreq_driver->setpolicy &&
+		new_policy->policy != CPUFREQ_POLICY_SCHED)
+		return ret;
 
 	/* start new governor */
 	policy->governor = new_policy->governor;

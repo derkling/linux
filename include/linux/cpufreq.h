@@ -438,6 +438,7 @@ static inline unsigned long cpufreq_scale(unsigned long old, u_int div,
  */
 #define CPUFREQ_POLICY_POWERSAVE	(1)
 #define CPUFREQ_POLICY_PERFORMANCE	(2)
+#define CPUFREQ_POLICY_SCHED		(3)
 
 /* Governor Events */
 #define CPUFREQ_GOV_START	1

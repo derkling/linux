@@ -970,6 +970,11 @@ static int intel_pstate_set_policy(struct cpufreq_policy *policy)
 		return 0;
 	}
 
+	/*
+	 * POWERSAVE and SCHED policies are initialized the same way.
+	 * The full frequencies range is available.
+	 */
+
 	limits.min_policy_pct = (policy->min * 100) / policy->cpuinfo.max_freq;
 	limits.min_policy_pct = clamp_t(int, limits.min_policy_pct, 0 , 100);
 	limits.min_perf_pct = max(limits.min_policy_pct, limits.min_sysfs_pct);
@@ -991,7 +996,8 @@ static int intel_pstate_verify_policy(struct cpufreq_policy *policy)
 	cpufreq_verify_within_cpu_limits(policy);
 
 	if (policy->policy != CPUFREQ_POLICY_POWERSAVE &&
-	    policy->policy != CPUFREQ_POLICY_PERFORMANCE)
+	    policy->policy != CPUFREQ_POLICY_PERFORMANCE &&
+	    policy->policy != CPUFREQ_POLICY_SCHED)
 		return -EINVAL;
 
 	return 0;
