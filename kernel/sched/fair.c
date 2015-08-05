@@ -2747,7 +2747,9 @@ static inline void update_entity_load_avg(struct sched_entity *se,
 
 	if (se->on_rq) {
 		cfs_rq->runnable_load_avg += contrib_delta;
+#ifdef CONFIG_SCHED_HMP
 		rq_of(cfs_rq)->avg.load_avg_ratio += ratio_delta;
+#endif /* CONFIG_SCHED_HMP */
 	} else {
 		subtract_blocked_load_contrib(cfs_rq, -contrib_delta);
 	}
@@ -2825,7 +2827,9 @@ static inline void enqueue_entity_load_avg(struct cfs_rq *cfs_rq,
 	}
 
 	cfs_rq->runnable_load_avg += se->avg.load_avg_contrib;
+#ifdef CONFIG_SCHED_HMP
 	rq_of(cfs_rq)->avg.load_avg_ratio += se->avg.load_avg_ratio;
+#endif /* CONFIG_SCHED_HMP */
 
 	/* we force update consideration on load-balancer moves */
 	update_cfs_rq_blocked_load(cfs_rq, !wakeup);
@@ -2845,7 +2849,9 @@ static inline void dequeue_entity_load_avg(struct cfs_rq *cfs_rq,
 	update_cfs_rq_blocked_load(cfs_rq, !sleep);
 
 	cfs_rq->runnable_load_avg -= se->avg.load_avg_contrib;
+#ifdef CONFIG_SCHED_HMP
 	rq_of(cfs_rq)->avg.load_avg_ratio -= se->avg.load_avg_ratio;
+#endif /* CONFIG_SCHED_HMP */
 
 	if (sleep) {
 		cfs_rq->blocked_load_avg += se->avg.load_avg_contrib;
