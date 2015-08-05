@@ -8295,8 +8295,10 @@ out_unlock:
 
 	raw_spin_unlock(&busiest_rq->lock);
 
+#ifdef CONFIG_SCHED_HMP
 	if (hmp_active_balance)
 		put_task_struct(busiest_rq->migrate_task);
+#endif
 
 	local_irq_enable();
 
