@@ -555,9 +555,11 @@ struct rq {
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	/* list of leaf cfs_rq on this cpu: */
 	struct list_head leaf_cfs_rq_list;
-
-	struct sched_avg avg;
 #endif /* CONFIG_FAIR_GROUP_SCHED */
+
+#ifdef CONFIG_SCHED_HMP
+	struct sched_avg avg;
+#endif /* CONFIG_SCHED_HMP */
 
 	/*
 	 * This is part of a global counter where only the total sum
