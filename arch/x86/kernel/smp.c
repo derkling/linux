@@ -384,8 +384,6 @@ static int cpufreq_callback(struct notifier_block *nb,
 	int cpu = freq->cpu;
 	unsigned long max = atomic_long_read(&per_cpu(cpu_max_freq, cpu));
 
-	if (freq->flags & CPUFREQ_CONST_LOOPS)
-		return NOTIFY_OK;
 
 	if (val == CPUFREQ_PRECHANGE)
 		scale_freq_capacity(cpu, freq->new, max);
