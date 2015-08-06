@@ -1049,6 +1049,9 @@ static int intel_pstate_tune_policy(struct cpufreq_policy *policy,
 	int cpu_num;
 	int delay;
 
+	pr_debug("%s: min_freq=%d kHz cpu=%*pbl\n",
+			__func__, target_freq, cpumask_pr_args(policy->cpus));
+
 	freqs.old = limits.min_perf_pct;
 	freq_to_pct = target_freq * 100 / policy->max;
 	freqs.new = clamp_t(int, freq_to_pct, 0 , 100);
