@@ -1017,6 +1017,41 @@ static int intel_pstate_verify_policy(struct cpufreq_policy *policy)
 	return 0;
 }
 
+static int intel_pstate_tune_policy(struct cpufreq_policy *policy,
+			       unsigned int target_freq,
+			       unsigned int relation)
+{
+	struct cpufreq_freqs freqs;
+	unsigned int freq_to_pct;
+	struct cpudata *cpu;
+	int cpu_num;
+	int delay;
+
+	freqs.old = limits.min_perf_pct;
+	freq_to_pct = target_freq * 100 / policy->max;
+	freqs.new = clamp_t(int, freq_to_pct, 0 , 100);
+
+	limits.min_sysfs_pct = freqs.new;
+	limits.min_perf_pct = max(limits.min_policy_pct, limits.min_sysfs_pct);
+	limits.min_perf = div_fp(int_tofp(limits.min_perf_pct), int_tofp(100));
+
+	if (hwp_active) {
+		pr_debug("%s: min_perf_pct=%d\n",
+			__func__, limits.min_perf_pct);
+		intel_pstate_hwp_set();
+		return 0;
+	}
+
+	/* Schedule timer function for immediate (100us) p-state update */
+	cpu_num = policy->cpu;
+	cpu = all_cpu_data[cpu_num];
+
+	delay = usecs_to_jiffies(100);
+	mod_timer_pinned(&cpu->timer, jiffies + delay);
+
+	return 0;
+}
+
 static void intel_pstate_stop_cpu(struct cpufreq_policy *policy)
 {
 	int cpu_num = policy->cpu;
@@ -1064,6 +1099,7 @@ static struct cpufreq_driver intel_pstate_driver = {
 	.flags		= CPUFREQ_CONST_LOOPS | CPUFREQ_DRIVER_WILL_NOT_SLEEP,
 	.verify		= intel_pstate_verify_policy,
 	.setpolicy	= intel_pstate_set_policy,
+	.tunepolicy	= intel_pstate_tune_policy,
 	.get		= intel_pstate_get,
 	.init		= intel_pstate_cpu_init,
 	.stop_cpu	= intel_pstate_stop_cpu,
