@@ -232,6 +232,9 @@ struct cpufreq_driver {
 
 	/* define one out of two */
 	int		(*setpolicy)(struct cpufreq_policy *policy);
+	int		(*tunepolicy)(struct cpufreq_policy *policy,
+				      unsigned int target_freq,
+				      unsigned int relation);
 
 	/*
 	 * On failure, should always restore frequency to policy->restore_freq
