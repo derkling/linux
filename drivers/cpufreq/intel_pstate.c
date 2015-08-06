@@ -113,6 +113,8 @@ struct cpudata {
 	u64	prev_mperf;
 	u64	prev_tsc;
 	struct sample sample;
+
+	struct cpufreq_policy *policy;
 };
 
 static struct cpudata **all_cpu_data;
@@ -709,6 +711,7 @@ static void intel_pstate_get_min_max(struct cpudata *cpu, int *min, int *max)
 
 static void intel_pstate_set_pstate(struct cpudata *cpu, int pstate, bool force)
 {
+	struct cpufreq_freqs freqs;
 	int max_perf, min_perf;
 
 	if (force) {
@@ -721,11 +724,30 @@ static void intel_pstate_set_pstate(struct cpudata *cpu, int pstate, bool force)
 		if (pstate == cpu->pstate.current_pstate)
 			return;
 	}
-	trace_cpu_frequency(pstate * cpu->pstate.scaling, cpu->cpu);
+
+	/* Setup old and new frequencies to be used for notification */
+	freqs.old = cpu->pstate.current_pstate * cpu->pstate.scaling;
+	freqs.new = pstate * cpu->pstate.scaling;
+
+	trace_cpu_frequency(freqs.new, cpu->cpu);
 
 	cpu->pstate.current_pstate = pstate;
 
+	/*
+	 * This is where we actually change the P-State via a write
+	 * to the MSR controlling the PERF status of the CPU.
+	 * Notify in case it has been requested.
+	 * */
+	if (cpu->policy)
+		cpufreq_freq_transition_begin(cpu->policy, &freqs);
+
 	pstate_funcs.set(cpu, pstate);
+
+	if (cpu->policy) {
+		cpufreq_freq_transition_end(cpu->policy, &freqs, 0);
+		cpu->policy = 0;
+	}
+
 }
 
 static void intel_pstate_get_cpu_pstates(struct cpudata *cpu)
@@ -1043,6 +1065,7 @@ static int intel_pstate_tune_policy(struct cpufreq_policy *policy,
 	/* Schedule timer function for immediate (100us) p-state update */
 	cpu_num = policy->cpu;
 	cpu = all_cpu_data[cpu_num];
+	cpu->policy = policy;
 
 	delay = usecs_to_jiffies(100);
 	mod_timer_pinned(&cpu->timer, jiffies + delay);
