@@ -11,6 +11,8 @@
  *	later.
  */
 
+#define DEBUG
+
 #include <linux/init.h>
 
 #include <linux/mm.h>
