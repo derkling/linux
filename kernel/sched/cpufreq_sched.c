@@ -192,6 +192,11 @@ void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
 	if (freq_new == policy->cur)
 		goto out;
 
+	/* Already at frequency boudaries */
+	if ((freq_new >= policy->max && policy->max == policy->cur) ||
+	    (freq_new <= policy->min && policy->min == policy->cur))
+		goto out;
+
 	/* store the new frequency and perform the transition */
 	gd->freq = freq_new;
 
