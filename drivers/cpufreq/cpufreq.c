@@ -2033,7 +2033,10 @@ int __cpufreq_driver_target(struct cpufreq_policy *policy,
 	/* Save last value to restore later on errors */
 	policy->restore_freq = policy->cur;
 
-	if (cpufreq_driver->target)
+	if (cpufreq_driver->tunepolicy)
+		retval = cpufreq_driver->tunepolicy(policy,
+				target_freq, relation);
+	else if (cpufreq_driver->target)
 		retval = cpufreq_driver->target(policy, target_freq, relation);
 	else if (cpufreq_driver->target_index) {
 		struct cpufreq_frequency_table *freq_table;
