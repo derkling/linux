@@ -173,8 +173,6 @@ void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
 	for_each_cpu(cpu_tmp, policy->cpus)
 		capacity_max = max(capacity_max, per_cpu(pcpu_capacity, cpu_tmp));
 
-	pr_debug("%s: cpu=%d capacity_max=%lu capacity=%lu\n",
-			__func__, cpu, capacity_max, capacity);
 
 	/*
 	 * We only change frequency if this cpu's capacity request represents a
@@ -190,9 +188,6 @@ void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
 
 	/* Convert the new maximum capacity request into a cpu frequency */
 	freq_new = (capacity * policy->max) / capacity_orig_of(cpu);
-	pr_debug("%s: capacity=%lu policy_max=%d capacity_orig=%lu freq_new=%u\n",
-			__func__, capacity, policy->max,
-			capacity_orig_of(cpu), freq_new);
 
 	/* No change in frequency? Bail and return current capacity. */
 	if (freq_new == policy->cur)
@@ -205,6 +200,10 @@ void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
 
 	/* store the new frequency and perform the transition */
 	gd->freq = freq_new;
+
+	pr_debug("%s: capacity=%lu policy_max=%d capacity_orig=%lu freq_new=%u\n",
+			__func__, capacity, policy->max,
+			capacity_orig_of(cpu), freq_new);
 
 	if (cpufreq_driver_might_sleep())
 		irq_work_queue_on(&gd->irq_work, cpu);

@@ -377,6 +377,8 @@ void scale_freq_capacity(int cpu, unsigned long curr, unsigned long max)
 
 	capacity = (curr << SCHED_CAPACITY_SHIFT) / max;
 	atomic_long_set(&per_cpu(cpu_freq_capacity, cpu), capacity);
+	pr_debug("%s: cpu=%d capacity=%lu\n",
+			__func__, cpu, capacity);
 }
 
 static int cpufreq_callback(struct notifier_block *nb,
