@@ -356,6 +356,15 @@ const struct cpumask *cpu_coregroup_mask(int cpu)
 }
 
 /*
+ * The current assumption is that we can power gate each core independently.
+ * This will be superseded by DT binding once available.
+ */
+const struct cpumask *cpu_corepower_mask(int cpu)
+{
+	return &cpu_topology[cpu].thread_sibling;
+}
+
+/*
  * Look for a customed capacity of a CPU in the cpu_capacity table during the
  * boot. The update of all CPUs is in O(n^2) for heteregeneous system but the
  * function returns directly for SMP system.
@@ -435,6 +444,21 @@ topology_populated:
 	update_cpu_capacity(cpuid);
 }
 
+
+static inline int cpu_corepower_flags(void)
+{
+	return SD_SHARE_PKG_RESOURCES  | SD_SHARE_POWERDOMAIN;
+}
+
+static struct sched_domain_topology_level arm64_topology[] = {
+#ifdef CONFIG_SCHED_MC
+	{ cpu_corepower_mask, cpu_corepower_flags, SD_INIT_NAME(GMC) },
+	{ cpu_coregroup_mask, cpu_core_flags, SD_INIT_NAME(MC) },
+#endif
+	{ cpu_cpu_mask, NULL, SD_INIT_NAME(DIE) },
+	{ NULL, },
+};
+
 static void __init reset_cpu_topology(void)
 {
 	unsigned int cpu;
@@ -474,4 +498,6 @@ void __init init_cpu_topology(void)
 
 	reset_cpu_capacity();
 	parse_dt_cpu_capacity();
+	/* Set scheduler topology descriptor */
+	set_sched_topology(arm64_topology);
 }
