@@ -4067,6 +4067,28 @@ static inline void hrtick_update(struct rq *rq)
 }
 #endif
 
+#ifdef CONFIG_CPU_FREQ_GOV_SCHED
+static void dvfs_kick_needed(struct rq *rq)
+{
+	unsigned long utilization, capacity = 0;
+
+	if (rq->cfs.h_nr_running) {
+		/* add 25% margin to current utilization */
+		utilization = rq->cfs.avg.util_avg;
+		capacity = utilization + (utilization >> 2);
+
+		/* handle rounding errors */
+		capacity = (capacity > SCHED_LOAD_SCALE) ? SCHED_LOAD_SCALE :
+			capacity;
+
+	}
+
+	cpufreq_sched_set_cap(cpu_of(rq), capacity);
+}
+#else
+static inline void dvfs_kick_needed(struct rq *rq) {}
+#endif
+
 /*
  * The enqueue_task method is called before nr_running is
  * increased. Here we update the fair scheduling stats and
@@ -4110,6 +4132,9 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 	if (!se)
 		add_nr_running(rq, 1);
+
+	if (!(flags & ENQUEUE_WAKEUP) || rq->cfs.h_nr_running == 1 )
+		dvfs_kick_needed(rq);
 
 	hrtick_update(rq);
 }
@@ -4170,6 +4195,9 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 	if (!se)
 		sub_nr_running(rq, 1);
+
+	if (!task_sleep || rq->cfs.h_nr_running == 0)
+		dvfs_kick_needed(rq);
 
 	hrtick_update(rq);
 }
@@ -7812,6 +7840,8 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 
 	if (numabalancing_enabled)
 		task_tick_numa(rq, curr);
+
+	dvfs_kick_needed(rq);
 }
 
 /*
