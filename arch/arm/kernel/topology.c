@@ -163,12 +163,7 @@ DECLARE_PER_CPU(atomic_long_t, cpu_freq_capacity);
 
 unsigned long arm_arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
 {
-	unsigned long curr = atomic_long_read(&per_cpu(cpu_freq_capacity, cpu));
-
-	if (!curr)
-		return SCHED_CAPACITY_SCALE;
-
-	return curr;
+	return atomic_long_read(&per_cpu(cpu_freq_capacity, cpu));
 }
 
 #else
