@@ -812,15 +812,17 @@ static int cpufreq_callback(struct notifier_block *nb,
 {
 	struct cpufreq_freqs *freq = data;
 	int cpu = freq->cpu;
-	unsigned long curr_max;
-
-	curr_max = atomic_long_read(&per_cpu(cpu_curr_max_freq, cpu));
 
 	if (freq->flags & CPUFREQ_CONST_LOOPS)
 		return NOTIFY_OK;
 
-	if (val == CPUFREQ_PRECHANGE)
+	if (val == CPUFREQ_PRECHANGE) {
+		unsigned long curr_max;
+
+		curr_max = atomic_long_read(&per_cpu(cpu_curr_max_freq, cpu));
+
 		scale_freq_capacity(cpu, freq->new, curr_max);
+	}
 
 	return NOTIFY_OK;
 }
