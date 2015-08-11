@@ -785,7 +785,7 @@ int setup_profiling_timer(unsigned int multiplier)
 
 #ifdef CONFIG_CPU_FREQ
 
-static DEFINE_PER_CPU(atomic_long_t, cpu_max_freq);
+static DEFINE_PER_CPU(atomic_long_t, cpu_curr_max_freq);
 DEFINE_PER_CPU(atomic_long_t, cpu_freq_capacity);
 
 /*
@@ -796,14 +796,14 @@ DEFINE_PER_CPU(atomic_long_t, cpu_freq_capacity);
  * (implemented in topology.c).
  */
 static inline
-void scale_freq_capacity(int cpu, unsigned long curr, unsigned long max)
+void scale_freq_capacity(int cpu, unsigned long curr, unsigned long curr_max)
 {
 	unsigned long capacity;
 
-	if (!max)
+	if (!curr_max)
 		return;
 
-	capacity = (curr << SCHED_CAPACITY_SHIFT) / max;
+	capacity = (curr << SCHED_CAPACITY_SHIFT) / curr_max;
 	atomic_long_set(&per_cpu(cpu_freq_capacity, cpu), capacity);
 }
 
@@ -812,13 +812,15 @@ static int cpufreq_callback(struct notifier_block *nb,
 {
 	struct cpufreq_freqs *freq = data;
 	int cpu = freq->cpu;
-	unsigned long max = atomic_long_read(&per_cpu(cpu_max_freq, cpu));
+	unsigned long curr_max;
+
+	curr_max = atomic_long_read(&per_cpu(cpu_curr_max_freq, cpu));
 
 	if (freq->flags & CPUFREQ_CONST_LOOPS)
 		return NOTIFY_OK;
 
 	if (val == CPUFREQ_PRECHANGE)
-		scale_freq_capacity(cpu, freq->new, max);
+		scale_freq_capacity(cpu, freq->new, curr_max);
 
 	return NOTIFY_OK;
 }
@@ -838,7 +840,7 @@ static int cpufreq_policy_callback(struct notifier_block *nb,
 
 	for_each_cpu(i, policy->cpus) {
 		scale_freq_capacity(i, policy->cur, policy->max);
-		atomic_long_set(&per_cpu(cpu_max_freq, i), policy->max);
+		atomic_long_set(&per_cpu(cpu_curr_max_freq, i), policy->max);
 	}
 
 	return NOTIFY_OK;
