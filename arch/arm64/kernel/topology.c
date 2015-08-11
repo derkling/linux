@@ -219,6 +219,9 @@ out:
  * compensates for frequency scaling (arch_scale_freq_capacity()). The scaling
  * factor is updated in smp.c
  */
+
+DECLARE_PER_CPU(atomic_long_t, cpu_freq_capacity);
+
 unsigned long arm_arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
 {
 	unsigned long curr = atomic_long_read(&per_cpu(cpu_freq_capacity, cpu));
