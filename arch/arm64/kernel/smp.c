@@ -786,7 +786,8 @@ int setup_profiling_timer(unsigned int multiplier)
 #ifdef CONFIG_CPU_FREQ
 
 static DEFINE_PER_CPU(atomic_long_t, cpu_curr_max_freq);
-DEFINE_PER_CPU(atomic_long_t, cpu_freq_capacity);
+DEFINE_PER_CPU(atomic_long_t, cpu_freq_capacity) =
+				ATOMIC_LONG_INIT(SCHED_CAPACITY_SCALE);
 
 /*
  * Scheduler load-tracking scale-invariance
