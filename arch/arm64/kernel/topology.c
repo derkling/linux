@@ -25,9 +25,25 @@
 
 static DEFINE_PER_CPU(unsigned long, cpu_scale);
 
+/*
+ * scheduler load-tracking cpu scale-invariance
+ *
+ * Provides the scheduler with a scale-invariance correction factor that
+ * compensates for uarch cpu differences among logical cpus and frequency
+ * capping (arch_scale_cpu_capacity()). The first scaling factor 'cpu_scale'
+ * is updated in this file whereas the second one 'cpu_max_freq_capacity'
+ * is updated in smp.c.
+ */
+
+DECLARE_PER_CPU(atomic_long_t, cpu_max_freq_capacity);
+
 unsigned long arm_arch_scale_cpu_capacity(struct sched_domain *sd, int cpu)
 {
-	return per_cpu(cpu_scale, cpu);
+	unsigned long uarch_scale = per_cpu(cpu_scale, cpu);
+	unsigned long max_freq_scale =
+			atomic_long_read(&per_cpu(cpu_max_freq_capacity, cpu));
+
+	return uarch_scale * max_freq_scale >> SCHED_CAPACITY_SHIFT;
 }
 
 static void set_capacity_scale(unsigned int cpu, unsigned long capacity)
@@ -213,11 +229,11 @@ out:
 }
 
 /*
- * Scheduler load-tracking scale-invariance
+ * Scheduler load-tracking frequency scale-invariance
  *
  * Provides the scheduler with a scale-invariance correction factor that
  * compensates for frequency scaling (arch_scale_freq_capacity()). The scaling
- * factor is updated in smp.c
+ * factor is updated in smp.c.
  */
 
 DECLARE_PER_CPU(atomic_long_t, cpu_freq_capacity);
