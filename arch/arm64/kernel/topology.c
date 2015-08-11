@@ -43,6 +43,10 @@ unsigned long arm_arch_scale_cpu_capacity(struct sched_domain *sd, int cpu)
 	unsigned long max_freq_scale =
 			atomic_long_read(&per_cpu(cpu_max_freq_capacity, cpu));
 
+	trace_printk("%s cpu=%d scale=%lu uarch_scale=%lu max_freq_scale=%lu\n",
+		     __func__, cpu, uarch_scale * max_freq_scale >> SCHED_CAPACITY_SHIFT,
+		     uarch_scale, max_freq_scale);
+
 	return uarch_scale * max_freq_scale >> SCHED_CAPACITY_SHIFT;
 }
 
@@ -240,6 +244,9 @@ DECLARE_PER_CPU(atomic_long_t, cpu_freq_capacity);
 
 unsigned long arm_arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
 {
+	trace_printk("%s cpu=%d scale=%lu\n", __func__, cpu,
+		     atomic_long_read(&per_cpu(cpu_freq_capacity, cpu)));
+
 	return atomic_long_read(&per_cpu(cpu_freq_capacity, cpu));
 }
 
