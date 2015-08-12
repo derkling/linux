@@ -1012,7 +1012,6 @@ struct idle_state {
 };
 
 struct sched_group_energy {
-	atomic_t ref;
 	unsigned int nr_idle_states;	/* number of idle states */
 	struct idle_state *idle_states;	/* ptr to idle state array */
 	unsigned int nr_idle_states_below; /* number idle states in lower groups */
