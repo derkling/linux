@@ -717,6 +717,9 @@ static void intel_pstate_set_pstate(struct cpudata *cpu, int pstate)
 	intel_pstate_get_min_max(cpu, &min_perf, &max_perf);
 
 	pstate = clamp_t(int, pstate, min_perf, max_perf);
+	trace_printk("%s: curr_pstate=%d min_perf=%d max_perf=%d pstate=%d\n",
+			__func__, cpu->pstate.current_pstate,
+			min_perf, max_perf, pstate);
 
 	if (pstate == cpu->pstate.current_pstate)
 		return;
@@ -1036,9 +1039,15 @@ static int intel_pstate_tune_policy(struct cpufreq_policy *policy,
 	limits.min_policy_pct = target_freq * 100 /
 		(cpu->pstate.max_pstate * cpu->pstate.scaling);
 	limits.min_policy_pct = clamp_t(int, limits.min_policy_pct, 0 , 100);
+	trace_printk("%s: policy_max=%u min_policy_freq=%u min_policy_pct=%u  min_sysfs_pct=%d cpus=%*pbl",
+			__func__, policy->max, target_freq,
+			limits.min_policy_pct, limits.min_sysfs_pct,
+			cpumask_pr_args(policy->cpus));
 
 	limits.min_perf_pct = max(limits.min_policy_pct, limits.min_sysfs_pct);
 	limits.min_perf = div_fp(int_tofp(limits.min_perf_pct), int_tofp(100));
+	trace_printk("%s: min_perf_pct=%d min_perf=%d\n",
+			__func__, limits.min_perf_pct, limits.min_perf);
 
 	if (hwp_active) {
 		pr_debug("%s: min_perf_pct=%d\n",
@@ -1095,6 +1104,9 @@ static int intel_pstate_cpu_init(struct cpufreq_policy *policy)
 	policy->cpuinfo.transition_latency = CPUFREQ_ETERNAL;
 	/* cpumask_set_cpu(policy->cpu, policy->cpus); */
 	cpumask_copy(policy->cpus, cpu_online_mask);
+
+	pr_debug("%s: policy_cpus: %*pbl\n",
+			__func__, cpumask_pr_args(policy->cpus));
 
 	return 0;
 }
