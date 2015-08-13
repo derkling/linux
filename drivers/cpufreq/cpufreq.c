@@ -1139,6 +1139,9 @@ static int cpufreq_add_policy_cpu(struct cpufreq_policy *policy,
 		}
 	}
 
+	pr_debug("%s: policy->cpus: %*pbl\n",
+			__func__, cpumask_pr_args(policy->cpus));
+
 	return 0;
 }
 
