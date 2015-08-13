@@ -32,6 +32,9 @@
 #include <asm/apic.h>
 #include <asm/nmi.h>
 #include <asm/trace/irq_vectors.h>
+
+#include <trace/events/power.h>
+
 /*
  *	Some notes on x86 processor bugs affecting SMP operation:
  *
@@ -392,8 +395,10 @@ static int cpufreq_callback(struct notifier_block *nb,
 	unsigned long max = atomic_long_read(&per_cpu(cpu_max_freq, cpu));
 
 
-	if (val == CPUFREQ_PRECHANGE)
+	if (val == CPUFREQ_PRECHANGE) {
 		scale_freq_capacity(cpu, freq->new, max);
+		trace_cpu_capacity(capacity_curr_of(cpu), cpu);
+	}
 
 	return NOTIFY_OK;
 }
