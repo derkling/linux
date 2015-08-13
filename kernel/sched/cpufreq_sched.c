@@ -201,7 +201,7 @@ void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
 	/* store the new frequency and perform the transition */
 	gd->freq = freq_new;
 
-	pr_debug("%s: capacity=%lu policy_max=%d capacity_orig=%lu freq_new=%u\n",
+	trace_printk("%s: capacity=%lu policy_max=%d capacity_orig=%lu freq_new=%u\n",
 			__func__, capacity, policy->max,
 			capacity_orig_of(cpu), freq_new);
 

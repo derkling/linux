@@ -1042,20 +1042,16 @@ static int intel_pstate_tune_policy(struct cpufreq_policy *policy,
 			       unsigned int target_freq,
 			       unsigned int relation)
 {
-	struct cpufreq_freqs freqs;
-	unsigned int freq_to_pct;
-	struct cpudata *cpu;
-	int cpu_num;
-	int delay;
 
 	pr_debug("%s: min_freq=%d kHz cpu=%*pbl\n",
 			__func__, target_freq, cpumask_pr_args(policy->cpus));
+	struct cpudata *cpu = all_cpu_data[policy->cpu];
 
-	freqs.old = limits.min_perf_pct;
-	freq_to_pct = target_freq * 100 / policy->max;
-	freqs.new = clamp_t(int, freq_to_pct, 0 , 100);
+	/* Policy defined minimum performance [%] */
+	limits.min_policy_pct = target_freq * 100 /
+		(cpu->pstate.max_pstate * cpu->pstate.scaling);
+	limits.min_policy_pct = clamp_t(int, limits.min_policy_pct, 0 , 100);
 
-	limits.min_sysfs_pct = freqs.new;
 	limits.min_perf_pct = max(limits.min_policy_pct, limits.min_sysfs_pct);
 	limits.min_perf = div_fp(int_tofp(limits.min_perf_pct), int_tofp(100));
 
@@ -1066,13 +1062,9 @@ static int intel_pstate_tune_policy(struct cpufreq_policy *policy,
 		return 0;
 	}
 
-	/* Schedule timer function for immediate (100us) p-state update */
-	cpu_num = policy->cpu;
-	cpu = all_cpu_data[cpu_num];
+	/* Run timer function for immediate p-state update */
 	cpu->policy = policy;
-
-	delay = usecs_to_jiffies(100);
-	mod_timer_pinned(&cpu->timer, jiffies + delay);
+	intel_pstate_timer_func((unsigned long) cpu);
 
 	return 0;
 }
@@ -1108,20 +1100,22 @@ static int intel_pstate_cpu_init(struct cpufreq_policy *policy)
 		policy->policy = CPUFREQ_POLICY_POWERSAVE;
 
 	policy->min = cpu->pstate.min_pstate * cpu->pstate.scaling;
-	policy->max = cpu->pstate.turbo_pstate * cpu->pstate.scaling;
+	/* policy->max = cpu->pstate.turbo_pstate * cpu->pstate.scaling; */
+	policy->max = cpu->pstate.max_pstate * cpu->pstate.scaling;
 
 	/* cpuinfo and default policy values */
 	policy->cpuinfo.min_freq = cpu->pstate.min_pstate * cpu->pstate.scaling;
 	policy->cpuinfo.max_freq =
 		cpu->pstate.turbo_pstate * cpu->pstate.scaling;
 	policy->cpuinfo.transition_latency = CPUFREQ_ETERNAL;
-	cpumask_set_cpu(policy->cpu, policy->cpus);
+	/* cpumask_set_cpu(policy->cpu, policy->cpus); */
+	cpumask_copy(policy->cpus, cpu_online_mask);
 
 	return 0;
 }
 
 static struct cpufreq_driver intel_pstate_driver = {
-	.flags		= CPUFREQ_CONST_LOOPS | CPUFREQ_DRIVER_WILL_NOT_SLEEP,
+	.flags		= CPUFREQ_CONST_LOOPS,
 	.verify		= intel_pstate_verify_policy,
 	.setpolicy	= intel_pstate_set_policy,
 	.tunepolicy	= intel_pstate_tune_policy,
