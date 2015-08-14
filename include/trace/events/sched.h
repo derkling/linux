@@ -604,31 +604,31 @@ TRACE_EVENT(sched_load_avg_task,
 		__array( char,	comm,	TASK_COMM_LEN		)
 		__field( pid_t,	pid				)
 		__field( int,	cpu				)
-		__field( unsigned long,	load			)
-		__field( unsigned long,	utilization		)
-		__field( unsigned int,	runnable_avg_sum	)
-		__field( unsigned int,	running_avg_sum		)
-		__field( unsigned int,	avg_period		)
+		__field( unsigned long,	load_avg		)
+		__field( unsigned long,	util_avg		)
+		__field( unsigned int,	load_sum		)
+		__field( unsigned int,	util_sum		)
+		__field( unsigned int,	period_contrib		)
 	),
 
 	TP_fast_assign(
 		memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
 		__entry->pid			= tsk->pid;
 		__entry->cpu			= task_cpu(tsk);
-		__entry->load			= avg->load_avg_contrib;
-		__entry->utilization		= avg->utilization_avg_contrib;
-		__entry->runnable_avg_sum	= avg->runnable_avg_sum;
-		__entry->running_avg_sum	= avg->running_avg_sum;
-		__entry->avg_period		= avg->avg_period;
+		__entry->load_avg		= avg->load_avg;
+		__entry->util_avg		= avg->util_avg;
+		__entry->load_sum		= avg->load_sum;
+		__entry->util_sum		= avg->util_sum;
+		__entry->period_contrib		= avg->period_contrib;
 	),
 
 	TP_printk("comm=%s pid=%d cpu=%d load=%lu utilization=%lu runnable_avg_sum=%u"
 		  " running_avg_sum=%u avg_period=%u",
 		  __entry->comm, __entry->pid, __entry->cpu,
-		  __entry->load, __entry->utilization,
-		  (unsigned int)__entry->runnable_avg_sum,
-		  (unsigned int)__entry->running_avg_sum,
-		  (unsigned int)__entry->avg_period)
+		  __entry->load_avg, __entry->util_avg,
+		  (unsigned int)__entry->load_sum,
+		  (unsigned int)__entry->util_sum,
+		  (unsigned int)__entry->period_contrib)
 );
 
 /*
@@ -648,8 +648,8 @@ TRACE_EVENT(sched_load_avg_cpu,
 
 	TP_fast_assign(
 		__entry->cpu			= cpu;
-		__entry->load			= cfs_rq->runnable_load_avg;
-		__entry->utilization		= cfs_rq->utilization_load_avg;
+		__entry->load			= cfs_rq->avg.load_avg;
+		__entry->utilization		= cfs_rq->avg.util_avg;
 	),
 
 	TP_printk("cpu=%d load=%lu utilization=%lu",
