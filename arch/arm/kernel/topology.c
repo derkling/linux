@@ -153,7 +153,7 @@ static void __init parse_dt_topology(void)
 
 }
 
-static const struct sched_group_energy *cpu_core_energy(int cpu);
+static const struct sched_group_energy * const cpu_core_energy(int cpu);
 
 /*
  * Look for a customed capacity of a CPU in the cpu_capacity table during the
@@ -399,13 +399,13 @@ static struct sched_group_energy energy_core_a15 = {
 };
 
 /* sd energy functions */
-static inline const struct sched_group_energy *cpu_cluster_energy(int cpu)
+static inline const struct sched_group_energy * const cpu_cluster_energy(int cpu)
 {
 	return cpu_topology[cpu].socket_id ? &energy_cluster_a7 :
 			&energy_cluster_a15;
 }
 
-static inline const struct sched_group_energy *cpu_core_energy(int cpu)
+static inline const struct sched_group_energy * const cpu_core_energy(int cpu)
 {
 	return cpu_topology[cpu].socket_id ? &energy_core_a7 :
 			&energy_core_a15;
