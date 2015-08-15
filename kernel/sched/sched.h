@@ -922,28 +922,29 @@ extern int group_balance_cpu(struct sched_group *sg);
 static inline void check_sched_energy_data(int cpu, sched_domain_energy_f fn,
 					   const struct cpumask *cpumask)
 {
+	const struct sched_group_energy * const se = fn(cpu);
 	struct cpumask mask;
 	int i;
 
 	cpumask_xor(&mask, cpumask, get_cpu_mask(cpu));
 
 	for_each_cpu(i, &mask) {
+		const struct sched_group_energy * const e = fn(i);
 		int y;
 
-		BUG_ON(fn(i)->nr_idle_states != fn(cpu)->nr_idle_states);
+		BUG_ON(e->nr_idle_states != se->nr_idle_states);
 
-		for (y = 0; y < (fn(i)->nr_idle_states); y++) {
-			BUG_ON(fn(i)->idle_states[y].power !=
-					fn(cpu)->idle_states[y].power);
+		for (y = 0; y < (e->nr_idle_states); y++) {
+			BUG_ON(e->idle_states[y].power !=
+					se->idle_states[y].power);
 		}
 
-		BUG_ON(fn(i)->nr_cap_states != fn(cpu)->nr_cap_states);
+		BUG_ON(e->nr_cap_states != se->nr_cap_states);
 
-		for (y = 0; y < (fn(i)->nr_cap_states); y++) {
-			BUG_ON(fn(i)->cap_states[y].cap !=
-					fn(cpu)->cap_states[y].cap);
-			BUG_ON(fn(i)->cap_states[y].power !=
-					fn(cpu)->cap_states[y].power);
+		for (y = 0; y < (e->nr_cap_states); y++) {
+			BUG_ON(e->cap_states[y].cap != se->cap_states[y].cap);
+			BUG_ON(e->cap_states[y].power !=
+					se->cap_states[y].power);
 		}
 	}
 }
