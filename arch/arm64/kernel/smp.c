@@ -786,8 +786,8 @@ int setup_profiling_timer(unsigned int multiplier)
 
 #ifdef CONFIG_CPU_FREQ
 /* Scheduler load-tracking frequency scale-invariance */
-static DEFINE_PER_CPU(atomic_long_t, cpu_max_freq);
-static DEFINE_PER_CPU(atomic_long_t, cpu_freq_capacity);
+static DEFINE_PER_CPU(unsigned long, cpu_max_freq);
+static DEFINE_PER_CPU(unsigned long, cpu_freq_capacity);
 
 /*
  * Provides the scheduler with a scale-invariance correction factor that
@@ -795,7 +795,7 @@ static DEFINE_PER_CPU(atomic_long_t, cpu_freq_capacity);
  */
 unsigned long arm_arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
 {
-	unsigned long curr = atomic_long_read(&per_cpu(cpu_freq_capacity, cpu));
+	unsigned long curr = per_cpu(cpu_freq_capacity, cpu);
 
 	if (!curr)
 		return SCHED_CAPACITY_SCALE;
@@ -815,7 +815,7 @@ void scale_freq_capacity(int cpu, unsigned long curr, unsigned long max)
 		return;
 
 	capacity = (curr << SCHED_CAPACITY_SHIFT) / max;
-	atomic_long_set(&per_cpu(cpu_freq_capacity, cpu), capacity);
+	per_cpu(cpu_freq_capacity, cpu) = capacity;
 }
 
 static int cpufreq_callback(struct notifier_block *nb,
@@ -823,7 +823,7 @@ static int cpufreq_callback(struct notifier_block *nb,
 {
 	struct cpufreq_freqs *freq = data;
 	int cpu = freq->cpu;
-	unsigned long max = atomic_long_read(&per_cpu(cpu_max_freq, cpu));
+	unsigned long max = per_cpu(cpu_max_freq, cpu);
 
 	if (freq->flags & CPUFREQ_CONST_LOOPS)
 		return NOTIFY_OK;
@@ -851,7 +851,7 @@ static int cpufreq_policy_callback(struct notifier_block *nb,
 
 	for_each_cpu(i, policy->cpus) {
 		scale_freq_capacity(i, policy->cur, policy->max);
-		atomic_long_set(&per_cpu(cpu_max_freq, i), policy->max);
+		per_cpu(cpu_max_freq, i) = policy->max;
 	}
 
 	return NOTIFY_OK;
