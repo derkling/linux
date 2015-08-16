@@ -785,16 +785,26 @@ int setup_profiling_timer(unsigned int multiplier)
 }
 
 #ifdef CONFIG_CPU_FREQ
-
+/* Scheduler load-tracking frequency scale-invariance */
 static DEFINE_PER_CPU(atomic_long_t, cpu_max_freq);
-DEFINE_PER_CPU(atomic_long_t, cpu_freq_capacity);
+static DEFINE_PER_CPU(atomic_long_t, cpu_freq_capacity);
 
 /*
- * Scheduler load-tracking scale-invariance
- *
  * Provides the scheduler with a scale-invariance correction factor that
- * compensates for frequency scaling through arch_scale_freq_capacity()
- * (implemented in topology.c).
+ * compensates for frequency scaling (arch_scale_freq_capacity())
+ */
+unsigned long arm_arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
+{
+	unsigned long curr = atomic_long_read(&per_cpu(cpu_freq_capacity, cpu));
+
+	if (!curr)
+		return SCHED_CAPACITY_SCALE;
+
+	return curr;
+}
+
+/*
+ * Updates the frequency scaling factor
  */
 static inline
 void scale_freq_capacity(int cpu, unsigned long curr, unsigned long max)
