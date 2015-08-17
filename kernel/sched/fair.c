@@ -34,6 +34,7 @@
 #include <trace/events/sched.h>
 
 #include "sched.h"
+#include "tune.h"
 
 /*
  * Targeted preemption latency for CPU-bound tasks:
@@ -4082,6 +4083,7 @@ static inline void hrtick_update(struct rq *rq)
  */
 static unsigned int capacity_margin = 1280;
 static int cpu_util(int cpu);
+static inline unsigned long boosted_cpu_util(int cpu);
 
 static void update_capacity_of(int cpu)
 {
@@ -4090,7 +4092,8 @@ static void update_capacity_of(int cpu)
 	if (!sched_energy_freq())
 		return;
 
-	req_cap = cpu_util(cpu) * capacity_margin
+	req_cap = boosted_cpu_util(cpu);
+	req_cap = req_cap * capacity_margin
 			>> SCHED_CAPACITY_SHIFT;
 	cpufreq_sched_set_cap(cpu, req_cap);
 }
@@ -4142,6 +4145,8 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 	if (!se) {
 		add_nr_running(rq, 1);
+
+		schedtune_enqueue_task(p, cpu_of(rq));
 
 		/*
 		 * We want to potentially trigger a freq switch request only for
@@ -4211,6 +4216,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 	if (!se) {
 		sub_nr_running(rq, 1);
+		schedtune_dequeue_task(p, cpu_of(rq));
 
 		/*
 		 * We want to potentially trigger a freq switch request only for
@@ -4728,6 +4734,79 @@ static int wake_affine(struct sched_domain *sd, struct task_struct *p, int sync)
 	schedstat_inc(p, se.statistics.nr_wakeups_affine);
 
 	return 1;
+}
+
+#ifdef CONFIG_SCHED_TUNE
+
+static unsigned long
+schedtune_margin(unsigned long signal, unsigned long boost)
+{
+	unsigned long long margin = 0;
+
+	/*
+	 * Signal proportional compensation (SPC)
+	 *
+	 * The Boost (B) value is used to compute a Margin (M) which is
+	 * proportional to the complement of the original Signal (S):
+	 *   M = B * (SCHED_LOAD_SCALE - S)
+	 * The obtained M could be used by the caller to "boost" S.
+	 */
+	margin  = SCHED_LOAD_SCALE - signal;
+	margin *= boost;
+
+	/*
+	 * Fast integer division by constant:
+	 *  Constant   :                 (C) = 100
+	 *  Precision  : 0.1%            (P) = 0.1
+	 *  Reference  : C * 100 / P     (R) = 100000
+	 *
+	 * Thus:
+	 *  Shift bits : ceil(log(R,2))  (S) = 17
+	 *  Mult const : round(2^S/C)    (M) = 1311
+	 *
+	 *
+	 * */
+	margin  *= 1311;
+	margin >>= 17;
+
+	return margin;
+}
+
+static inline unsigned int
+schedtune_cpu_margin(unsigned long util, int cpu)
+{
+	unsigned int boost;
+
+#ifdef CONFIG_CGROUP_SCHEDTUNE
+	boost = schedtune_cpu_boost(cpu);
+#else
+	boost = get_sysctl_sched_cfs_boost();
+#endif
+	if (boost == 0)
+		return 0;
+
+	return schedtune_margin(util, boost);
+}
+
+#else /* CONFIG_SCHED_TUNE */
+
+static inline unsigned int
+schedtune_cpu_margin(unsigned long util, int cpu)
+{
+	return 0;
+}
+
+#endif /* CONFIG_SCHED_TUNE */
+
+static inline unsigned long
+boosted_cpu_util(int cpu)
+{
+	unsigned long util = cpu_util(cpu);
+	unsigned long margin = schedtune_cpu_margin(util, cpu);
+
+	trace_sched_boost_cpu(cpu, util, margin);
+
+	return util + margin;
 }
 
 /*
