@@ -615,6 +615,46 @@ TRACE_EVENT(sched_load_avg_cpu,
 	TP_printk("cpu=%d load=%lu utilization=%lu",
 		  __entry->cpu, __entry->load, __entry->utilization)
 );
+
+/*
+ * Tracepoint for accounting sched averages for tasks.
+ */
+TRACE_EVENT(sched_load_avg_task,
+
+	TP_PROTO(struct task_struct *tsk, struct sched_avg *avg),
+
+	TP_ARGS(tsk, avg),
+
+	TP_STRUCT__entry(
+		__array( char,	comm,	TASK_COMM_LEN		)
+		__field( pid_t,	pid				)
+		__field( int,	cpu				)
+		__field( unsigned long,	load_avg		)
+		__field( unsigned long,	util_avg		)
+		__field( unsigned int,	load_sum		)
+		__field( unsigned int,	util_sum		)
+		__field( unsigned int,	period_contrib		)
+	),
+
+	TP_fast_assign(
+		memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
+		__entry->pid			= tsk->pid;
+		__entry->cpu			= task_cpu(tsk);
+		__entry->load_avg		= avg->load_avg;
+		__entry->util_avg		= avg->util_avg;
+		__entry->load_sum		= avg->load_sum;
+		__entry->util_sum		= avg->util_sum;
+		__entry->period_contrib		= avg->period_contrib;
+	),
+
+	TP_printk("comm=%s pid=%d cpu=%d load=%lu utilization=%lu runnable_avg_sum=%u"
+		  " running_avg_sum=%u avg_period=%u",
+		  __entry->comm, __entry->pid, __entry->cpu,
+		  __entry->load_avg, __entry->util_avg,
+		  (unsigned int)__entry->load_sum,
+		  (unsigned int)__entry->util_sum,
+		  (unsigned int)__entry->period_contrib)
+);
 #endif /* _TRACE_SCHED_H */
 
 /* This part must be outside protection */
