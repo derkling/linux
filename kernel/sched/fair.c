@@ -4088,14 +4088,12 @@ static void update_capacity_of(int cpu)
 {
 	unsigned long req_cap;
 
-	if (!sched_energy_freq())
+	if (!sched_energy_freq(cpu))
 		return;
 
 	req_cap = cpu_util(cpu) * capacity_margin / capacity_orig_of(cpu);
 	cpufreq_sched_set_cap(cpu, req_cap);
 }
-
-struct static_key __sched_energy_freq __read_mostly = STATIC_KEY_INIT_FALSE;
 
 /*
  * The enqueue_task method is called before nr_running is
@@ -4221,7 +4219,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		if (task_sleep) {
 			if (rq->cfs.nr_running)
 				update_capacity_of(cpu_of(rq));
-			else if (sched_energy_freq())
+			else if (sched_energy_freq(cpu_of(rq)))
 				cpufreq_sched_reset_cap(cpu_of(rq));
 		}
 	}
@@ -7891,7 +7889,7 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 	 * threshold. The UP threshold is built relative to the current
 	 * capacity (OPP), by using capacity_margin.
 	 */
-	if (sched_energy_freq()) {
+	if (sched_energy_freq(cpu_of(rq))) {
 		int cpu = cpu_of(rq);
 		unsigned long capacity_orig = capacity_orig_of(cpu);
 		unsigned long capacity_curr = capacity_curr_of(cpu);

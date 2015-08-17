@@ -9,6 +9,7 @@
 #include <linux/irq_work.h>
 #include <linux/tick.h>
 #include <linux/slab.h>
+#include <linux/topology.h>
 
 #include "cpupri.h"
 #include "cpudeadline.h"
@@ -1414,10 +1415,17 @@ unsigned long arch_scale_cpu_capacity(struct sched_domain *sd, int cpu)
 }
 #endif
 
-extern struct static_key __sched_energy_freq;
-static inline bool sched_energy_freq(void)
+#define MAX_FREQ_DOMAINS	2	 /* max supported frequency domains */
+extern struct static_key __sched_energy_freq[MAX_FREQ_DOMAINS];
+
+static inline int cpu_to_cluster(int cpu)
 {
-	return static_key_false(&__sched_energy_freq);
+	return topology_physical_package_id(cpu);
+}
+
+static inline bool sched_energy_freq(int cpu)
+{
+	return static_key_false(&__sched_energy_freq[cpu_to_cluster(cpu)]);
 }
 
 #ifdef CONFIG_CPU_FREQ_GOV_SCHED

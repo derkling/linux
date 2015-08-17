@@ -19,6 +19,11 @@
 static DEFINE_PER_CPU(unsigned long, pcpu_capacity);
 static DEFINE_PER_CPU(struct cpufreq_policy *, pcpu_policy);
 
+struct static_key __sched_energy_freq[MAX_FREQ_DOMAINS] = {
+	STATIC_KEY_INIT_FALSE,
+	STATIC_KEY_INIT_FALSE,
+};
+
 /**
  * gov_data - per-policy data internal to the governor
  * @throttle: next throttling period expiry. Derived from throttle_nsec
@@ -215,16 +220,24 @@ void cpufreq_sched_reset_cap(int cpu)
 	per_cpu(pcpu_capacity, cpu) = 0;
 }
 
-static inline void set_sched_energy_freq(void)
+static inline void set_sched_energy_freq(int cpu)
 {
-	if (!sched_energy_freq())
-		static_key_slow_inc(&__sched_energy_freq);
+	int cluster_id = cpu_to_cluster(cpu);
+
+	if (!sched_energy_freq(cpu)) {
+		static_key_slow_inc(&__sched_energy_freq[cluster_id]);
+		pr_debug("%s: init cluster_id = %d\n", __func__, cluster_id);
+	}
 }
 
-static inline void clear_sched_energy_freq(void)
+static inline void clear_sched_energy_freq(int cpu)
 {
-	if (sched_energy_freq())
-		static_key_slow_dec(&__sched_energy_freq);
+	int cluster_id = cpu_to_cluster(cpu);
+
+	if (sched_energy_freq(cpu)) {
+		static_key_slow_dec(&__sched_energy_freq[cluster_id]);
+		pr_debug("%s: reset cluster_id = %d\n", __func__, cluster_id);
+	}
 }
 
 static int cpufreq_sched_start(struct cpufreq_policy *policy)
@@ -267,7 +280,7 @@ static int cpufreq_sched_start(struct cpufreq_policy *policy)
 
 	policy->governor_data = gd;
 	gd->policy = policy;
-	set_sched_energy_freq();
+	set_sched_energy_freq(cpumask_first(policy->cpus));
 	return 0;
 
 err:
@@ -279,7 +292,8 @@ static int cpufreq_sched_stop(struct cpufreq_policy *policy)
 {
 	struct gov_data *gd = policy->governor_data;
 
-	clear_sched_energy_freq();
+	clear_sched_energy_freq(cpumask_first(policy->cpus));
+
 	if (cpufreq_driver_might_sleep()) {
 		kthread_stop(gd->task);
 	}
