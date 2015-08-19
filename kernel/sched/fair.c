@@ -4793,9 +4793,15 @@ static inline unsigned long
 boosted_cpu_util(int cpu)
 {
 	unsigned long util = cpu_util(cpu);
-	unsigned long margin = schedtune_cpu_margin(util);
 
-	return util + margin;
+	/*
+	 * Assume the top 12% of the capacity is provided by the higest OPP
+	 * which thus cannot be boosted furthermore.
+	 */
+	if (util >= 896)
+		return util;
+
+	return util + schedtune_cpu_margin(util);
 }
 
 /*
