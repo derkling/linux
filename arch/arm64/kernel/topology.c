@@ -254,11 +254,11 @@ static struct idle_state idle_states_cluster_a57[] = {
 
 static struct capacity_state cap_states_cluster_a53[] = {
         /* Power per cluster */
-	{ .cap = 235, .power = 26, },
-	{ .cap = 303, .power = 30, },
-	{ .cap = 368, .power = 39, },
-	{ .cap = 406, .power = 47, },
-	{ .cap = 447, .power = 57, },
+	{ .cap = 178,  .power = 26, },
+	{ .cap = 369,  .power = 30, },
+	{ .cap = 622,  .power = 39, },
+	{ .cap = 819,  .power = 47, },
+	{ .cap = 1024, .power = 57, },
 };
 
 static struct capacity_state cap_states_cluster_a57[] = {
@@ -296,11 +296,11 @@ static struct idle_state idle_states_core_a57[] = {
 
 static struct capacity_state cap_states_core_a53[] = {
         /* Power per cpu */
-	{ .cap = 235, .power = 33, },
-	{ .cap = 302, .power = 46, },
-	{ .cap = 368, .power = 61, },
-	{ .cap = 406, .power = 76, },
-	{ .cap = 447, .power = 93, },
+	{ .cap = 178,  .power = 33, },  /* 208MHz */
+	{ .cap = 369,  .power = 46, },  /* 432MHz */
+	{ .cap = 622,  .power = 61, },  /* 729MHz */
+	{ .cap = 819,  .power = 76, },  /* 960MHz */
+	{ .cap = 1024, .power = 93, },  /* 1.2GHz */
 };
 
 static struct capacity_state cap_states_core_a57[] = {
@@ -320,23 +320,21 @@ static struct sched_group_energy energy_core_a53 = {
 };
 
 static struct sched_group_energy energy_core_a57 = {
-	  .nr_idle_states = ARRAY_SIZE(idle_states_core_a57),
-	  .idle_states    = idle_states_core_a57,
-	  .nr_cap_states  = ARRAY_SIZE(cap_states_core_a57),
-	  .cap_states     = cap_states_core_a57,
+	.nr_idle_states = ARRAY_SIZE(idle_states_core_a57),
+	.idle_states    = idle_states_core_a57,
+	.nr_cap_states  = ARRAY_SIZE(cap_states_core_a57),
+	.cap_states     = cap_states_core_a57,
 };
 
 /* sd energy functions */
 static inline const struct sched_group_energy *cpu_cluster_energy(int cpu)
 {
-	return cpu_topology[cpu].cluster_id ? &energy_cluster_a53 :
-			&energy_cluster_a57;
+	return &energy_cluster_a53;
 }
 
 static inline const struct sched_group_energy *cpu_core_energy(int cpu)
 {
-	return cpu_topology[cpu].cluster_id ? &energy_core_a53 :
-			&energy_core_a57;
+	return &energy_core_a53;
 }
 
 const struct cpumask *cpu_coregroup_mask(int cpu)
@@ -350,11 +348,16 @@ static inline int cpu_corepower_flags(void)
 	       SD_SHARE_CAP_STATES;
 }
 
+static inline int cluster_corepower_flags(void)
+{
+	return SD_SHARE_CAP_STATES;
+}
+
 static struct sched_domain_topology_level arm64_topology[] = {
 #ifdef CONFIG_SCHED_MC
 	{ cpu_coregroup_mask, cpu_corepower_flags, cpu_core_energy, SD_INIT_NAME(MC) },
 #endif
-	{ cpu_cpu_mask, 0, cpu_cluster_energy, SD_INIT_NAME(DIE) },
+	{ cpu_cpu_mask, cluster_corepower_flags, cpu_cluster_energy, SD_INIT_NAME(DIE) },
 	{ NULL, },
 };
 
