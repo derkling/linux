@@ -494,6 +494,8 @@ static void sched_rt_rq_enqueue(struct rt_rq *rt_rq)
 	int cpu = cpu_of(rq);
 
 	rt_se = rt_rq->tg->rt_se[cpu];
+	if (rt_se && rt_entity_is_task(rt_se))
+		trace_printk("tsk=%d", rt_task_of(rt_se)->pid);
 
 	if (rt_rq->rt_nr_running) {
 		if (!rt_se)
@@ -512,6 +514,8 @@ static void sched_rt_rq_dequeue(struct rt_rq *rt_rq)
 	int cpu = cpu_of(rq_of_rt_rq(rt_rq));
 
 	rt_se = rt_rq->tg->rt_se[cpu];
+	if (rt_se && rt_entity_is_task(rt_se))
+		trace_printk("tsk=%d", rt_task_of(rt_se)->pid);
 
 	if (!rt_se)
 		dequeue_top_rt_rq(rt_rq);
@@ -812,8 +816,15 @@ static int do_sched_rt_period_timer(struct rt_bandwidth *rt_b, int overrun)
 {
 	int i, idle = 1, throttled = 0;
 	const struct cpumask *span;
+	char buf[64];
 
 	span = sched_rt_period_mask();
+	snprintf(buf,
+		 sizeof(buf),
+		 "group=%p span=%*plb",
+		 container_of(rt_b, struct task_group, rt_bandwidth),
+		 cpumask_pr_args(span));
+	trace_printk("exec_on_cpu=%d %s", smp_processor_id(), buf);
 #ifdef CONFIG_RT_GROUP_SCHED
 	/*
 	 * FIXME: isolated CPUs should really leave the root task group,
@@ -914,6 +925,7 @@ static int sched_rt_runtime_exceeded(struct rt_rq *rt_rq)
 		if (likely(rt_b->rt_runtime)) {
 			rt_rq->rt_throttled = 1;
 			printk_deferred_once("sched: RT throttling activated\n");
+			trace_printk("RT throttling activated %d", 0);
 		} else {
 			/*
 			 * In case we did anyway, make it go away,
@@ -1228,6 +1240,11 @@ static void enqueue_rt_entity(struct sched_rt_entity *rt_se, bool head)
 {
 	struct rq *rq = rq_of_rt_se(rt_se);
 
+	if (rt_entity_is_task(rt_se))
+		trace_printk("tsk=%d", rt_task_of(rt_se)->pid);
+	else
+		trace_printk("grp=%p", rt_se);
+
 	dequeue_rt_stack(rt_se);
 	for_each_sched_rt_entity(rt_se)
 		__enqueue_rt_entity(rt_se, head);
@@ -1237,6 +1254,11 @@ static void enqueue_rt_entity(struct sched_rt_entity *rt_se, bool head)
 static void dequeue_rt_entity(struct sched_rt_entity *rt_se)
 {
 	struct rq *rq = rq_of_rt_se(rt_se);
+
+	if (rt_entity_is_task(rt_se))
+		trace_printk("tsk=%d", rt_task_of(rt_se)->pid);
+	else
+		trace_printk("grp=%p", rt_se);
 
 	dequeue_rt_stack(rt_se);
 
@@ -1451,6 +1473,7 @@ static struct task_struct *_pick_next_task_rt(struct rq *rq)
 
 	do {
 		rt_se = pick_next_rt_entity(rq, rt_rq);
+		trace_printk("rt_se=%p", rt_se);
 		BUG_ON(!rt_se);
 		rt_rq = group_rt_rq(rt_se);
 	} while (rt_rq);
