@@ -5035,6 +5035,8 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 		sd = highest_flag_domain(cpu, SD_SHARE_CAP_STATES);
 		if (sd && sd->parent)
 			sg_shared_cap = sd->parent->groups;
+		else if (sd && !sd->parent)
+			sg_shared_cap = sd->groups;
 
 		for_each_domain(cpu, sd) {
 			sg = sd->groups;
