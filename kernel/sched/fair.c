@@ -5453,6 +5453,7 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 	struct sched_domain *sd;
 	struct sched_group *sg, *sg_target;
 	int target_max_cap = INT_MAX;
+	int target_sg_cpu = INT_MAX;
 	int target_cpu = task_cpu(p);
 	int i;
 
@@ -5480,8 +5481,14 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 		 * Ideally we should query the energy model for the right
 		 * answer but it easily ends up in an exhaustive search.
 		 */
-		if (capacity_of(max_cap_cpu) < target_max_cap &&
+		if (capacity_of(max_cap_cpu) <= target_max_cap &&
 		    task_fits_capacity(p, max_cap_cpu)) {
+
+			if ((capacity_of(max_cap_cpu) == target_max_cap) &&
+			    (target_sg_cpu < max_cap_cpu))
+				continue;
+
+			target_sg_cpu = max_cap_cpu;
 			sg_target = sg;
 			target_max_cap = capacity_of(max_cap_cpu);
 		}
