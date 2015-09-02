@@ -24,7 +24,7 @@
 static struct cpufreq_governor cpufreq_gov_sched;
 #endif
 
-static struct cpumask enabled_cpus;
+static DEFINE_PER_CPU(unsigned long, enabled);
 static DEFINE_PER_CPU(unsigned long, pcpu_capacity);
 DEFINE_PER_CPU(struct sched_capacity_reqs, cpu_sched_capacity_reqs);
 
@@ -182,7 +182,7 @@ static void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
 	 * required after locking the CPU's policy to avoid racing
 	 * with the governor changing.
 	 */
-	if (!cpumask_test_cpu(cpu, &enabled_cpus))
+	if (!per_cpu(enabled, cpu))
 		return;
 
 	/* update per-cpu capacity request */
@@ -320,7 +320,8 @@ static int cpufreq_sched_start(struct cpufreq_policy *policy)
 
 	policy->governor_data = gd;
 	gd->policy = policy;
-	cpumask_or(&enabled_cpus, &enabled_cpus, policy->related_cpus);
+	for_each_cpu(cpu, policy->cpus)
+		per_cpu(enabled, cpu) = 1;
 	set_sched_freq();
 	return 0;
 
@@ -332,8 +333,10 @@ err:
 static int cpufreq_sched_stop(struct cpufreq_policy *policy)
 {
 	struct gov_data *gd = policy->governor_data;
+	int cpu;
 
-	cpumask_andnot(&enabled_cpus, &enabled_cpus, policy->related_cpus);
+	for_each_cpu(cpu, policy->cpus)
+		per_cpu(enabled, cpu) = 0;
 	clear_sched_freq();
 	if (cpufreq_driver_might_sleep()) {
 		kthread_stop(gd->task);
@@ -413,6 +416,10 @@ struct cpufreq_governor cpufreq_gov_sched = {
 
 static int __init cpufreq_sched_init(void)
 {
+	int cpu;
+
+	for_each_cpu(cpu, cpu_possible_mask)
+		per_cpu(enabled, cpu) = 0;
 	return cpufreq_register_governor(&cpufreq_gov_sched);
 }
 
