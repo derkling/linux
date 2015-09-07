@@ -4,6 +4,7 @@
 #ifdef CONFIG_ARM_CPU_TOPOLOGY
 
 #include <linux/cpumask.h>
+#include <linux/cpufreq.h>
 
 struct cputopo_arm {
 	int thread_id;
@@ -24,9 +25,16 @@ void init_cpu_topology(void);
 void store_cpu_topology(unsigned int cpuid);
 const struct cpumask *cpu_coregroup_mask(int cpu);
 
+#define arch_scale_freq_capacity cpufreq_scale_freq_capacity
+
 #define arch_scale_cpu_capacity scale_cpu_capacity
 struct sched_domain;
-extern unsigned long scale_cpu_capacity(struct sched_domain *sd, int cpu);
+DECLARE_PER_CPU(unsigned long, cpu_scale);
+static __always_inline
+unsigned long scale_cpu_capacity(struct sched_domain *sd, int cpu)
+{
+	return per_cpu(cpu_scale, cpu);
+}
 
 #else
 

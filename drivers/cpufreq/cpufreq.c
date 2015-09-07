@@ -2404,6 +2404,12 @@ static struct notifier_block __refdata cpufreq_cpu_notifier = {
 	.notifier_call = cpufreq_cpu_callback,
 };
 
+unsigned long cpufreq_scale_freq_capacity(struct sched_domain *sd, int cpu)
+{
+	return 1024; /* Implementation missing !!! */
+}
+EXPORT_SYMBOL(cpufreq_scale_freq_capacity);
+
 /*********************************************************************
  *               BOOST						     *
  *********************************************************************/

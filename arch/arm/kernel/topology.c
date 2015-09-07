@@ -40,12 +40,7 @@
  * to run the rebalance_domains for all idle cores and the cpu_capacity can be
  * updated during this sequence.
  */
-static DEFINE_PER_CPU(unsigned long, cpu_scale);
-
-unsigned long scale_cpu_capacity(struct sched_domain *sd, int cpu)
-{
-	return per_cpu(cpu_scale, cpu);
-}
+DEFINE_PER_CPU(unsigned long, cpu_scale);
 
 static void set_capacity_scale(unsigned int cpu, unsigned long capacity)
 {
