@@ -243,7 +243,8 @@ static inline const struct sched_group_energy *cpu_cluster_energy(int cpu)
 	struct sched_group_energy *sge = sge_array[cpu][SD_LEVEL1];
 
 	if (!sge) {
-		pr_warn("Invalid sched_group_energy for Cluster%d\n", cpu);
+		pr_warn_once("Invalid cpu_cluster_energy for Cluster%d\n",
+			topology_physical_package_id(cpu));
 		return NULL;
 	}
 
@@ -255,7 +256,7 @@ static inline const struct sched_group_energy *cpu_core_energy(int cpu)
 	struct sched_group_energy *sge = sge_array[cpu][SD_LEVEL0];
 
 	if (!sge) {
-		pr_warn("Invalid sched_group_energy for CPU%d\n", cpu);
+		pr_warn_once("Invalid cpu_core_energy for CPU%d\n", cpu);
 		return NULL;
 	}
 
