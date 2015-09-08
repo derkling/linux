@@ -46,7 +46,7 @@ static void free_resources(void)
 	}
 }
 
-void init_sched_energy_costs(void)
+void init_sched_energy_costs_from_dt(void)
 {
 	struct device_node *cn, *cp;
 	struct capacity_state *cap_states;

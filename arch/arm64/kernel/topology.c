@@ -404,5 +404,5 @@ void __init init_cpu_topology(void)
 
 	reset_cpu_capacity();
 
-	init_sched_energy_costs();
+	init_sched_energy_costs_from_dt();
 }
