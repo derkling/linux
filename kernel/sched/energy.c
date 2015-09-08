@@ -171,6 +171,7 @@ void init_sched_energy_costs_default(void)
 	}
 
 	pr_info("Sched-energy-costs installed from default\n");
+	request_energy_costs_update();
 	rebuild_sched_domains();
 
 	return;

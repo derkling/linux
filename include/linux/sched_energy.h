@@ -31,6 +31,7 @@
 
 extern struct sched_group_energy *sge_array[NR_CPUS][NR_SD_LEVELS];
 
+void request_energy_costs_update(void);
 void init_sched_energy_costs_default(void);
 void init_sched_energy_costs_from_dt(void);
 

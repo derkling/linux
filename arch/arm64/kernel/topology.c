@@ -237,6 +237,22 @@ unsigned long arm_arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
 struct cpu_topology cpu_topology[NR_CPUS];
 EXPORT_SYMBOL_GPL(cpu_topology);
 
+static bool arch_needs_energy_costs_update;
+void request_energy_costs_update(void)
+{
+	arch_needs_energy_costs_update = 1;
+}
+
+int arch_update_cpu_topology(void)
+{
+	if (arch_needs_energy_costs_update) {
+		arch_needs_energy_costs_update = 0;
+		return 1;
+	}
+
+	return 0;
+}
+
 /* sd energy functions */
 static inline const struct sched_group_energy *cpu_cluster_energy(int cpu)
 {
