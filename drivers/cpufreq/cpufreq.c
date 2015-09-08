@@ -29,6 +29,7 @@
 #include <linux/suspend.h>
 #include <linux/syscore_ops.h>
 #include <linux/tick.h>
+#include <linux/sched_energy.h>
 #include <trace/events/power.h>
 
 static LIST_HEAD(cpufreq_policy_list);
@@ -2550,6 +2551,7 @@ int cpufreq_register_driver(struct cpufreq_driver *driver_data)
 
 	register_hotcpu_notifier(&cpufreq_cpu_notifier);
 	pr_debug("driver %s up and running\n", driver_data->name);
+	init_sched_energy_costs_default();
 
 	return 0;
 err_if_unreg:

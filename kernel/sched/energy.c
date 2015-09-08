@@ -26,6 +26,7 @@
 #include <linux/sched.h>
 #include <linux/sched_energy.h>
 #include <linux/stddef.h>
+#include <linux/cpuset.h>
 
 struct sched_group_energy *sge_array[NR_CPUS][NR_SD_LEVELS];
 
@@ -121,4 +122,56 @@ void init_sched_energy_costs_from_dt(void)
 
 out:
 	free_resources();
+}
+
+void init_sched_energy_costs_default(void)
+{
+	struct capacity_state *cap_states;
+	struct idle_state *idle_states;
+	struct sched_group_energy *sge;
+	int sd_level, i, nstates, cpu;
+	unsigned int val;
+
+	if (sge_array[0][0]) {
+		pr_info("Sched-energy-costs already installed: skipping\n");
+		return;
+	}
+
+	for_each_possible_cpu(cpu) {
+		for_each_possible_sd_level(sd_level) {
+			sge = kcalloc(1, sizeof(struct sched_group_energy),
+				      GFP_NOWAIT);
+
+			nstates = 4;
+			cap_states = kcalloc(nstates,
+					     sizeof(struct capacity_state),
+					     GFP_NOWAIT);
+
+			for (i = 0, val = 256; i < nstates; i++, val += 256) {
+				cap_states[i].cap = val;
+				cap_states[i].power = 0;
+			}
+
+			sge->nr_cap_states = nstates;
+			sge->cap_states = cap_states;
+
+			nstates = 1;
+			idle_states = kcalloc(nstates,
+					      sizeof(struct idle_state),
+					      GFP_NOWAIT);
+
+			for (i = 0; i < nstates; i++)
+				idle_states[i].power = 0;
+
+			sge->nr_idle_states = nstates;
+			sge->idle_states = idle_states;
+
+			sge_array[cpu][sd_level] = sge;
+		}
+	}
+
+	pr_info("Sched-energy-costs installed from default\n");
+	rebuild_sched_domains();
+
+	return;
 }
