@@ -267,7 +267,6 @@ struct mtk_pinctrl {
 	void __iomem		*eint_reg_base;
 	struct irq_domain	*domain;
 	int			*eint_dual_edges;
-	u32 *wake_mask;
 	u32 *cur_mask;
 };
 
