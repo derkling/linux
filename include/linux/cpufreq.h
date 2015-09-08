@@ -130,6 +130,10 @@ struct cpufreq_policy {
 #ifdef CONFIG_CPU_FREQ
 struct cpufreq_policy *cpufreq_cpu_get(unsigned int cpu);
 void cpufreq_cpu_put(struct cpufreq_policy *policy);
+int cpufreq_parse_governor(char *str_governor, unsigned int *policy,
+				struct cpufreq_governor **governor);
+int cpufreq_set_policy(struct cpufreq_policy *policy,
+				struct cpufreq_policy *new_policy);
 #else
 static inline struct cpufreq_policy *cpufreq_cpu_get(unsigned int cpu)
 {
