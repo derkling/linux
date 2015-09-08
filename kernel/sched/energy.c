@@ -27,8 +27,10 @@
 #include <linux/sched_energy.h>
 #include <linux/stddef.h>
 #include <linux/cpuset.h>
+#include <linux/cpufreq.h>
 
 struct sched_group_energy *sge_array[NR_CPUS][NR_SD_LEVELS];
+unsigned long long elapsed[NR_CPUS];
 
 static void free_resources(void)
 {
@@ -124,13 +126,42 @@ out:
 	free_resources();
 }
 
+static int run_bogus_benchmark(int cpu)
+{
+	int i, ret;
+	unsigned long res;
+	unsigned long long begin, end;
+
+	ret = set_cpus_allowed_ptr(current, cpumask_of(cpu));
+	if (ret) {
+		pr_warn("%s: failed to set allowed ptr\n", __func__);
+		return -EINVAL;
+	}
+
+	begin = sched_clock();
+	for (i = 0; i < 1000; i++)
+		res = int_sqrt(i);
+	end = sched_clock();
+	elapsed[cpu] = end - begin;
+	pr_info("%s: cpu=%d begin=%llu end=%llu elapsed=%llu\n", __func__, cpu, begin, end, elapsed[cpu]);
+
+	ret = set_cpus_allowed_ptr(current, cpu_active_mask);
+	if (ret) {
+		pr_warn("%s: failed to set allowed ptr\n", __func__);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 void init_sched_energy_costs_default(void)
 {
 	struct capacity_state *cap_states;
 	struct idle_state *idle_states;
 	struct sched_group_energy *sge;
 	int sd_level, i, nstates, cpu;
-	unsigned int val;
+	unsigned long long elapsed_min = ULLONG_MAX;
+	struct cpufreq_policy *policy;
 
 	if (sge_array[0][0]) {
 		pr_info("Sched-energy-costs already installed: skipping\n");
@@ -138,19 +169,34 @@ void init_sched_energy_costs_default(void)
 	}
 
 	for_each_possible_cpu(cpu) {
+		policy = cpufreq_cpu_get(cpu);
+		pr_info("related_cpus=%*pbl\n", cpumask_pr_args(policy->related_cpus));
+		if (cpu != cpumask_first(policy->related_cpus)) {
+			pr_info("freq domain already visited\n");
+			cpufreq_cpu_put(policy);
+			elapsed[cpu] = elapsed[cpumask_first(policy->related_cpus)];
+			continue;
+		}
+		cpufreq_cpu_put(policy);
+
+		run_bogus_benchmark(cpu);
+		if (elapsed[cpu] < elapsed_min)
+			elapsed_min = elapsed[cpu];
+		pr_info("cpu=%d elapsed=%llu (min=%llu)\n", cpu, elapsed[cpu], elapsed_min);
+	}
+
+	for_each_possible_cpu(cpu) {
 		for_each_possible_sd_level(sd_level) {
 			sge = kcalloc(1, sizeof(struct sched_group_energy),
 				      GFP_NOWAIT);
 
-			nstates = 4;
+			nstates = 1;
 			cap_states = kcalloc(nstates,
 					     sizeof(struct capacity_state),
 					     GFP_NOWAIT);
 
-			for (i = 0, val = 256; i < nstates; i++, val += 256) {
-				cap_states[i].cap = val;
-				cap_states[i].power = 0;
-			}
+			cap_states[0].cap = (elapsed_min << 10) / elapsed[cpu];
+			cap_states[0].power = 0;
 
 			sge->nr_cap_states = nstates;
 			sge->cap_states = cap_states;
