@@ -2553,10 +2553,10 @@ static __always_inline int
 __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		  unsigned long weight, int running, struct cfs_rq *cfs_rq)
 {
-	u64 delta, scaled_delta, periods;
+	u64 delta, periods;
 	u32 contrib;
-	unsigned int delta_w, scaled_delta_w, decayed = 0;
-	unsigned long scale_freq, scale_cpu;
+	unsigned int delta_w, decayed = 0;
+	unsigned long scaled_weight = 0, scale_freq, scale_freq_cpu = 0;
 
 	delta = now - sa->last_update_time;
 	/*
@@ -2577,8 +2577,13 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		return 0;
 	sa->last_update_time = now;
 
-	scale_freq = arch_scale_freq_capacity(NULL, cpu);
-	scale_cpu = arch_scale_cpu_capacity(NULL, cpu);
+	if (weight || running)
+		scale_freq = arch_scale_freq_capacity(NULL, cpu);
+	if (weight)
+		scaled_weight = weight * scale_freq >> SCHED_CAPACITY_SHIFT;
+	if (running)
+		scale_freq_cpu = scale_freq * arch_scale_cpu_capacity(NULL, cpu)
+							>> SCHED_CAPACITY_SHIFT;
 
 	/* delta_w is the amount already accumulated against our next period */
 	delta_w = sa->period_contrib;
@@ -2594,16 +2599,15 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		 * period and accrue it.
 		 */
 		delta_w = 1024 - delta_w;
-		scaled_delta_w = cap_scale(delta_w, scale_freq);
 		if (weight) {
-			sa->load_sum += weight * scaled_delta_w;
+			sa->load_sum += scaled_weight * delta_w;
 			if (cfs_rq) {
 				cfs_rq->runnable_load_sum +=
-						weight * scaled_delta_w;
+						scaled_weight * delta_w;
 			}
 		}
 		if (running)
-			sa->util_sum += scaled_delta_w * scale_cpu;
+			sa->util_sum += delta_w * scale_freq_cpu;
 
 		delta -= delta_w;
 
@@ -2620,25 +2624,23 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 
 		/* Efficiently calculate \sum (1..n_period) 1024*y^i */
 		contrib = __compute_runnable_contrib(periods);
-		contrib = cap_scale(contrib, scale_freq);
 		if (weight) {
-			sa->load_sum += weight * contrib;
+			sa->load_sum += scaled_weight * contrib;
 			if (cfs_rq)
-				cfs_rq->runnable_load_sum += weight * contrib;
+				cfs_rq->runnable_load_sum += scaled_weight * contrib;
 		}
 		if (running)
-			sa->util_sum += contrib * scale_cpu;
+			sa->util_sum += contrib * scale_freq_cpu;
 	}
 
 	/* Remainder of delta accrued against u_0` */
-	scaled_delta = cap_scale(delta, scale_freq);
 	if (weight) {
-		sa->load_sum += weight * scaled_delta;
+		sa->load_sum += scaled_weight * delta;
 		if (cfs_rq)
-			cfs_rq->runnable_load_sum += weight * scaled_delta;
+			cfs_rq->runnable_load_sum += scaled_weight * delta;
 	}
 	if (running)
-		sa->util_sum += scaled_delta * scale_cpu;
+		sa->util_sum += delta * scale_freq_cpu;
 
 	sa->period_contrib += delta;
 
