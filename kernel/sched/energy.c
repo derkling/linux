@@ -128,9 +128,10 @@ out:
 
 static int run_bogus_benchmark(int cpu)
 {
-	int i, ret;
+	int i, ret, trials = 10, count = 0;
 	unsigned long res;
-	unsigned long long begin, end;
+	unsigned long long begin, diff;
+	long long diff_avg = 0;
 
 	ret = set_cpus_allowed_ptr(current, cpumask_of(cpu));
 	if (ret) {
@@ -138,12 +139,17 @@ static int run_bogus_benchmark(int cpu)
 		return -EINVAL;
 	}
 
-	begin = sched_clock();
-	for (i = 0; i < 1000; i++)
-		res = int_sqrt(i);
-	end = sched_clock();
-	elapsed[cpu] = end - begin;
-	pr_info("%s: cpu=%d begin=%llu end=%llu elapsed=%llu\n", __func__, cpu, begin, end, elapsed[cpu]);
+	while (trials--) {
+		begin = sched_clock();
+		for (i = 0; i < 100000; i++)
+			res = int_sqrt(i);
+		diff = sched_clock() - begin;
+		diff_avg = diff_avg * count + diff;
+		diff_avg /= ++count;
+		pr_info("%s: cpu=%d diff=%llu diff_avg=%lld\n", __func__, cpu, diff, diff_avg);
+	}
+	elapsed[cpu] = diff_avg;
+	pr_info("%s: cpu=%d elapsed=%llu\n", __func__, cpu, elapsed[cpu]);
 
 	ret = set_cpus_allowed_ptr(current, cpu_active_mask);
 	if (ret) {
