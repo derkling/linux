@@ -2551,12 +2551,13 @@ static u32 __compute_runnable_contrib(u64 n)
  */
 static __always_inline int
 __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
-		  unsigned long weight, int running, struct cfs_rq *cfs_rq)
+		  unsigned long weight, int running, struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
-	u64 delta, scaled_delta, periods;
-	u32 contrib;
-	unsigned int delta_w, scaled_delta_w, decayed = 0;
+	u64 delta, scaled_delta = 0, periods = 0;
+	u32 contrib = 0, scaled_contrib = 0;
+	unsigned int delta_w, scaled_delta_w = 0, decayed = 0;
 	unsigned long scale_freq, scale_cpu;
+	unsigned long lsd[] = { 0UL, 0UL, 0UL}, usd[] = { 0UL, 0UL, 0UL};
 
 	delta = now - sa->last_update_time;
 	/*
@@ -2596,14 +2597,14 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		delta_w = 1024 - delta_w;
 		scaled_delta_w = cap_scale(delta_w, scale_freq);
 		if (weight) {
-			sa->load_sum += weight * scaled_delta_w;
+			sa->load_sum += lsd[0] = weight * scaled_delta_w;
 			if (cfs_rq) {
 				cfs_rq->runnable_load_sum +=
 						weight * scaled_delta_w;
 			}
 		}
 		if (running)
-			sa->util_sum += scaled_delta_w * scale_cpu;
+			sa->util_sum += usd[0] = scaled_delta_w * scale_cpu;
 
 		delta -= delta_w;
 
@@ -2622,23 +2623,23 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		contrib = __compute_runnable_contrib(periods);
 		contrib = cap_scale(contrib, scale_freq);
 		if (weight) {
-			sa->load_sum += weight * contrib;
+			sa->load_sum += lsd[1] = weight * contrib;
 			if (cfs_rq)
 				cfs_rq->runnable_load_sum += weight * contrib;
 		}
 		if (running)
-			sa->util_sum += contrib * scale_cpu;
+			sa->util_sum += usd[1] = contrib * scale_cpu;
 	}
 
 	/* Remainder of delta accrued against u_0` */
 	scaled_delta = cap_scale(delta, scale_freq);
 	if (weight) {
-		sa->load_sum += weight * scaled_delta;
+		sa->load_sum += lsd[2] =  weight * scaled_delta;
 		if (cfs_rq)
 			cfs_rq->runnable_load_sum += weight * scaled_delta;
 	}
 	if (running)
-		sa->util_sum += scaled_delta * scale_cpu;
+		sa->util_sum += usd[2] = scaled_delta * scale_cpu;
 
 	sa->period_contrib += delta;
 
@@ -2650,6 +2651,37 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		}
 		sa->util_avg = sa->util_sum / LOAD_AVG_MAX;
 	}
+
+	if (!cfs_rq && entity_is_task(se))
+		trace_printk("ula_task: cpu=%d name=%s pid=%d \
+			      scale_freq=%lu scale_cpu=%lu weight=%lu \
+			      delta_w=%u contrib=%u delta=%llu \
+			      scaled_delta_w=%u scaled_contrib=%u scaled_delta=%llu \
+			      lsd[0]=%lu lsd[1]=%lu lsd[2]=%lu usd[0]=%lu usd[1]=%lu usd[2]=%lu \
+			      sa->load_avg=%lu sa->util_avg=%lu sa->load_sum=%llu \
+			      sa->util_sum=%u periods=%llu",
+			     cpu, task_of(se)->comm, task_of(se)->pid,
+			     scale_freq, scale_cpu, weight,
+			     delta_w, contrib, delta,
+			     scaled_delta_w, scaled_contrib, scaled_delta,
+			     lsd[0], lsd[1], lsd[2], usd[0], usd[1], usd[2],
+			     sa->load_avg, sa->util_avg, sa->load_sum,
+			     sa->util_sum, periods);
+	else
+		trace_printk("ula_cfs_rq: cpu=%d cfs_rq=%p \
+			      scale_freq=%lu scale_cpu=%lu weight=%lu \
+			      delta_w=%u contrib=%u delta=%llu \
+			      scaled_delta_w=%u scaled_contrib=%u scaled_delta=%llu \
+			      lsd[0]=%lu lsd[1]=%lu lsd[2]=%lu usd[0]=%lu usd[1]=%lu usd[2]=%lu \
+			      sa->load_avg=%lu sa->util_avg=%lu sa->load_sum=%llu \
+			      sa->util_sum=%u periods=%llu",
+			     cpu, cfs_rq,
+			     scale_freq, scale_cpu, weight,
+			     delta_w, contrib, delta,
+			     scaled_delta_w, scaled_contrib, scaled_delta,
+			     lsd[0], lsd[1], lsd[2], usd[0], usd[1], usd[2],
+			     sa->load_avg, sa->util_avg, sa->load_sum,
+			     sa->util_sum, periods);
 
 	return decayed;
 }
@@ -2694,7 +2726,7 @@ static inline int update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq)
 	}
 
 	decayed = __update_load_avg(now, cpu_of(rq_of(cfs_rq)), sa,
-		scale_load_down(cfs_rq->load.weight), cfs_rq->curr != NULL, cfs_rq);
+		scale_load_down(cfs_rq->load.weight), cfs_rq->curr != NULL, cfs_rq, NULL);
 
 #ifndef CONFIG_64BIT
 	smp_wmb();
@@ -2717,7 +2749,7 @@ static inline void update_load_avg(struct sched_entity *se, int update_tg)
 	 */
 	__update_load_avg(now, cpu, &se->avg,
 			  se->on_rq * scale_load_down(se->load.weight),
-			  cfs_rq->curr == se, NULL);
+			  cfs_rq->curr == se, NULL, se);
 
 	if (update_cfs_rq_load_avg(now, cfs_rq) && update_tg)
 		update_tg_load_avg(cfs_rq, 0);
@@ -2734,7 +2766,7 @@ static void attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 	 */
 	if (se->avg.last_update_time) {
 		__update_load_avg(cfs_rq->avg.last_update_time, cpu_of(rq_of(cfs_rq)),
-				  &se->avg, 0, 0, NULL);
+				  &se->avg, 0, 0, NULL, se);
 
 		/*
 		 * XXX: we could have just aged the entire load away if we've been
@@ -2754,7 +2786,7 @@ static void detach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 {
 	__update_load_avg(cfs_rq->avg.last_update_time, cpu_of(rq_of(cfs_rq)),
 			  &se->avg, se->on_rq * scale_load_down(se->load.weight),
-			  cfs_rq->curr == se, NULL);
+			  cfs_rq->curr == se, NULL, se);
 
 	cfs_rq->avg.load_avg = max_t(long, cfs_rq->avg.load_avg - se->avg.load_avg, 0);
 	cfs_rq->avg.load_sum = max_t(s64,  cfs_rq->avg.load_sum - se->avg.load_sum, 0);
@@ -2774,7 +2806,7 @@ enqueue_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	if (!migrated) {
 		__update_load_avg(now, cpu_of(rq_of(cfs_rq)), sa,
 			se->on_rq * scale_load_down(se->load.weight),
-			cfs_rq->curr == se, NULL);
+			cfs_rq->curr == se, NULL, se);
 	}
 
 	decayed = update_cfs_rq_load_avg(now, cfs_rq);
@@ -2822,7 +2854,7 @@ void remove_entity_load_avg(struct sched_entity *se)
 	last_update_time = cfs_rq->avg.last_update_time;
 #endif
 
-	__update_load_avg(last_update_time, cpu_of(rq_of(cfs_rq)), &se->avg, 0, 0, NULL);
+	__update_load_avg(last_update_time, cpu_of(rq_of(cfs_rq)), &se->avg, 0, 0, NULL, se);
 	atomic_long_add(se->avg.load_avg, &cfs_rq->removed_load_avg);
 	atomic_long_add(se->avg.util_avg, &cfs_rq->removed_util_avg);
 }
