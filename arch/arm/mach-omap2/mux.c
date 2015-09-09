@@ -810,13 +810,13 @@ int __init omap_mux_late_init(void)
 		return 0;
 
 	ret = request_irq(omap_prcm_event_to_irq("io"),
-		omap_hwmod_mux_handle_irq, IRQF_SHARED | IRQF_NO_SUSPEND,
+		omap_hwmod_mux_handle_irq, IRQF_SHARED,
 			"hwmod_io", omap_mux_late_init);
 
 	if (ret)
 		pr_warn("mux: Failed to setup hwmod io irq %d\n", ret);
 
-	return 0;
+	return enable_irq_wake(omap_prcm_event_to_irq("io"));
 }
 
 static void __init omap_mux_package_fixup(struct omap_mux *p,
