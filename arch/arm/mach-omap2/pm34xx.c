@@ -472,23 +472,22 @@ int __init omap3_pm_init(void)
 	prcm_setup_regs();
 
 	ret = request_irq(omap_prcm_event_to_irq("wkup"),
-		_prcm_int_handle_wakeup, IRQF_NO_SUSPEND, "pm_wkup", NULL);
+		_prcm_int_handle_wakeup, 0, "pm_wkup", NULL);
 
 	if (ret) {
 		pr_err("pm: Failed to request pm_wkup irq\n");
 		goto err1;
 	}
+	enable_irq_wake(omap_prcm_event_to_irq("wkup"));
 
 	/* IO interrupt is shared with mux code */
 	ret = request_irq(omap_prcm_event_to_irq("io"),
-		_prcm_int_handle_io, IRQF_SHARED | IRQF_NO_SUSPEND, "pm_io",
-		omap3_pm_init);
-	enable_irq(omap_prcm_event_to_irq("io"));
-
+		_prcm_int_handle_io, IRQF_SHARED, "pm_io", omap3_pm_init);
 	if (ret) {
 		pr_err("pm: Failed to request pm_io irq\n");
 		goto err2;
 	}
+	enable_irq_wake(omap_prcm_event_to_irq("io"));
 
 	ret = pwrdm_for_each(pwrdms_setup, NULL);
 	if (ret) {
