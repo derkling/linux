@@ -2551,12 +2551,13 @@ static u32 __compute_runnable_contrib(u64 n)
  */
 static __always_inline int
 __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
-		  unsigned long weight, int running, struct cfs_rq *cfs_rq)
+		  unsigned long weight, int running, struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
 	unsigned long scaled_weight, scale_freq, scale_freq_cpu;
 	unsigned int delta_w, decayed = 0;
 	u64 delta, periods;
 	u32 contrib;
+	unsigned long lsd[] = { 0UL, 0UL, 0UL}, usd[] = { 0UL, 0UL, 0UL};
 
 	delta = now - sa->last_update_time;
 	/*
@@ -2597,14 +2598,14 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		 */
 		delta_w = 1024 - delta_w;
 		if (weight) {
-			sa->load_sum += scaled_weight * delta_w;
+			sa->load_sum += lsd[0] = scaled_weight * delta_w;
 			if (cfs_rq) {
 				cfs_rq->runnable_load_sum +=
 						scaled_weight * delta_w;
 			}
 		}
 		if (running)
-			sa->util_sum += delta_w * scale_freq_cpu;
+			sa->util_sum += usd[0] = delta_w * scale_freq_cpu;
 
 		delta -= delta_w;
 
@@ -2622,22 +2623,22 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		/* Efficiently calculate \sum (1..n_period) 1024*y^i */
 		contrib = __compute_runnable_contrib(periods);
 		if (weight) {
-			sa->load_sum += scaled_weight * contrib;
+			sa->load_sum += lsd[1] = scaled_weight * contrib;
 			if (cfs_rq)
 				cfs_rq->runnable_load_sum += scaled_weight * contrib;
 		}
 		if (running)
-			sa->util_sum += contrib * scale_freq_cpu;
+			sa->util_sum += usd[1] = contrib * scale_freq_cpu;
 	}
 
 	/* Remainder of delta accrued against u_0` */
 	if (weight) {
-		sa->load_sum += scaled_weight * delta;
+		sa->load_sum += lsd[2] = scaled_weight * delta;
 		if (cfs_rq)
 			cfs_rq->runnable_load_sum += scaled_weight * delta;
 	}
 	if (running)
-		sa->util_sum += delta * scale_freq_cpu;
+		sa->util_sum += usd[2] = delta * scale_freq_cpu;
 
 	sa->period_contrib += delta;
 
@@ -2649,6 +2650,16 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		}
 		sa->util_avg = sa->util_sum / LOAD_AVG_MAX;
 	}
+
+	if (!cfs_rq && entity_is_task(se))
+		trace_printk("ula_task: cpu=%d name=%s pid=%d scale_freq=%lu weight=%lu scaled_weight=%lu scale_freq_cpu=%lu lsd[0]=%lu lsd[1]=%lu lsd[2]=%lu usd[0]=%lu usd[1]=%lu usd[2]=%lu sa->load_avg=%lu sa->util_avg=%lu",
+			     cpu, task_of(se)->comm, task_of(se)->pid, scale_freq, weight,
+			     scaled_weight, scale_freq_cpu, lsd[0], lsd[1], lsd[2], usd[0],
+			     usd[1], usd[2], sa->load_avg, sa->util_avg);
+	else
+		trace_printk("ula_cfs_rq: cpu=%d cfs_rq=%p scale_freq=%lu weight=%lu scaled_weight=%lu scale_freq_cpu=%lu lsd[0]=%lu lsd[1]=%lu lsd[2]=%lu usd[0]=%lu usd[1]=%lu usd[2]=%lu sa->load_avg=%lu sa->util_avg=%lu",
+			     cpu, cfs_rq, scale_freq, weight, scaled_weight, scale_freq_cpu,
+			     lsd[0], lsd[1], lsd[2], usd[0], usd[1], usd[2], sa->load_avg, sa->util_avg);
 
 	return decayed;
 }
@@ -2693,7 +2704,7 @@ static inline int update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq)
 	}
 
 	decayed = __update_load_avg(now, cpu_of(rq_of(cfs_rq)), sa,
-		scale_load_down(cfs_rq->load.weight), cfs_rq->curr != NULL, cfs_rq);
+		scale_load_down(cfs_rq->load.weight), cfs_rq->curr != NULL, cfs_rq, NULL);
 
 #ifndef CONFIG_64BIT
 	smp_wmb();
@@ -2715,7 +2726,7 @@ static inline void update_load_avg(struct sched_entity *se, int update_tg)
 	 * track group sched_entity load average for task_h_load calc in migration
 	 */
 	__update_load_avg(now, cpu, &se->avg,
-		se->on_rq * scale_load_down(se->load.weight), cfs_rq->curr == se, NULL);
+		se->on_rq * scale_load_down(se->load.weight), cfs_rq->curr == se, NULL, se);
 
 	if (update_cfs_rq_load_avg(now, cfs_rq) && update_tg)
 		update_tg_load_avg(cfs_rq, 0);
@@ -2736,7 +2747,7 @@ enqueue_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	else {
 		__update_load_avg(now, cpu_of(rq_of(cfs_rq)), sa,
 			se->on_rq * scale_load_down(se->load.weight),
-			cfs_rq->curr == se, NULL);
+			cfs_rq->curr == se, NULL, se);
 	}
 
 	decayed = update_cfs_rq_load_avg(now, cfs_rq);
@@ -2788,7 +2799,7 @@ void remove_entity_load_avg(struct sched_entity *se)
 	last_update_time = cfs_rq->avg.last_update_time;
 #endif
 
-	__update_load_avg(last_update_time, cpu_of(rq_of(cfs_rq)), &se->avg, 0, 0, NULL);
+	__update_load_avg(last_update_time, cpu_of(rq_of(cfs_rq)), &se->avg, 0, 0, NULL, se);
 	atomic_long_add(se->avg.load_avg, &cfs_rq->removed_load_avg);
 	atomic_long_add(se->avg.util_avg, &cfs_rq->removed_util_avg);
 }
@@ -7911,7 +7922,7 @@ static void switched_from_fair(struct rq *rq, struct task_struct *p)
 #ifdef CONFIG_SMP
 	/* Catch up with the cfs_rq and remove our load when we leave */
 	__update_load_avg(cfs_rq->avg.last_update_time, cpu_of(rq), &se->avg,
-		se->on_rq * scale_load_down(se->load.weight), cfs_rq->curr == se, NULL);
+		se->on_rq * scale_load_down(se->load.weight), cfs_rq->curr == se, NULL, se);
 
 	cfs_rq->avg.load_avg =
 		max_t(long, cfs_rq->avg.load_avg - se->avg.load_avg, 0);
