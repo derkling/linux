@@ -210,5 +210,6 @@ static inline const struct cpumask *cpu_cpu_mask(int cpu)
 	return cpumask_of_node(cpu_to_node(cpu));
 }
 
+void set_capacity_scale(unsigned int cpu, unsigned long capacity);
 
 #endif /* _LINUX_TOPOLOGY_H */
