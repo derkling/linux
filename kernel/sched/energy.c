@@ -263,3 +263,75 @@ void init_sched_energy_costs_default(void)
 
 	return;
 }
+
+void init_cpu_capacity_default(void)
+{
+	int cpu, ret;
+	unsigned long long elapsed_min = ULLONG_MAX;
+	struct cpufreq_policy curr_policy, bench_policy, *policy;
+
+	if (sge_array[0][0]) {
+		pr_info("Sched-energy-costs already installed: skipping\n");
+		return;
+	}
+
+	for_each_possible_cpu(cpu) {
+		ret = cpufreq_get_policy(&curr_policy, cpu);
+		if (ret)
+			return;
+
+		pr_info("related_cpus=%*pbl\n", cpumask_pr_args(curr_policy.related_cpus));
+		if (cpu != cpumask_first(curr_policy.related_cpus)) {
+			pr_info("freq domain already visited\n");
+			elapsed[cpu] = elapsed[cpumask_first(curr_policy.related_cpus)];
+			continue;
+		}
+
+		ret = cpufreq_get_policy(&bench_policy, cpu);
+		if (ret)
+			return;
+
+		if (cpufreq_parse_governor("performance",
+					   &bench_policy.policy,
+					   &bench_policy.governor))
+			return;
+
+		policy = cpufreq_cpu_get(cpu);
+		down_write(&policy->rwsem);
+		ret = cpufreq_set_policy(policy, &bench_policy);
+
+		policy->user_policy.policy = policy->policy;
+		policy->user_policy.governor = policy->governor;
+		up_write(&policy->rwsem);
+		cpufreq_cpu_put(policy);
+
+		if (ret)
+			return;
+
+		run_bogus_benchmark(cpu);
+		if (elapsed[cpu] < elapsed_min)
+			elapsed_min = elapsed[cpu];
+		pr_info("cpu=%d elapsed=%llu (min=%llu)\n", cpu, elapsed[cpu], elapsed_min);
+
+		policy = cpufreq_cpu_get(cpu);
+		down_write(&policy->rwsem);
+		ret = cpufreq_set_policy(policy, &curr_policy);
+
+		policy->user_policy.policy = policy->policy;
+		policy->user_policy.governor = policy->governor;
+		up_write(&policy->rwsem);
+		cpufreq_cpu_put(policy);
+
+		if (ret)
+			return;
+	}
+
+	for_each_possible_cpu(cpu)
+		set_capacity_scale(cpu, (elapsed_min << 10) / elapsed[cpu]);
+
+	pr_info("CPUs capacity installed from default\n");
+	request_energy_costs_update();
+	rebuild_sched_domains();
+
+	return;
+}

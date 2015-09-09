@@ -2551,7 +2551,8 @@ int cpufreq_register_driver(struct cpufreq_driver *driver_data)
 
 	register_hotcpu_notifier(&cpufreq_cpu_notifier);
 	pr_debug("driver %s up and running\n", driver_data->name);
-	init_sched_energy_costs_default();
+	//init_sched_energy_costs_default();
+	init_cpu_capacity_default();
 
 	return 0;
 err_if_unreg:
