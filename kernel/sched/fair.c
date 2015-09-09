@@ -2553,10 +2553,10 @@ static __always_inline int
 __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		  unsigned long weight, int running, struct cfs_rq *cfs_rq)
 {
+	unsigned long scaled_weight, scale_freq, scale_freq_cpu;
+	unsigned int delta_w, decayed = 0;
 	u64 delta, periods;
 	u32 contrib;
-	unsigned int delta_w, decayed = 0;
-	unsigned long scaled_weight = 0, scale_freq, scale_freq_cpu = 0;
 
 	delta = now - sa->last_update_time;
 	/*
@@ -2577,13 +2577,10 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		return 0;
 	sa->last_update_time = now;
 
-	if (weight || running)
-		scale_freq = arch_scale_freq_capacity(NULL, cpu);
-	if (weight)
-		scaled_weight = weight * scale_freq >> SCHED_CAPACITY_SHIFT;
-	if (running)
-		scale_freq_cpu = scale_freq * arch_scale_cpu_capacity(NULL, cpu)
-							>> SCHED_CAPACITY_SHIFT;
+	scale_freq = arch_scale_freq_capacity(NULL, cpu);
+
+	scaled_weight = weight * scale_freq >> SCHED_CAPACITY_SHIFT;
+	scale_freq_cpu = scale_freq * arch_scale_cpu_capacity(NULL, cpu) >> SCHED_CAPACITY_SHIFT;
 
 	/* delta_w is the amount already accumulated against our next period */
 	delta_w = sa->period_contrib;
