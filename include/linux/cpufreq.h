@@ -374,6 +374,7 @@ static inline void cpufreq_resume(void) {}
 
 #define CPUFREQ_TRANSITION_NOTIFIER	(0)
 #define CPUFREQ_POLICY_NOTIFIER		(1)
+#define CPUFREQ_DRIVER_NOTIFIER		(2)
 
 /* Transition notifiers */
 #define CPUFREQ_PRECHANGE		(0)
@@ -386,6 +387,9 @@ static inline void cpufreq_resume(void) {}
 #define CPUFREQ_START			(3)
 #define CPUFREQ_CREATE_POLICY		(4)
 #define CPUFREQ_REMOVE_POLICY		(5)
+
+/* Driver notifiers */
+#define CPUFREQ_DRIVER_READY		(0)
 
 #ifdef CONFIG_CPU_FREQ
 int cpufreq_register_notifier(struct notifier_block *nb, unsigned int list);
