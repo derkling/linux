@@ -861,12 +861,32 @@ static struct notifier_block cpufreq_policy_notifier = {
 	.notifier_call	= cpufreq_policy_callback,
 };
 
+static int cpufreq_driver_callback(struct notifier_block *nb,
+						unsigned long val, void *data)
+{
+	if (val != CPUFREQ_DRIVER_READY)
+		return NOTIFY_OK;
+
+	init_cpu_capacity_default();
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block cpufreq_driver_notifier = {
+	.notifier_call	= cpufreq_driver_callback,
+};
+
 static int __init register_cpufreq_notifier(void)
 {
 	int ret;
 
 	ret = cpufreq_register_notifier(&cpufreq_notifier,
 						CPUFREQ_TRANSITION_NOTIFIER);
+	if (ret)
+		return ret;
+
+	ret = cpufreq_register_notifier(&cpufreq_driver_notifier,
+						CPUFREQ_DRIVER_NOTIFIER);
 	if (ret)
 		return ret;
 
