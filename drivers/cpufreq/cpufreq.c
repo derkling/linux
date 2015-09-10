@@ -127,6 +127,7 @@ static void handle_update(struct work_struct *work);
  */
 static BLOCKING_NOTIFIER_HEAD(cpufreq_policy_notifier_list);
 static struct srcu_notifier_head cpufreq_transition_notifier_list;
+static BLOCKING_NOTIFIER_HEAD(cpufreq_driver_notifier_list);
 
 static bool init_cpufreq_transition_notifier_list_called;
 static int __init init_cpufreq_transition_notifier_list(void)
@@ -1784,6 +1785,10 @@ int cpufreq_register_notifier(struct notifier_block *nb, unsigned int list)
 		ret = blocking_notifier_chain_register(
 				&cpufreq_policy_notifier_list, nb);
 		break;
+	case CPUFREQ_DRIVER_NOTIFIER:
+		ret = blocking_notifier_chain_register(
+				&cpufreq_driver_notifier_list, nb);
+		break;
 	default:
 		ret = -EINVAL;
 	}
@@ -1817,6 +1822,10 @@ int cpufreq_unregister_notifier(struct notifier_block *nb, unsigned int list)
 	case CPUFREQ_POLICY_NOTIFIER:
 		ret = blocking_notifier_chain_unregister(
 				&cpufreq_policy_notifier_list, nb);
+		break;
+	case CPUFREQ_DRIVER_NOTIFIER:
+		ret = blocking_notifier_chain_unregister(
+				&cpufreq_driver_notifier_list, nb);
 		break;
 	default:
 		ret = -EINVAL;
@@ -2522,6 +2531,11 @@ int cpufreq_register_driver(struct cpufreq_driver *driver_data)
 	}
 
 	register_hotcpu_notifier(&cpufreq_cpu_notifier);
+
+	/* notification that the driver is ready */
+	blocking_notifier_call_chain(&cpufreq_driver_notifier_list,
+			CPUFREQ_DRIVER_READY, NULL);
+
 	pr_debug("driver %s up and running\n", driver_data->name);
 
 out:
