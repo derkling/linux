@@ -179,6 +179,22 @@ static inline void update_cpu_capacity(unsigned int cpuid) {}
 struct cputopo_arm cpu_topology[NR_CPUS];
 EXPORT_SYMBOL_GPL(cpu_topology);
 
+static bool arch_needs_energy_costs_update;
+void request_energy_costs_update(void)
+{
+	arch_needs_energy_costs_update = 1;
+}
+
+int arch_update_cpu_topology(void)
+{
+	if (arch_needs_energy_costs_update) {
+		arch_needs_energy_costs_update = 0;
+		return 1;
+	}
+
+	return 0;
+}
+
 const struct cpumask *cpu_coregroup_mask(int cpu)
 {
 	return &cpu_topology[cpu].core_sibling;
