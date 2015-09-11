@@ -161,6 +161,8 @@ static int run_bogus_benchmark(int cpu)
 	return 0;
 }
 
+void __weak request_energy_costs_update(void) {}
+
 void init_sched_energy_costs_default(void)
 {
 	struct capacity_state *cap_states;
@@ -236,7 +238,8 @@ void init_sched_energy_costs_default(void)
 					     sizeof(struct capacity_state),
 					     GFP_NOWAIT);
 
-			cap_states[0].cap = (elapsed_min << 10) / elapsed[cpu];
+			cap_states[0].cap = div64_u64((elapsed_min << 10),
+						      elapsed[cpu]);
 			cap_states[0].power = 0;
 
 			sge->nr_cap_states = nstates;
@@ -312,8 +315,12 @@ void init_cpu_capacity_default(void)
 		cpufreq_update_policy(cpu);
 	}
 
-	for_each_possible_cpu(cpu)
-		set_capacity_scale(cpu, (elapsed_min << 10) / elapsed[cpu]);
+	for_each_possible_cpu(cpu) {
+		unsigned long capacity;
+
+		capacity = div64_u64((elapsed_min << 10), elapsed[cpu]);
+		set_capacity_scale(cpu, capacity);
+	}
 
 	pr_info("CPUs capacity installed from default\n");
 	request_energy_costs_update();
