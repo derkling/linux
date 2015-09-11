@@ -17,296 +17,144 @@
 #include <linux/device.h>
 #include <linux/err.h>
 #include <linux/hwmon.h>
-#include <linux/hwmon-sysfs.h>
-#include <linux/io.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
+#include <linux/slab.h>
+#include <linux/mfd/syscon.h>
+#include <linux/regmap.h>
 #include <linux/platform_device.h>
 
-struct v2m_juno_hwmon_type {
-	const char *name;
-	const struct attribute_group *attr_groups;
-};
-
-static void __iomem *base;
-
-struct v2m_juno_hwmon_dev {
-	struct v2m_juno_hwmon_type *type;
+struct v2m_juno_hwmon_data {
 	struct device *hwmon_dev;
-	const char *name;
+	struct regmap *reg;
 	u32 offset;
 	u32 mult;
 	u32 div;
 };
 
-static ssize_t v2m_juno_hwmon_name_show(struct device *dev,
+static ssize_t v2m_juno_hwmon_label_show(struct device *dev,
 		struct device_attribute *dev_attr, char *buffer)
 {
-	struct v2m_juno_hwmon_dev *hdev = dev_get_drvdata(dev);
+	const char *label = of_get_property(dev->of_node, "label", NULL);
 
-	return sprintf(buffer, "%s\n", hdev->name);
+	return snprintf(buffer, PAGE_SIZE, "%s\n", label);
 }
 
 static ssize_t v2m_juno_hwmon_u32_show(struct device *dev,
 		struct device_attribute *dev_attr, char *buffer)
 {
-	struct v2m_juno_hwmon_dev *hdev = dev_get_drvdata(dev);
-	u64 value;
+	struct v2m_juno_hwmon_data *data = dev_get_drvdata(dev);
+	int err;
+	u32 value;
 
-	value = readl(base + hdev->offset);
-	value *= hdev->mult;
-	return snprintf(buffer, PAGE_SIZE, "%llu\n", value / hdev->div);
+	err = regmap_read(data->reg, data->offset, &value);
+	if (err)
+		return err;
+
+	value *= data->mult;
+	value /= data->div;
+
+	return snprintf(buffer, PAGE_SIZE, "%u\n", value);
 }
 
 static ssize_t v2m_juno_hwmon_u64_show(struct device *dev,
 		struct device_attribute *dev_attr, char *buffer)
 {
-	struct v2m_juno_hwmon_dev *hdev = dev_get_drvdata(dev);
+	struct v2m_juno_hwmon_data *data = dev_get_drvdata(dev);
+	int err;
+	u32 value_hi, value_lo;
 	u64 value;
 
-	value = readq(base + hdev->offset);
-	value *= hdev->mult;
-	return snprintf(buffer, PAGE_SIZE, "%llu\n", value / hdev->div);
+	err = regmap_read(data->reg, data->offset, &value_lo);
+	if (err)
+		return err;
+
+	err = regmap_read(data->reg, data->offset + 4, &value_hi);
+	if (err)
+		return err;
+
+	value = ((u64)value_hi << 32) | value_lo;
+	value *= data->mult;
+	value = div_u64(value, data->div);
+
+	return snprintf(buffer, PAGE_SIZE, "%llu\n", value);
 }
 
-static DEVICE_ATTR(name, S_IRUGO, v2m_juno_hwmon_name_show, NULL);
+static umode_t v2m_juno_hwmon_attr_is_visible(struct kobject *kobj,
+		struct attribute *attr, int index)
+{
+	struct device *dev = kobj_to_dev(kobj);
+	struct device_attribute *dev_attr = container_of(attr,
+				struct device_attribute, attr);
 
-#define JUNO_HWMON_ATTRS(_name, _input_attr)			\
-struct attribute *v2m_juno_hwmon_attrs_##_name[] = {		\
-	&dev_attr_name.attr,					\
-	&sensor_dev_attr_##_input_attr.dev_attr.attr,		\
+	if (dev_attr->show == v2m_juno_hwmon_label_show &&
+			!of_get_property(dev->of_node, "label", NULL))
+		return 0;
+
+	return attr->mode;
+}
+
+struct v2m_juno_hwmon_type {
+	const char *name;
+	const struct attribute_group **attr_groups;
+};
+
+#define V2M_JUNO_HWMON(_name, _attr_name, _is_u64)		\
+static inline ssize_t 						\
+_attr_name##_label_show(struct device *dev,			\
+		struct device_attribute *attr, char *buf)	\
+{								\
+	return v2m_juno_hwmon_label_show(dev, attr, buf);	\
+}								\
+static inline ssize_t 						\
+_attr_name##_input_show(struct device *dev,			\
+		struct device_attribute *attr, char *buf)	\
+{								\
+	if (_is_u64)						\
+		return v2m_juno_hwmon_u64_show(dev, attr, buf);	\
+	else							\
+		return v2m_juno_hwmon_u32_show(dev, attr, buf);	\
+}								\
+static DEVICE_ATTR_RO(_attr_name##_label);			\
+static DEVICE_ATTR_RO(_attr_name##_input);			\
+static struct attribute *v2m_juno_hwmon_attrs_##_name[] = {	\
+	&dev_attr_##_attr_name##_label.attr,			\
+	&dev_attr_##_attr_name##_input.attr,			\
 	NULL							\
-}
-
-#if !defined(CONFIG_REGULATOR_VEXPRESS)
-static SENSOR_DEVICE_ATTR(in1_input, S_IRUGO, v2m_juno_hwmon_u32_show,
-		NULL, 1);
-static	JUNO_HWMON_ATTRS(volt, in1_input);
-static struct attribute_group v2m_juno_hwmon_group_volt = {
-	.attrs = v2m_juno_hwmon_attrs_volt,
-};
-static struct v2m_juno_hwmon_type v2m_juno_hwmon_volt = {
-	.name = "v2m_juno_volt",
-	.attr_groups = &v2m_juno_hwmon_group_volt,
-};
-#endif
-
-static SENSOR_DEVICE_ATTR(curr1_input, S_IRUGO, v2m_juno_hwmon_u32_show,
-		NULL, 1);
-static JUNO_HWMON_ATTRS(amp, curr1_input);
-static struct attribute_group v2m_juno_hwmon_group_amp = {
-	.attrs = v2m_juno_hwmon_attrs_amp,
-};
-static struct v2m_juno_hwmon_type v2m_juno_hwmon_amp = {
-	.name = "v2m_juno_amp",
-	.attr_groups = &v2m_juno_hwmon_group_amp,
+};								\
+static struct attribute_group v2m_juno_hwmon_group_##_name = {	\
+	.is_visible = v2m_juno_hwmon_attr_is_visible,		\
+	.attrs = v2m_juno_hwmon_attrs_##_name,			\
+};								\
+static const							\
+struct attribute_group *v2m_juno_hwmon_groups_##_name[] = { 	\
+	&v2m_juno_hwmon_group_##_name,				\
+	NULL,							\
+};								\
+static struct v2m_juno_hwmon_type v2m_juno_hwmon_##_name = {	\
+	.name = "v2m_juno_"__stringify(_name),			\
+	.attr_groups = v2m_juno_hwmon_groups_##_name,		\
 };
 
-static SENSOR_DEVICE_ATTR(power1_input, S_IRUGO, v2m_juno_hwmon_u32_show,
-		NULL, 1);
-static JUNO_HWMON_ATTRS(power, power1_input);
-static struct attribute_group v2m_juno_hwmon_group_power = {
-	.attrs = v2m_juno_hwmon_attrs_power,
-};
-static struct v2m_juno_hwmon_type v2m_juno_hwmon_power = {
-	.name = "v2m_juno_power",
-	.attr_groups = &v2m_juno_hwmon_group_power,
-};
+V2M_JUNO_HWMON(volt, in1, false);
+V2M_JUNO_HWMON(amp, curr1, false);
+V2M_JUNO_HWMON(power, power1, false);
+V2M_JUNO_HWMON(energy, energy1, true);
 
-static SENSOR_DEVICE_ATTR(energy1_input, S_IRUGO, v2m_juno_hwmon_u64_show,
-		NULL, 1);
-static JUNO_HWMON_ATTRS(energy, energy1_input);
-static struct attribute_group v2m_juno_hwmon_group_energy = {
-	.attrs = v2m_juno_hwmon_attrs_energy,
-};
-static struct v2m_juno_hwmon_type v2m_juno_hwmon_energy = {
-	.name = "v2m_juno_energy",
-	.attr_groups = &v2m_juno_hwmon_group_energy,
-};
-
-/* current adc channels */
-#define	SYS_ADC_CH0_PM1_SYS	0xd0
-#define	SYS_ADC_CH1_PM2_A57	0xd4
-#define	SYS_ADC_CH2_PM3_A53	0xd8
-#define	SYS_ADC_CH3_PM4_GPU	0xdc
-
-/* voltage adc channels */
-#define	SYS_ADC_CH4_VSYS	0xe0
-#define	SYS_ADC_CH5_VA57	0xe4
-#define	SYS_ADC_CH6_VA53	0xe8
-#define	SYS_ADC_CH7_VGPU	0xec
-
-/* power adc channels */
-#define	SYS_EN_CH04_SYS		0xf0
-#define	SYS_EN_CH15_A57		0xf4
-#define	SYS_EN_CH26_A53		0xf8
-#define	SYS_EN_CH37_GPU		0xfc
-
-/* energy adc channels */
-#define SYS_ENM_CH0_L_SYS	0x100
-#define SYS_ENM_CH0_H_SYS	0x104
-#define SYS_ENM_CH1_L_A57	0x108
-#define SYS_ENM_CH1_H_A57	0x10c
-#define SYS_ENM_CH0_L_A53	0x110
-#define SYS_ENM_CH0_H_A53	0x114
-#define SYS_ENM_CH0_L_GPU	0x118
-#define SYS_ENM_CH0_H_GPU	0x11c
-
-struct v2m_juno_hwmon_dev v2m_juno_hwmon_curr_sys = {
-	.type = &v2m_juno_hwmon_amp,
-	.offset = SYS_ADC_CH0_PM1_SYS,
-	.name = "sys_curr",
-	.mult = 1000,
-	.div = 761
-};
-
-struct v2m_juno_hwmon_dev v2m_juno_hwmon_curr_a57 = {
-	.type = &v2m_juno_hwmon_amp,
-	.offset = SYS_ADC_CH1_PM2_A57,
-	.name = "a57_curr",
-	.mult = 1000,
-	.div = 381,
-};
-
-struct v2m_juno_hwmon_dev v2m_juno_hwmon_curr_a53 = {
-	.type = &v2m_juno_hwmon_amp,
-	.offset = SYS_ADC_CH2_PM3_A53,
-	.name = "a53_curr",
-	.mult = 1000,
-	.div = 761
-};
-
-struct v2m_juno_hwmon_dev v2m_juno_hwmon_curr_gpu = {
-	.type = &v2m_juno_hwmon_amp,
-	.offset = SYS_ADC_CH3_PM4_GPU,
-	.name = "gpu_curr",
-	.mult = 1000,
-	.div = 381
-};
-
-#if !defined(CONFIG_REGULATOR_VEXPRESS)
-struct v2m_juno_hwmon_dev v2m_juno_hwmon_volt_sys = {
-	.type = &v2m_juno_hwmon_volt,
-	.offset = SYS_ADC_CH4_VSYS,
-	.name = "sys_volt",
-	.mult = 1000,
-	.div = 1622
-};
-
-struct v2m_juno_hwmon_dev v2m_juno_hwmon_volt_a57 = {
-	.type = &v2m_juno_hwmon_volt,
-	.offset = SYS_ADC_CH5_VA57,
-	.name = "a57_volt",
-	.mult = 1000,
-	.div = 1622
-};
-
-struct v2m_juno_hwmon_dev v2m_juno_hwmon_volt_a53 = {
-	.type = &v2m_juno_hwmon_volt,
-	.offset = SYS_ADC_CH6_VA53,
-	.name = "a53_volt",
-	.mult = 1000,
-	.div = 1622
-};
-
-struct v2m_juno_hwmon_dev v2m_juno_hwmon_volt_gpu = {
-	.type = &v2m_juno_hwmon_volt,
-	.offset = SYS_ADC_CH7_VGPU,
-	.name = "gpu_volt",
-	.mult = 1000,
-	.div = 1622
-};
-#endif
-
-struct v2m_juno_hwmon_dev v2m_juno_hwmon_power_sys = {
-	.type = &v2m_juno_hwmon_power,
-	.offset = SYS_EN_CH04_SYS,
-	.name = "sys_power",
-	.mult = 1000,
-	.div = 1234803
-
-};
-
-struct v2m_juno_hwmon_dev v2m_juno_hwmon_power_a57 = {
-	.type = &v2m_juno_hwmon_power,
-	.offset = SYS_EN_CH15_A57,
-	.name = "a57_power",
-	.mult = 1000,
-	.div = 617402
-};
-
-struct v2m_juno_hwmon_dev v2m_juno_hwmon_power_a53 = {
-	.type = &v2m_juno_hwmon_power,
-	.offset = SYS_EN_CH26_A53,
-	.name = "a53_power",
-	.mult = 1000,
-	.div = 1234803,
-};
-
-struct v2m_juno_hwmon_dev v2m_juno_hwmon_power_gpu = {
-	.type = &v2m_juno_hwmon_power,
-	.offset = SYS_EN_CH37_GPU,
-	.mult = 1000,
-	.name = "gpu_power",
-	.div = 617402
-};
-
-struct v2m_juno_hwmon_dev v2m_juno_hwmon_energy_sys = {
-	.type = &v2m_juno_hwmon_energy,
-	.offset = SYS_ENM_CH0_L_SYS,
-	.name = "sys_energy",
-	.mult = 100,
-	.div = 1234803,
-};
-struct v2m_juno_hwmon_dev v2m_juno_hwmon_energy_a57 = {
-	.type = &v2m_juno_hwmon_energy,
-	.offset = SYS_ENM_CH1_L_A57,
-	.name = "a57_energy",
-	.mult = 100,
-	.div = 617402
-};
-
-struct v2m_juno_hwmon_dev v2m_juno_hwmon_energy_a53 = {
-	.type = &v2m_juno_hwmon_energy,
-	.offset = SYS_ENM_CH0_L_A53,
-	.name = "a53_energy",
-	.mult = 100,
-	.div = 1234803,
-};
-
-struct v2m_juno_hwmon_dev v2m_juno_hwmon_energy_gpu = {
-	.type = &v2m_juno_hwmon_energy,
-	.offset = SYS_ENM_CH0_L_GPU,
-	.name = "gpu_energy",
-	.mult = 100,
-	.div = 617402
-};
-
-static struct v2m_juno_hwmon_dev *v2m_juno_hwmon_devices[] = {
-#if !defined(CONFIG_REGULATOR_VEXPRESS)
-	&v2m_juno_hwmon_volt_sys,
-	&v2m_juno_hwmon_volt_a57,
-	&v2m_juno_hwmon_volt_a53,
-	&v2m_juno_hwmon_volt_gpu,
-#endif
-	&v2m_juno_hwmon_energy_sys,
-	&v2m_juno_hwmon_energy_a57,
-	&v2m_juno_hwmon_energy_a53,
-	&v2m_juno_hwmon_energy_gpu,
-	&v2m_juno_hwmon_power_sys,
-	&v2m_juno_hwmon_power_a57,
-	&v2m_juno_hwmon_power_a53,
-	&v2m_juno_hwmon_power_gpu,
-	&v2m_juno_hwmon_curr_sys,
-	&v2m_juno_hwmon_curr_a57,
-	&v2m_juno_hwmon_curr_a53,
-	&v2m_juno_hwmon_curr_gpu,
-};
-
-static struct of_device_id v2m_juno_hwmon_of_match[] = {
+static const struct of_device_id v2m_juno_hwmon_of_match[] = {
 	{
-		.compatible = "arm,v2m-juno-meters",
+		.compatible = "arm,vexpress-volt",
+		.data = &v2m_juno_hwmon_volt,
+	}, {
+		.compatible = "arm,vexpress-amp",
+		.data = &v2m_juno_hwmon_amp,
+	}, {
+		.compatible = "arm,vexpress-power",
+		.data = &v2m_juno_hwmon_power,
+	}, {
+		.compatible = "arm,vexpress-energy",
+		.data = &v2m_juno_hwmon_energy,
 	},
 	{}
 };
@@ -314,69 +162,49 @@ MODULE_DEVICE_TABLE(of, v2m_juno_hwmon_of_match);
 
 static int v2m_juno_hwmon_probe(struct platform_device *pdev)
 {
-	int i, err;
+	struct device *parent, *dev = &pdev->dev;
+	struct device_node *np = dev->of_node;
+	struct v2m_juno_hwmon_data *data;
 	const struct of_device_id *match;
-	struct v2m_juno_hwmon_dev *dev;
-	struct resource *mem;
+	const struct v2m_juno_hwmon_type *type;
+
+	parent = dev->parent;
+	if (!parent)
+		return -ENODEV;
 
 	match = of_match_device(v2m_juno_hwmon_of_match, &pdev->dev);
 	if (!match)
 		return -ENODEV;
+	type = match->data;
 
-	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	base = devm_ioremap_resource(&pdev->dev, mem);
+	data = devm_kzalloc(&pdev->dev, sizeof(*data), GFP_KERNEL);
+	if (!data)
+		return -ENOMEM;
+	platform_set_drvdata(pdev, data);
 
-	for (i = 0; i < ARRAY_SIZE(v2m_juno_hwmon_devices); i++) {
-		dev = v2m_juno_hwmon_devices[i];
-		dev->hwmon_dev = hwmon_device_register(&pdev->dev);
+	if (!strcmp(match->compatible, "arm, vexpress-energy"))
+		data->mult = 100;
+	else
+		data->mult = 1000;
+	if (of_property_read_u32(np, "offset", &data->offset))
+		return -EINVAL;
+	if (of_property_read_u32(np, "divisor", &data->div))
+		return -EINVAL;
 
-		if (IS_ERR(dev->hwmon_dev)) {
-			err = PTR_ERR(dev->hwmon_dev);
-			goto error;
-		}
-		err = sysfs_create_group(&dev->hwmon_dev->kobj,
-					 dev->type->attr_groups);
-		if (err)
-			goto error_sysfs;
+	data->reg = syscon_node_to_regmap(parent->of_node);
+	if (IS_ERR(data->reg))
+		return PTR_ERR(data->reg);
 
-		dev_set_drvdata(dev->hwmon_dev, dev);
-	}
+	data->hwmon_dev = devm_hwmon_device_register_with_groups(&pdev->dev,
+			type->name, data, type->attr_groups);
 
-	return 0;
-
-error:
-	while (--i >= 0) {
-		dev = v2m_juno_hwmon_devices[i];
-		sysfs_remove_group(&dev->hwmon_dev->kobj,
-					dev->type->attr_groups);
-error_sysfs:
-		hwmon_device_unregister(dev->hwmon_dev);
-	}
-
-	return err;
-}
-
-static int v2m_juno_hwmon_remove(struct platform_device *pdev)
-{
-	int i;
-	struct v2m_juno_hwmon_dev *dev;
-
-	for (i = 0; i < ARRAY_SIZE(v2m_juno_hwmon_devices); i++) {
-		dev = v2m_juno_hwmon_devices[i];
-		hwmon_device_unregister(dev->hwmon_dev);
-		sysfs_remove_group(&dev->hwmon_dev->kobj,
-				   dev->type->attr_groups);
-	}
-
-	return 0;
+	return PTR_ERR_OR_ZERO(data->hwmon_dev);
 }
 
 static struct platform_driver v2m_juno_hwmon_driver = {
 	.probe = v2m_juno_hwmon_probe,
-	.remove = v2m_juno_hwmon_remove,
 	.driver	= {
 		.name = DRVNAME,
-		.owner = THIS_MODULE,
 		.of_match_table = v2m_juno_hwmon_of_match,
 	},
 };
@@ -386,4 +214,3 @@ module_platform_driver(v2m_juno_hwmon_driver);
 MODULE_AUTHOR("Lorenzo Pieralisi <lorenzo.pieralisi@arm.com>");
 MODULE_DESCRIPTION("V2M Juno hwmon sensors driver");
 MODULE_LICENSE("GPL");
-MODULE_ALIAS("platform:v2m-juno-hwmon");
