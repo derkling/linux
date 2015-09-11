@@ -267,14 +267,12 @@ void update_cpu_capacity_request(int cpu, bool request)
 
 static inline void set_sched_freq(void)
 {
-	if (!sched_freq())
-		static_key_slow_inc(&__sched_freq);
+	static_key_slow_inc(&__sched_freq);
 }
 
 static inline void clear_sched_freq(void)
 {
-	if (sched_freq())
-		static_key_slow_dec(&__sched_freq);
+	static_key_slow_dec(&__sched_freq);
 }
 
 static int cpufreq_sched_start(struct cpufreq_policy *policy)
