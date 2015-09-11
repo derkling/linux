@@ -1537,7 +1537,7 @@ config SENSORS_TWL4030_MADC
 
 config SENSORS_V2M_JUNO
 	tristate "V2M Juno"
-	depends on VEXPRESS_CONFIG
+	depends on MFD_SYSCON
 	help
 	  This driver provides support for hardware sensors available on
 	  the ARM Ltd's V2M Juno platform. It can provide wide
