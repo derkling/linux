@@ -126,12 +126,54 @@ out:
 	free_resources();
 }
 
-static int run_bogus_benchmark(int cpu)
+unsigned long __attribute__((optimize("O0")))
+my_int_sqrt(unsigned long x)
 {
-	int i, ret, trials = 100;
+	unsigned long b, m, y = 0;
+
+	if (x <= 1)
+		return x;
+
+	m = 1UL << (BITS_PER_LONG - 2);
+	while (m != 0) {
+		b = y + m;
+		y >>= 1;
+
+		if (x >= b) {
+			x -= b;
+			y += m;
+		}
+		m >>= 2;
+	}
+
+	return y;
+}
+
+unsigned long __attribute__((optimize("O0")))
+bogus1(void)
+{
+	unsigned long i, res;
+
+	for (i = 0; i < 100000; i++)
+		res = my_int_sqrt(i);
+
+	return res;
+}
+
+static int __attribute__((optimize("O0")))
+run_bogus_benchmark(int cpu)
+{
+	struct sched_param param;
+	int ret, trials = 25;
+	u64 begin, end, diff, diff_avg = 0, count = 0;
 	unsigned long res;
-	unsigned long long begin, diff;
-	long long diff_avg = 0;
+
+	param.sched_priority = 50;
+	ret = sched_setscheduler_nocheck(current, SCHED_FIFO, &param);
+	if (ret) {
+		pr_warn("%s: failed to set SCHED_FIFO\n", __func__);
+		do_exit(-EINVAL);
+	}
 
 	ret = set_cpus_allowed_ptr(current, cpumask_of(cpu));
 	if (ret) {
@@ -140,22 +182,29 @@ static int run_bogus_benchmark(int cpu)
 	}
 
 	while (trials--) {
-		begin = sched_clock();
-		for (i = 0; i < 100000; i++)
-			res = int_sqrt(i);
-		diff = sched_clock() - begin;
-		diff_avg = (diff_avg + diff) >> 1;
-		pr_info("%s: cpu=%d diff=%llu diff_avg=%lld\n", __func__, cpu, diff, diff_avg);
-		if ((abs(diff - diff_avg) << 5) < diff_avg)
-			break;
+		begin = local_clock();
+		res = bogus1();
+		end = local_clock();
+		diff = end - begin;
+		diff_avg = diff_avg * count + diff;
+		diff_avg = div64_u64(diff_avg, ++count);
+		pr_info("%s: cpu=%d begin=%llu end=%llu diff=%llu diff_avg=%llu count=%llu res=%lu\n",
+			__func__, cpu, begin, end, diff, diff_avg, count, res);
 	}
 	elapsed[cpu] = diff_avg;
-	pr_info("%s: cpu=%d elapsed=%llu trials=%d\n", __func__, cpu, elapsed[cpu], trials);
+	pr_info("%s: cpu=%d elapsed=%llu\n", __func__, cpu, elapsed[cpu]);
 
 	ret = set_cpus_allowed_ptr(current, cpu_active_mask);
 	if (ret) {
 		pr_warn("%s: failed to set allowed ptr\n", __func__);
 		return -EINVAL;
+	}
+
+	param.sched_priority = 0;
+	ret = sched_setscheduler_nocheck(current, SCHED_NORMAL, &param);
+	if (ret) {
+		pr_warn("%s: failed to set SCHED_NORMAL\n", __func__);
+		do_exit(-EINVAL);
 	}
 
 	return 0;
@@ -288,6 +337,7 @@ void init_cpu_capacity_default(void)
 		if (cpu != cpumask_first(policy->related_cpus)) {
 			pr_info("freq domain already visited\n");
 			elapsed[cpu] = elapsed[cpumask_first(policy->related_cpus)];
+			pr_info("cpu=%d elapsed=%llu (min=%llu)\n", cpu, elapsed[cpu], elapsed_min);
 			cpufreq_cpu_put(policy);
 			continue;
 		}
