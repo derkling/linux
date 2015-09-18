@@ -94,16 +94,12 @@ void __weak set_capacity_scale(int cpu, unsigned long capacity) { }
 void init_cpu_capacity_default(void)
 {
 	int cpu, fcpu;
-	unsigned long long elapsed_min = ULLONG_MAX;
 	unsigned int curr_min, curr_max;
 	struct cpufreq_policy *policy;
 	u64 elapsed[NR_CPUS];
-
-
-	if (!topology_is_hmp()) {
-		pr_info("%s: topology is not HMP, no need to calculate capacities\n", __func__);
-		return;
-	}
+	unsigned long long elapsed_min = ULLONG_MAX;
+	unsigned int max_freqs[NR_CPUS];
+	unsigned int max_freq = 0;
 
 	for_each_possible_cpu(cpu) {
 		policy = cpufreq_cpu_get(cpu);
@@ -117,7 +113,18 @@ void init_cpu_capacity_default(void)
 		fcpu = cpumask_first(policy->related_cpus);
 		if (cpu != fcpu) {
 			elapsed[cpu] = elapsed[fcpu];
+			max_freqs[cpu] = max_freqs[fcpu];
 			cpufreq_cpu_put(policy);
+			continue;
+		}
+
+		max_freqs[cpu] = policy->cpuinfo.max_freq;
+		if (max_freqs[cpu] > max_freq)
+			max_freq = max_freqs[cpu];
+		pr_info("cpu=%d max_freqs=%u (max_freq=%u)\n", cpu, max_freqs[cpu], max_freq);
+
+		if(!topology_is_hmp()) {
+			pr_info("%s: topology is not HMP\n", __func__);
 			continue;
 		}
 
@@ -133,7 +140,7 @@ void init_cpu_capacity_default(void)
 		elapsed[cpu] = run_bogus_benchmark(cpu);
 		if (elapsed[cpu] < elapsed_min)
 			elapsed_min = elapsed[cpu];
-		pr_debug("cpu=%d elapsed=%llu (min=%llu)\n", cpu, elapsed[cpu], elapsed_min);
+		pr_info("cpu=%d elapsed=%llu (min=%llu)\n", cpu, elapsed[cpu], elapsed_min);
 
 		policy = cpufreq_cpu_get(cpu);
 		down_write(&policy->rwsem);
@@ -147,7 +154,12 @@ void init_cpu_capacity_default(void)
 	for_each_possible_cpu(cpu) {
 		unsigned long capacity;
 
-		capacity = div64_u64((elapsed_min << 10), elapsed[cpu]);
+		if (topology_is_hmp())
+			capacity = div64_u64((elapsed_min << 10),
+					      elapsed[cpu]);
+		else
+			capacity = div64_u64((max_freqs[cpu] << 10),
+					      max_freq);
 		pr_debug("%s: CPU%d capacity=%lu\n", __func__, cpu, capacity);
 		set_capacity_scale(cpu, capacity);
 	}
