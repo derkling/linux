@@ -20,6 +20,8 @@ extern struct cpu_topology cpu_topology[NR_CPUS];
 
 void init_cpu_topology(void);
 void store_cpu_topology(unsigned int cpuid);
+#define topology_is_hmp topology_is_hmp
+bool topology_is_hmp(void);
 const struct cpumask *cpu_coregroup_mask(int cpu);
 
 #define arch_scale_freq_capacity arm_arch_scale_freq_capacity
