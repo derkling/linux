@@ -48,6 +48,13 @@
 
 int arch_update_cpu_topology(void);
 
+#ifndef topology_is_hmp
+static inline bool topology_is_hmp(void)
+{
+	return false;
+}
+#endif
+
 /* Conform to ACPI 2.0 SLIT distance definitions */
 #define LOCAL_DISTANCE		10
 #define REMOTE_DISTANCE		20
