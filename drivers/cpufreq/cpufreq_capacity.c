@@ -16,8 +16,6 @@
 #include <linux/cpufreq.h>
 #include <linux/sched.h>
 
-static unsigned long long elapsed[NR_CPUS];
-
 /*
  * Don't let compiler optimize following two functions;
  * otherwise we might loose u-arch differences.
@@ -57,7 +55,7 @@ bogus_bench(void)
 	return res;
 }
 
-static int run_bogus_benchmark(int cpu)
+static u64 run_bogus_benchmark(int cpu)
 {
 	int ret, trials = 25;
 	u64 begin, end, diff, diff_avg = 0, count = 0;
@@ -81,7 +79,6 @@ static int run_bogus_benchmark(int cpu)
 			__func__, cpu, begin, end, diff,
 			diff_avg, count, res);
 	}
-	elapsed[cpu] = diff_avg;
 
 	ret = set_cpus_allowed_ptr(current, cpu_active_mask);
 	if (ret) {
@@ -89,7 +86,7 @@ static int run_bogus_benchmark(int cpu)
 		return -EINVAL;
 	}
 
-	return 0;
+	return diff_avg;
 }
 
 void __weak set_capacity_scale(int cpu, unsigned long capacity) { }
@@ -100,6 +97,13 @@ void init_cpu_capacity_default(void)
 	unsigned long long elapsed_min = ULLONG_MAX;
 	unsigned int curr_min, curr_max;
 	struct cpufreq_policy *policy;
+	u64 elapsed[NR_CPUS];
+
+
+	if (!topology_is_hmp()) {
+		pr_info("%s: topology is not HMP, no need to calculate capacities\n", __func__);
+		return;
+	}
 
 	for_each_possible_cpu(cpu) {
 		policy = cpufreq_cpu_get(cpu);
@@ -126,7 +130,7 @@ void init_cpu_capacity_default(void)
 		cpufreq_cpu_put(policy);
 		cpufreq_update_policy(cpu);
 
-		run_bogus_benchmark(cpu);
+		elapsed[cpu] = run_bogus_benchmark(cpu);
 		if (elapsed[cpu] < elapsed_min)
 			elapsed_min = elapsed[cpu];
 		pr_debug("cpu=%d elapsed=%llu (min=%llu)\n", cpu, elapsed[cpu], elapsed_min);
