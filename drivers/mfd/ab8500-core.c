@@ -435,6 +435,13 @@ static int ab8500_irq_set_type(struct irq_data *data, unsigned int type)
 	return 0;
 }
 
+static int ab8500_irq_set_wake(struct irq_data *data, unsigned int on)
+{
+	struct ab8500 *ab8500 = irq_data_get_irq_chip_data(data);
+
+	return irq_set_irq_wake(ab8500->irq, on);
+}
+
 static struct irq_chip ab8500_irq_chip = {
 	.name			= "ab8500",
 	.irq_bus_lock		= ab8500_irq_lock,
@@ -443,6 +450,7 @@ static struct irq_chip ab8500_irq_chip = {
 	.irq_disable		= ab8500_irq_mask,
 	.irq_unmask		= ab8500_irq_unmask,
 	.irq_set_type		= ab8500_irq_set_type,
+	.irq_set_wake		= ab8500_irq_set_wake,
 };
 
 static void update_latch_offset(u8 *offset, int i)
@@ -1744,8 +1752,7 @@ static int ab8500_probe(struct platform_device *pdev)
 		return ret;
 
 	ret = devm_request_threaded_irq(&pdev->dev, ab8500->irq, NULL,
-			ab8500_hierarchical_irq,
-			IRQF_ONESHOT | IRQF_NO_SUSPEND,
+			ab8500_hierarchical_irq, IRQF_ONESHOT,
 			"ab8500", ab8500);
 	if (ret)
 		return ret;
