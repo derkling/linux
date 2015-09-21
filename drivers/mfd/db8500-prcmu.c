@@ -266,6 +266,7 @@ static struct {
 } fw_info;
 
 static struct irq_domain *db8500_irq_domain;
+static int prcmu_irq;
 
 /*
  * This vector maps irq numbers to the bits in the bit field used in
@@ -2599,12 +2600,20 @@ static void noop(struct irq_data *d)
 {
 }
 
+static int prcmu_irq_set_wake(struct irq_data *data, unsigned int on)
+{
+	int *irq = irq_data_get_irq_chip_data(data);
+
+	return irq_set_irq_wake(*irq, on);
+}
+
 static struct irq_chip prcmu_irq_chip = {
 	.name		= "prcmu",
 	.irq_disable	= prcmu_irq_mask,
 	.irq_ack	= noop,
 	.irq_mask	= prcmu_irq_mask,
 	.irq_unmask	= prcmu_irq_unmask,
+	.irq_set_wake	= prcmu_irq_set_wake,
 };
 
 static __init char *fw_project_name(u32 project)
@@ -2652,6 +2661,7 @@ static __init char *fw_project_name(u32 project)
 static int db8500_irq_map(struct irq_domain *d, unsigned int virq,
 				irq_hw_number_t hwirq)
 {
+	irq_set_chip_data(virq, d->host_data);
 	irq_set_chip_and_handler(virq, &prcmu_irq_chip,
 				handle_simple_irq);
 
@@ -2669,7 +2679,7 @@ static int db8500_irq_init(struct device_node *np)
 
 	db8500_irq_domain = irq_domain_add_simple(
 		np, NUM_PRCMU_WAKEUPS, 0,
-		&db8500_irq_ops, NULL);
+		&db8500_irq_ops, &prcmu_irq);
 
 	if (!db8500_irq_domain) {
 		pr_err("Failed to create irqdomain\n");
@@ -3134,7 +3144,7 @@ static int db8500_prcmu_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
 	struct prcmu_pdata *pdata = dev_get_platdata(&pdev->dev);
-	int irq = 0, err = 0;
+	int err = 0;
 	struct resource *res;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "prcmu");
@@ -3166,14 +3176,14 @@ static int db8500_prcmu_probe(struct platform_device *pdev)
 	/* Clean up the mailbox interrupts after pre-kernel code. */
 	writel(ALL_MBOX_BITS, PRCM_ARM_IT1_CLR);
 
-	irq = platform_get_irq(pdev, 0);
-	if (irq <= 0) {
+	prcmu_irq = platform_get_irq(pdev, 0);
+	if (prcmu_irq <= 0) {
 		dev_err(&pdev->dev, "no prcmu irq provided\n");
-		return irq;
+		return prcmu_irq;
 	}
 
-	err = request_threaded_irq(irq, prcmu_irq_handler,
-	        prcmu_irq_thread_fn, IRQF_NO_SUSPEND, "prcmu", NULL);
+	err = request_threaded_irq(prcmu_irq, prcmu_irq_handler,
+				   prcmu_irq_thread_fn, 0, "prcmu", NULL);
 	if (err < 0) {
 		pr_err("prcmu: Failed to allocate IRQ_DB8500_PRCMU1.\n");
 		return err;
