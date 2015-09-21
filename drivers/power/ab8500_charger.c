@@ -3406,6 +3406,7 @@ static int ab8500_charger_remove(struct platform_device *pdev)
 	/* Disable interrupts */
 	for (i = 0; i < ARRAY_SIZE(ab8500_charger_irq); i++) {
 		irq = platform_get_irq_byname(pdev, ab8500_charger_irq[i].name);
+		disable_irq_wake(irq);
 		free_irq(irq, di);
 	}
 
@@ -3680,14 +3681,14 @@ static int ab8500_charger_probe(struct platform_device *pdev)
 	for (i = 0; i < ARRAY_SIZE(ab8500_charger_irq); i++) {
 		irq = platform_get_irq_byname(pdev, ab8500_charger_irq[i].name);
 		ret = request_threaded_irq(irq, NULL, ab8500_charger_irq[i].isr,
-			IRQF_SHARED | IRQF_NO_SUSPEND,
-			ab8500_charger_irq[i].name, di);
+			IRQF_SHARED, ab8500_charger_irq[i].name, di);
 
 		if (ret != 0) {
 			dev_err(di->dev, "failed to request %s IRQ %d: %d\n"
 				, ab8500_charger_irq[i].name, irq, ret);
 			goto free_irq;
 		}
+		enable_irq_wake(irq);
 		dev_dbg(di->dev, "Requested %s IRQ %d: %d\n",
 			ab8500_charger_irq[i].name, irq, ret);
 	}
@@ -3721,6 +3722,7 @@ free_irq:
 	/* We also have to free all successfully registered irqs */
 	for (i = i - 1; i >= 0; i--) {
 		irq = platform_get_irq_byname(pdev, ab8500_charger_irq[i].name);
+		disable_irq_wake(irq);
 		free_irq(irq, di);
 	}
 put_usb_phy:
