@@ -338,21 +338,22 @@ static int __init bf609_init_pm(void)
 				GPIO_PE12, error);
 	}
 
-	error = request_irq(irq, test_isr, IRQF_TRIGGER_RISING | IRQF_NO_SUSPEND
-				| IRQF_FORCE_RESUME, "gpiope12", NULL);
+	error = request_irq(irq, test_isr, IRQF_TRIGGER_RISING,
+			    "gpiope12", NULL);
 	if(error < 0)
 		printk(KERN_DEBUG "Unable to get irq\n");
+	enable_irq_wake(irq);
 #endif
 
-	error = request_irq(IRQ_CGU_EVT, dpm0_isr, IRQF_NO_SUSPEND |
-				IRQF_FORCE_RESUME, "cgu0 event", NULL);
+	error = request_irq(IRQ_CGU_EVT, dpm0_isr, 0, "cgu0 event", NULL);
 	if(error < 0)
 		printk(KERN_DEBUG "Unable to get irq\n");
+	enable_irq_wake(IRQ_CGU_EVT);
 
-	error = request_irq(IRQ_DPM, dpm0_isr, IRQF_NO_SUSPEND |
-				IRQF_FORCE_RESUME, "dpm0 event", NULL);
+	error = request_irq(IRQ_DPM, dpm0_isr, 0, "dpm0 event", NULL);
 	if (error < 0)
 		printk(KERN_DEBUG "Unable to get irq\n");
+	enable_irq_wake(IRQ_DPM);
 
 	bfin_cpu_pm = &bf609_cpu_pm;
 	return 0;
