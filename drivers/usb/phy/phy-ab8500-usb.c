@@ -1179,12 +1179,13 @@ static int ab8500_usb_irq_setup(struct platform_device *pdev,
 		}
 		err = devm_request_threaded_irq(&pdev->dev, irq, NULL,
 				ab8500_usb_link_status_irq,
-				IRQF_NO_SUSPEND | IRQF_SHARED | IRQF_ONESHOT,
+				IRQF_SHARED | IRQF_ONESHOT,
 				"usb-link-status", ab);
 		if (err < 0) {
 			dev_err(ab->dev, "request_irq failed for link status irq\n");
 			return err;
 		}
+		enable_irq_wake(irq);
 	}
 
 	if (ab->flags & AB8500_USB_FLAG_USE_ID_WAKEUP_IRQ) {
@@ -1195,12 +1196,12 @@ static int ab8500_usb_irq_setup(struct platform_device *pdev,
 		}
 		err = devm_request_threaded_irq(&pdev->dev, irq, NULL,
 				ab8500_usb_disconnect_irq,
-				IRQF_NO_SUSPEND | IRQF_SHARED | IRQF_ONESHOT,
-				"usb-id-fall", ab);
+				IRQF_SHARED | IRQF_ONESHOT, "usb-id-fall", ab);
 		if (err < 0) {
 			dev_err(ab->dev, "request_irq failed for ID fall irq\n");
 			return err;
 		}
+		enable_irq_wake(irq);
 	}
 
 	if (ab->flags & AB8500_USB_FLAG_USE_VBUS_DET_IRQ) {
@@ -1211,12 +1212,13 @@ static int ab8500_usb_irq_setup(struct platform_device *pdev,
 		}
 		err = devm_request_threaded_irq(&pdev->dev, irq, NULL,
 				ab8500_usb_disconnect_irq,
-				IRQF_NO_SUSPEND | IRQF_SHARED | IRQF_ONESHOT,
+				IRQF_SHARED | IRQF_ONESHOT,
 				"usb-vbus-fall", ab);
 		if (err < 0) {
 			dev_err(ab->dev, "request_irq failed for Vbus fall irq\n");
 			return err;
 		}
+		enable_irq_wake(irq);
 	}
 
 	return 0;
