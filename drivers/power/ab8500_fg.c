@@ -3168,14 +3168,14 @@ static int ab8500_fg_probe(struct platform_device *pdev)
 	for (i = 0; i < ARRAY_SIZE(ab8500_fg_irq_th); i++) {
 		irq = platform_get_irq_byname(pdev, ab8500_fg_irq_th[i].name);
 		ret = request_irq(irq, ab8500_fg_irq_th[i].isr,
-				  IRQF_SHARED | IRQF_NO_SUSPEND,
-				  ab8500_fg_irq_th[i].name, di);
+				  IRQF_SHARED, ab8500_fg_irq_th[i].name, di);
 
 		if (ret != 0) {
 			dev_err(di->dev, "failed to request %s IRQ %d: %d\n",
 				ab8500_fg_irq_th[i].name, irq, ret);
 			goto free_irq;
 		}
+		enable_irq_wake(irq);
 		dev_dbg(di->dev, "Requested %s IRQ %d: %d\n",
 			ab8500_fg_irq_th[i].name, irq, ret);
 	}
@@ -3183,7 +3183,7 @@ static int ab8500_fg_probe(struct platform_device *pdev)
 	/* Register threaded interrupt handler */
 	irq = platform_get_irq_byname(pdev, ab8500_fg_irq_bh[0].name);
 	ret = request_threaded_irq(irq, NULL, ab8500_fg_irq_bh[0].isr,
-				IRQF_SHARED | IRQF_NO_SUSPEND | IRQF_ONESHOT,
+				IRQF_SHARED | IRQF_ONESHOT,
 			ab8500_fg_irq_bh[0].name, di);
 
 	if (ret != 0) {
@@ -3191,6 +3191,7 @@ static int ab8500_fg_probe(struct platform_device *pdev)
 			ab8500_fg_irq_bh[0].name, irq, ret);
 		goto free_irq;
 	}
+	enable_irq_wake(irq);
 	dev_dbg(di->dev, "Requested %s IRQ %d: %d\n",
 		ab8500_fg_irq_bh[0].name, irq, ret);
 
@@ -3233,9 +3234,11 @@ free_irq:
 	/* We also have to free all registered irqs */
 	for (i = 0; i < ARRAY_SIZE(ab8500_fg_irq_th); i++) {
 		irq = platform_get_irq_byname(pdev, ab8500_fg_irq_th[i].name);
+		disable_irq_wake(irq);
 		free_irq(irq, di);
 	}
 	irq = platform_get_irq_byname(pdev, ab8500_fg_irq_bh[0].name);
+	disable_irq_wake(irq);
 	free_irq(irq, di);
 free_inst_curr_wq:
 	destroy_workqueue(di->fg_wq);
