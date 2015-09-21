@@ -948,7 +948,7 @@ static int ab8500_gpadc_probe(struct platform_device *pdev)
 	if (gpadc->irq_sw >= 0) {
 		ret = request_threaded_irq(gpadc->irq_sw, NULL,
 			ab8500_bm_gpadcconvend_handler,
-			IRQF_NO_SUSPEND | IRQF_SHARED | IRQF_ONESHOT,
+			IRQF_SHARED | IRQF_ONESHOT,
 			"ab8500-gpadc-sw",
 			gpadc);
 		if (ret < 0) {
@@ -962,7 +962,7 @@ static int ab8500_gpadc_probe(struct platform_device *pdev)
 	if (gpadc->irq_hw >= 0) {
 		ret = request_threaded_irq(gpadc->irq_hw, NULL,
 			ab8500_bm_gpadcconvend_handler,
-			IRQF_NO_SUSPEND | IRQF_SHARED | IRQF_ONESHOT,
+			IRQF_SHARED | IRQF_ONESHOT,
 			"ab8500-gpadc-hw",
 			gpadc);
 		if (ret < 0) {
@@ -994,6 +994,9 @@ static int ab8500_gpadc_probe(struct platform_device *pdev)
 	pm_runtime_set_active(gpadc->dev);
 	pm_runtime_enable(gpadc->dev);
 
+	enable_irq_wake(gpadc->irq_sw);
+	enable_irq_wake(gpadc->irq_hw);
+
 	ab8500_gpadc_read_calibration_data(gpadc);
 	list_add_tail(&gpadc->node, &ab8500_gpadc_list);
 	dev_dbg(gpadc->dev, "probe success\n");
@@ -1015,10 +1018,14 @@ static int ab8500_gpadc_remove(struct platform_device *pdev)
 	/* remove this gpadc entry from the list */
 	list_del(&gpadc->node);
 	/* remove interrupt  - completion of Sw ADC conversion */
-	if (gpadc->irq_sw >= 0)
+	if (gpadc->irq_sw >= 0) {
+		disable_irq_wake(gpadc->irq_sw);
 		free_irq(gpadc->irq_sw, gpadc);
-	if (gpadc->irq_hw >= 0)
+	}
+	if (gpadc->irq_hw >= 0) {
+		disable_irq_wake(gpadc->irq_hw);
 		free_irq(gpadc->irq_hw, gpadc);
+	}
 
 	pm_runtime_get_sync(gpadc->dev);
 	pm_runtime_disable(gpadc->dev);
