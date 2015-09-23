@@ -383,6 +383,9 @@ scale_freq_capacity(struct cpufreq_policy *policy, struct cpufreq_freqs *freqs)
 
 unsigned long cpufreq_scale_freq_capacity(struct sched_domain *sd, int cpu)
 {
+	trace_printk("%s cpu=%d freq scale=%lu\n", __func__, cpu,
+		     per_cpu(freq_scale, cpu));
+
 	return per_cpu(freq_scale, cpu);
 }
 

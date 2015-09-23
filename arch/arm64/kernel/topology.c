@@ -30,6 +30,11 @@ unsigned long scale_cpu_capacity(struct sched_domain *sd, int cpu)
 #ifdef CONFIG_CPU_FREQ
 	unsigned long max_freq_scale = cpufreq_scale_max_freq_capacity(cpu);
 
+	trace_printk("%s cpu=%d scale=%lu cpu_scale=%lu max_freq_scale=%lu\n",
+		     __func__, cpu, per_cpu(cpu_scale, cpu) * max_freq_scale
+		     >> SCHED_CAPACITY_SHIFT, per_cpu(cpu_scale, cpu),
+		     max_freq_scale);
+
 	return per_cpu(cpu_scale, cpu) * max_freq_scale >> SCHED_CAPACITY_SHIFT;
 #else
 	return per_cpu(cpu_scale, cpu);
