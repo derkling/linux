@@ -255,21 +255,20 @@ nr_cap_states:
 
 idle_states:
 	List of struct idle_state containing idle_state power cost for each
-	idle-state support by the sched_group. Note that the energy model
-	calculations will use this table to determine idle power even if no idle
-	state is actually entered by cpuidle. That is, if latency constraints
-	prevents that the group enters a coupled state or no idle-states are
-	supported. Hence, the first entry of the list must be the idle power
-	when idle, but no idle state was actually entered ('active idle'). This
-	state may be left out groups with one cpu if the cpu is guaranteed to
-	enter the state when idle.
+	idle-state supported by the system orderd by shallowest state first.
+	All states must be included at all level in the hierarchy, i.e. a
+	sched_group spanning just a single cpu must also include coupled
+	idle-states (cluster states). In addition to the cpuidle idle-states,
+	the list must also contain an entry for the idling using the arch
+	default idle (arch_idle_cpu()). Despite this state may not be a true
+	hardware idle-state it is considered the shallowest idle-state in the
+	energy model and must be the first entry. cpus may enter this state
+	(possibly 'active idling') if cpuidle decides not enter a cpuidle
+	idle-state. Default idle may not be used when cpuidle is enabled.
+	In this case, it should just be a copy of the first cpuidle idle-state.
 
 nr_idle_states:
 	Number of idle states in idle_states list.
-
-nr_idle_states_below:
-	Number of idle-states below current level. Filled by generic code, not
-	to be provided by the platform.
 
 There are no unit requirements for the energy cost data. Data can be normalized
 with any reference, however, the normalization must be consistent across all
