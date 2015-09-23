@@ -4797,12 +4797,10 @@ static int group_idle_state(struct sched_group *sg)
 	for_each_cpu(i, sched_group_cpus(sg))
 		state = min(state, idle_get_state_idx(cpu_rq(i)));
 
-	/* Transform system into sched domain idle state. */
-	if (sg->sge->nr_idle_states_below > 1)
-		state -= sg->sge->nr_idle_states_below - 1;
+	/* Take non-cpuidle idling into account (active idle/arch_cpu_idle()) */
+	state++;
 
-	/* Clamp state to the range of sched domain idle states. */
-	return clamp_t(int, state, 0, sg->sge->nr_idle_states - 1);
+	return state;
 }
 
 /*
