@@ -281,11 +281,13 @@ void store_cpu_topology(unsigned int cpuid)
  * same quantity for all data, but we don't care what it is.
  */
 static struct idle_state idle_states_cluster_a7[] = {
+	 { .power = 25 }, /* arch_cpu_idle() (active idle) = WFI */
 	 { .power = 25 }, /* WFI */
 	 { .power = 10 }, /* cluster-sleep-l */
 	};
 
 static struct idle_state idle_states_cluster_a15[] = {
+	 { .power = 70 }, /* arch_cpu_idle() (active idle) = WFI */
 	 { .power = 70 }, /* WFI */
 	 { .power = 25 }, /* cluster-sleep-b */
 	};
@@ -329,11 +331,15 @@ static struct sched_group_energy energy_cluster_a15 = {
 };
 
 static struct idle_state idle_states_core_a7[] = {
+	 { .power = 0 }, /* arch_cpu_idle (active idle) = WFI */
 	 { .power = 0 }, /* WFI */
+	 { .power = 0 }, /* cluster-sleep-l */
 	};
 
 static struct idle_state idle_states_core_a15[] = {
+	 { .power = 0 }, /* arch_cpu_idle (active idle) = WFI */
 	 { .power = 0 }, /* WFI */
+	 { .power = 0 }, /* cluster-sleep-b */
 	};
 
 static struct capacity_state cap_states_core_a7[] = {
