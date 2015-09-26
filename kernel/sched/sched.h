@@ -545,6 +545,7 @@ struct root_domain {
 
 	/* Maximum cpu capacity in the system. */
 	unsigned long max_cpu_capacity;
+	int cpu;
 };
 
 extern struct root_domain def_root_domain;

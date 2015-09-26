@@ -7014,13 +7014,17 @@ static int build_sched_domains(const struct cpumask *cpu_map,
 		sd = *per_cpu_ptr(d.sd, i);
 		cpu_attach_domain(sd, d.rd, i);
 
-		if (rq->cpu_capacity_orig > rq->rd->max_cpu_capacity)
+		if (rq->cpu_capacity_orig > rq->rd->max_cpu_capacity) {
 			rq->rd->max_cpu_capacity = rq->cpu_capacity_orig;
+			rq->rd->cpu = i;
+		}
 	}
 	rcu_read_unlock();
 
 	if (rq)
 		pr_info("max cpu_capacity %lu\n", rq->rd->max_cpu_capacity);
+		pr_info("CPU%d: max cpu_capacity %lu\n", rq->rd->cpu,
+			rq->rd->max_cpu_capacity);
 
 	ret = 0;
 error:

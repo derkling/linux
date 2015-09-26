@@ -6530,9 +6530,19 @@ static unsigned long scale_rt_capacity(int cpu)
 static void update_cpu_capacity(struct sched_domain *sd, int cpu)
 {
 	unsigned long capacity = arch_scale_cpu_capacity(sd, cpu);
+	unsigned long max_capacity = cpu_rq(cpu)->rd->max_cpu_capacity;
 	struct sched_group *sdg = sd->groups;
 
 	cpu_rq(cpu)->cpu_capacity_orig = capacity;
+
+	if ((max_capacity > capacity && cpu_rq(cpu)->rd->cpu == cpu) ||
+	    (max_capacity < capacity)) {
+		cpu_rq(cpu)->rd->max_cpu_capacity = capacity;
+		cpu_rq(cpu)->rd->cpu = cpu;
+#ifdef CONFIG_SCHED_DEBUG
+		pr_info("CPU%d: update max cpu_capacity %lu\n", cpu, capacity);
+#endif
+	}
 
 	capacity *= scale_rt_capacity(cpu);
 	capacity >>= SCHED_CAPACITY_SHIFT;
