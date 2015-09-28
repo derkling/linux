@@ -27,6 +27,7 @@ enum cpuhp_state {
 	CPUHP_AP_PERF_X86_UNCORE_STARTING,	/* P: 21 S: uncore_starting_cpu T: NULL C: I */
 	CPUHP_AP_PERF_X86_AMD_UNCORE_STARTING,	/* P: 21 S: amd_uncore_cpu_starting T: NULL C: I */
 	CPUHP_AP_PERF_X86_RAPL_STARTING,	/* P: 20 S: rapl_cpu_init T: rapl_cpu_dying C: I */
+	CPUHP_AP_PERF_X86_CQM_STARTING,		/* P: 20 S: intel_cqm_cpu_startingT: NULL C: I */
 	CPUHP_AP_PERF_X86_AMD_IBS_STARTING,	/* P: 20 S: x86_pmu_amd_ibs_starting_cpu T: x86_pmu_amd_ibs_dying_cpu C: I */
 	CPUHP_AP_PERF_X86_STARTING,		/* P: 20 S: x86_pmu_starting_cpu T: x86_pmu_dying_cpu C: I */
 	CPUHP_AP_NOTIFY_STARTING,	/* P: CPU_STARTING S: notify_starting T: NULL C: C */
@@ -44,6 +45,7 @@ enum cpuhp_state {
 	CPUHP_PERF_ONLINE,		/* P: 20 S: perf_event_init_cpu T: perf_event_exit_cpu C: C */
 	CPUHP_PERF_X86_ONLINE,		/* P: 20 S: x86_pmu_online_cpu T: NULL C: I */
 	CPUHP_PERF_X86_RAPL_ONLINE,	/* P: 20 S: rapl_cpu_kfree T: rapl_cpu_exit C: I */
+	CPUHP_PERF_X86_CQM_ONLINE,	/* P: 20 S: NULL T: intel_cqm_cpu_exit C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */
 	CPUHP_MAX,

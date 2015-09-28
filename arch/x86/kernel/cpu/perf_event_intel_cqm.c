@@ -1255,7 +1255,7 @@ static inline void cqm_pick_event_reader(int cpu)
 	cpumask_set_cpu(cpu, &cqm_cpumask);
 }
 
-static void intel_cqm_cpu_starting(unsigned int cpu)
+static int intel_cqm_cpu_starting(unsigned int cpu)
 {
 	struct intel_pqr_state *state = &per_cpu(pqr_state, cpu);
 	struct cpuinfo_x86 *c = &cpu_data(cpu);
@@ -1266,9 +1266,12 @@ static void intel_cqm_cpu_starting(unsigned int cpu)
 
 	WARN_ON(c->x86_cache_max_rmid != cqm_max_rmid);
 	WARN_ON(c->x86_cache_occ_scale != cqm_l3_scale);
+
+	cqm_pick_event_reader(cpu);
+	return 0;
 }
 
-static void intel_cqm_cpu_exit(unsigned int cpu)
+static int intel_cqm_cpu_exit(unsigned int cpu)
 {
 	int phys_id = topology_physical_package_id(cpu);
 	int i;
@@ -1277,7 +1280,7 @@ static void intel_cqm_cpu_exit(unsigned int cpu)
 	 * Is @cpu a designated cqm reader?
 	 */
 	if (!cpumask_test_and_clear_cpu(cpu, &cqm_cpumask))
-		return;
+		return 0;
 
 	for_each_online_cpu(i) {
 		if (i == cpu)
@@ -1288,24 +1291,7 @@ static void intel_cqm_cpu_exit(unsigned int cpu)
 			break;
 		}
 	}
-}
-
-static int intel_cqm_cpu_notifier(struct notifier_block *nb,
-				  unsigned long action, void *hcpu)
-{
-	unsigned int cpu  = (unsigned long)hcpu;
-
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_DOWN_PREPARE:
-		intel_cqm_cpu_exit(cpu);
-		break;
-	case CPU_STARTING:
-		intel_cqm_cpu_starting(cpu);
-		cqm_pick_event_reader(cpu);
-		break;
-	}
-
-	return NOTIFY_OK;
+	return 0;
 }
 
 static const struct x86_cpu_id intel_cqm_match[] = {
@@ -1316,7 +1302,7 @@ static const struct x86_cpu_id intel_cqm_match[] = {
 static int __init intel_cqm_init(void)
 {
 	char *str, scale[20];
-	int i, cpu, ret;
+	int cpu, ret;
 
 	if (!x86_match_cpu(intel_cqm_match))
 		return -ENODEV;
@@ -1332,8 +1318,7 @@ static int __init intel_cqm_init(void)
 	 *
 	 * Also, check that the scales match on all cpus.
 	 */
-	cpu_notifier_register_begin();
-
+	get_online_cpus();
 	for_each_online_cpu(cpu) {
 		struct cpuinfo_x86 *c = &cpu_data(cpu);
 
@@ -1370,12 +1355,10 @@ static int __init intel_cqm_init(void)
 	if (ret)
 		goto out;
 
-	for_each_online_cpu(i) {
-		intel_cqm_cpu_starting(i);
-		cqm_pick_event_reader(i);
-	}
-
-	__perf_cpu_notifier(intel_cqm_cpu_notifier);
+	cpuhp_setup_state(CPUHP_AP_PERF_X86_CQM_STARTING,
+			  intel_cqm_cpu_starting, NULL);
+	cpuhp_setup_state(CPUHP_PERF_X86_CQM_ONLINE,
+			  NULL, intel_cqm_cpu_exit);
 
 	ret = perf_pmu_register(&intel_cqm_pmu, "intel_cqm", -1);
 	if (ret)
@@ -1384,7 +1367,7 @@ static int __init intel_cqm_init(void)
 		pr_info("Intel CQM monitoring enabled\n");
 
 out:
-	cpu_notifier_register_done();
+	put_online_cpus();
 
 	return ret;
 }
