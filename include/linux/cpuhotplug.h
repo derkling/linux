@@ -28,6 +28,7 @@ enum cpuhp_state {
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
 	CPUHP_X86_APB_DEAD,		/* P: -20 S: NULL T: apbt_cpu_dead C: I */
+	CPUHP_TIMERS_DEAD,		/* P: 0 S: NULL T: timers_dead_cpu C: C */
 	CPUHP_SCHED_DEAD,		/* P: INT_MAX S: NULL T: sched_dead_numa_cpu C: P */
 	CPUHP_BRINGUP_CPU,		/* P: __cpu_up S: bringup_cpu T: NULL C: C */
 	CPUHP_AP_OFFLINE,
@@ -218,8 +219,10 @@ int rcutree_dying_idle_cpu(unsigned int cpu);
 int hrtimers_prepare_cpu(unsigned int cpu);
 #ifdef CONFIG_HOTPLUG_CPU
 int hrtimers_dead_cpu(unsigned int cpu);
+int timers_dead_cpu(unsigned int cpu);
 #else
 #define hrtimers_dead_cpu	NULL
+#define timers_dead_cpu		NULL
 #endif
 
 #endif

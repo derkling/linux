@@ -832,6 +832,10 @@ static struct cpuhp_step cpuhp_bp_states[] = {
 		.startup = NULL,
 		.teardown = notify_dead,
 	},
+	[CPUHP_TIMERS_DEAD] = {
+		.startup = NULL,
+		.teardown = timers_dead_cpu,
+	},
 	[CPUHP_BRINGUP_CPU] = {
 		.startup = bringup_cpu,
 		.teardown = NULL,
