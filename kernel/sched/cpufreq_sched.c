@@ -275,78 +275,6 @@ static inline void clear_sched_freq(void)
 	static_key_slow_dec(&__sched_freq);
 }
 
-static int cpufreq_sched_start(struct cpufreq_policy *policy)
-{
-	struct gov_data *gd;
-	int cpu;
-
-	/* prepare per-policy private data */
-	gd = kzalloc(sizeof(*gd), GFP_KERNEL);
-	if (!gd) {
-		pr_debug("%s: failed to allocate private data\n", __func__);
-		return -ENOMEM;
-	}
-
-	/* initialize per-cpu data */
-	for_each_cpu(cpu, policy->cpus)
-		per_cpu(pcpu_capacity, cpu) = 0;
-
-	/*
-	 * Don't ask for freq changes at an higher rate than what
-	 * the driver advertises as transition latency.
-	 */
-	gd->throttle_nsec = policy->cpuinfo.transition_latency ?
-			    policy->cpuinfo.transition_latency :
-			    THROTTLE_NSEC;
-	pr_debug("%s: throttle threshold = %u [ns]\n",
-		  __func__, gd->throttle_nsec);
-
-	if (cpufreq_driver_might_sleep()) {
-		/* init per-policy kthread */
-		gd->task = kthread_create(cpufreq_sched_thread, policy,
-					  "kschedfreq:%d",
-					  cpumask_first(policy->related_cpus));
-		if (IS_ERR_OR_NULL(gd->task)) {
-			pr_err("%s: failed to create kschedfreq thread\n",
-			       __func__);
-			goto err;
-		}
-		kthread_bind_mask(gd->task, policy->related_cpus);
-		wake_up_process(gd->task);
-		init_irq_work(&gd->irq_work, cpufreq_sched_irq_work);
-	}
-
-	policy->governor_data = gd;
-	gd->policy = policy;
-	for_each_cpu(cpu, policy->cpus)
-		per_cpu(enabled, cpu) = 1;
-	set_sched_freq();
-	return 0;
-
-err:
-	kfree(gd);
-	return -ENOMEM;
-}
-
-static int cpufreq_sched_stop(struct cpufreq_policy *policy)
-{
-	struct gov_data *gd = policy->governor_data;
-	int cpu;
-
-	for_each_cpu(cpu, policy->cpus)
-		per_cpu(enabled, cpu) = 0;
-	clear_sched_freq();
-	if (cpufreq_driver_might_sleep()) {
-		kthread_stop(gd->task);
-	}
-
-	policy->governor_data = NULL;
-
-	/* FIXME replace with devm counterparts? */
-	kfree(gd);
-	return 0;
-}
-
 static ssize_t show_throttle_nsec(struct cpufreq_policy *policy, char *buf)
 {
 	struct gov_data *gd = policy->governor_data;
@@ -382,21 +310,111 @@ static struct attribute_group sched_freq_sysfs_group = {
 	.name = "sched_freq",
 };
 
+static int cpufreq_sched_policy_init(struct cpufreq_policy *policy)
+{
+	struct gov_data *gd;
+	int cpu;
+
+	/* prepare per-policy private data */
+	gd = kzalloc(sizeof(*gd), GFP_KERNEL);
+	if (!gd) {
+		pr_debug("%s: failed to allocate private data\n", __func__);
+		return -ENOMEM;
+	}
+
+	/* initialize per-cpu data */
+	for_each_cpu(cpu, policy->cpus)
+		per_cpu(pcpu_capacity, cpu) = 0;
+
+	/*
+	 * Don't ask for freq changes at an higher rate than what
+	 * the driver advertises as transition latency.
+	 */
+	gd->throttle_nsec = policy->cpuinfo.transition_latency ?
+			    policy->cpuinfo.transition_latency :
+			    THROTTLE_NSEC;
+	pr_debug("%s: throttle threshold = %u [ns]\n",
+		  __func__, gd->throttle_nsec);
+
+	if (cpufreq_driver_might_sleep()) {
+		/* init per-policy kthread */
+		gd->task = kthread_create(cpufreq_sched_thread, policy,
+					  "kschedfreq:%d",
+					  cpumask_first(policy->related_cpus));
+		if (IS_ERR_OR_NULL(gd->task)) {
+			pr_err("%s: failed to create kschedfreq thread\n",
+			       __func__);
+			goto err;
+		}
+		get_task_struct(gd->task);
+		kthread_bind_mask(gd->task, policy->related_cpus);
+		wake_up_process(gd->task);
+		init_irq_work(&gd->irq_work, cpufreq_sched_irq_work);
+	}
+
+	policy->governor_data = gd;
+	gd->policy = policy;
+	set_sched_freq();
+
+	return sysfs_create_group(get_governor_parent_kobj(policy),
+				  &sched_freq_sysfs_group);
+err:
+	kfree(gd);
+	return -ENOMEM;
+}
+
+static int cpufreq_sched_policy_exit(struct cpufreq_policy *policy)
+{
+	struct gov_data *gd = policy->governor_data;
+
+	clear_sched_freq();
+	if (cpufreq_driver_might_sleep()) {
+		kthread_stop(gd->task);
+		put_task_struct(gd->task);
+	}
+
+	sysfs_remove_group(get_governor_parent_kobj(policy),
+			   &sched_freq_sysfs_group);
+
+	policy->governor_data = NULL;
+
+	/* FIXME replace with devm counterparts? */
+	kfree(gd);
+	return 0;
+}
+
+static int cpufreq_sched_start(struct cpufreq_policy *policy)
+{
+	int cpu;
+
+	for_each_cpu(cpu, policy->cpus)
+		per_cpu(enabled, cpu) = 1;
+
+	return 0;
+}
+
+static int cpufreq_sched_stop(struct cpufreq_policy *policy)
+{
+	int cpu;
+
+	for_each_cpu(cpu, policy->cpus)
+		per_cpu(enabled, cpu) = 0;
+
+	return 0;
+}
+
 static int cpufreq_sched_setup(struct cpufreq_policy *policy, unsigned int event)
 {
 	switch (event) {
+		case CPUFREQ_GOV_POLICY_INIT:
+			return cpufreq_sched_policy_init(policy);
+		case CPUFREQ_GOV_POLICY_EXIT:
+			return cpufreq_sched_policy_exit(policy);
 		case CPUFREQ_GOV_START:
 			/* Start managing the frequency */
 			return cpufreq_sched_start(policy);
 		case CPUFREQ_GOV_STOP:
 			return cpufreq_sched_stop(policy);
-		case CPUFREQ_GOV_POLICY_INIT:
-			return sysfs_create_group(
-				get_governor_parent_kobj(policy),
-				&sched_freq_sysfs_group);
-		case CPUFREQ_GOV_POLICY_EXIT:
-			sysfs_remove_group(get_governor_parent_kobj(policy),
-					   &sched_freq_sysfs_group);
 		case CPUFREQ_GOV_LIMITS:	/* unused */
 			break;
 	}
