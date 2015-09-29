@@ -229,7 +229,7 @@ static inline void clear_sched_energy_freq(void)
 	static_key_slow_dec(&__sched_energy_freq);
 }
 
-static int cpufreq_sched_start(struct cpufreq_policy *policy)
+static int cpufreq_sched_policy_init(struct cpufreq_policy *policy)
 {
 	struct gov_data *gd;
 	int cpu;
@@ -264,15 +264,13 @@ static int cpufreq_sched_start(struct cpufreq_policy *policy)
 			pr_err("%s: failed to create kcpufreq_sched_task thread\n", __func__);
 			goto err;
 		}
+		get_task_struct(gd->task);
 		init_irq_work(&gd->irq_work, cpufreq_sched_irq_work);
 	}
 
 	policy->governor_data = gd;
 	gd->policy = policy;
 	set_sched_energy_freq();
-
-	for_each_cpu(cpu, policy->cpus)
-		per_cpu(governor_started, cpu) = 1;
 
 	return 0;
 
@@ -281,17 +279,34 @@ err:
 	return -ENOMEM;
 }
 
+static int cpufreq_sched_start(struct cpufreq_policy *policy)
+{
+	int cpu;
+
+	for_each_cpu(cpu, policy->cpus)
+		per_cpu(governor_started, cpu) = 1;
+
+	return 0;
+}
+
 static int cpufreq_sched_stop(struct cpufreq_policy *policy)
 {
-	struct gov_data *gd = policy->governor_data;
 	int cpu;
 
 	for_each_cpu(cpu, policy->cpus)
 		per_cpu(governor_started, cpu) = 0;
 
+	return 0;
+}
+
+static int cpufreq_sched_policy_exit(struct cpufreq_policy *policy)
+{
+	struct gov_data *gd = policy->governor_data;
+
 	clear_sched_energy_freq();
 	if (cpufreq_driver_might_sleep()) {
 		kthread_stop(gd->task);
+		put_task_struct(gd->task);
 	}
 
 	policy->governor_data = NULL;
@@ -304,6 +319,12 @@ static int cpufreq_sched_stop(struct cpufreq_policy *policy)
 static int cpufreq_sched_setup(struct cpufreq_policy *policy, unsigned int event)
 {
 	switch (event) {
+		case CPUFREQ_GOV_POLICY_INIT:
+			return cpufreq_sched_policy_init(policy);
+
+		case CPUFREQ_GOV_POLICY_EXIT:
+			return cpufreq_sched_policy_exit(policy);
+
 		case CPUFREQ_GOV_START:
 			/* Start managing the frequency */
 			return cpufreq_sched_start(policy);
@@ -312,8 +333,6 @@ static int cpufreq_sched_setup(struct cpufreq_policy *policy, unsigned int event
 			return cpufreq_sched_stop(policy);
 
 		case CPUFREQ_GOV_LIMITS:	/* unused */
-		case CPUFREQ_GOV_POLICY_INIT:	/* unused */
-		case CPUFREQ_GOV_POLICY_EXIT:	/* unused */
 			break;
 	}
 	return 0;
