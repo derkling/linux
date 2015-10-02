@@ -48,6 +48,7 @@ enum cpuhp_state {
 	CPUHP_PERF_X86_AMD_UNCORE_ONLINE, /* P: 21 S: amd_uncore_cpu_online T: amd_uncore_cpu_down_prepare C: I */
 	CPUHP_PERF_ONLINE,		/* P: 20 S: perf_event_init_cpu T: perf_event_exit_cpu C: C */
 	CPUHP_PERF_ARM_CCI_ONLINE,	/* P: 21 S: NULL T: cci_pmu_offline_cpu C: I */
+	CPUHP_PERF_ARM_CCN_ONLINE,	/* P: 21 S: NULL T: arm_ccn_pmu_offline_cpu C: I */
 	CPUHP_PERF_X86_ONLINE,		/* P: 20 S: x86_pmu_online_cpu T: NULL C: I */
 	CPUHP_PERF_X86_RAPL_ONLINE,	/* P: 20 S: rapl_cpu_kfree T: rapl_cpu_exit C: I */
 	CPUHP_PERF_X86_CQM_ONLINE,	/* P: 20 S: NULL T: intel_cqm_cpu_exit C: I */
