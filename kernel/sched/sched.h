@@ -1456,12 +1456,24 @@ static inline bool sched_energy_freq(void)
 }
 
 #ifdef CONFIG_CPU_FREQ_GOV_SCHED
-void cpufreq_sched_set_cap(int cpu, unsigned long util);
-void cpufreq_sched_reset_cap(int cpu);
+enum cpufreq_sched_class {
+	CPUFREQ_SCHED_CFS,
+	CPUFREQ_SCHED_RT,
+	CPUFREQ_SCHED_DEADLINE,
+};
+
+void cpufreq_sched_set_cap(int cpu,
+			   unsigned long util,
+			   enum cpufreq_sched_class sclass);
+void cpufreq_sched_reset_cap(int cpu,
+			     enum cpufreq_sched_class sclass);
 #else
-static inline void cpufreq_sched_set_cap(int cpu, unsigned long util)
+static inline void cpufreq_sched_set_cap(int cpu,
+					 unsigned long util,
+					 enum cpufreq_sched_class sclass)
 { }
-static inline void cpufreq_sched_reset_cap(int cpu)
+static inline void cpufreq_sched_reset_cap(int cpu,
+					   enum cpufreq_sched_sclass sclass)
 { }
 #endif
 

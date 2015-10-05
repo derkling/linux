@@ -16,7 +16,12 @@
 
 #define THROTTLE_NSEC		50000000 /* 50ms default */
 
-static DEFINE_PER_CPU(unsigned long, pcpu_capacity);
+struct pcpu_capacity {
+	unsigned long cfs;
+	unsigned long rt;
+	unsigned long dl;
+};
+static DEFINE_PER_CPU(struct pcpu_capacity, pcpu_capacity);
 static DEFINE_PER_CPU(struct cpufreq_policy *, pcpu_policy);
 static DEFINE_PER_CPU(int, governor_started);
 
@@ -144,7 +149,9 @@ static void cpufreq_sched_irq_work(struct irq_work *irq_work)
  * 1) this cpu did not the new maximum capacity for its frequency domain
  * 2) no change in cpu frequency is necessary to meet the new capacity request
  */
-void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
+void cpufreq_sched_set_cap(int cpu,
+			   unsigned long capacity,
+			   enum cpufreq_sched_class sclass)
 {
 	unsigned int freq_new, cpu_tmp;
 	struct cpufreq_policy *policy;
@@ -155,7 +162,19 @@ void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
 		return;
 
 	/* update per-cpu capacity request */
-	per_cpu(pcpu_capacity, cpu) = capacity;
+	switch (sclass) {
+	case CPUFREQ_SCHED_CFS:
+		per_cpu(pcpu_capacity, cpu).cfs = capacity;
+		break;
+	case CPUFREQ_SCHED_RT:
+		per_cpu(pcpu_capacity, cpu).rt = capacity;
+		break;
+	case CPUFREQ_SCHED_DEADLINE:
+		per_cpu(pcpu_capacity, cpu).dl = capacity;
+		break;
+	default:
+		BUG_ON(1);
+	}
 
 	policy = cpufreq_cpu_get(cpu);
 	if (IS_ERR_OR_NULL(policy)) {
@@ -173,7 +192,7 @@ void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
 
 	/* find max capacity requested by cpus in this policy */
 	for_each_cpu(cpu_tmp, policy->cpus)
-		capacity_max = max(capacity_max, per_cpu(pcpu_capacity, cpu_tmp));
+		capacity_max = max(capacity_max, per_cpu(pcpu_capacity, cpu_tmp).cfs);
 
 	/*
 	 * We only change frequency if this cpu's capacity request represents a
@@ -214,9 +233,21 @@ out:
  *
  * This _wont trigger_ any capacity update.
  */
-void cpufreq_sched_reset_cap(int cpu)
+void cpufreq_sched_reset_cap(int cpu, enum cpufreq_sched_class sclass)
 {
-	per_cpu(pcpu_capacity, cpu) = 0;
+	switch (sclass) {
+	case CPUFREQ_SCHED_CFS:
+		per_cpu(pcpu_capacity, cpu).cfs = 0;
+		break;
+	case CPUFREQ_SCHED_RT:
+		per_cpu(pcpu_capacity, cpu).rt = 0;
+		break;
+	case CPUFREQ_SCHED_DEADLINE:
+		per_cpu(pcpu_capacity, cpu).dl = 0;
+		break;
+	default:
+		BUG_ON(1);
+	}
 }
 
 static inline void set_sched_energy_freq(void)
@@ -243,7 +274,7 @@ static int cpufreq_sched_policy_init(struct cpufreq_policy *policy)
 
 	/* initialize per-cpu data */
 	for_each_cpu(cpu, policy->cpus) {
-		per_cpu(pcpu_capacity, cpu) = 0;
+		//per_cpu(pcpu_capacity, cpu) = 0;
 		per_cpu(pcpu_policy, cpu) = policy;
 	}
 

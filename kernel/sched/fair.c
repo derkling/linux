@@ -4149,7 +4149,7 @@ static void update_capacity_of(int cpu)
 		return;
 
 	req_cap = cpu_util(cpu) * capacity_margin / capacity_orig_of(cpu);
-	cpufreq_sched_set_cap(cpu, req_cap);
+	cpufreq_sched_set_cap(cpu, req_cap, CPUFREQ_SCHED_CFS);
 }
 
 struct static_key __sched_energy_freq __read_mostly = STATIC_KEY_INIT_FALSE;
@@ -4282,7 +4282,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 			if (rq->cfs.nr_running)
 				update_capacity_of(cpu_of(rq));
 			else if (sched_energy_freq())
-				cpufreq_sched_reset_cap(cpu_of(rq));
+				cpufreq_sched_reset_cap(cpu_of(rq), CPUFREQ_SCHED_CFS);
 		}
 	}
 	hrtick_update(rq);
@@ -8457,7 +8457,9 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 		if (capacity_curr < capacity_orig &&
 		    (capacity_curr * SCHED_LOAD_SCALE) <
 		    (cpu_util(cpu) * capacity_margin))
-			cpufreq_sched_set_cap(cpu, capacity_orig);
+			cpufreq_sched_set_cap(cpu,
+					      capacity_orig,
+					      CPUFREQ_SCHED_CFS);
 	}
 }
 
