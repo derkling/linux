@@ -65,6 +65,7 @@ enum cpuhp_state {
 	CPUHP_AP_ARM_KVM_STARTING,		/* P: 0 S: hyp_init_starting_cpu T: NULL C: I */
 	CPUHP_AP_ARM_XEN_STARTING,		/* P: 0 S: xen_starting_cpu T: xen_dyning_cpu C: I */
 	CPUHP_AP_ARM_CORESIGHT_STARTING,	/* P: 0 S: etm_starting_cpu T: etm_dying_cpu C: P */
+	CPUHP_AP_ARM_CORESIGHT4_STARTING,	/* P: 0 S: etm4_starting_cpu T: etm4_dying_cpu C: P */
 	CPUHP_AP_LEDTRIG_STARTING,		/* P: 0 S: ledtrig_starting_cpu T: ledtrig_dying_cpu C: I */
 	CPUHP_AP_NOTIFY_STARTING,	/* P: CPU_STARTING S: notify_starting T: NULL C: C */
 	CPUHP_AP_NOTIFY_DYING,		/* P: CPU_DYING S: NULL T: notify_dying C: C */
@@ -92,6 +93,7 @@ enum cpuhp_state {
 	CPUHP_SCHED_MIGRATE_ONLINE,	/* P: 10 S: sched_migration_online_cpu T: NULL C: C */
 	CPUHP_WORKQUEUE_ONLINE,		/* P: 5 S: workqueue_online_cpu T: NULL C: C */
 	CPUHP_ARM_CORESIGHT_ONLINE,	/* P: 0 S: etm_online_cpu T: NULL C: P */
+	CPUHP_ARM_CORESIGHT4_ONLINE,	/* P: 0 S: etm4_online_cpu T: NULL C: P */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */
 	CPUHP_MAX,
