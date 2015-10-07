@@ -1504,33 +1504,24 @@ static void cpumf_measurement_alert(struct ext_code ext_code,
 	}
 }
 
-static int cpumf_pmu_notifier(struct notifier_block *self,
-			      unsigned long action, void *hcpu)
+static int cpusf_pmu_notifier(unsigned int cpu, int flags)
 {
-	unsigned int cpu = (long) hcpu;
-	int flags;
-
 	/* Ignore the notification if no events are scheduled on the PMU.
 	 * This might be racy...
 	 */
 	if (!atomic_read(&num_events))
-		return NOTIFY_OK;
+		return 0;
+	return smp_call_function_single(cpu, setup_pmc_cpu, &flags, 1);
+}
 
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_ONLINE:
-	case CPU_ONLINE_FROZEN:
-		flags = PMC_INIT;
-		smp_call_function_single(cpu, setup_pmc_cpu, &flags, 1);
-		break;
-	case CPU_DOWN_PREPARE:
-		flags = PMC_RELEASE;
-		smp_call_function_single(cpu, setup_pmc_cpu, &flags, 1);
-		break;
-	default:
-		break;
-	}
+static int s390_pmu_sf_online_cpu(unsigned int cpu)
+{
+	return cpusf_pmu_notifier(cpu, PMC_INIT);
+}
 
-	return NOTIFY_OK;
+static int s390_pmu_sf_offline_cpu(unsigned int cpu)
+{
+	return cpusf_pmu_notifier(cpu, PMC_RELEASE);
 }
 
 static int param_get_sfb_size(char *buffer, const struct kernel_param *kp)
@@ -1626,11 +1617,22 @@ static int __init init_cpum_sampling_pmu(void)
 	err = perf_pmu_register(&cpumf_sampling, "cpum_sf", PERF_TYPE_RAW);
 	if (err) {
 		pr_cpumsf_err(RS_INIT_FAILURE_PERF);
-		unregister_external_irq(EXT_IRQ_MEASURE_ALERT,
-					cpumf_measurement_alert);
-		goto out;
+		goto out_unreg_irq;
 	}
-	perf_cpu_notifier(cpumf_pmu_notifier);
+	err = cpuhp_setup_state(CPUHP_PERF_S390_SF_ONLINE,
+				s390_pmu_sf_online_cpu,
+				s390_pmu_sf_offline_cpu);
+	if (err) {
+		pr_cpumsf_err(RS_INIT_FAILURE_PERF);
+		goto out_unreg_perf;
+	}
+	return 0;
+
+out_unreg_perf:
+	perf_pmu_unregister(&cpumf_sampling);
+out_unreg_irq:
+	unregister_external_irq(EXT_IRQ_MEASURE_ALERT,
+				cpumf_measurement_alert);
 out:
 	return err;
 }
