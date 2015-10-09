@@ -193,8 +193,14 @@ void cpufreq_sched_set_cap(int cpu,
 		goto out;
 
 	/* find max capacity requested by cpus in this policy */
-	for_each_cpu(cpu_tmp, policy->cpus)
-		capacity_max = max(capacity_max, per_cpu(pcpu_capacity, cpu_tmp).cfs);
+	for_each_cpu(cpu_tmp, policy->cpus) {
+		unsigned long capacity_sum = 0;
+
+		capacity_sum += per_cpu(pcpu_capacity, cpu_tmp).cfs;
+		capacity_sum += per_cpu(pcpu_capacity, cpu_tmp).rt;
+		capacity_sum += per_cpu(pcpu_capacity, cpu_tmp).dl;
+		capacity_max = max(capacity_max, capacity_sum);
+	}
 
 	/*
 	 * We only change frequency if this cpu's capacity request represents a
