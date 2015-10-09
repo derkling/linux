@@ -1256,9 +1256,15 @@ static void
 enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct sched_rt_entity *rt_se = &p->rt;
+	int cpu = cpu_of(rq);
 
-	if (flags & ENQUEUE_WAKEUP)
+	if (flags & ENQUEUE_WAKEUP) {
 		rt_se->timeout = 0;
+		if (sched_energy_freq() && !(p->flags & PF_NO_CPUFREQ))
+			cpufreq_sched_set_cap(cpu,
+					      capacity_orig_of(cpu),
+					      CPUFREQ_SCHED_RT);
+	}
 
 	enqueue_rt_entity(rt_se, flags & ENQUEUE_HEAD);
 
@@ -1272,6 +1278,9 @@ static void dequeue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 
 	update_curr_rt(rq);
 	dequeue_rt_entity(rt_se);
+
+	if (sched_energy_freq() && !(p->flags & PF_NO_CPUFREQ) && !rq->rt.rt_nr_running)
+		cpufreq_sched_reset_cap(cpu_of(rq), CPUFREQ_SCHED_RT);
 
 	dequeue_pushable_task(rq, p);
 }
