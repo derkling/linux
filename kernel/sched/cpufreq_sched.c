@@ -90,6 +90,8 @@ static int cpufreq_sched_thread(void *data)
 		do_exit(-EINVAL);
 	}
 
+	gd->task->flags |= PF_NO_CPUFREQ;
+
 	param.sched_priority = 50;
 	ret = sched_setscheduler_nocheck(gd->task, SCHED_FIFO, &param);
 	if (ret) {
