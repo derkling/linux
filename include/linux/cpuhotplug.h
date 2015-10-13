@@ -30,6 +30,7 @@ enum cpuhp_state {
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
 	CPUHP_X86_APB_DEAD,		/* P: -20 S: NULL T: apbt_cpu_dead C: I */
+	CPUHP_X86_HPET_DEAD,		/* P: -20 S: NULL T: hpet_cpuhp_dead C: I */
 	CPUHP_TIMERS_DEAD,		/* P: 0 S: NULL T: timers_dead_cpu C: C */
 	CPUHP_SCHED_DEAD,		/* P: INT_MAX S: NULL T: sched_dead_numa_cpu C: P */
 	CPUHP_BRINGUP_CPU,		/* P: __cpu_up S: bringup_cpu T: NULL C: C */
@@ -106,6 +107,7 @@ enum cpuhp_state {
 	CPUHP_ARM_CORESIGHT4_ONLINE,	/* P: 0 S: etm4_online_cpu T: NULL C: P */
 	CPUHP_RCUTREE_ONLINE,           /* P: 0 S: rcutree_online_cpu T: rcutree_offline_cpu C: C */
 	CPUHP_PROFILE_ONLINE,		/* P: 0 S: profile_online_cpu T: NULL C: I */
+	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */
 	CPUHP_MAX,
