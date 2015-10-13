@@ -88,6 +88,7 @@ enum cpuhp_state {
 	CPUHP_SCHED_CPUSET_OFFLINE,	/* P: INT_MIN S: NULL T: cpuset_cpu_inactive C: I */
 	CPUHP_SCHED_OFFLINE,		/* P: INT_MIN+1 S: NULL T: sched_offline_cpu C: I */
 	CPUHP_WORKQUEUE_OFFLINE,	/* P: -5 S: NULL T: workqueue_offline_cpu C: C */
+	CPUHP_X86_VDSO_VMA_ONLINE,	/* P: 30 S: vgetcpu_online T: NULL C: I */
 	CPUHP_PERF_X86_UNCORE_ONLINE,	/* P: 21 S: uncore_online_cpu T: uncore_offline_cpu C: I */
 	CPUHP_PERF_X86_AMD_UNCORE_ONLINE, /* P: 21 S: amd_uncore_cpu_online T: amd_uncore_cpu_down_prepare C: I */
 	CPUHP_PERF_ONLINE,		/* P: 20 S: perf_event_init_cpu T: perf_event_exit_cpu C: C */
