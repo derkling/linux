@@ -35,6 +35,24 @@ static void set_capacity_scale(unsigned int cpu, unsigned long capacity)
 	per_cpu(cpu_scale, cpu) = capacity;
 }
 
+static u32 capacity_scale = 1024;
+
+static void __init parse_cpu_capacity(struct device_node *cpu_node, int cpu)
+{
+	int ret;
+	u32 capacity;
+
+	ret = of_property_read_u32(cpu_node,
+				   "capacity",
+				   &capacity);
+	if (!ret) {
+		set_capacity_scale(cpu, (capacity << SCHED_CAPACITY_SHIFT) /
+				capacity_scale);
+		pr_info("CPU%d: DT cpu_capacity %lu\n",
+			cpu, arch_scale_cpu_capacity(NULL, cpu));
+	}
+}
+
 static int __init get_cpu_for_node(struct device_node *node)
 {
 	struct device_node *cpu_node;
@@ -46,6 +64,7 @@ static int __init get_cpu_for_node(struct device_node *node)
 
 	for_each_possible_cpu(cpu) {
 		if (of_get_cpu_node(cpu, NULL) == cpu_node) {
+			parse_cpu_capacity(cpu_node, cpu);
 			of_node_put(cpu_node);
 			return cpu;
 		}
@@ -184,6 +203,12 @@ static int __init parse_dt_topology(void)
 		pr_err("No CPU information found in DT\n");
 		return 0;
 	}
+
+	if (!of_property_read_u32(cn, "capacity-scale", &capacity_scale))
+		pr_info("DT cpus capacity-scale %u\n", capacity_scale);
+	else
+		pr_debug("DT cpus capacity-scale not found: assuming %u\n",
+			capacity_scale);
 
 	/*
 	 * When topology is provided cpu-map is essentially a root
