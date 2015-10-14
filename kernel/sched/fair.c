@@ -4131,7 +4131,7 @@ static inline void hrtick_update(struct rq *rq)
  * request to provide some head room if task utilization further
  * increases.
  */
-static unsigned int capacity_margin = 1280;
+unsigned int capacity_margin = 1280;
 #define capacity_max SCHED_CAPACITY_SCALE
 static unsigned long capacity_orig_of(int cpu);
 static int cpu_util(int cpu);
@@ -4144,7 +4144,7 @@ static void update_capacity_of(int cpu)
 		return;
 
 	req_cap = cpu_util(cpu) * capacity_margin / capacity_orig_of(cpu);
-	cpufreq_sched_set_cap(cpu, req_cap);
+	set_cfs_cpu_capacity(cpu, true, req_cap);
 }
 
 struct static_key __sched_freq __read_mostly = STATIC_KEY_INIT_FALSE;
@@ -4274,7 +4274,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 			if (rq->cfs.nr_running)
 				update_capacity_of(cpu_of(rq));
 			else if (sched_freq())
-				cpufreq_sched_reset_cap(cpu_of(rq));
+				set_cfs_cpu_capacity(cpu_of(rq), false, 0);
 		}
 	}
 	hrtick_update(rq);
@@ -7977,7 +7977,7 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 		if (capacity_curr < capacity_orig &&
 		    (capacity_curr * SCHED_LOAD_SCALE) <
 		    (cpu_util(cpu) * capacity_margin))
-			cpufreq_sched_set_cap(cpu, capacity_max);
+			set_cfs_cpu_capacity(cpu, true, capacity_max);
 	}
 }
 

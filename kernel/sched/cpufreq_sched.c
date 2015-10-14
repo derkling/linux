@@ -17,7 +17,7 @@
 #define THROTTLE_NSEC		50000000 /* 50ms default */
 
 static DEFINE_PER_CPU(unsigned long, pcpu_capacity);
-static DEFINE_PER_CPU(struct cpufreq_policy *, pcpu_policy);
+DEFINE_PER_CPU(struct sched_capacity_reqs, cpu_sched_capacity_reqs);
 
 /**
  * gov_data - per-policy data internal to the governor
@@ -143,7 +143,7 @@ static void cpufreq_sched_irq_work(struct irq_work *irq_work)
  * 1) this cpu did not the new maximum capacity for its frequency domain
  * 2) no change in cpu frequency is necessary to meet the new capacity request
  */
-void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
+static void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
 {
 	unsigned int freq_new, cpu_tmp;
 	struct cpufreq_policy *policy;
@@ -203,16 +203,25 @@ out:
 	return;
 }
 
-/**
- * cpufreq_sched_reset_capacity - interface to scheduler for resetting capacity
- *                                requests
- * @cpu: cpu whose capacity request has to be reset
- *
- * This _wont trigger_ any capacity update.
- */
-void cpufreq_sched_reset_cap(int cpu)
+void update_cpu_capacity_request(int cpu)
 {
-	per_cpu(pcpu_capacity, cpu) = 0;
+	unsigned long new_capacity;
+	struct sched_capacity_reqs *scr;
+
+	lockdep_assert_held(&cpu_rq(cpu)->lock);
+
+	scr = &per_cpu(cpu_sched_capacity_reqs, cpu);
+
+	new_capacity = scr->cfs + scr->rt + scr->dl;
+	new_capacity = new_capacity * capacity_margin
+		/ SCHED_CAPACITY_SCALE;
+	if (new_capacity < scr->dl_min)
+		new_capacity = scr->dl_min;
+
+	if (new_capacity != scr->total) {
+		cpufreq_sched_set_cap(cpu, new_capacity);
+		scr->total = new_capacity;
+	}
 }
 
 static inline void set_sched_freq(void)
@@ -240,10 +249,8 @@ static int cpufreq_sched_start(struct cpufreq_policy *policy)
 	}
 
 	/* initialize per-cpu data */
-	for_each_cpu(cpu, policy->cpus) {
+	for_each_cpu(cpu, policy->cpus)
 		per_cpu(pcpu_capacity, cpu) = 0;
-		per_cpu(pcpu_policy, cpu) = policy;
-	}
 
 	/*
 	 * Don't ask for freq changes at an higher rate than what
