@@ -104,7 +104,7 @@ static int cpufreq_sched_thread(void *data)
 		cpufreq_sched_try_driver_target(policy, gd->freq);
 	} while (!kthread_should_stop());
 
-	do_exit(0);
+	return 0;
 }
 
 static void cpufreq_sched_irq_work(struct irq_work *irq_work)
