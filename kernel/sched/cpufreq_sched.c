@@ -17,6 +17,11 @@
 
 #define THROTTLE_NSEC		50000000 /* 50ms default */
 
+#ifndef CONFIG_CPU_FREQ_DEFAULT_GOV_SCHED
+static struct cpufreq_governor cpufreq_gov_sched;
+#endif
+
+static struct cpumask enabled_cpus;
 static DEFINE_PER_CPU(unsigned long, pcpu_capacity);
 DEFINE_PER_CPU(struct sched_capacity_reqs, cpu_sched_capacity_reqs);
 
@@ -168,6 +173,14 @@ static void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
 	struct gov_data *gd;
 	unsigned long capacity_max = 0;
 
+	/*
+	 * Avoid grabbing the policy if possible. A test is still
+	 * required after locking the CPU's policy to avoid racing
+	 * with the governor changing.
+	 */
+	if (!cpumask_test_cpu(cpu, &enabled_cpus))
+		return;
+
 	/* update per-cpu capacity request */
 	per_cpu(pcpu_capacity, cpu) = capacity;
 
@@ -176,7 +189,8 @@ static void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
 		return;
 	}
 
-	if (!policy->governor_data)
+	if (policy->governor != &cpufreq_gov_sched ||
+	    !policy->governor_data)
 		goto out;
 
 	gd = policy->governor_data;
@@ -295,6 +309,7 @@ static int cpufreq_sched_start(struct cpufreq_policy *policy)
 
 	policy->governor_data = gd;
 	gd->policy = policy;
+	cpumask_or(&enabled_cpus, &enabled_cpus, policy->related_cpus);
 	set_sched_freq();
 	return 0;
 
@@ -307,6 +322,7 @@ static int cpufreq_sched_stop(struct cpufreq_policy *policy)
 {
 	struct gov_data *gd = policy->governor_data;
 
+	cpumask_andnot(&enabled_cpus, &enabled_cpus, policy->related_cpus);
 	clear_sched_freq();
 	if (cpufreq_driver_might_sleep()) {
 		kthread_stop(gd->task);
