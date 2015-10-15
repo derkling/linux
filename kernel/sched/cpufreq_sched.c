@@ -94,12 +94,6 @@ static int cpufreq_sched_thread(void *data)
 				__func__, gd->task->pid);
 	}
 
-	ret = set_cpus_allowed_ptr(gd->task, policy->related_cpus);
-	if (ret) {
-		pr_warn("%s: failed to set allowed ptr\n", __func__);
-		do_exit(-EINVAL);
-	}
-
 	/* main loop of the per-policy kthread */
 	do {
 		set_current_state(TASK_INTERRUPTIBLE);
@@ -264,11 +258,16 @@ static int cpufreq_sched_start(struct cpufreq_policy *policy)
 
 	if (cpufreq_driver_might_sleep()) {
 		/* init per-policy kthread */
-		gd->task = kthread_run(cpufreq_sched_thread, policy, "kcpufreq_sched_task");
+		gd->task = kthread_create(cpufreq_sched_thread, policy,
+					  "kschedfreq:%d",
+					  cpumask_first(policy->related_cpus));
 		if (IS_ERR_OR_NULL(gd->task)) {
-			pr_err("%s: failed to create kcpufreq_sched_task thread\n", __func__);
+			pr_err("%s: failed to create kschedfreq thread\n",
+			       __func__);
 			goto err;
 		}
+		kthread_bind_mask(gd->task, policy->related_cpus);
+		wake_up_process(gd->task);
 		init_irq_work(&gd->irq_work, cpufreq_sched_irq_work);
 	}
 
