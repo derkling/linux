@@ -1,0 +1,306 @@
+==========================================
+ARM CPUs capacity bindings
+==========================================
+
+==========================================
+1 - Introduction
+==========================================
+
+ARM systems may be configured to have cpus with different power/performance
+characteristics within the same chip. In this case, additional information
+has to be made available to the kernel (the scheduler in particular) for
+it to be aware of such differences and take decisions accordingly.
+
+==========================================
+2 - CPU capacity definition
+==========================================
+
+CPU capacity is a [1..1024] number that provides the scheduler information
+about CPUs heterogeneity. Such heterogeneity can come from micro-architectural
+differences (e.g., ARM big.LITTLE systems) or maximum frequency at which CPUs
+can run (e.g., SMP systems with multiple frequency domains).
+
+Unfortunately, there is NOT a unique way to precisely define how to come up
+with CPU capacity values; they are truly benchmark dependent.  However, good
+news is that such a precise definition isn't usually required in practice, as
+benefits that come from having even approximates values are way better off than
+leaving the scheduler unaware of any differences at all (default behaviour).
+
+One simple way to estimate CPU capacities is to iteratively run a well-known
+CPU user space benchmark (e.g, sysbench, dhrystone, etc.) on each CPU at
+maximum frequency and then normalize values w.r.t.  the best performing CPU.
+One can also do a statistically significant study of a wide collection of
+benchmarks, but pros of such an approach are not really evident at the time of
+writing.
+
+==========================================
+3 - cpu-capacities node
+==========================================
+
+CPUs capacities are defined within the cpu-capacities node, which is a direct
+child of the cpus node [1] and provides a container where capacities of the
+system's CPUs, defined as device tree nodes, are listed.
+
+- cpu-capacities node
+
+	Usage: Optional - On ARM systems, it is a container of CPUs capacities.
+			  If CPUs all have the same capacity an cpu-capacities
+			  node is not required.
+
+	Description: cpu-capacities node is a container node, where its
+		     subnodes describe the CPU capacity.
+
+	Node name must be "cpu-capacities".
+
+	The cpu-capacities node's parent must be the cpus node.
+
+	The cpu-capacities node's child nodes can be:
+
+	- one or more capacity nodes
+
+	Any other configuration is considered invalid.
+
+==========================================
+4 - capacity node
+==========================================
+
+	Description: must be child of the cpu-capacities node.
+
+	The following item represents the single valid property for a capacity
+        node.
+
+	- capacity
+		Usage: required
+		Value type: <prop-encoded-array>
+		Definition: u32 value represeting CPU capacity (refer to
+			    setion 2 of this document for a complete
+			    description).
+
+===========================================
+5 - Examples
+===========================================
+
+Example 1 (ARM 64-bit, 6-cpu system, two clusters):
+
+cpus {
+	#address-cells = <2>;
+	#size-cells = <0>;
+
+	cpu-map {
+		cluster0 {
+			core0 {
+				cpu = <&A57_0>;
+			};
+			core1 {
+				cpu = <&A57_1>;
+			};
+		};
+
+		cluster1 {
+			core0 {
+				cpu = <&A53_0>;
+			};
+			core1 {
+				cpu = <&A53_1>;
+			};
+			core2 {
+				cpu = <&A53_2>;
+			};
+			core3 {
+				cpu = <&A53_3>;
+			};
+		};
+	};
+
+	idle-states {
+		entry-method = "arm,psci";
+
+		CPU_SLEEP_0: cpu-sleep-0 {
+			compatible = "arm,idle-state";
+			arm,psci-suspend-param = <0x0010000>;
+			local-timer-stop;
+			entry-latency-us = <100>;
+			exit-latency-us = <250>;
+			min-residency-us = <150>;
+		};
+
+		CLUSTER_SLEEP_0: cluster-sleep-0 {
+			compatible = "arm,idle-state";
+			arm,psci-suspend-param = <0x1010000>;
+			local-timer-stop;
+			entry-latency-us = <800>;
+			exit-latency-us = <700>;
+			min-residency-us = <2500>;
+		};
+	};
+
+	cpu-capacities {
+		CPU_CAP_BIG: cpu-cap-big {
+			capacity = <1024>;
+		};
+
+		CPU_CAP_LITTLE: cpu-cap-little {
+			capacity = <447>;
+		};
+	};
+
+	A57_0: cpu@0 {
+		compatible = "arm,cortex-a57","arm,armv8";
+		reg = <0x0 0x0>;
+		device_type = "cpu";
+		enable-method = "psci";
+		next-level-cache = <&A57_L2>;
+		clocks = <&scpi_dvfs 0>;
+		cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>;
+		capacity = <&CPU_CAP_BIG>;
+	};
+
+	A57_1: cpu@1 {
+		compatible = "arm,cortex-a57","arm,armv8";
+		reg = <0x0 0x1>;
+		device_type = "cpu";
+		enable-method = "psci";
+		next-level-cache = <&A57_L2>;
+		clocks = <&scpi_dvfs 0>;
+		cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>;
+		capacity = <&CPU_CAP_BIG>;
+	};
+
+	A53_0: cpu@100 {
+		compatible = "arm,cortex-a53","arm,armv8";
+		reg = <0x0 0x100>;
+		device_type = "cpu";
+		enable-method = "psci";
+		next-level-cache = <&A53_L2>;
+		clocks = <&scpi_dvfs 1>;
+		cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>;
+		capacity = <&CPU_CAP_LITTLE>;
+	};
+
+	A53_1: cpu@101 {
+		compatible = "arm,cortex-a53","arm,armv8";
+		reg = <0x0 0x101>;
+		device_type = "cpu";
+		enable-method = "psci";
+		next-level-cache = <&A53_L2>;
+		clocks = <&scpi_dvfs 1>;
+		cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>;
+		capacity = <&CPU_CAP_LITTLE>;
+	};
+
+	A53_2: cpu@102 {
+		compatible = "arm,cortex-a53","arm,armv8";
+		reg = <0x0 0x102>;
+		device_type = "cpu";
+		enable-method = "psci";
+		next-level-cache = <&A53_L2>;
+		clocks = <&scpi_dvfs 1>;
+		cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>;
+		capacity = <&CPU_CAP_LITTLE>;
+	};
+
+	A53_3: cpu@103 {
+		compatible = "arm,cortex-a53","arm,armv8";
+		reg = <0x0 0x103>;
+		device_type = "cpu";
+		enable-method = "psci";
+		next-level-cache = <&A53_L2>;
+		clocks = <&scpi_dvfs 1>;
+		cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>;
+		capacity = <&CPU_CAP_LITTLE>;
+	};
+
+	A57_L2: l2-cache0 {
+		compatible = "cache";
+	};
+
+	A53_L2: l2-cache1 {
+		compatible = "cache";
+	};
+};
+
+Example 2 (ARM 32-bit, 5-cpu system, two clusters):
+
+cpus {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	cpu0: cpu@0 {
+		device_type = "cpu";
+		compatible = "arm,cortex-a15";
+		reg = <0>;
+		cci-control-port = <&cci_control1>;
+		cpu-idle-states = <&CLUSTER_SLEEP_BIG>;
+		capacity = <&CPU_CAP_BIG>;
+	};
+
+	cpu1: cpu@1 {
+		device_type = "cpu";
+		compatible = "arm,cortex-a15";
+		reg = <1>;
+		cci-control-port = <&cci_control1>;
+		cpu-idle-states = <&CLUSTER_SLEEP_BIG>;
+		capacity = <&CPU_CAP_BIG>;
+	};
+
+	cpu2: cpu@2 {
+		device_type = "cpu";
+		compatible = "arm,cortex-a7";
+		reg = <0x100>;
+		cci-control-port = <&cci_control2>;
+		cpu-idle-states = <&CLUSTER_SLEEP_LITTLE>;
+		capacity = <&CPU_CAP_LITTLE>;
+	};
+
+	cpu3: cpu@3 {
+		device_type = "cpu";
+		compatible = "arm,cortex-a7";
+		reg = <0x101>;
+		cci-control-port = <&cci_control2>;
+		cpu-idle-states = <&CLUSTER_SLEEP_LITTLE>;
+		capacity = <&CPU_CAP_LITTLE>;
+	};
+
+	cpu4: cpu@4 {
+		device_type = "cpu";
+		compatible = "arm,cortex-a7";
+		reg = <0x102>;
+		cci-control-port = <&cci_control2>;
+		cpu-idle-states = <&CLUSTER_SLEEP_LITTLE>;
+		capacity = <&CPU_CAP_LITTLE>;
+	};
+
+	idle-states {
+		CLUSTER_SLEEP_BIG: cluster-sleep-big {
+			compatible = "arm,idle-state";
+			local-timer-stop;
+			entry-latency-us = <1000>;
+			exit-latency-us = <700>;
+			min-residency-us = <2000>;
+		};
+
+		CLUSTER_SLEEP_LITTLE: cluster-sleep-little {
+			compatible = "arm,idle-state";
+			local-timer-stop;
+			entry-latency-us = <1000>;
+			exit-latency-us = <500>;
+			min-residency-us = <2500>;
+		};
+	};
+
+	cpu-capacities {
+		CPU_CAP_BIG: cpu-cap-big {
+			capacity = <1024>;
+		};
+		CPU_CAP_LITTLE: cpu-cap-little {
+			capacity = <430>;
+		};
+	};
+};
+
+===========================================
+6 - References
+===========================================
+
+[1] ARM Linux Kernel documentation - CPUs bindings
+    Documentation/devicetree/bindings/arm/cpus.txt
