@@ -11,6 +11,7 @@
 #include <linux/kthread.h>
 #include <linux/percpu.h>
 #include <linux/irq_work.h>
+#include <linux/delay.h>
 
 #include "sched.h"
 
@@ -41,10 +42,11 @@ struct gov_data {
 	struct task_struct *task;
 	struct irq_work irq_work;
 	struct cpufreq_policy *policy;
-	unsigned int freq;
+	unsigned int requested_freq;
 };
 
-static void cpufreq_sched_try_driver_target(struct cpufreq_policy *policy, unsigned int freq)
+static void cpufreq_sched_try_driver_target(struct cpufreq_policy *policy,
+					    unsigned int freq)
 {
 	struct gov_data *gd = policy->governor_data;
 
@@ -56,6 +58,22 @@ static void cpufreq_sched_try_driver_target(struct cpufreq_policy *policy, unsig
 
 	gd->throttle = ktime_add_ns(ktime_get(), gd->throttle_nsec);
 	up_write(&policy->rwsem);
+}
+
+static void finish_last_request(struct gov_data *gd)
+{
+	int ns_left;
+
+	while (1) {
+		ktime_t now = ktime_get();
+
+		if (ktime_after(now, gd->throttle))
+			return;
+
+		ns_left = ktime_to_ns(ktime_sub(gd->throttle, now));
+		usleep_range(ns_left/NSEC_PER_USEC,
+			     ns_left/NSEC_PER_USEC);
+	}
 }
 
 /*
@@ -70,6 +88,8 @@ static int cpufreq_sched_thread(void *data)
 	struct sched_param param;
 	struct cpufreq_policy *policy;
 	struct gov_data *gd;
+	unsigned int new_request = 0;
+	unsigned int last_request = 0;
 	int ret;
 
 	policy = (struct cpufreq_policy *) data;
@@ -81,6 +101,7 @@ static int cpufreq_sched_thread(void *data)
 	gd = policy->governor_data;
 	if (!gd) {
 		pr_warn("%s: missing governor data\n", __func__);
+
 		do_exit(-EINVAL);
 	}
 
@@ -97,11 +118,14 @@ static int cpufreq_sched_thread(void *data)
 	/* main loop of the per-policy kthread */
 	do {
 		set_current_state(TASK_INTERRUPTIBLE);
-		schedule();
-		if (kthread_should_stop())
-			break;
-
-		cpufreq_sched_try_driver_target(policy, gd->freq);
+		new_request = gd->requested_freq;
+		if (new_request == last_request) {
+			schedule();
+		} else {
+			last_request = new_request;
+			finish_last_request(gd);
+			cpufreq_sched_try_driver_target(policy, new_request);
+		}
 	} while (!kthread_should_stop());
 
 	return 0;
@@ -157,13 +181,10 @@ static void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
 
 	gd = policy->governor_data;
 
-	/* bail early if we are throttled */
-	if (ktime_before(ktime_get(), gd->throttle))
-		goto out;
-
 	/* find max capacity requested by cpus in this policy */
 	for_each_cpu(cpu_tmp, policy->cpus)
-		capacity_max = max(capacity_max, per_cpu(pcpu_capacity, cpu_tmp));
+		capacity_max = max(capacity_max, per_cpu(pcpu_capacity,
+							 cpu_tmp));
 
 	/*
 	 * We only change frequency if this cpu's capacity request represents a
@@ -185,9 +206,10 @@ static void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
 		goto out;
 
 	/* store the new frequency and perform the transition */
-	gd->freq = freq_new;
+	gd->requested_freq = freq_new;
 
-	if (cpufreq_driver_might_sleep())
+	if (cpufreq_driver_might_sleep() ||
+	    ktime_before(ktime_get(), gd->throttle))
 		irq_work_queue_on(&gd->irq_work, cpu);
 	else
 		cpufreq_sched_try_driver_target(policy, freq_new);
