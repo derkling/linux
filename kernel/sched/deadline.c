@@ -47,7 +47,7 @@ static inline int on_dl_rq(struct sched_dl_entity *dl_se)
 
 static void add_running_bw(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq)
 {
-	u64 se_bw = dl_se->dl_bw;
+	u64 se_bw = dl_se->dl_actual_bw;
 
 	dl_rq->running_bw += se_bw;
 	trace_sched_stat_running_bw_add(dl_task_of(dl_se), se_bw, dl_rq->running_bw);
@@ -55,7 +55,7 @@ static void add_running_bw(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq)
 
 static void clear_running_bw(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq)
 {
-	u64 se_bw = dl_se->dl_bw;
+	u64 se_bw = dl_se->dl_actual_bw;
 
 	dl_rq->running_bw -= se_bw;
 	trace_sched_stat_running_bw_clear(dl_task_of(dl_se), se_bw, dl_rq->running_bw);
