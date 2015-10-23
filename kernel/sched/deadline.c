@@ -70,6 +70,7 @@ static void add_average_bw(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq)
 	u64 se_bw = dl_se->dl_bw;
 
 	dl_rq->avg_bw += se_bw;
+	trace_sched_stat_average_bw_add(dl_task_of(dl_se), se_bw, dl_rq->avg_bw);
 }
 
 static void clear_average_bw(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq)
@@ -77,6 +78,7 @@ static void clear_average_bw(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq)
 	u64 se_bw = dl_se->dl_bw;
 
 	dl_rq->avg_bw -= se_bw;
+	trace_sched_stat_average_bw_clear(dl_task_of(dl_se), se_bw, dl_rq->avg_bw);
 	if (dl_rq->avg_bw < 0) {
 		WARN_ON(1);
 		dl_rq->avg_bw = 0;

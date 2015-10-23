@@ -411,17 +411,17 @@ DEFINE_EVENT(sched_stat_runtime, sched_stat_runtime,
  * Tracepoint for accounting running bandwidth of active SCHED_DEADLINE
  * tasks (XXX specific to SCHED_FLAG_GRUB).
  */
-DECLARE_EVENT_CLASS(sched_stat_running_bw,
+DECLARE_EVENT_CLASS(sched_stat_dl_bw,
 
-	TP_PROTO(struct task_struct *tsk, u64 tsk_bw, s64 running_bw),
+	TP_PROTO(struct task_struct *tsk, u64 tsk_bw, s64 bw),
 
-	TP_ARGS(tsk, tsk_bw, running_bw),
+	TP_ARGS(tsk, tsk_bw, bw),
 
 	TP_STRUCT__entry(
 		__array( char,	comm,	TASK_COMM_LEN	)
 		__field( pid_t,	pid			)
 		__field( u64,	tsk_bw			)
-		__field( s64,	running_bw		)
+		__field( s64,	bw		)
 		__field( int,	cpu			)
 	),
 
@@ -430,22 +430,31 @@ DECLARE_EVENT_CLASS(sched_stat_running_bw,
 		__entry->cpu		= task_cpu(tsk);
 		__entry->pid		= tsk->pid;
 		__entry->tsk_bw		= tsk_bw;
-		__entry->running_bw	= running_bw;
+		__entry->bw		= bw;
 	),
 
-	TP_printk("comm=%s pid=%d cpu=%d tsk_bw=%Lu running_bw=%Ld ",
+	TP_printk("comm=%s pid=%d cpu=%d tsk_bw=%Lu bw=%Ld ",
 			__entry->comm, __entry->pid, __entry->cpu,
 			(unsigned long long)__entry->tsk_bw,
-			(unsigned long long)__entry->running_bw)
+			(unsigned long long)__entry->bw)
 );
 
-DEFINE_EVENT(sched_stat_running_bw, sched_stat_running_bw_add,
-	     TP_PROTO(struct task_struct *tsk, u64 tsk_bw, s64 running_bw),
-	     TP_ARGS(tsk, tsk_bw, running_bw));
+DEFINE_EVENT(sched_stat_dl_bw, sched_stat_running_bw_add,
+	     TP_PROTO(struct task_struct *tsk, u64 tsk_bw, s64 bw),
+	     TP_ARGS(tsk, tsk_bw, bw));
 
-DEFINE_EVENT(sched_stat_running_bw, sched_stat_running_bw_clear,
-	     TP_PROTO(struct task_struct *tsk, u64 tsk_bw, s64 running_bw),
-	     TP_ARGS(tsk, tsk_bw, running_bw));
+DEFINE_EVENT(sched_stat_dl_bw, sched_stat_running_bw_clear,
+	     TP_PROTO(struct task_struct *tsk, u64 tsk_bw, s64 bw),
+	     TP_ARGS(tsk, tsk_bw, bw));
+
+DEFINE_EVENT(sched_stat_dl_bw, sched_stat_average_bw_add,
+	     TP_PROTO(struct task_struct *tsk, u64 tsk_bw, s64 bw),
+	     TP_ARGS(tsk, tsk_bw, bw));
+
+DEFINE_EVENT(sched_stat_dl_bw, sched_stat_average_bw_clear,
+	     TP_PROTO(struct task_struct *tsk, u64 tsk_bw, s64 bw),
+	     TP_ARGS(tsk, tsk_bw, bw));
+
 /*
  * Tracepoint for showing actual parameters of SCHED_DEADLINE
  * tasks.
