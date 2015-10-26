@@ -65,6 +65,24 @@ static void clear_running_bw(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq)
 	}
 }
 
+static void add_average_bw(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq)
+{
+	u64 se_bw = dl_se->dl_bw;
+
+	dl_rq->avg_bw += se_bw;
+}
+
+static void clear_average_bw(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq)
+{
+	u64 se_bw = dl_se->dl_bw;
+
+	dl_rq->avg_bw -= se_bw;
+	if (dl_rq->avg_bw < 0) {
+		WARN_ON(1);
+		dl_rq->avg_bw = 0;
+	}
+}
+
 static inline int is_leftmost(struct task_struct *p, struct dl_rq *dl_rq)
 {
 	struct sched_dl_entity *dl_se = &p->dl;
@@ -516,6 +534,8 @@ static void update_dl_entity(struct sched_dl_entity *dl_se,
 	struct dl_rq *dl_rq = dl_rq_of_se(dl_se);
 	struct rq *rq = rq_of_dl_rq(dl_rq);
 
+	if (dl_se->dl_new)
+		add_average_bw(dl_se, dl_rq);
 	add_running_bw(dl_se, dl_rq);
 
 	/*
@@ -1276,6 +1296,7 @@ static void task_dead_dl(struct task_struct *p)
 	if (task_on_rq_queued(p)) {
 		clear_running_bw(&p->dl, &rq->dl);
 	}
+	clear_average_bw(&p->dl, &rq->dl);
 }
 
 static void set_curr_task_dl(struct rq *rq)
@@ -1584,7 +1605,9 @@ retry:
 
 	deactivate_task(rq, next_task, 0);
 	clear_running_bw(&next_task->dl, &rq->dl);
+	clear_average_bw(&next_task->dl, &rq->dl);
 	set_task_cpu(next_task, later_rq->cpu);
+	add_average_bw(&next_task->dl, &later_rq->dl);
 	add_running_bw(&next_task->dl, &later_rq->dl);
 	activate_task(later_rq, next_task, 0);
 	ret = 1;
@@ -1674,7 +1697,9 @@ static void pull_dl_task(struct rq *this_rq)
 
 			deactivate_task(src_rq, p, 0);
 			clear_running_bw(&p->dl, &src_rq->dl);
+			clear_average_bw(&p->dl, &src_rq->dl);
 			set_task_cpu(p, this_cpu);
+			add_average_bw(&p->dl, &this_rq->dl);
 			add_running_bw(&p->dl, &this_rq->dl);
 			activate_task(this_rq, p, 0);
 			dmin = p->dl.deadline;
@@ -1784,6 +1809,7 @@ static void switched_from_dl(struct rq *rq, struct task_struct *p)
 	if (task_on_rq_queued(p)) {
 		clear_running_bw(&p->dl, &rq->dl);
 	}
+	clear_average_bw(&p->dl, &rq->dl);
 
 	/*
 	 * Since this might be the only -deadline task on the rq,

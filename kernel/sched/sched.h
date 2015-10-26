@@ -511,6 +511,8 @@ struct dl_rq {
 	 * and decreased when a task blocks 
 	 */
 	s64 running_bw;
+	/* This is the "average utilization" for this runqueue */
+	s64 avg_bw;
 };
 
 #ifdef CONFIG_SMP
