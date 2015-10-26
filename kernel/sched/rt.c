@@ -8,6 +8,8 @@
 #include <linux/slab.h>
 #include <linux/irq_work.h>
 
+#include <trace/events/sched.h>
+
 int sched_rr_timeslice = RR_TIMESLICE;
 
 static int do_sched_rt_period_timer(struct rt_bandwidth *rt_b, int overrun);
@@ -1454,6 +1456,7 @@ static void sched_rt_update_capacity_req(struct rq *rq)
 	if (unlikely(used > SCHED_CAPACITY_SCALE))
 		used = SCHED_CAPACITY_SCALE;
 
+	trace_sched_rt_dvfs(rq->cpu, (unsigned long)(used));
 	set_rt_cpu_capacity(rq->cpu, 1, (unsigned long)(used));
 }
 #else

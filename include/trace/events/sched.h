@@ -484,6 +484,27 @@ TRACE_EVENT(sched_stat_params_dl,
 			__entry->runtime, __entry->deadline)
 );
 
+/*
+ * Tracepoint for showing rt request to dvfs
+ */
+TRACE_EVENT(sched_rt_dvfs,
+
+	TP_PROTO(int cpu, unsigned long req),
+
+	TP_ARGS(cpu, req),
+
+	TP_STRUCT__entry(
+		__field( int,		cpu			)
+		__field( unsigned long,	req			)
+	),
+
+	TP_fast_assign(
+		__entry->cpu		= cpu;
+		__entry->req		= req;
+	),
+
+	TP_printk("cpu:%d req to dvfs=%lu", __entry->cpu, __entry->req)
+);
 
 /*
  * Tracepoint for showing priority inheritance modifying a tasks
