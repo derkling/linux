@@ -5926,6 +5926,10 @@ static void attach_one_task(struct rq *rq, struct task_struct *p)
 {
 	raw_spin_lock(&rq->lock);
 	attach_task(rq, p);
+	/*
+	 * We want to potentially raise target_cpu's OPP.
+	 */
+	update_capacity_of(cpu_of(rq));
 	raw_spin_unlock(&rq->lock);
 }
 
@@ -5946,6 +5950,11 @@ static void attach_tasks(struct lb_env *env)
 
 		attach_task(env->dst_rq, p);
 	}
+
+	/*
+	 * We want to potentially raise env.dst_cpu's OPP.
+	 */
+	update_capacity_of(env->dst_cpu);
 
 	raw_spin_unlock(&env->dst_rq->lock);
 }
@@ -7101,10 +7110,6 @@ more_balance:
 		if (cur_ld_moved) {
 			attach_tasks(&env);
 			ld_moved += cur_ld_moved;
-			/*
-			 * We want to potentially raise env.dst_cpu's OPP.
-			 */
-			update_capacity_of(env.dst_cpu);
 		}
 
 		local_irq_restore(flags);
@@ -7476,10 +7481,6 @@ out_unlock:
 
 	if (p) {
 		attach_one_task(target_rq, p);
-		/*
-		 * We want to potentially raise target_cpu's OPP.
-		 */
-		update_capacity_of(target_cpu);
 	}
 
 	local_irq_enable();
