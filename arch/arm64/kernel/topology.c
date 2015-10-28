@@ -243,31 +243,18 @@ EXPORT_SYMBOL_GPL(cpu_topology);
  */
 
 static struct idle_state idle_states_cluster_a53[] = {
-	{ .power = 56 },
-	{ .power = 17 },
-};
-
-static struct idle_state idle_states_cluster_a57[] = {
-	{ .power = 65 },
-	{ .power = 24 },
+	{ .power = 107 },   /* calculated with (47 + 15 * 4) */
+	{ .power = 47 },
+	{ .power = 0 },
 };
 
 static struct capacity_state cap_states_cluster_a53[] = {
         /* Power per cluster */
-	{ .cap = 178,  .power = 26, },
-	{ .cap = 369,  .power = 30, },
-	{ .cap = 622,  .power = 39, },
-	{ .cap = 819,  .power = 47, },
-	{ .cap = 1024, .power = 57, },
-};
-
-static struct capacity_state cap_states_cluster_a57[] = {
-        /* Power per cluster */
-	{ .cap = 417,  .power = 24, },
-	{ .cap = 579,  .power = 32, },
-	{ .cap = 744,  .power = 43, },
-	{ .cap = 883,  .power = 49, },
-	{ .cap = 1024, .power = 64, },
+	{ .cap = 178,  .power = 16, },
+	{ .cap = 369,  .power = 29, },
+	{ .cap = 622,  .power = 47, },
+	{ .cap = 819,  .power = 75, },
+	{ .cap = 1024, .power = 112, },
 };
 
 static struct sched_group_energy energy_cluster_a53 = {
@@ -277,39 +264,19 @@ static struct sched_group_energy energy_cluster_a53 = {
 	.cap_states     = cap_states_cluster_a53,
 };
 
-static struct sched_group_energy energy_cluster_a57 = {
-	.nr_idle_states = ARRAY_SIZE(idle_states_cluster_a57),
-	.idle_states    = idle_states_cluster_a57,
-	.nr_cap_states  = ARRAY_SIZE(cap_states_cluster_a57),
-	.cap_states     = cap_states_cluster_a57,
-};
-
 static struct idle_state idle_states_core_a53[] = {
-	{ .power = 6 },
-	{ .power = 0 },
-};
-
-static struct idle_state idle_states_core_a57[] = {
 	{ .power = 15 },
-	{ .power = 0  },
+	{ .power = 0 },
+	{ .power = 0 },
 };
 
 static struct capacity_state cap_states_core_a53[] = {
         /* Power per cpu */
-	{ .cap = 178,  .power = 33, },  /* 208MHz */
-	{ .cap = 369,  .power = 46, },  /* 432MHz */
-	{ .cap = 622,  .power = 61, },  /* 729MHz */
-	{ .cap = 819,  .power = 76, },  /* 960MHz */
-	{ .cap = 1024, .power = 93, },  /* 1.2GHz */
-};
-
-static struct capacity_state cap_states_core_a57[] = {
-        /* Power per cpu */
-	{ .cap = 417,  .power = 168, },
-	{ .cap = 579,  .power = 251, },
-	{ .cap = 744,  .power = 359, },
-	{ .cap = 883,  .power = 479, },
-	{ .cap = 1024, .power = 616, },
+	{ .cap = 178,  .power = 69,  },  /* 208MHz */
+	{ .cap = 369,  .power = 125, },  /* 432MHz */
+	{ .cap = 622,  .power = 224, },  /* 729MHz */
+	{ .cap = 819,  .power = 367, },  /* 960MHz */
+	{ .cap = 1024, .power = 670, },  /* 1.2GHz */
 };
 
 static struct sched_group_energy energy_core_a53 = {
@@ -317,13 +284,6 @@ static struct sched_group_energy energy_core_a53 = {
 	.idle_states    = idle_states_core_a53,
 	.nr_cap_states  = ARRAY_SIZE(cap_states_core_a53),
 	.cap_states     = cap_states_core_a53,
-};
-
-static struct sched_group_energy energy_core_a57 = {
-	.nr_idle_states = ARRAY_SIZE(idle_states_core_a57),
-	.idle_states    = idle_states_core_a57,
-	.nr_cap_states  = ARRAY_SIZE(cap_states_core_a57),
-	.cap_states     = cap_states_core_a57,
 };
 
 /* sd energy functions */
