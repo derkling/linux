@@ -423,8 +423,7 @@ static int db8500_thermal_probe(struct platform_device *pdev)
 	}
 
 	ret = devm_request_threaded_irq(&pdev->dev, low_irq, NULL,
-		prcmu_low_irq_handler, IRQF_NO_SUSPEND | IRQF_ONESHOT,
-		"dbx500_temp_low", pzone);
+		prcmu_low_irq_handler, IRQF_ONESHOT, "dbx500_temp_low", pzone);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Failed to allocate temp low irq.\n");
 		goto out_unlock;
@@ -438,7 +437,7 @@ static int db8500_thermal_probe(struct platform_device *pdev)
 	}
 
 	ret = devm_request_threaded_irq(&pdev->dev, high_irq, NULL,
-		prcmu_high_irq_handler, IRQF_NO_SUSPEND | IRQF_ONESHOT,
+		prcmu_high_irq_handler, IRQF_ONESHOT,
 		"dbx500_temp_high", pzone);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Failed to allocate temp high irq.\n");
