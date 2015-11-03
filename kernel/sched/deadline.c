@@ -758,8 +758,6 @@ static void update_curr_dl(struct rq *rq)
 	curr->se.exec_start = rq_clock_task(rq);
 	cpuacct_charge(curr, delta_exec);
 
-	sched_rt_avg_update(rq, delta_exec);
-
 	dl_se->runtime -= dl_se->dl_yielded ? 0 : delta_exec;
 	trace_sched_stat_params_dl(curr, dl_se->runtime, dl_se->deadline);
 	if (dl_runtime_exceeded(dl_se)) {
