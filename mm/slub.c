@@ -178,10 +178,6 @@ static inline bool kmem_cache_has_cpu_partial(struct kmem_cache *s)
 #define __OBJECT_POISON		0x80000000UL /* Poison object */
 #define __CMPXCHG_DOUBLE	0x40000000UL /* Use cmpxchg_double */
 
-#ifdef CONFIG_SMP
-static struct notifier_block slab_notifier;
-#endif
-
 /*
  * Tracking user of a slab.
  */
@@ -2175,6 +2171,27 @@ static void flush_all(struct kmem_cache *s)
 	on_each_cpu_cond(has_cpu_slab, flush_cpu_slab, s, 1, GFP_ATOMIC);
 }
 
+#ifdef CONFIG_SMP
+/*
+ * Use the cpu notifier to insure that the cpu slabs are flushed when
+ * necessary.
+ */
+static int slub_cpu_dead(unsigned int cpu)
+{
+	struct kmem_cache *s;
+	unsigned long flags;
+
+	mutex_lock(&slab_mutex);
+	list_for_each_entry(s, &slab_caches, list) {
+		local_irq_save(flags);
+		__flush_cpu_slab(s, cpu);
+		local_irq_restore(flags);
+	}
+	mutex_unlock(&slab_mutex);
+	return 0;
+}
+#endif
+
 /*
  * Check if the objects in a per cpu structure fit numa
  * locality expectations.
@@ -3918,7 +3935,7 @@ void __init kmem_cache_init(void)
 	create_kmalloc_caches(0);
 
 #ifdef CONFIG_SMP
-	register_cpu_notifier(&slab_notifier);
+	cpuhp_setup_state_nocalls(CPUHP_SLUB_DEAD, NULL, slub_cpu_dead);
 #endif
 
 	pr_info("SLUB: HWalign=%d, Order=%d-%d, MinObjects=%d, CPUs=%d, Nodes=%d\n",
@@ -3982,43 +3999,6 @@ int __kmem_cache_create(struct kmem_cache *s, unsigned long flags)
 
 	return err;
 }
-
-#ifdef CONFIG_SMP
-/*
- * Use the cpu notifier to insure that the cpu slabs are flushed when
- * necessary.
- */
-static int slab_cpuup_callback(struct notifier_block *nfb,
-		unsigned long action, void *hcpu)
-{
-	long cpu = (long)hcpu;
-	struct kmem_cache *s;
-	unsigned long flags;
-
-	switch (action) {
-	case CPU_UP_CANCELED:
-	case CPU_UP_CANCELED_FROZEN:
-	case CPU_DEAD:
-	case CPU_DEAD_FROZEN:
-		mutex_lock(&slab_mutex);
-		list_for_each_entry(s, &slab_caches, list) {
-			local_irq_save(flags);
-			__flush_cpu_slab(s, cpu);
-			local_irq_restore(flags);
-		}
-		mutex_unlock(&slab_mutex);
-		break;
-	default:
-		break;
-	}
-	return NOTIFY_OK;
-}
-
-static struct notifier_block slab_notifier = {
-	.notifier_call = slab_cpuup_callback
-};
-
-#endif
 
 void *__kmalloc_track_caller(size_t size, gfp_t gfpflags, unsigned long caller)
 {
