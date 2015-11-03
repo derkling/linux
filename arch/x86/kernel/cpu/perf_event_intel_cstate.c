@@ -469,7 +469,7 @@ static int cstate_pmu_event_add(struct perf_event *event, int mode)
 	return 0;
 }
 
-static void cstate_cpu_exit(int cpu)
+static int cstate_cpu_exit(unsigned int cpu)
 {
 	int i, id, target;
 
@@ -512,9 +512,10 @@ static void cstate_cpu_exit(int cpu)
 		if (target >= 0)
 			perf_pmu_migrate_context(&cstate_pkg_pmu, cpu, target);
 	}
+	return 0;
 }
 
-static void cstate_cpu_init(int cpu)
+static int cstate_cpu_init(unsigned int cpu)
 {
 	int i, id;
 
@@ -539,33 +540,7 @@ static void cstate_cpu_init(int cpu)
 		if (i >= nr_cpu_ids)
 			cpumask_set_cpu(cpu, &cstate_pkg_cpu_mask);
 	}
-}
-
-static int cstate_cpu_notifier(struct notifier_block *self,
-				  unsigned long action, void *hcpu)
-{
-	unsigned int cpu = (long)hcpu;
-
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_UP_PREPARE:
-		break;
-	case CPU_STARTING:
-		cstate_cpu_init(cpu);
-		break;
-	case CPU_UP_CANCELED:
-	case CPU_DYING:
-		break;
-	case CPU_ONLINE:
-	case CPU_DEAD:
-		break;
-	case CPU_DOWN_PREPARE:
-		cstate_cpu_exit(cpu);
-		break;
-	default:
-		break;
-	}
-
-	return NOTIFY_OK;
+	return 0;
 }
 
 /*
@@ -616,16 +591,10 @@ static int __init cstate_init(void)
 
 static void __init cstate_cpumask_init(void)
 {
-	int cpu;
-
-	cpu_notifier_register_begin();
-
-	for_each_online_cpu(cpu)
-		cstate_cpu_init(cpu);
-
-	__perf_cpu_notifier(cstate_cpu_notifier);
-
-	cpu_notifier_register_done();
+	cpuhp_setup_state(CPUHP_AP_PERF_X86_CSTATE_STARTING,
+			  cstate_cpu_init, NULL);
+	cpuhp_setup_state(CPUHP_PERF_X86_CSTATE_ONLINE,
+			  NULL, cstate_cpu_exit);
 }
 
 static struct pmu cstate_core_pmu = {
