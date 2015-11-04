@@ -115,6 +115,7 @@ enum cpuhp_state {
 	CPUHP_PROFILE_ONLINE,		/* P: 0 S: profile_online_cpu T: NULL C: I */
 	CPUHP_SLAB_ONLINE,		/* P: 0 S: slab_online_cpu T: slab_offline_cpu C: C */
 	CPUHP_MM_WRITEBACK_ONLINE,	/* P: 0 S: page_writeback_cpu_online T: NULL C: I */
+	CPUHP_RCU_TORTURE,		/* P: 0 S: rcutorture_booster_init T: rcutorture_booster_cleanup C: I */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */
