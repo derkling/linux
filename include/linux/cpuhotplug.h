@@ -42,6 +42,7 @@ enum cpuhp_state {
 	CPUHP_SOFTIRQ_DEAD,		/* P: 0 S: NULL T: takeover_tasklets C: P */
 	CPUHP_NET_MVNETA_DEAD,		/* P: 0 S: NULL T: mvneta_cpu_dead C: P */
 	CPUHP_CPUIDLE_PSERIES_DEAD,	/* P: 0 S: NULL T: pseries_cpuidle_cpu_dead C: P */
+	CPUHP_CPUIDLE_POWERNV_DEAD,	/* P: 0 S: NULL T: powernv_cpuidle_cpu_dead C: P */
 	CPUHP_SCHED_DEAD,		/* P: INT_MAX S: NULL T: sched_dead_numa_cpu C: P */
 	CPUHP_BRINGUP_CPU,		/* P: __cpu_up S: bringup_cpu T: NULL C: C */
 	CPUHP_AP_OFFLINE,
@@ -122,6 +123,7 @@ enum cpuhp_state {
 	CPUHP_RCU_TORTURE,		/* P: 0 S: rcutorture_booster_init T: rcutorture_booster_cleanup C: I */
 	CPUHP_NET_MVNETA_ONLINE,	/* P: 0 S: mvneta_cpu_online T: mvneta_cpu_down_prepare C: P */
 	CPUHP_CPUIDLE_PSERIES_ONLINE,	/* P: 0 S: pseries_cpuidle_cpu_online T: NULL C: P */
+	CPUHP_CPUIDLE_POWERNV_ONLINE,	/* P: 0 S: powernv_cpuidle_cpu_online T: NULL C: P */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */
