@@ -446,29 +446,17 @@ static void kvm_guest_cpu_offline(void *dummy)
 	apf_task_wake_all();
 }
 
-static int kvm_cpu_notify(struct notifier_block *self, unsigned long action,
-			  void *hcpu)
+static int kvm_cpu_online(unsigned int cpu)
 {
-	int cpu = (unsigned long)hcpu;
-	switch (action) {
-	case CPU_ONLINE:
-	case CPU_DOWN_FAILED:
-	case CPU_ONLINE_FROZEN:
-		smp_call_function_single(cpu, kvm_guest_cpu_online, NULL, 0);
-		break;
-	case CPU_DOWN_PREPARE:
-	case CPU_DOWN_PREPARE_FROZEN:
-		smp_call_function_single(cpu, kvm_guest_cpu_offline, NULL, 1);
-		break;
-	default:
-		break;
-	}
-	return NOTIFY_OK;
+	smp_call_function_single(cpu, kvm_guest_cpu_online, NULL, 0);
+	return 0;
 }
 
-static struct notifier_block kvm_cpu_notifier = {
-        .notifier_call  = kvm_cpu_notify,
-};
+static int kvm_cpu_down_prepare(unsigned int cpu)
+{
+	smp_call_function_single(cpu, kvm_guest_cpu_offline, NULL, 1);
+	return 0;
+}
 #endif
 
 static void __init kvm_apf_trap_init(void)
@@ -503,7 +491,8 @@ void __init kvm_guest_init(void)
 
 #ifdef CONFIG_SMP
 	smp_ops.smp_prepare_boot_cpu = kvm_smp_prepare_boot_cpu;
-	register_cpu_notifier(&kvm_cpu_notifier);
+	cpuhp_setup_state_nocalls(CPUHP_X86_KVM_ONLINE, kvm_cpu_online,
+				  kvm_cpu_down_prepare);
 #else
 	kvm_guest_cpu_init();
 #endif

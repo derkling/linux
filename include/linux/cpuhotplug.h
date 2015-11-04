@@ -128,6 +128,7 @@ enum cpuhp_state {
 	CPUHP_CPUIDLE_POWERNV_ONLINE,	/* P: 0 S: powernv_cpuidle_cpu_online T: NULL C: P */
 	CPUHP_CPUIDLE_COUPLED_ONLINE,	/* P: 0 S: coupled_cpu_online T: coupled_cpu_up_prepare C: P */
 	CPUHP_BUS_CDMM_ONLINE,		/* P: 0 S: mips_cdmm_cpu_online T: mips_cdmm_cpu_down_prep C: I */
+	CPUHP_X86_KVM_ONLINE,		/* P: 0 S: kvm_cpu_online T: kvm_cpu_down_prepare C: P */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */
