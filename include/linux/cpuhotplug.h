@@ -42,6 +42,7 @@ enum cpuhp_state {
 	CPUHP_ARM_SHMOBILE_SCU_PREPARE,	/* P: 0 S: shmobile_scu_cpu_prepare T: NULL C: P */
 	CPUHP_SH_SH3X_PREPARE,		/* P: 0 S: shx3_cpu_prepare T: NULL C: P */
 	CPUHP_X86_MICRCODE_PREPARE,	/* P: 0 S: nmc_cpu_prepare T: mc_cpu_dead C: P */
+	CPUHP_NOTF_ERR_INJ_PREPARE,	/* P: 0 S: notf_err_inj_up_prepare T: notf_err_inj_dead C: P */
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
 	CPUHP_X86_APB_DEAD,		/* P: -20 S: NULL T: apbt_cpu_dead C: I */
