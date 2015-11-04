@@ -34,6 +34,7 @@ enum cpuhp_state {
 	CPUHP_AP_IRQ_GICV3_STARTING,		/* P: 100 S: gic_starting_cpu T: NULL C: P */
 	CPUHP_AP_IRQ_HIP04_STARTING,		/* P: 100 S: hip04_irq_starting_cpu T: NULL C: I */
 	CPUHP_AP_IRQ_ARMADA_XP_STARTING,	/* P: 100 S: armada_xp_mpic_starting_cpu T: NULL C: I */
+	CPUHP_AP_ARM_MVEBU_COHERENCY,		/* P: 100 S: armada_xp_clear_l2_starting T: NULL C: P */
 	CPUHP_AP_IRQ_ARMADA_CASC_STARTING,	/* P: 100 S: mpic_cascaded_starting_cpu T: NULL C: I */
 	CPUHP_AP_IRQ_BCM2836_STARTING,		/* P: 100 S: bcm2836_cpu_starting T: bcm2836_cpu_dying C: I */
 	CPUHP_AP_PERF_X86_UNCORE_STARTING,	/* P: 21 S: uncore_starting_cpu T: NULL C: I */
