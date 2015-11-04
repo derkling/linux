@@ -23,6 +23,7 @@ enum cpuhp_state {
 	CPUHP_PERF_PREPARE,		/* P: 20 S: perf_event_init_cpu T: perf_event_exit_cpu C: C */
 	CPUHP_SCHED_MIGRATE_PREP,	/* P: 10 S: sched_migration_prepare_cpu T: sched_migration_dead_cpu C: C */
 	CPUHP_WORKQUEUE_PREP,		/* P: 5 S: workqueue_prepare_cpu T: NULL C: C */
+	CPUHP_POWER_NUMA_PREPARE,	/* P: 1 S: ppc_numa_cpu_prepare T: ppc_numa_cpu_dead C: I */
 	CPUHP_RCUTREE_PREPARE,		/* P: 0 S: rcutree_prepare_cpu T: rcutree_dead_cpu C: C */
 	CPUHP_HRTIMERS_PREPARE,		/* P: 0 S: hrtimers_prepare_cpu T: hrtimers_dead_cpu C: C */
 	CPUHP_PROFILE_PREPARE,		/* P: 0 S: profile_prepare_cpu T: profile_dead_cpu C: I */
