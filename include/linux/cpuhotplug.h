@@ -155,6 +155,7 @@ enum cpuhp_state {
 	CPUHP_ACPI_CPUDRV_ONLINE,	/* P: 0 S: acpi_soft_cpu_online T: NULL C: P */
 	CPUHP_CPUFREQ_ONLINE,		/* P: 0 S: cpufreq_online T: cpufreq_offline_prepare C: P */
 	CPUHP_THERMAL_POWERCLMP_ONLINE,	/* P: 0 S: powerclamp_cpu_online T: NULL C: P */
+	CPUHP_PADATA_ONLINE,		/* P: 0 S: padata_cpu_online T: padata_cpu_prep_down C: P */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */

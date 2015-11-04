@@ -832,52 +832,60 @@ static inline int pinst_has_cpu(struct padata_instance *pinst, int cpu)
 		cpumask_test_cpu(cpu, pinst->cpumask.cbcpu);
 }
 
+static LIST_HEAD(padata_inst_list);
+static DEFINE_MUTEX(padata_inst_lock);
 
-static int padata_cpu_callback(struct notifier_block *nfb,
-			       unsigned long action, void *hcpu)
+static int padata_cpu_online(unsigned int cpu)
 {
-	int err;
 	struct padata_instance *pinst;
-	int cpu = (unsigned long)hcpu;
+	int err = 0;
 
-	pinst = container_of(nfb, struct padata_instance, cpu_notifier);
+	mutex_lock(&padata_inst_lock);
+	list_for_each_entry(pinst, &padata_inst_list, cpu_notifier) {
 
-	switch (action) {
-	case CPU_ONLINE:
-	case CPU_ONLINE_FROZEN:
-	case CPU_DOWN_FAILED:
-	case CPU_DOWN_FAILED_FROZEN:
 		if (!pinst_has_cpu(pinst, cpu))
-			break;
+			continue;
 		mutex_lock(&pinst->lock);
 		err = __padata_add_cpu(pinst, cpu);
 		mutex_unlock(&pinst->lock);
 		if (err)
-			return notifier_from_errno(err);
-		break;
-
-	case CPU_DOWN_PREPARE:
-	case CPU_DOWN_PREPARE_FROZEN:
-	case CPU_UP_CANCELED:
-	case CPU_UP_CANCELED_FROZEN:
-		if (!pinst_has_cpu(pinst, cpu))
 			break;
+	}
+	mutex_unlock(&padata_inst_lock);
+
+	return err;
+}
+
+static int padata_cpu_prep_down(unsigned int cpu)
+{
+	struct padata_instance *pinst;
+	int err = 0;
+
+	mutex_lock(&padata_inst_lock);
+	list_for_each_entry(pinst, &padata_inst_list, cpu_notifier) {
+
+		if (!pinst_has_cpu(pinst, cpu))
+			continue;
 		mutex_lock(&pinst->lock);
 		err = __padata_remove_cpu(pinst, cpu);
 		mutex_unlock(&pinst->lock);
 		if (err)
-			return notifier_from_errno(err);
-		break;
+			break;
 	}
+	mutex_unlock(&padata_inst_lock);
 
-	return NOTIFY_OK;
+	return err;
 }
 #endif
 
 static void __padata_free(struct padata_instance *pinst)
 {
 #ifdef CONFIG_HOTPLUG_CPU
-	unregister_hotcpu_notifier(&pinst->cpu_notifier);
+	mutex_lock(&padata_inst_lock);
+	list_del(&pinst->cpu_notifier);
+	if (list_empty(&padata_inst_list))
+		cpuhp_remove_state_nocalls(CPUHP_PADATA_ONLINE);
+	mutex_unlock(&padata_inst_lock);
 #endif
 
 	padata_stop(pinst);
@@ -1075,9 +1083,13 @@ struct padata_instance *padata_alloc(struct workqueue_struct *wq,
 	mutex_init(&pinst->lock);
 
 #ifdef CONFIG_HOTPLUG_CPU
-	pinst->cpu_notifier.notifier_call = padata_cpu_callback;
-	pinst->cpu_notifier.priority = 0;
-	register_hotcpu_notifier(&pinst->cpu_notifier);
+	mutex_lock(&padata_inst_lock);
+	if (list_empty(&padata_inst_list))
+		cpuhp_setup_state_nocalls(CPUHP_PADATA_ONLINE,
+					  padata_cpu_online,
+					  padata_cpu_prep_down);
+	list_add_tail(&pinst->cpu_notifier, &padata_inst_list);
+	mutex_unlock(&padata_inst_lock);
 #endif
 
 	return pinst;
