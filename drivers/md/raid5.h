@@ -511,7 +511,7 @@ struct r5conf {
 					      */
 	} __percpu *percpu;
 #ifdef CONFIG_HOTPLUG_CPU
-	struct notifier_block	cpu_notify;
+	struct list_head	cpu_notify;
 #endif
 
 	/*

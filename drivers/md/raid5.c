@@ -70,6 +70,10 @@ module_param(devices_handle_discard_safely, bool, 0644);
 MODULE_PARM_DESC(devices_handle_discard_safely,
 		 "Set to Y if all devices in each array reliably return zeroes on reads from discarded regions");
 static struct workqueue_struct *raid5_wq;
+#ifdef CONFIG_HOTPLUG_CPU
+static LIST_HEAD(conf_list);
+static DEFINE_MUTEX(conf_list_lock);
+#endif
 /*
  * Stripe cache
  */
@@ -6332,9 +6336,10 @@ static void raid5_free_percpu(struct r5conf *conf)
 		return;
 
 #ifdef CONFIG_HOTPLUG_CPU
-	unregister_cpu_notifier(&conf->cpu_notify);
+	mutex_lock(&conf_list_lock);
+	list_del(&conf->cpu_notify);
+	mutex_unlock(&conf_list_lock);
 #endif
-
 	get_online_cpus();
 	for_each_possible_cpu(cpu)
 		free_scratch_buffer(conf, per_cpu_ptr(conf->percpu, cpu));
@@ -6359,31 +6364,41 @@ static void free_conf(struct r5conf *conf)
 }
 
 #ifdef CONFIG_HOTPLUG_CPU
-static int raid456_cpu_notify(struct notifier_block *nfb, unsigned long action,
-			      void *hcpu)
+static int raid456_cpu_up_prepare(unsigned int cpu)
 {
-	struct r5conf *conf = container_of(nfb, struct r5conf, cpu_notify);
-	long cpu = (long)hcpu;
-	struct raid5_percpu *percpu = per_cpu_ptr(conf->percpu, cpu);
+	struct r5conf *conf;
+	int ret = 0;
 
-	switch (action) {
-	case CPU_UP_PREPARE:
-	case CPU_UP_PREPARE_FROZEN:
+	mutex_lock(&conf_list_lock);
+	list_for_each_entry(conf, &conf_list, cpu_notify) {
+		struct raid5_percpu *percpu = per_cpu_ptr(conf->percpu, cpu);
+
 		if (alloc_scratch_buffer(conf, percpu)) {
-			pr_err("%s: failed memory allocation for cpu%ld\n",
+			pr_err("%s: failed memory allocation for cpu%u\n",
 			       __func__, cpu);
-			return notifier_from_errno(-ENOMEM);
+			ret = -ENOMEM;
+			goto out_unlock;
 		}
-		break;
-	case CPU_DEAD:
-	case CPU_DEAD_FROZEN:
-		free_scratch_buffer(conf, per_cpu_ptr(conf->percpu, cpu));
-		break;
-	default:
-		break;
 	}
-	return NOTIFY_OK;
+out_unlock:
+	mutex_unlock(&conf_list_lock);
+	return ret;
 }
+
+static int raid456_cpu_dead(unsigned int cpu)
+{
+	struct r5conf *conf;
+
+	mutex_lock(&conf_list_lock);
+	list_for_each_entry(conf, &conf_list, cpu_notify)
+		free_scratch_buffer(conf, per_cpu_ptr(conf->percpu, cpu));
+
+	mutex_unlock(&conf_list_lock);
+	return 0;
+}
+#else
+#define raid456_cpu_up_prepare	NULL
+#define raid456_cpu_dead	NULL
 #endif
 
 static int raid5_alloc_percpu(struct r5conf *conf)
@@ -6396,11 +6411,9 @@ static int raid5_alloc_percpu(struct r5conf *conf)
 		return -ENOMEM;
 
 #ifdef CONFIG_HOTPLUG_CPU
-	conf->cpu_notify.notifier_call = raid456_cpu_notify;
-	conf->cpu_notify.priority = 0;
-	err = register_cpu_notifier(&conf->cpu_notify);
-	if (err)
-		return err;
+	mutex_lock(&conf_list_lock);
+	list_add_tail(&conf->cpu_notify, &conf_list);
+	mutex_unlock(&conf_list_lock);
 #endif
 
 	get_online_cpus();
@@ -7916,10 +7929,19 @@ static struct md_personality raid4_personality =
 
 static int __init raid5_init(void)
 {
+	int ret;
+
 	raid5_wq = alloc_workqueue("raid5wq",
 		WQ_UNBOUND|WQ_MEM_RECLAIM|WQ_CPU_INTENSIVE|WQ_SYSFS, 0);
 	if (!raid5_wq)
 		return -ENOMEM;
+	ret = cpuhp_setup_state_nocalls(CPUHP_MD_RAID5_PREPARE,
+					raid456_cpu_up_prepare,
+					raid456_cpu_dead);
+	if (ret) {
+		destroy_workqueue(raid5_wq);
+		return ret;
+	}
 	register_md_personality(&raid6_personality);
 	register_md_personality(&raid5_personality);
 	register_md_personality(&raid4_personality);
@@ -7931,6 +7953,7 @@ static void raid5_exit(void)
 	unregister_md_personality(&raid6_personality);
 	unregister_md_personality(&raid5_personality);
 	unregister_md_personality(&raid4_personality);
+	cpuhp_remove_state_nocalls(CPUHP_MD_RAID5_PREPARE);
 	destroy_workqueue(raid5_wq);
 }
 
