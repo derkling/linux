@@ -571,53 +571,50 @@ static void end_power_clamp(void)
 	}
 }
 
-static int powerclamp_cpu_callback(struct notifier_block *nfb,
-				unsigned long action, void *hcpu)
+static int powerclamp_cpu_online(unsigned int cpu)
 {
-	unsigned long cpu = (unsigned long)hcpu;
 	struct task_struct *thread;
 	struct task_struct **percpu_thread =
 		per_cpu_ptr(powerclamp_thread, cpu);
 
-	if (false == clamping)
-		goto exit_ok;
-
-	switch (action) {
-	case CPU_ONLINE:
-		thread = kthread_create_on_node(clamp_thread,
-						(void *) cpu,
-						cpu_to_node(cpu),
-						"kidle_inject/%lu", cpu);
-		if (likely(!IS_ERR(thread))) {
-			kthread_bind(thread, cpu);
-			wake_up_process(thread);
-			*percpu_thread = thread;
-		}
-		/* prefer BSP as controlling CPU */
-		if (cpu == 0) {
-			control_cpu = 0;
-			smp_mb();
-		}
-		break;
-	case CPU_DEAD:
-		if (test_bit(cpu, cpu_clamping_mask)) {
-			pr_err("cpu %lu dead but powerclamping thread is not\n",
-				cpu);
-			kthread_stop(*percpu_thread);
-		}
-		if (cpu == control_cpu) {
-			control_cpu = smp_processor_id();
-			smp_mb();
-		}
+	if (clamping == false)
+		return 0;
+	thread = kthread_create_on_node(clamp_thread,
+					(void *) (long)cpu,
+					cpu_to_node(cpu),
+					"kidle_inject/%u", cpu);
+	if (likely(!IS_ERR(thread))) {
+		kthread_bind(thread, cpu);
+		wake_up_process(thread);
+		*percpu_thread = thread;
 	}
-
-exit_ok:
-	return NOTIFY_OK;
+	/* prefer BSP as controlling CPU */
+	if (cpu == 0) {
+		control_cpu = 0;
+		smp_mb();
+	}
+	return 0;
 }
 
-static struct notifier_block powerclamp_cpu_notifier = {
-	.notifier_call = powerclamp_cpu_callback,
-};
+static int powerclamp_cpu_dead(unsigned int cpu)
+{
+	struct task_struct **percpu_thread =
+		per_cpu_ptr(powerclamp_thread, cpu);
+
+	if (clamping == false)
+		return 0;
+
+	if (test_bit(cpu, cpu_clamping_mask)) {
+		pr_err("cpu %u dead but powerclamping thread is not\n",
+		       cpu);
+		kthread_stop(*percpu_thread);
+	}
+	if (cpu == control_cpu) {
+		control_cpu = smp_processor_id();
+		smp_mb();
+	}
+	return 0;
+}
 
 static int powerclamp_get_max_state(struct thermal_cooling_device *cdev,
 				 unsigned long *state)
@@ -788,7 +785,10 @@ static int __init powerclamp_init(void)
 
 	/* set default limit, maybe adjusted during runtime based on feedback */
 	window_size = 2;
-	register_hotcpu_notifier(&powerclamp_cpu_notifier);
+	cpuhp_setup_state_nocalls(CPUHP_THERMAL_POWERCLMP_ONLINE,
+				  powerclamp_cpu_online, NULL);
+	cpuhp_setup_state_nocalls(CPUHP_THERMAL_POWERCLMP_DEAD, NULL,
+				  powerclamp_cpu_dead);
 
 	powerclamp_thread = alloc_percpu(struct task_struct *);
 	if (!powerclamp_thread) {
@@ -813,7 +813,8 @@ static int __init powerclamp_init(void)
 exit_free_thread:
 	free_percpu(powerclamp_thread);
 exit_unregister:
-	unregister_hotcpu_notifier(&powerclamp_cpu_notifier);
+	cpuhp_remove_state_nocalls(CPUHP_THERMAL_POWERCLMP_DEAD);
+	cpuhp_remove_state_nocalls(CPUHP_THERMAL_POWERCLMP_ONLINE);
 exit_free:
 	kfree(cpu_clamping_mask);
 	return retval;
@@ -822,7 +823,8 @@ module_init(powerclamp_init);
 
 static void __exit powerclamp_exit(void)
 {
-	unregister_hotcpu_notifier(&powerclamp_cpu_notifier);
+	cpuhp_remove_state_nocalls(CPUHP_THERMAL_POWERCLMP_DEAD);
+	cpuhp_remove_state_nocalls(CPUHP_THERMAL_POWERCLMP_ONLINE);
 	end_power_clamp();
 	free_percpu(powerclamp_thread);
 	thermal_cooling_device_unregister(cooling_dev);
