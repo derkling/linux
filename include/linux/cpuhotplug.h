@@ -58,7 +58,6 @@ enum cpuhp_state {
 	CPUHP_MM_ZS_PREPARE,		/* P: 0 S: zs_cpu_prepare T: zs_cpu_dead C: I */
 	CPUHP_MM_ZSWP_MEM_PREPARE,	/* P: 0 S: zswap_dstmem_cpu_prepare T: zswap_dstmem_cpu_dead C: I */
 	CPUHP_MM_ZSWP_POOL_PREPARE,	/* P: 0 S: zswap_cpu_comp_prepare T: zswap_cpu_comp_dead C: P */
-	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
 	CPUHP_X86_APB_DEAD,		/* P: -20 S: NULL T: apbt_cpu_dead C: I */
 	CPUHP_X86_HPET_DEAD,		/* P: -20 S: NULL T: hpet_cpuhp_dead C: I */
@@ -227,8 +226,6 @@ enum cpuhp_state {
 	CPUHP_ARM_BL_PREDOWN,		/* P: 0 S: NULL T: bL_switcher_cpu_pre C: P */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_X86_KVM_CLK_ONLINE,	/* P: INT_MIN+1 S: kvmclock_cpu_online T: NULL C: I */
-	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
-	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */
 	CPUHP_MAX,
 };
 

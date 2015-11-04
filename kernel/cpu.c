@@ -54,15 +54,11 @@ void cpu_maps_update_begin(void)
 {
 	mutex_lock(&cpu_add_remove_lock);
 }
-EXPORT_SYMBOL(cpu_notifier_register_begin);
 
 void cpu_maps_update_done(void)
 {
 	mutex_unlock(&cpu_add_remove_lock);
 }
-EXPORT_SYMBOL(cpu_notifier_register_done);
-
-static RAW_NOTIFIER_HEAD(cpu_chain);
 
 /* If set, cpu_up and cpu_down will return -EBUSY and do nothing.
  * Should always be manipulated under cpu_add_remove_lock
@@ -205,61 +201,7 @@ void cpu_hotplug_enable(void)
 EXPORT_SYMBOL_GPL(cpu_hotplug_enable);
 #endif	/* CONFIG_HOTPLUG_CPU */
 
-/* Need to know about CPUs going up/down? */
-int register_cpu_notifier(struct notifier_block *nb)
-{
-	int ret;
-	cpu_maps_update_begin();
-	ret = raw_notifier_chain_register(&cpu_chain, nb);
-	cpu_maps_update_done();
-	return ret;
-}
-
-int __register_cpu_notifier(struct notifier_block *nb)
-{
-	return raw_notifier_chain_register(&cpu_chain, nb);
-}
-
-static int __cpu_notify(unsigned long val, unsigned int cpu, int nr_to_call,
-			int *nr_calls)
-{
-	unsigned long mod = cpuhp_tasks_frozen ? CPU_TASKS_FROZEN : 0;
-	void *hcpu = (void *)(long)cpu;
-
-	int ret;
-
-	ret = __raw_notifier_call_chain(&cpu_chain, val | mod, hcpu, nr_to_call,
-					nr_calls);
-
-	return notifier_to_errno(ret);
-}
-
-static int cpu_notify(unsigned long val, unsigned int cpu)
-{
-	return __cpu_notify(val, cpu, -1, NULL);
-}
-
 /* Notifier wrappers for transitioning to state machine */
-static int notify_prepare(unsigned int cpu)
-{
-	int nr_calls = 0;
-	int ret;
-
-	ret = __cpu_notify(CPU_UP_PREPARE, cpu, -1, &nr_calls);
-	if (ret) {
-		nr_calls--;
-		printk(KERN_WARNING "%s: attempt to bring up CPU %u failed\n",
-				__func__, cpu);
-		__cpu_notify(CPU_UP_CANCELED, cpu, nr_calls, NULL);
-	}
-	return ret;
-}
-
-static int notify_online(unsigned int cpu)
-{
-	cpu_notify(CPU_ONLINE, cpu);
-	return 0;
-}
 
 static int bringup_cpu(unsigned int cpu)
 {
@@ -268,32 +210,14 @@ static int bringup_cpu(unsigned int cpu)
 
 	/* Arch-specific enabling code. */
 	ret = __cpu_up(cpu, idle);
-	if (ret) {
-		cpu_notify(CPU_UP_CANCELED, cpu);
+	if (ret)
 		return ret;
-	}
+
 	BUG_ON(!cpu_online(cpu));
 	return 0;
 }
 
 #ifdef CONFIG_HOTPLUG_CPU
-EXPORT_SYMBOL(register_cpu_notifier);
-EXPORT_SYMBOL(__register_cpu_notifier);
-
-void unregister_cpu_notifier(struct notifier_block *nb)
-{
-	cpu_maps_update_begin();
-	raw_notifier_chain_unregister(&cpu_chain, nb);
-	cpu_maps_update_done();
-}
-EXPORT_SYMBOL(unregister_cpu_notifier);
-
-void __unregister_cpu_notifier(struct notifier_block *nb)
-{
-	raw_notifier_chain_unregister(&cpu_chain, nb);
-}
-EXPORT_SYMBOL(__unregister_cpu_notifier);
-
 /**
  * clear_tasks_mm_cpumask - Safely clear tasks' mm_cpumask for a CPU
  * @cpu: a CPU id
@@ -359,25 +283,6 @@ static inline void check_for_tasks(int dead_cpu)
 	read_unlock(&tasklist_lock);
 }
 
-static void cpu_notify_nofail(unsigned long val, unsigned int cpu)
-{
-	BUG_ON(cpu_notify(val, cpu));
-}
-
-static int notify_down_prepare(unsigned int cpu)
-{
-	int err, nr_calls = 0;
-
-	err = __cpu_notify(CPU_DOWN_PREPARE, cpu, -1, &nr_calls);
-	if (err) {
-		nr_calls--;
-		__cpu_notify(CPU_DOWN_FAILED, cpu, nr_calls, NULL);
-		pr_warn("%s: attempt to take down CPU %u failed\n",
-				__func__, cpu);
-	}
-	return err;
-}
-
 /* Take this CPU down. */
 static int take_cpu_down(void *_param)
 {
@@ -431,7 +336,6 @@ static int takedown_cpu(unsigned int cpu)
 	err = stop_machine(take_cpu_down, NULL, cpumask_of(cpu));
 	if (err) {
 		/* CPU didn't die: tell everyone.  Can't complain. */
-		cpu_notify_nofail(CPU_DOWN_FAILED, cpu);
 		irq_unlock_sparse();
 		return err;
 	}
@@ -462,13 +366,11 @@ static int takedown_cpu(unsigned int cpu)
 
 static int notify_dead(unsigned int cpu)
 {
-	cpu_notify_nofail(CPU_DEAD, cpu);
 	check_for_tasks(cpu);
 	return 0;
 }
 
 #else
-#define notify_down_prepare	NULL
 #define takedown_cpu		NULL
 #define notify_dead		NULL
 #endif
@@ -518,8 +420,6 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen)
 	per_cpu(cpuhp_state, cpu) = step;
 
 	cpu_hotplug_done();
-	if (!ret)
-		cpu_notify_nofail(CPU_POST_DEAD, cpu);
 	return ret;
 }
 
@@ -833,10 +733,6 @@ static struct cpuhp_step cpuhp_bp_states[] = {
 		.startup = trace_rb_cpu_prepare,
 		.teardown = NULL,
 	},
-	[CPUHP_NOTIFY_PREPARE] = {
-		.startup = notify_prepare,
-		.teardown = NULL,
-	},
 	[CPUHP_NOTIFY_DEAD] = {
 		.startup = NULL,
 		.teardown = notify_dead,
@@ -873,17 +769,9 @@ static struct cpuhp_step cpuhp_bp_states[] = {
 		.startup = rcutree_online_cpu,
 		.teardown = rcutree_offline_cpu,
 	},
-	[CPUHP_NOTIFY_ONLINE] = {
-		.startup = notify_online,
-		.teardown = NULL,
-	},
 	[CPUHP_SLAB_ONLINE] = {
 		.startup = slab_online_cpu,
 		.teardown = slab_offline_cpu,
-	},
-	[CPUHP_NOTIFY_DOWN_PREPARE] = {
-		.startup = NULL,
-		.teardown = notify_down_prepare,
 	},
 #endif
 	[CPUHP_MAX] = {
