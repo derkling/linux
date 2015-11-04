@@ -54,6 +54,7 @@ enum cpuhp_state {
 	CPUHP_CPUIDLE_POWERNV_DEAD,	/* P: 0 S: NULL T: powernv_cpuidle_cpu_dead C: P */
 	CPUHP_ARM64_FPSIMD_DEAD,	/* P: 0 S: NULL T: fpsimd_cpu_dead C: P */
 	CPUHP_ARM_OMAP_WAKE_DEAD,	/* P: 0 S: NULL T: omap_wakegen_cpu_dead C: P */
+	CPUHP_BLOCK_IOPOLL_DEAD,	/* P: 0 S: NULL T: blk_iopoll_cpu_dead C: P */
 	CPUHP_SCHED_DEAD,		/* P: INT_MAX S: NULL T: sched_dead_numa_cpu C: P */
 	CPUHP_BRINGUP_CPU,		/* P: __cpu_up S: bringup_cpu T: NULL C: C */
 	CPUHP_AP_OFFLINE,
