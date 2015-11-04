@@ -353,7 +353,7 @@ struct mvneta_port {
 	struct mvneta_rx_queue *rxqs;
 	struct mvneta_tx_queue *txqs;
 	struct net_device *dev;
-	struct notifier_block cpu_notifier;
+	struct list_head cpu_notifier;
 
 	/* Core clock */
 	struct clk *clk;
@@ -2745,17 +2745,18 @@ static void mvneta_percpu_elect(struct mvneta_port *pp)
 	}
 };
 
-static int mvneta_percpu_notifier(struct notifier_block *nfb,
-				  unsigned long action, void *hcpu)
-{
-	struct mvneta_port *pp = container_of(nfb, struct mvneta_port,
-					      cpu_notifier);
-	int cpu = (unsigned long)hcpu, other_cpu;
-	struct mvneta_pcpu_port *port = per_cpu_ptr(pp->ports, cpu);
+static LIST_HEAD(mvneta_port_list);
+static DEFINE_MUTEX(port_list_lock);
 
-	switch (action) {
-	case CPU_ONLINE:
-	case CPU_ONLINE_FROZEN:
+static int mvneta_cpu_online(unsigned int cpu)
+{
+	int other_cpu;
+	struct mvneta_port *pp;
+
+	mutex_lock(&port_list_lock);
+	list_for_each_entry(pp, &mvneta_port_list, cpu_notifier) {
+		struct mvneta_pcpu_port *port = per_cpu_ptr(pp->ports, cpu);
+
 		netif_tx_stop_all_queues(pp->dev);
 
 		/* We have to synchronise on tha napi of each CPU
@@ -2791,9 +2792,19 @@ static int mvneta_percpu_notifier(struct notifier_block *nfb,
 			MVNETA_CAUSE_LINK_CHANGE |
 			MVNETA_CAUSE_PSC_SYNC_CHANGE);
 		netif_tx_start_all_queues(pp->dev);
-		break;
-	case CPU_DOWN_PREPARE:
-	case CPU_DOWN_PREPARE_FROZEN:
+	}
+	mutex_unlock(&port_list_lock);
+	return 0;
+}
+
+static int mvneta_cpu_down_prepare(unsigned int cpu)
+{
+	struct mvneta_port *pp;
+
+	mutex_lock(&port_list_lock);
+	list_for_each_entry(pp, &mvneta_port_list, cpu_notifier) {
+		struct mvneta_pcpu_port *port = per_cpu_ptr(pp->ports, cpu);
+
 		netif_tx_stop_all_queues(pp->dev);
 		/* Mask all ethernet port interrupts */
 		mvreg_write(pp, MVNETA_INTR_NEW_MASK, 0);
@@ -2807,10 +2818,18 @@ static int mvneta_percpu_notifier(struct notifier_block *nfb,
 		 */
 		smp_call_function_single(cpu, mvneta_percpu_disable,
 					 pp, true);
+	}
+	mutex_unlock(&port_list_lock);
+	return 0;
+}
 
-		break;
-	case CPU_DEAD:
-	case CPU_DEAD_FROZEN:
+static int mvneta_cpu_dead(unsigned int cpu)
+{
+	struct mvneta_port *pp;
+
+	mutex_lock(&port_list_lock);
+	list_for_each_entry(pp, &mvneta_port_list, cpu_notifier) {
+
 		/* Check if a new CPU must be elected now this on is down */
 		mvneta_percpu_elect(pp);
 		/* Unmask all ethernet port interrupts */
@@ -2823,10 +2842,9 @@ static int mvneta_percpu_notifier(struct notifier_block *nfb,
 			MVNETA_CAUSE_LINK_CHANGE |
 			MVNETA_CAUSE_PSC_SYNC_CHANGE);
 		netif_tx_start_all_queues(pp->dev);
-		break;
 	}
-
-	return NOTIFY_OK;
+	mutex_unlock(&port_list_lock);
+	return 0;
 }
 
 static int mvneta_open(struct net_device *dev)
@@ -2868,7 +2886,9 @@ static int mvneta_open(struct net_device *dev)
 	/* Register a CPU notifier to handle the case where our CPU
 	 * might be taken offline.
 	 */
-	register_cpu_notifier(&pp->cpu_notifier);
+	mutex_lock(&port_list_lock);
+	list_add_tail(&pp->cpu_notifier, &mvneta_port_list);
+	mutex_unlock(&port_list_lock);
 
 	/* In default link is down */
 	netif_carrier_off(pp->dev);
@@ -2876,14 +2896,18 @@ static int mvneta_open(struct net_device *dev)
 	ret = mvneta_mdio_probe(pp);
 	if (ret < 0) {
 		netdev_err(dev, "cannot probe MDIO bus\n");
-		goto err_free_irq;
+		goto err_rm_cpuhp;
 	}
 
 	mvneta_start_dev(pp);
 
 	return 0;
 
-err_free_irq:
+err_rm_cpuhp:
+	mutex_lock(&port_list_lock);
+	list_del(&pp->cpu_notifier);
+	mutex_unlock(&port_list_lock);
+
 	free_percpu_irq(pp->dev->irq, pp->ports);
 err_cleanup_txqs:
 	mvneta_cleanup_txqs(pp);
@@ -2900,7 +2924,11 @@ static int mvneta_stop(struct net_device *dev)
 
 	mvneta_stop_dev(pp);
 	mvneta_mdio_remove(pp);
-	unregister_cpu_notifier(&pp->cpu_notifier);
+
+	mutex_lock(&port_list_lock);
+	list_del(&pp->cpu_notifier);
+	mutex_unlock(&port_list_lock);
+
 	for_each_present_cpu(cpu)
 		smp_call_function_single(cpu, mvneta_percpu_disable, pp, true);
 	free_percpu_irq(dev->irq, pp->ports);
@@ -3304,7 +3332,6 @@ static int mvneta_probe(struct platform_device *pdev)
 	err = of_property_read_string(dn, "managed", &managed);
 	pp->use_inband_status = (err == 0 &&
 				 strcmp(managed, "in-band-status") == 0);
-	pp->cpu_notifier.notifier_call = mvneta_percpu_notifier;
 
 	pp->clk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(pp->clk)) {
@@ -3455,7 +3482,39 @@ static struct platform_driver mvneta_driver = {
 	},
 };
 
-module_platform_driver(mvneta_driver);
+static int __init mvneta_driver_init(void)
+{
+	int ret;
+
+	ret = cpuhp_setup_state_nocalls(CPUHP_NET_MVNETA_ONLINE,
+					mvneta_cpu_online,
+					mvneta_cpu_down_prepare);
+	if (ret)
+		goto err;
+	ret = cpuhp_setup_state_nocalls(CPUHP_NET_MVNETA_DEAD, NULL,
+					mvneta_cpu_dead);
+	if (ret)
+		goto err;
+
+	ret = platform_driver_register(&mvneta_driver);
+	if (ret)
+		goto err;
+	return 0;
+
+err:
+	cpuhp_remove_state_nocalls(CPUHP_NET_MVNETA_ONLINE);
+	cpuhp_remove_state_nocalls(CPUHP_NET_MVNETA_DEAD);
+	return ret;
+}
+module_init(mvneta_driver_init);
+
+static void __exit mvneta_driver_exit(void)
+{
+	platform_driver_unregister(&mvneta_driver);
+	cpuhp_remove_state_nocalls(CPUHP_NET_MVNETA_ONLINE);
+	cpuhp_remove_state_nocalls(CPUHP_NET_MVNETA_DEAD);
+}
+module_exit(mvneta_driver_exit);
 
 MODULE_DESCRIPTION("Marvell NETA Ethernet Driver - www.marvell.com");
 MODULE_AUTHOR("Rami Rosen <rosenr@marvell.com>, Thomas Petazzoni <thomas.petazzoni@free-electrons.com>");
