@@ -40,6 +40,7 @@ enum cpuhp_state {
 	CPUHP_POWER_MMU_CTX_PREPARE,	/* P: 0 S: mmu_ctx_cpu_prepare T: mmu_ctx_cpu_dead C: P */
 	CPUHP_ARM_SHMOBILE_SCU_PREPARE,	/* P: 0 S: shmobile_scu_cpu_prepare T: NULL C: P */
 	CPUHP_SH_SH3X_PREPARE,		/* P: 0 S: shx3_cpu_prepare T: NULL C: P */
+	CPUHP_X86_MICRCODE_PREPARE,	/* P: 0 S: nmc_cpu_prepare T: mc_cpu_dead C: P */
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
 	CPUHP_X86_APB_DEAD,		/* P: -20 S: NULL T: apbt_cpu_dead C: I */
@@ -140,6 +141,7 @@ enum cpuhp_state {
 	CPUHP_POWER_PMAC_ONLINE,	/* P: 0 S: smp_core99_cpu_online T: NULL C: P */
 	CPUHP_ARM_OMAP_WAKE_ONLINE,	/* P: 0 S: omap_wakegen_cpu_online T: NULL C: P */
 	CPUHP_IA64_MCA_ONLINE,		/* P: 0 S: mca_cpu_online T: NULL C: I */
+	CPUHP_X86_MICRCODE_ONLINE,	/* P: 0 S: mc_cpu_online T: mc_cpu_down_prep C: P */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */

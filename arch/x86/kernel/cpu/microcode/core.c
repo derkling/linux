@@ -566,54 +566,47 @@ static struct syscore_ops mc_syscore_ops = {
 	.resume			= mc_bp_resume,
 };
 
-static int
-mc_cpu_callback(struct notifier_block *nb, unsigned long action, void *hcpu)
+static int mc_cpu_online(unsigned int cpu)
 {
-	unsigned int cpu = (unsigned long)hcpu;
 	struct device *dev;
 
 	dev = get_cpu_device(cpu);
+	microcode_update_cpu(cpu);
+	pr_debug("CPU%d added\n", cpu);
 
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_ONLINE:
-		microcode_update_cpu(cpu);
-		pr_debug("CPU%d added\n", cpu);
-		/*
-		 * "break" is missing on purpose here because we want to fall
-		 * through in order to create the sysfs group.
-		 */
-
-	case CPU_DOWN_FAILED:
-		if (sysfs_create_group(&dev->kobj, &mc_attr_group))
-			pr_err("Failed to create group for CPU%d\n", cpu);
-		break;
-
-	case CPU_DOWN_PREPARE:
-		/* Suspend is in progress, only remove the interface */
-		sysfs_remove_group(&dev->kobj, &mc_attr_group);
-		pr_debug("CPU%d removed\n", cpu);
-		break;
-
-	/*
-	 * case CPU_DEAD:
-	 *
-	 * When a CPU goes offline, don't free up or invalidate the copy of
-	 * the microcode in kernel memory, so that we can reuse it when the
-	 * CPU comes back online without unnecessarily requesting the userspace
-	 * for it again.
-	 */
-	}
-
-	/* The CPU refused to come up during a system resume */
-	if (action == CPU_UP_CANCELED_FROZEN)
-		microcode_fini_cpu(cpu);
-
-	return NOTIFY_OK;
+	if (sysfs_create_group(&dev->kobj, &mc_attr_group))
+		pr_err("Failed to create group for CPU%d\n", cpu);
+	return 0;
 }
 
-static struct notifier_block mc_cpu_notifier = {
-	.notifier_call	= mc_cpu_callback,
-};
+static int mc_cpu_down_prep(unsigned int cpu)
+{
+	struct device *dev;
+
+	dev = get_cpu_device(cpu);
+	/* Suspend is in progress, only remove the interface */
+	sysfs_remove_group(&dev->kobj, &mc_attr_group);
+	pr_debug("CPU%d removed\n", cpu);
+	return 0;
+}
+
+static int nmc_cpu_prepare(unsigned int cpu)
+{
+	/*
+	 * this is just a dummy to ensure that the tear down callback is
+	 * invoked on rollback
+	 */
+	return 0;
+}
+
+static int mc_cpu_dead(unsigned int cpu)
+{
+ #ifdef CONFIG_SMP
+	if (cpuhp_tasks_frozen)
+		microcode_fini_cpu(cpu);
+#endif
+	return 0;
+}
 
 static struct attribute *cpu_root_microcode_attrs[] = {
 	&dev_attr_reload.attr,
@@ -673,7 +666,10 @@ int __init microcode_init(void)
 		goto out_ucode_group;
 
 	register_syscore_ops(&mc_syscore_ops);
-	register_hotcpu_notifier(&mc_cpu_notifier);
+	cpuhp_setup_state_nocalls(CPUHP_X86_MICRCODE_ONLINE, mc_cpu_online,
+				  mc_cpu_down_prep);
+	cpuhp_setup_state_nocalls(CPUHP_X86_MICRCODE_PREPARE, nmc_cpu_prepare,
+				  mc_cpu_dead);
 
 	pr_info("Microcode Update Driver: v" MICROCODE_VERSION
 		" <tigran@aivazian.fsnet.co.uk>, Peter Oruba\n");
