@@ -32,6 +32,7 @@ enum cpuhp_state {
 	CPUHP_SLAB_PREPARE,		/* P: 0 S: slab_prepare_cpu T: slab_dead_cpu C: C */
 	CPUHP_XEN_EV_PREPEARE,		/* P: 0 S: xen_evtchn_cpu_prepare T: NULL C: P */
 	CPUHP_MD_RAID5_PREPARE,		/* P: 0 S: raid456_cpu_up_prepare T: raid456_cpu_dead C: P */
+	CPUHP_CPUIDLE_COUPLED_PREPARE,	/* P: 0 S: coupled_cpu_up_prepare T: coupled_cpu_online C: P */
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
 	CPUHP_X86_APB_DEAD,		/* P: -20 S: NULL T: apbt_cpu_dead C: I */
@@ -124,6 +125,7 @@ enum cpuhp_state {
 	CPUHP_NET_MVNETA_ONLINE,	/* P: 0 S: mvneta_cpu_online T: mvneta_cpu_down_prepare C: P */
 	CPUHP_CPUIDLE_PSERIES_ONLINE,	/* P: 0 S: pseries_cpuidle_cpu_online T: NULL C: P */
 	CPUHP_CPUIDLE_POWERNV_ONLINE,	/* P: 0 S: powernv_cpuidle_cpu_online T: NULL C: P */
+	CPUHP_CPUIDLE_COUPLED_ONLINE,	/* P: 0 S: coupled_cpu_online T: coupled_cpu_up_prepare C: P */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */
