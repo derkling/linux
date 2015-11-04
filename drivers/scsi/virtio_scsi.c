@@ -107,8 +107,7 @@ struct virtio_scsi {
 	/* If the affinity hint is set for virtqueues */
 	bool affinity_hint_set;
 
-	/* CPU hotplug notifier */
-	struct notifier_block nb;
+	struct list_head cpu_notifier;
 
 	/* Protected by event_vq lock */
 	bool stop_events;
@@ -852,21 +851,33 @@ static void virtscsi_set_affinity(struct virtio_scsi *vscsi, bool affinity)
 	put_online_cpus();
 }
 
-static int virtscsi_cpu_callback(struct notifier_block *nfb,
-				 unsigned long action, void *hcpu)
+static LIST_HEAD(virtscsi_list);
+static DEFINE_MUTEX(virtscsi_lock);
+
+static int virtscsi_cpu_online(unsigned int cpu)
 {
-	struct virtio_scsi *vscsi = container_of(nfb, struct virtio_scsi, nb);
-	switch(action) {
-	case CPU_ONLINE:
-	case CPU_ONLINE_FROZEN:
-	case CPU_DEAD:
-	case CPU_DEAD_FROZEN:
+	struct virtio_scsi *vscsi;
+
+	mutex_lock(&virtscsi_lock);
+	list_for_each_entry(vscsi, &virtscsi_list, cpu_notifier)
 		__virtscsi_set_affinity(vscsi, true);
-		break;
-	default:
-		break;
-	}
-	return NOTIFY_OK;
+
+	mutex_unlock(&virtscsi_lock);
+	return 0;
+}
+
+static void virtscsi_cpu_notif_add(struct virtio_scsi *vi)
+{
+	mutex_lock(&virtscsi_lock);
+	list_add_tail(&vi->cpu_notifier, &virtscsi_list);
+	mutex_unlock(&virtscsi_lock);
+}
+
+static void virtscsi_cpu_notif_remove(struct virtio_scsi *vi)
+{
+	mutex_lock(&virtscsi_lock);
+	list_del(&vi->cpu_notifier);
+	mutex_unlock(&virtscsi_lock);
 }
 
 static void virtscsi_init_vq(struct virtio_scsi_vq *virtscsi_vq,
@@ -987,12 +998,7 @@ static int virtscsi_probe(struct virtio_device *vdev)
 	if (err)
 		goto virtscsi_init_failed;
 
-	vscsi->nb.notifier_call = &virtscsi_cpu_callback;
-	err = register_hotcpu_notifier(&vscsi->nb);
-	if (err) {
-		pr_err("registering cpu notifier failed\n");
-		goto scsi_add_host_failed;
-	}
+	virtscsi_cpu_notif_add(vscsi);
 
 	cmd_per_lun = virtscsi_config_get(vdev, cmd_per_lun) ?: 1;
 	shost->cmd_per_lun = min_t(u32, cmd_per_lun, shost->can_queue);
@@ -1049,7 +1055,7 @@ static void virtscsi_remove(struct virtio_device *vdev)
 
 	scsi_remove_host(shost);
 
-	unregister_hotcpu_notifier(&vscsi->nb);
+	virtscsi_cpu_notif_remove(vscsi);
 
 	virtscsi_remove_vqs(vdev);
 	scsi_host_put(shost);
@@ -1061,7 +1067,7 @@ static int virtscsi_freeze(struct virtio_device *vdev)
 	struct Scsi_Host *sh = virtio_scsi_host(vdev);
 	struct virtio_scsi *vscsi = shost_priv(sh);
 
-	unregister_hotcpu_notifier(&vscsi->nb);
+	virtscsi_cpu_notif_remove(vscsi);
 	virtscsi_remove_vqs(vdev);
 	return 0;
 }
@@ -1076,12 +1082,7 @@ static int virtscsi_restore(struct virtio_device *vdev)
 	if (err)
 		return err;
 
-	err = register_hotcpu_notifier(&vscsi->nb);
-	if (err) {
-		vdev->config->del_vqs(vdev);
-		return err;
-	}
-
+	virtscsi_cpu_notif_add(vscsi);
 	virtio_device_ready(vdev);
 
 	if (virtio_has_feature(vdev, VIRTIO_SCSI_F_HOTPLUG))
@@ -1136,6 +1137,14 @@ static int __init init(void)
 		pr_err("mempool_create() for virtscsi_cmd_pool failed\n");
 		goto error;
 	}
+	ret = cpuhp_setup_state_nocalls(CPUHP_VIRT_SCSI_ONLINE,
+					virtscsi_cpu_online, NULL);
+	if (ret)
+		goto error;
+	ret = cpuhp_setup_state_nocalls(CPUHP_VIRT_SCSI_DEAD, NULL,
+					virtscsi_cpu_online);
+	if (ret)
+		goto error;
 	ret = register_virtio_driver(&virtio_scsi_driver);
 	if (ret < 0)
 		goto error;
@@ -1151,12 +1160,16 @@ error:
 		kmem_cache_destroy(virtscsi_cmd_cache);
 		virtscsi_cmd_cache = NULL;
 	}
+	cpuhp_remove_state_nocalls(CPUHP_VIRT_SCSI_ONLINE);
+	cpuhp_remove_state_nocalls(CPUHP_VIRT_SCSI_DEAD);
 	return ret;
 }
 
 static void __exit fini(void)
 {
 	unregister_virtio_driver(&virtio_scsi_driver);
+	cpuhp_remove_state_nocalls(CPUHP_VIRT_SCSI_ONLINE);
+	cpuhp_remove_state_nocalls(CPUHP_VIRT_SCSI_DEAD);
 	mempool_destroy(virtscsi_cmd_pool);
 	kmem_cache_destroy(virtscsi_cmd_cache);
 }

@@ -57,6 +57,7 @@ enum cpuhp_state {
 	CPUHP_BLOCK_IOPOLL_DEAD,	/* P: 0 S: NULL T: blk_iopoll_cpu_dead C: P */
 	CPUHP_BLOCK_SOFTIRQ_DEAD,	/* P: 0 S: NULL T: blk_softirq_cpu_dead C: P */
 	CPUHP_VIRT_NET_DEAD,		/* P: 0 S: NULL T: virtnet_cpu_online C: P */
+	CPUHP_VIRT_SCSI_DEAD,		/* P: 0 S: NULL T: virtscsi_cpu_online C: P */
 	CPUHP_SCHED_DEAD,		/* P: INT_MAX S: NULL T: sched_dead_numa_cpu C: P */
 	CPUHP_BRINGUP_CPU,		/* P: __cpu_up S: bringup_cpu T: NULL C: C */
 	CPUHP_AP_OFFLINE,
@@ -147,6 +148,7 @@ enum cpuhp_state {
 	CPUHP_X86_MICRCODE_ONLINE,	/* P: 0 S: mc_cpu_online T: mc_cpu_down_prep C: P */
 	CPUHP_OPROFILE_TIMER_ONLINE,	/* P: 0 S: oprofile_timer_online T: oprofile_timer_prep_down C: P */
 	CPUHP_VIRT_NET_ONLINE,		/* P: 0 S: virtnet_cpu_online T: virtnet_cpu_down_prep C: P */
+	CPUHP_VIRT_SCSI_ONLINE,		/* P: 0 S: virtscsi_cpu_online T: NULL C: P */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */
