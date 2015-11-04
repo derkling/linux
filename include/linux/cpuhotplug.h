@@ -34,6 +34,7 @@ enum cpuhp_state {
 	CPUHP_MD_RAID5_PREPARE,		/* P: 0 S: raid456_cpu_up_prepare T: raid456_cpu_dead C: P */
 	CPUHP_CPUIDLE_COUPLED_PREPARE,	/* P: 0 S: coupled_cpu_up_prepare T: coupled_cpu_online C: P */
 	CPUHP_XEN_HVM_GUEST_PREPARE,	/* P: 0 S: xen_hvm_cpu_up_prepare T: NULL C: P */
+	CPUHP_S390_HWS_PREPARE,		/* P: 0 S: s390_hws_cpu_prepare T: s390_hws_cpu_prepare C: P */
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
 	CPUHP_X86_APB_DEAD,		/* P: -20 S: NULL T: apbt_cpu_dead C: I */

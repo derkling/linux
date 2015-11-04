@@ -519,17 +519,12 @@ static struct notifier_block hws_oom_notifier = {
 	.notifier_call = hws_oom_callback
 };
 
-static int hws_cpu_callback(struct notifier_block *nfb,
-	unsigned long action, void *hcpu)
+static int s390_hws_cpu_prepare(unsigned int cpu)
 {
 	/* We do not have sampler space available for all possible CPUs.
 	   All CPUs should be online when hw sampling is activated. */
-	return (hws_state <= HWS_DEALLOCATED) ? NOTIFY_OK : NOTIFY_BAD;
+	return (hws_state <= HWS_DEALLOCATED) ? 0 : -EINVAL;
 }
-
-static struct notifier_block hws_cpu_notifier = {
-	.notifier_call = hws_cpu_callback
-};
 
 /**
  * hwsampler_deactivate() - set hardware sampling temporarily inactive
@@ -1001,7 +996,8 @@ int hwsampler_setup(void)
 	if (!hws_wq)
 		goto setup_exit;
 
-	register_cpu_notifier(&hws_cpu_notifier);
+	cpuhp_setup_state_nocalls(CPUHP_S390_HWS_PREPARE, s390_hws_cpu_prepare,
+				  s390_hws_cpu_prepare);
 
 	for_each_online_cpu(cpu) {
 		cb = &per_cpu(sampler_cpu_buffer, cpu);
@@ -1070,8 +1066,7 @@ int hwsampler_shutdown(void)
 	}
 	mutex_unlock(&hws_sem);
 
-	unregister_cpu_notifier(&hws_cpu_notifier);
-
+	cpuhp_remove_state_nocalls(CPUHP_S390_HWS_PREPARE);
 	return rc;
 }
 
