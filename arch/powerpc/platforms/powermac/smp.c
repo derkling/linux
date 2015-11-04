@@ -852,38 +852,29 @@ static void smp_core99_setup_cpu(int cpu_nr)
 
 #ifdef CONFIG_PPC64
 #ifdef CONFIG_HOTPLUG_CPU
-static int smp_core99_cpu_notify(struct notifier_block *self,
-				 unsigned long action, void *hcpu)
+static int smp_core99_cpu_prepare(unsigned int cpu)
 {
 	int rc;
 
-	switch(action) {
-	case CPU_UP_PREPARE:
-	case CPU_UP_PREPARE_FROZEN:
-		/* Open i2c bus if it was used for tb sync */
-		if (pmac_tb_clock_chip_host) {
-			rc = pmac_i2c_open(pmac_tb_clock_chip_host, 1);
-			if (rc) {
-				pr_err("Failed to open i2c bus for time sync\n");
-				return notifier_from_errno(rc);
-			}
+	/* Open i2c bus if it was used for tb sync */
+	if (pmac_tb_clock_chip_host) {
+		rc = pmac_i2c_open(pmac_tb_clock_chip_host, 1);
+		if (rc) {
+			pr_err("Failed to open i2c bus for time sync\n");
+			return rc;
 		}
-		break;
-	case CPU_ONLINE:
-	case CPU_UP_CANCELED:
-		/* Close i2c bus if it was used for tb sync */
-		if (pmac_tb_clock_chip_host)
-			pmac_i2c_close(pmac_tb_clock_chip_host);
-		break;
-	default:
-		break;
 	}
-	return NOTIFY_OK;
+	return 0;
 }
 
-static struct notifier_block smp_core99_cpu_nb = {
-	.notifier_call	= smp_core99_cpu_notify,
-};
+static int smp_core99_cpu_online(unsigned int cpu)
+{
+	/* Close i2c bus if it was used for tb sync */
+	if (pmac_tb_clock_chip_host)
+		pmac_i2c_close(pmac_tb_clock_chip_host);
+	return 0;
+}
+
 #endif /* CONFIG_HOTPLUG_CPU */
 
 static void __init smp_core99_bringup_done(void)
@@ -903,7 +894,10 @@ static void __init smp_core99_bringup_done(void)
 		g5_phy_disable_cpu1();
 	}
 #ifdef CONFIG_HOTPLUG_CPU
-	register_cpu_notifier(&smp_core99_cpu_nb);
+	cpuhp_setup_state_nocalls(CPUHP_POWER_PMAC_PREPARE,
+				  smp_core99_cpu_prepare, NULL);
+	cpuhp_setup_state_nocalls(CPUHP_POWER_PMAC_ONLINE,
+				  smp_core99_cpu_online, NULL);
 #endif
 
 	if (ppc_md.progress)

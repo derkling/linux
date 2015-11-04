@@ -35,6 +35,7 @@ enum cpuhp_state {
 	CPUHP_CPUIDLE_COUPLED_PREPARE,	/* P: 0 S: coupled_cpu_up_prepare T: coupled_cpu_online C: P */
 	CPUHP_XEN_HVM_GUEST_PREPARE,	/* P: 0 S: xen_hvm_cpu_up_prepare T: NULL C: P */
 	CPUHP_S390_HWS_PREPARE,		/* P: 0 S: s390_hws_cpu_prepare T: s390_hws_cpu_prepare C: P */
+	CPUHP_POWER_PMAC_PREPARE,	/* P: 0 S: smp_core99_cpu_prepare T: NULL C: P */
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
 	CPUHP_X86_APB_DEAD,		/* P: -20 S: NULL T: apbt_cpu_dead C: I */
@@ -130,6 +131,7 @@ enum cpuhp_state {
 	CPUHP_CPUIDLE_COUPLED_ONLINE,	/* P: 0 S: coupled_cpu_online T: coupled_cpu_up_prepare C: P */
 	CPUHP_BUS_CDMM_ONLINE,		/* P: 0 S: mips_cdmm_cpu_online T: mips_cdmm_cpu_down_prep C: I */
 	CPUHP_X86_KVM_ONLINE,		/* P: 0 S: kvm_cpu_online T: kvm_cpu_down_prepare C: P */
+	CPUHP_POWER_PMAC_ONLINE,	/* P: 0 S: smp_core99_cpu_online T: NULL C: P */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */
