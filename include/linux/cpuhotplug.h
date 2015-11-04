@@ -12,6 +12,7 @@ enum cpuhp_state {
 	 *	P: runtime and not invoked (Passive)
 	 */
 	CPUHP_OFFLINE,
+	CPUHP_CPUFREQ_POSTDEAD,		/* P: 0 S: NULL T: cpufreq_offline_finish C: P */
 	CPUHP_CREATE_THREADS,		/* P: _cpu_up S: smpboot_create_threads T: NULL C: C */
 	CPUHP_PERF_X86_UNCORE_PREP,	/* P: 21 S: uncore_prepare_cpu T: uncore_dead_cpu C: I */
 	CPUHP_PERF_X86_AMD_UNCORE_PREP,	/* P: 21 S: amd_uncore_cpu_up_prepare T: amd_uncore_cpu_dead C: I */
@@ -151,6 +152,7 @@ enum cpuhp_state {
 	CPUHP_VIRT_NET_ONLINE,		/* P: 0 S: virtnet_cpu_online T: virtnet_cpu_down_prep C: P */
 	CPUHP_VIRT_SCSI_ONLINE,		/* P: 0 S: virtscsi_cpu_online T: NULL C: P */
 	CPUHP_ACPI_CPUDRV_ONLINE,	/* P: 0 S: acpi_soft_cpu_online T: NULL C: P */
+	CPUHP_CPUFREQ_ONLINE,		/* P: 0 S: cpufreq_online T: cpufreq_offline_prepare C: P */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */
