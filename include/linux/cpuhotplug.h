@@ -30,6 +30,7 @@ enum cpuhp_state {
 	CPUHP_SMPCFD_PREPARE,		/* P: 0 S: smpcfd_prepare_cpu T: smpcfd_dead_cpu C: C */
 	CPUHP_RELAY_PREPARE,		/* P: 0 S: relay_prepare_cpu T: NULL C: C */
 	CPUHP_SLAB_PREPARE,		/* P: 0 S: slab_prepare_cpu T: slab_dead_cpu C: C */
+	CPUHP_XEN_EV_PREPEARE,		/* P: 0 S: xen_evtchn_cpu_prepare T: NULL C: P */
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
 	CPUHP_X86_APB_DEAD,		/* P: -20 S: NULL T: apbt_cpu_dead C: I */
