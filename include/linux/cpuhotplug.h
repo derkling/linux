@@ -144,6 +144,7 @@ enum cpuhp_state {
 	CPUHP_ARM_OMAP_WAKE_ONLINE,	/* P: 0 S: omap_wakegen_cpu_online T: NULL C: P */
 	CPUHP_IA64_MCA_ONLINE,		/* P: 0 S: mca_cpu_online T: NULL C: I */
 	CPUHP_X86_MICRCODE_ONLINE,	/* P: 0 S: mc_cpu_online T: mc_cpu_down_prep C: P */
+	CPUHP_OPROFILE_TIMER_ONLINE,	/* P: 0 S: oprofile_timer_online T: oprofile_timer_prep_down C: P */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */
