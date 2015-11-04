@@ -138,6 +138,7 @@ enum cpuhp_state {
 	CPUHP_X86_KVM_ONLINE,		/* P: 0 S: kvm_cpu_online T: kvm_cpu_down_prepare C: P */
 	CPUHP_POWER_PMAC_ONLINE,	/* P: 0 S: smp_core99_cpu_online T: NULL C: P */
 	CPUHP_ARM_OMAP_WAKE_ONLINE,	/* P: 0 S: omap_wakegen_cpu_online T: NULL C: P */
+	CPUHP_IA64_MCA_ONLINE,		/* P: 0 S: mca_cpu_online T: NULL C: I */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */
