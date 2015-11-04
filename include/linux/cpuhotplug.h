@@ -37,6 +37,7 @@ enum cpuhp_state {
 	CPUHP_SLUB_DEAD,		/* P: 0 S: NULL T: slub_cpu_dead C: P */
 	CPUHP_TIMERS_DEAD,		/* P: 0 S: NULL T: timers_dead_cpu C: C */
 	CPUHP_MM_WRITEBACK_DEAD,	/* P: 0 S: NULL T: page_writeback_cpu_online C: I */
+	CPUHP_SOFTIRQ_DEAD,		/* P: 0 S: NULL T: takeover_tasklets C: P */
 	CPUHP_SCHED_DEAD,		/* P: INT_MAX S: NULL T: sched_dead_numa_cpu C: P */
 	CPUHP_BRINGUP_CPU,		/* P: __cpu_up S: bringup_cpu T: NULL C: C */
 	CPUHP_AP_OFFLINE,
