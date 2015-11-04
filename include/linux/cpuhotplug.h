@@ -51,6 +51,7 @@ enum cpuhp_state {
 	CPUHP_CPUIDLE_PSERIES_DEAD,	/* P: 0 S: NULL T: pseries_cpuidle_cpu_dead C: P */
 	CPUHP_CPUIDLE_POWERNV_DEAD,	/* P: 0 S: NULL T: powernv_cpuidle_cpu_dead C: P */
 	CPUHP_ARM64_FPSIMD_DEAD,	/* P: 0 S: NULL T: fpsimd_cpu_dead C: P */
+	CPUHP_ARM_OMAP_WAKE_DEAD,	/* P: 0 S: NULL T: omap_wakegen_cpu_dead C: P */
 	CPUHP_SCHED_DEAD,		/* P: INT_MAX S: NULL T: sched_dead_numa_cpu C: P */
 	CPUHP_BRINGUP_CPU,		/* P: __cpu_up S: bringup_cpu T: NULL C: C */
 	CPUHP_AP_OFFLINE,
@@ -136,6 +137,7 @@ enum cpuhp_state {
 	CPUHP_BUS_CDMM_ONLINE,		/* P: 0 S: mips_cdmm_cpu_online T: mips_cdmm_cpu_down_prep C: I */
 	CPUHP_X86_KVM_ONLINE,		/* P: 0 S: kvm_cpu_online T: kvm_cpu_down_prepare C: P */
 	CPUHP_POWER_PMAC_ONLINE,	/* P: 0 S: smp_core99_cpu_online T: NULL C: P */
+	CPUHP_ARM_OMAP_WAKE_ONLINE,	/* P: 0 S: omap_wakegen_cpu_online T: NULL C: P */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */
