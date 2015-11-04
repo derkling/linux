@@ -138,8 +138,7 @@ struct virtnet_info {
 	/* Does the affinity hint is set for virtqueues? */
 	bool affinity_hint_set;
 
-	/* CPU hot plug notifier */
-	struct notifier_block nb;
+	struct list_head cpu_notifier;
 };
 
 struct padded_vnet_hdr {
@@ -1286,25 +1285,45 @@ static void virtnet_set_affinity(struct virtnet_info *vi)
 	vi->affinity_hint_set = true;
 }
 
-static int virtnet_cpu_callback(struct notifier_block *nfb,
-			        unsigned long action, void *hcpu)
+static LIST_HEAD(virnet_info_list);
+static DEFINE_MUTEX(virnet_list_lock);
+
+static int virtnet_cpu_online(unsigned int cpu)
 {
-	struct virtnet_info *vi = container_of(nfb, struct virtnet_info, nb);
+	struct virtnet_info *vi;
 
-	switch(action & ~CPU_TASKS_FROZEN) {
-	case CPU_ONLINE:
-	case CPU_DOWN_FAILED:
-	case CPU_DEAD:
+	mutex_lock(&virnet_list_lock);
+	list_for_each_entry(vi, &virnet_info_list, cpu_notifier)
 		virtnet_set_affinity(vi);
-		break;
-	case CPU_DOWN_PREPARE:
-		virtnet_clean_affinity(vi, (long)hcpu);
-		break;
-	default:
-		break;
-	}
 
-	return NOTIFY_OK;
+	mutex_unlock(&virnet_list_lock);
+	return 0;
+}
+
+static int virtnet_cpu_down_prep(unsigned int cpu)
+{
+	struct virtnet_info *vi;
+
+	mutex_lock(&virnet_list_lock);
+	list_for_each_entry(vi, &virnet_info_list, cpu_notifier)
+		virtnet_clean_affinity(vi, cpu);
+
+	mutex_unlock(&virnet_list_lock);
+	return 0;
+}
+
+static void virtnet_cpu_notif_add(struct virtnet_info *vi)
+{
+	mutex_lock(&virnet_list_lock);
+	list_add_tail(&vi->cpu_notifier, &virnet_info_list);
+	mutex_unlock(&virnet_list_lock);
+}
+
+static void virtnet_cpu_notif_remove(struct virtnet_info *vi)
+{
+	mutex_lock(&virnet_list_lock);
+	list_del(&vi->cpu_notifier);
+	mutex_unlock(&virnet_list_lock);
 }
 
 static void virtnet_get_ringparam(struct net_device *dev,
@@ -1875,12 +1894,7 @@ static int virtnet_probe(struct virtio_device *vdev)
 		}
 	}
 
-	vi->nb.notifier_call = &virtnet_cpu_callback;
-	err = register_hotcpu_notifier(&vi->nb);
-	if (err) {
-		pr_debug("virtio_net: registering cpu notifier failed\n");
-		goto free_recv_bufs;
-	}
+	virtnet_cpu_notif_add(vi);
 
 	/* Assume link up if device can't report link status,
 	   otherwise get link status from config. */
@@ -1931,7 +1945,7 @@ static void virtnet_remove(struct virtio_device *vdev)
 {
 	struct virtnet_info *vi = vdev->priv;
 
-	unregister_hotcpu_notifier(&vi->nb);
+	virtnet_cpu_notif_remove(vi);
 
 	/* Make sure no work handler is accessing the device. */
 	flush_work(&vi->config_work);
@@ -1950,7 +1964,7 @@ static int virtnet_freeze(struct virtio_device *vdev)
 	struct virtnet_info *vi = vdev->priv;
 	int i;
 
-	unregister_hotcpu_notifier(&vi->nb);
+	virtnet_cpu_notif_remove(vi);
 
 	/* Make sure no work handler is accessing the device */
 	flush_work(&vi->config_work);
@@ -1994,10 +2008,7 @@ static int virtnet_restore(struct virtio_device *vdev)
 	virtnet_set_queues(vi, vi->curr_queue_pairs);
 	rtnl_unlock();
 
-	err = register_hotcpu_notifier(&vi->nb);
-	if (err)
-		return err;
-
+	virtnet_cpu_notif_add(vi);
 	return 0;
 }
 #endif
@@ -2034,8 +2045,38 @@ static struct virtio_driver virtio_net_driver = {
 	.restore =	virtnet_restore,
 #endif
 };
+static __init int virtio_net_driver_init(void)
+{
+	int ret;
 
-module_virtio_driver(virtio_net_driver);
+	ret = cpuhp_setup_state_nocalls(CPUHP_VIRT_NET_ONLINE,
+					virtnet_cpu_online,
+					virtnet_cpu_down_prep);
+	if (ret)
+		goto err;
+	ret = cpuhp_setup_state_nocalls(CPUHP_VIRT_NET_DEAD, NULL,
+					virtnet_cpu_online);
+	if (ret)
+		goto err;
+
+        ret = register_virtio_driver(&virtio_net_driver);
+	if (ret)
+		goto err;
+	return 0;
+err:
+	cpuhp_remove_state_nocalls(CPUHP_VIRT_NET_ONLINE);
+	cpuhp_remove_state_nocalls(CPUHP_VIRT_NET_DEAD);
+	return ret;
+}
+module_init(virtio_net_driver_init);
+
+static __exit void virtio_net_driver_exit(void)
+{
+	unregister_virtio_driver(&virtio_net_driver);
+	cpuhp_remove_state_nocalls(CPUHP_VIRT_NET_ONLINE);
+	cpuhp_remove_state_nocalls(CPUHP_VIRT_NET_DEAD);
+}
+module_exit(virtio_net_driver_exit);
 
 MODULE_DEVICE_TABLE(virtio, id_table);
 MODULE_DESCRIPTION("Virtio network driver");
