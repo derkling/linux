@@ -168,7 +168,7 @@ static void cpufreq_sched_irq_work(struct irq_work *irq_work)
  */
 static void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
 {
-	unsigned int freq_new, cpu_tmp;
+	unsigned int freq_new, index_new, cpu_tmp;
 	struct cpufreq_policy *policy;
 	struct gov_data *gd;
 	unsigned long capacity_max = 0;
@@ -214,9 +214,14 @@ static void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
 
 	/* Convert the new maximum capacity request into a cpu frequency */
 	freq_new = capacity * policy->max >> SCHED_CAPACITY_SHIFT;
+	if (cpufreq_frequency_table_target(policy, policy->freq_table,
+					   freq_new, CPUFREQ_RELATION_L,
+					   &index_new))
+		goto out;
+	freq_new = policy->freq_table[index_new].frequency;
 
 	/* No change in frequency? Bail and return current capacity. */
-	if (freq_new == policy->cur)
+	if (freq_new == gd->requested_freq)
 		goto out;
 
 	/* store the new frequency and perform the transition */
