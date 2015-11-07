@@ -1419,15 +1419,6 @@ static inline bool sched_freq(void)
 	return static_key_false(&__sched_freq);
 }
 
-struct sched_capacity_reqs {
-	unsigned long cfs;
-	unsigned long rt;
-	unsigned long dl;
-	unsigned long dl_min;
-
-	unsigned long total;
-};
-
 extern unsigned int capacity_margin;
 
 #ifdef CONFIG_CPU_FREQ_GOV_SCHED

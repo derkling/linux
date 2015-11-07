@@ -13,6 +13,9 @@
 #include <linux/irq_work.h>
 #include <linux/delay.h>
 
+#define CREATE_TRACE_POINTS
+#include <trace/events/sched_freq.h>
+
 #include "sched.h"
 
 #define THROTTLE_NSEC		50000000 /* 50ms default */
@@ -76,6 +79,7 @@ static void finish_last_request(struct gov_data *gd)
 			return;
 
 		ns_left = ktime_to_ns(ktime_sub(gd->throttle, now));
+		trace_sched_freq_throttled(ns_left/NSEC_PER_USEC);
 		usleep_range(ns_left/NSEC_PER_USEC,
 			     ns_left/NSEC_PER_USEC);
 	}
@@ -219,7 +223,8 @@ static void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
 					   &index_new))
 		goto out;
 	freq_new = policy->freq_table[index_new].frequency;
-
+	trace_sched_freq_request_opp(cpu, capacity, freq_new,
+				     gd->requested_freq);
 	/* No change in frequency? Bail and return current capacity. */
 	if (freq_new == gd->requested_freq)
 		goto out;
@@ -253,7 +258,7 @@ void update_cpu_capacity_request(int cpu)
 	new_capacity += scr->dl;
 	if (new_capacity < scr->dl_min)
 		new_capacity = scr->dl_min;
-
+	trace_sched_freq_update_capacity(cpu, scr, new_capacity);
 	if (new_capacity != scr->total) {
 		cpufreq_sched_set_cap(cpu, new_capacity);
 		scr->total = new_capacity;
