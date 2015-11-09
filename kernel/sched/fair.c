@@ -4697,7 +4697,6 @@ struct energy_env {
 	int			util_delta;
 	int			src_cpu;
 	int			dst_cpu;
-	int			energy;
 };
 
 /*
@@ -4876,7 +4875,6 @@ next_cpu:
 		continue;
 	}
 
-	eenv->energy = total_energy;
 	return total_energy;
 }
 
