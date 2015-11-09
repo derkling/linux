@@ -4823,7 +4823,7 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 	cpumask_copy(&visit_cpus, sched_group_cpus(eenv->sg_top));
 
 	while (!cpumask_empty(&visit_cpus)) {
-		struct sched_group *sg_shared_cap = NULL;
+		struct sched_group *sg_shared_cap;
 
 		cpu = cpumask_first(&visit_cpus);
 
@@ -4831,7 +4831,8 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 		 * Is the group utilization affected by cpus outside this
 		 * sched_group?
 		 */
-		sd = highest_flag_domain(cpu, SD_SHARE_CAP_STATES);
+		sd = rcu_dereference(per_cpu(sd_scs, cpu));
+
 		if (!sd)
 			/*
 			 * We most probably raced with hotplug; returning a
@@ -4840,8 +4841,7 @@ static unsigned int sched_group_energy(struct energy_env *eenv)
 			 */
 			break;
 
-		if (sd->parent)
-			sg_shared_cap = sd->parent->groups;
+		sg_shared_cap = sd->parent ? sd->parent->groups : NULL;
 
 		for_each_domain(cpu, sd) {
 			sg = sd->groups;
