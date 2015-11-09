@@ -3325,6 +3325,7 @@ static inline void update_load_avg(struct sched_entity *se, int flags)
 	struct cfs_rq *cfs_rq = cfs_rq_of(se);
 	u64 now = cfs_rq_clock_task(cfs_rq);
 	struct rq *rq = rq_of(cfs_rq);
+	struct task_struct *tsk;
 	int cpu = cpu_of(rq);
 	int decayed;
 
@@ -3343,6 +3344,13 @@ static inline void update_load_avg(struct sched_entity *se, int flags)
 
 	if (decayed && (flags & UPDATE_TG))
 		update_tg_load_avg(cfs_rq, 0);
+
+	/* Trace utilization only for actual tasks */
+	if (!entity_is_task(se))
+		return;
+
+	tsk = task_of(se);
+	trace_sched_load_avg_task(tsk, &se->avg);
 }
 
 /**
