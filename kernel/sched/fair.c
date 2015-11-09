@@ -3351,6 +3351,10 @@ static inline void update_load_avg(struct sched_entity *se, int flags)
 
 	tsk = task_of(se);
 	trace_sched_load_avg_task(tsk, &se->avg);
+
+	/* Trace utilization only for top level CFS RQ */
+	cfs_rq = &(task_rq(tsk)->cfs);
+	trace_sched_load_avg_cpu(cpu, cfs_rq);
 }
 
 /**
