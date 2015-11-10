@@ -423,48 +423,26 @@ static int cache_remove_dev(struct device *sys_dev)
  * When a cpu is hot-plugged, do a check and initiate
  * cache kobject if necessary
  */
-static int cache_cpu_callback(struct notifier_block *nfb,
-		unsigned long action, void *hcpu)
+static int cache_cpu_online(unsigned int cpu)
 {
-	unsigned int cpu = (unsigned long)hcpu;
-	struct device *sys_dev;
+	struct device *sys_dev = get_cpu_device(cpu);
 
-	sys_dev = get_cpu_device(cpu);
-	switch (action) {
-	case CPU_ONLINE:
-	case CPU_ONLINE_FROZEN:
-		cache_add_dev(sys_dev);
-		break;
-	case CPU_DEAD:
-	case CPU_DEAD_FROZEN:
-		cache_remove_dev(sys_dev);
-		break;
-	}
-	return NOTIFY_OK;
-}
-
-static struct notifier_block cache_cpu_notifier =
-{
-	.notifier_call = cache_cpu_callback
-};
-
-static int __init cache_sysfs_init(void)
-{
-	int i;
-
-	cpu_notifier_register_begin();
-
-	for_each_online_cpu(i) {
-		struct device *sys_dev = get_cpu_device((unsigned int)i);
-		cache_add_dev(sys_dev);
-	}
-
-	__register_hotcpu_notifier(&cache_cpu_notifier);
-
-	cpu_notifier_register_done();
-
+	cache_add_dev(sys_dev);
 	return 0;
 }
 
-device_initcall(cache_sysfs_init);
+static int cache_cpu_pre_down(unsigned int cpu)
+{
+	struct device *sys_dev = get_cpu_device(cpu);
 
+	cache_remove_dev(sys_dev);
+	return 0;
+}
+
+static int __init cache_sysfs_init(void)
+{
+	return cpuhp_setup_state(CPUHP_IA64_TOPOLOGY_ONLINE, cache_cpu_online,
+				 cache_cpu_pre_down);
+}
+
+device_initcall(cache_sysfs_init);

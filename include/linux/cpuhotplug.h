@@ -182,6 +182,7 @@ enum cpuhp_state {
 	CPUHP_IA64_ERRINJ_ONLINE,	/* P: 0 S: err_inject_add_dev T: err_inject_remove_dev C: I */
 	CPUHP_IA64_PALINFO_ONLINE,	/* P: 0 S: palinfo_add_proc T: palinfo_del_proc C: I */
 	CPUHP_IA64_SALINFO_ONLINE,	/* P: 0 S: salinfo_cpu_online T: salinfo_cpu_pre_down C: I */
+	CPUHP_IA64_TOPOLOGY_ONLINE,	/* P: 0 S: cache_cpu_online T: cache_cpu_pre_down C: I */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */
