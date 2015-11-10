@@ -107,7 +107,6 @@ static int fcoe_ddp_setup(struct fc_lport *, u16, struct scatterlist *,
 static int fcoe_ddp_done(struct fc_lport *, u16);
 static int fcoe_ddp_target(struct fc_lport *, u16, struct scatterlist *,
 			   unsigned int);
-static int fcoe_cpu_callback(struct notifier_block *, unsigned long, void *);
 static int fcoe_dcb_app_notification(struct notifier_block *notifier,
 				     ulong event, void *ptr);
 
@@ -134,11 +133,6 @@ static void fcoe_recv_frame(struct sk_buff *skb);
 /* notification function for packets from net device */
 static struct notifier_block fcoe_notifier = {
 	.notifier_call = fcoe_device_notification,
-};
-
-/* notification function for CPU hotplug events */
-static struct notifier_block fcoe_cpu_notifier = {
-	.notifier_call = fcoe_cpu_callback,
 };
 
 /* notification function for DCB events */
@@ -1246,14 +1240,15 @@ static int __exit fcoe_if_exit(void)
 }
 
 /**
- * fcoe_percpu_thread_create() - Create a receive thread for an online CPU
+ * fcoe_cpu_online() - Create a receive thread for an online CPU
  * @cpu: The CPU index of the CPU to create a receive thread for
  */
-static void fcoe_percpu_thread_create(unsigned int cpu)
+static int fcoe_cpu_online(unsigned int cpu)
 {
 	struct fcoe_percpu_s *p;
 	struct task_struct *thread;
 
+	FCOE_DBG("CPU %u online: Create Rx thread\n", cpu);
 	p = &per_cpu(fcoe_percpu, cpu);
 
 	thread = kthread_create_on_node(fcoe_percpu_receive_thread,
@@ -1268,17 +1263,18 @@ static void fcoe_percpu_thread_create(unsigned int cpu)
 		p->thread = thread;
 		spin_unlock_bh(&p->fcoe_rx_list.lock);
 	}
+	return 0;
 }
 
 /**
- * fcoe_percpu_thread_destroy() - Remove the receive thread of a CPU
+ * fcoe_cpu_dead() - Remove the receive thread of a CPU
  * @cpu: The CPU index of the CPU whose receive thread is to be destroyed
  *
  * Destroys a per-CPU Rx thread. Any pending skbs are moved to the
  * current CPU's Rx thread. If the thread being destroyed is bound to
  * the CPU processing this context the skbs will be freed.
  */
-static void fcoe_percpu_thread_destroy(unsigned int cpu)
+static int fcoe_cpu_dead(unsigned int cpu)
 {
 	struct fcoe_percpu_s *p;
 	struct task_struct *thread;
@@ -1289,7 +1285,7 @@ static void fcoe_percpu_thread_destroy(unsigned int cpu)
 	unsigned targ_cpu = get_cpu();
 #endif /* CONFIG_SMP */
 
-	FCOE_DBG("Destroying receive thread for CPU %d\n", cpu);
+	FCOE_DBG("CPU %u offline: Remove Rx thread\n", cpu);
 
 	/* Prevent any new skbs from being queued for this CPU. */
 	p = &per_cpu(fcoe_percpu, cpu);
@@ -1359,38 +1355,7 @@ static void fcoe_percpu_thread_destroy(unsigned int cpu)
 
 	if (crc_eof)
 		put_page(crc_eof);
-}
-
-/**
- * fcoe_cpu_callback() - Handler for CPU hotplug events
- * @nfb:    The callback data block
- * @action: The event triggering the callback
- * @hcpu:   The index of the CPU that the event is for
- *
- * This creates or destroys per-CPU data for fcoe
- *
- * Returns NOTIFY_OK always.
- */
-static int fcoe_cpu_callback(struct notifier_block *nfb,
-			     unsigned long action, void *hcpu)
-{
-	unsigned cpu = (unsigned long)hcpu;
-
-	switch (action) {
-	case CPU_ONLINE:
-	case CPU_ONLINE_FROZEN:
-		FCOE_DBG("CPU %x online: Create Rx thread\n", cpu);
-		fcoe_percpu_thread_create(cpu);
-		break;
-	case CPU_DEAD:
-	case CPU_DEAD_FROZEN:
-		FCOE_DBG("CPU %x offline: Remove Rx thread\n", cpu);
-		fcoe_percpu_thread_destroy(cpu);
-		break;
-	default:
-		break;
-	}
-	return NOTIFY_OK;
+	return 0;
 }
 
 /**
@@ -2629,17 +2594,12 @@ static int __init fcoe_init(void)
 		skb_queue_head_init(&p->fcoe_rx_list);
 	}
 
-	cpu_notifier_register_begin();
-
-	for_each_online_cpu(cpu)
-		fcoe_percpu_thread_create(cpu);
-
-	/* Initialize per CPU interrupt thread */
-	rc = __register_hotcpu_notifier(&fcoe_cpu_notifier);
+	rc = cpuhp_setup_state(CPUHP_SCSI_FCOE_ONLINE, fcoe_cpu_online, NULL);
 	if (rc)
 		goto out_free;
-
-	cpu_notifier_register_done();
+	rc = cpuhp_setup_state(CPUHP_SCSI_FCOE_DEAD, NULL, fcoe_cpu_dead);
+	if (rc)
+		goto out_free;
 
 	/* Setup link change notification */
 	fcoe_dev_setup();
@@ -2652,11 +2612,8 @@ static int __init fcoe_init(void)
 	return 0;
 
 out_free:
-	for_each_online_cpu(cpu) {
-		fcoe_percpu_thread_destroy(cpu);
-	}
-
-	cpu_notifier_register_done();
+	cpuhp_remove_state(CPUHP_SCSI_FCOE_ONLINE);
+	cpuhp_remove_state(CPUHP_SCSI_FCOE_DEAD);
 
 	mutex_unlock(&fcoe_config_mutex);
 	destroy_workqueue(fcoe_wq);
@@ -2674,7 +2631,6 @@ static void __exit fcoe_exit(void)
 	struct fcoe_interface *fcoe, *tmp;
 	struct fcoe_ctlr *ctlr;
 	struct fcoe_port *port;
-	unsigned int cpu;
 
 	mutex_lock(&fcoe_config_mutex);
 
@@ -2690,14 +2646,8 @@ static void __exit fcoe_exit(void)
 	}
 	rtnl_unlock();
 
-	cpu_notifier_register_begin();
-
-	for_each_online_cpu(cpu)
-		fcoe_percpu_thread_destroy(cpu);
-
-	__unregister_hotcpu_notifier(&fcoe_cpu_notifier);
-
-	cpu_notifier_register_done();
+	cpuhp_remove_state(CPUHP_SCSI_FCOE_ONLINE);
+	cpuhp_remove_state(CPUHP_SCSI_FCOE_DEAD);
 
 	mutex_unlock(&fcoe_config_mutex);
 
