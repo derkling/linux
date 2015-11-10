@@ -1462,25 +1462,20 @@ static __init void radix_tree_init_maxindex(void)
 		height_to_maxindex[i] = __maxindex(i);
 }
 
-static int radix_tree_callback(struct notifier_block *nfb,
-                            unsigned long action,
-                            void *hcpu)
+static int radix_tree_cpu_dead(unsigned int cpu)
 {
-       int cpu = (long)hcpu;
-       struct radix_tree_preload *rtp;
-       struct radix_tree_node *node;
+	struct radix_tree_preload *rtp;
+	struct radix_tree_node *node;
 
-       /* Free per-cpu pool of perloaded nodes */
-       if (action == CPU_DEAD || action == CPU_DEAD_FROZEN) {
-               rtp = &per_cpu(radix_tree_preloads, cpu);
-               while (rtp->nr) {
-			node = rtp->nodes;
-			rtp->nodes = node->private_data;
-			kmem_cache_free(radix_tree_node_cachep, node);
-			rtp->nr--;
-               }
-       }
-       return NOTIFY_OK;
+	/* Free per-cpu pool of perloaded nodes */
+	rtp = &per_cpu(radix_tree_preloads, cpu);
+	while (rtp->nr) {
+		node = rtp->nodes;
+		rtp->nodes = node->private_data;
+		kmem_cache_free(radix_tree_node_cachep, node);
+		rtp->nr--;
+	}
+	return 0;
 }
 
 void __init radix_tree_init(void)
@@ -1490,5 +1485,5 @@ void __init radix_tree_init(void)
 			SLAB_PANIC | SLAB_RECLAIM_ACCOUNT,
 			radix_tree_node_ctor);
 	radix_tree_init_maxindex();
-	hotcpu_notifier(radix_tree_callback, 0);
+	cpuhp_setup_state_nocalls(CPUHP_RADIX_DEAD, NULL, radix_tree_cpu_dead);
 }
