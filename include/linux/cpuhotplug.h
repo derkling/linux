@@ -138,6 +138,7 @@ enum cpuhp_state {
 	CPUHP_SCHED_CPUSET_ONLINE,	/* P: INT_MAX-1 S: cpuset_cpu_active T: NULL C: I */
 	CPUHP_SCHED_CPUSET_OFFLINE,	/* P: INT_MIN S: NULL T: cpuset_cpu_inactive C: I */
 	CPUHP_SCHED_OFFLINE,		/* P: INT_MIN+1 S: NULL T: sched_offline_cpu C: I */
+	CPUHP_X86_KVM_CLK_OFFLINE,	/* P: INT_MIN+1 S: NULL T: kvmclock_cpu_down_prep C: I */
 	CPUHP_WORKQUEUE_OFFLINE,	/* P: -5 S: NULL T: workqueue_offline_cpu C: C */
 	CPUHP_X86_VDSO_VMA_ONLINE,	/* P: 30 S: vgetcpu_online T: NULL C: I */
 	CPUHP_PERF_X86_UNCORE_ONLINE,	/* P: 21 S: uncore_online_cpu T: uncore_offline_cpu C: I */
@@ -190,6 +191,7 @@ enum cpuhp_state {
 	CPUHP_IA64_TOPOLOGY_ONLINE,	/* P: 0 S: cache_cpu_online T: cache_cpu_pre_down C: I */
 	CPUHP_X86_MCE_ONLINE,		/* P: 0 S: mce_cpu_online T: NULL C: I */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
+	CPUHP_X86_KVM_CLK_ONLINE,	/* P: INT_MIN+1 S: kvmclock_cpu_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */
 	CPUHP_MAX,
