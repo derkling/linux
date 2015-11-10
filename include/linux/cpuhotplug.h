@@ -67,6 +67,7 @@ enum cpuhp_state {
 	CPUHP_THERMAL_POWERCLMP_DEAD,	/* P: 0 S: NULL T: powerclamp_cpu_dead C: P */
 	CPUHP_S390_PFAULT_DEAD,		/* P: 0 S: NULL T: pfault_cpu_dead C: P */
 	CPUHP_BLKMQ_DEAD,		/* P: 0 S: NULL T: blk_mq_main_cpu_dead C: P */
+	CPUHP_FS_BUFF_DEAD,		/* P: 0 S: NULL T: buffer_exit_cpu_dead C: P */
 	CPUHP_SCHED_DEAD,		/* P: INT_MAX S: NULL T: sched_dead_numa_cpu C: P */
 	CPUHP_BRINGUP_CPU,		/* P: __cpu_up S: bringup_cpu T: NULL C: C */
 	CPUHP_AP_OFFLINE,
