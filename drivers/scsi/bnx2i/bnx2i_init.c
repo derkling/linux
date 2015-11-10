@@ -70,14 +70,6 @@ u64 iscsi_error_mask = 0x00;
 
 DEFINE_PER_CPU(struct bnx2i_percpu_s, bnx2i_percpu);
 
-static int bnx2i_cpu_callback(struct notifier_block *nfb,
-			      unsigned long action, void *hcpu);
-/* notification function for CPU hotplug events */
-static struct notifier_block bnx2i_cpu_notifier = {
-	.notifier_call = bnx2i_cpu_callback,
-};
-
-
 /**
  * bnx2i_identify_device - identifies NetXtreme II device type
  * @hba: 		Adapter structure pointer
@@ -412,16 +404,17 @@ int bnx2i_get_stats(void *handle)
 
 
 /**
- * bnx2i_percpu_thread_create - Create a receive thread for an
+ * bnx2i_cpu_online - Create a receive thread for an
  *				online CPU
  *
  * @cpu:	cpu index for the online cpu
  */
-static void bnx2i_percpu_thread_create(unsigned int cpu)
+static int bnx2i_cpu_online(unsigned int cpu)
 {
 	struct bnx2i_percpu_s *p;
 	struct task_struct *thread;
 
+	pr_info("bnx2i: CPU %u online: Create Rx thread\n", cpu);
 	p = &per_cpu(bnx2i_percpu, cpu);
 
 	thread = kthread_create_on_node(bnx2i_percpu_io_thread, (void *)p,
@@ -433,15 +426,16 @@ static void bnx2i_percpu_thread_create(unsigned int cpu)
 		p->iothread = thread;
 		wake_up_process(thread);
 	}
+	return 0;
 }
 
-
-static void bnx2i_percpu_thread_destroy(unsigned int cpu)
+static int bnx2i_cpu_dead(unsigned int cpu)
 {
 	struct bnx2i_percpu_s *p;
 	struct task_struct *thread;
 	struct bnx2i_work *work, *tmp;
 
+	pr_info("CPU %u offline: Remove Rx thread\n", cpu);
 	/* Prevent any new work from being queued for this CPU */
 	p = &per_cpu(bnx2i_percpu, cpu);
 	spin_lock_bh(&p->p_work_lock);
@@ -459,43 +453,8 @@ static void bnx2i_percpu_thread_destroy(unsigned int cpu)
 	spin_unlock_bh(&p->p_work_lock);
 	if (thread)
 		kthread_stop(thread);
+	return 0;
 }
-
-
-/**
- * bnx2i_cpu_callback - Handler for CPU hotplug events
- *
- * @nfb:	The callback data block
- * @action:	The event triggering the callback
- * @hcpu:	The index of the CPU that the event is for
- *
- * This creates or destroys per-CPU data for iSCSI
- *
- * Returns NOTIFY_OK always.
- */
-static int bnx2i_cpu_callback(struct notifier_block *nfb,
-			      unsigned long action, void *hcpu)
-{
-	unsigned cpu = (unsigned long)hcpu;
-
-	switch (action) {
-	case CPU_ONLINE:
-	case CPU_ONLINE_FROZEN:
-		printk(KERN_INFO "bnx2i: CPU %x online: Create Rx thread\n",
-			cpu);
-		bnx2i_percpu_thread_create(cpu);
-		break;
-	case CPU_DEAD:
-	case CPU_DEAD_FROZEN:
-		printk(KERN_INFO "CPU %x offline: Remove Rx thread\n", cpu);
-		bnx2i_percpu_thread_destroy(cpu);
-		break;
-	default:
-		break;
-	}
-	return NOTIFY_OK;
-}
-
 
 /**
  * bnx2i_mod_init - module init entry point
@@ -539,15 +498,9 @@ static int __init bnx2i_mod_init(void)
 		p->iothread = NULL;
 	}
 
-	cpu_notifier_register_begin();
-
-	for_each_online_cpu(cpu)
-		bnx2i_percpu_thread_create(cpu);
-
 	/* Initialize per CPU interrupt thread */
-	__register_hotcpu_notifier(&bnx2i_cpu_notifier);
-
-	cpu_notifier_register_done();
+	cpuhp_setup_state(CPUHP_SCSI_BNX2I_ONLINE, bnx2i_cpu_online, NULL);
+	cpuhp_setup_state(CPUHP_SCSI_BNX2I_DEAD, NULL, bnx2i_cpu_dead);
 
 	return 0;
 
@@ -569,7 +522,6 @@ out:
 static void __exit bnx2i_mod_exit(void)
 {
 	struct bnx2i_hba *hba;
-	unsigned cpu = 0;
 
 	mutex_lock(&bnx2i_dev_lock);
 	while (!list_empty(&adapter_list)) {
@@ -587,15 +539,8 @@ static void __exit bnx2i_mod_exit(void)
 	}
 	mutex_unlock(&bnx2i_dev_lock);
 
-	cpu_notifier_register_begin();
-
-	for_each_online_cpu(cpu)
-		bnx2i_percpu_thread_destroy(cpu);
-
-	__unregister_hotcpu_notifier(&bnx2i_cpu_notifier);
-
-	cpu_notifier_register_done();
-
+	cpuhp_remove_state(CPUHP_SCSI_BNX2I_ONLINE);
+	cpuhp_remove_state(CPUHP_SCSI_BNX2I_DEAD);
 	iscsi_unregister_transport(&bnx2i_iscsi_transport);
 	cnic_unregister_driver(CNIC_ULP_ISCSI);
 }

@@ -83,6 +83,7 @@ enum cpuhp_state {
 	CPUHP_X86_MCE_DEAD,		/* P: 0 S: NULL T: mce_cpu_dead C: I */
 	CPUHP_PCI_XGENE_DEAD,		/* P: 0 S: NULL T: xgene_msi_hwirq_free C: I */
 	CPUHP_SCSI_BNX2FC_DEAD,		/* P: 0 S: NULL T: bnx2fc_cpu_dead C: I */
+	CPUHP_SCSI_BNX2I_DEAD,		/* P: 0 S: NULL T: bnx2i_cpu_dead C: I */
 	CPUHP_SCHED_DEAD,		/* P: INT_MAX S: NULL T: sched_dead_numa_cpu C: P */
 	CPUHP_BRINGUP_CPU,		/* P: __cpu_up S: bringup_cpu T: NULL C: C */
 	CPUHP_AP_OFFLINE,
@@ -197,6 +198,7 @@ enum cpuhp_state {
 	CPUHP_PCI_XGENE_ONLINE,		/* P: 0 S: xgene_msi_hwirq_alloc T: NULL C: I */
 	CPUHP_POWERCAP_RAPL,		/* P: 0 S: rapl_cpu_online T: repl_cpu_prep_down C: P */
 	CPUHP_SCSI_BNX2FC_ONLINE,	/* P: 0 S: bnx2fc_cpu_online T: NULL C: I */
+	CPUHP_SCSI_BNX2I_ONLINE,	/* P: 0 S: bnx2i_cpu_online T: NULL C: I */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_X86_KVM_CLK_ONLINE,	/* P: INT_MIN+1 S: kvmclock_cpu_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
