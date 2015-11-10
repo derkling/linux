@@ -4878,6 +4878,11 @@ next_cpu:
 	return total_energy;
 }
 
+static inline bool cpu_in_sg(struct sched_group *sg, int cpu)
+{
+	return cpu != -1 && cpumask_test_cpu(cpu, sched_group_cpus(sg));
+}
+
 /*
  * energy_diff(): Estimate the energy impact of changing the utilization
  * distribution. eenv specifies the change: utilisation amount, source, and
@@ -4909,10 +4914,7 @@ static int energy_diff(struct energy_env *eenv)
 	sg = sd->groups;
 
 	do {
-		if ((eenv->src_cpu != -1 && cpumask_test_cpu(eenv->src_cpu,
-						      sched_group_cpus(sg))) ||
-		    (eenv->dst_cpu != -1 && cpumask_test_cpu(eenv->dst_cpu,
-						      sched_group_cpus(sg)))) {
+		if (cpu_in_sg(sg, eenv->src_cpu) || cpu_in_sg(sg, eenv->dst_cpu)) {
 			eenv_before.sg_top = eenv->sg_top = sg;
 			energy_before += sched_group_energy(&eenv_before);
 			energy_after += sched_group_energy(eenv);
