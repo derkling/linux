@@ -2113,27 +2113,18 @@ void resume_console(void)
 
 /**
  * console_cpu_notify - print deferred console messages after CPU hotplug
- * @self: notifier struct
- * @action: CPU hotplug event
- * @hcpu: unused
+ * @cpu: unused
  *
  * If printk() is called from a CPU that is not online yet, the messages
  * will be spooled but will not show up on the console.  This function is
  * called when a new CPU comes online (or fails to come up), and ensures
  * that any such output gets printed.
  */
-static int console_cpu_notify(struct notifier_block *self,
-	unsigned long action, void *hcpu)
+static int console_cpu_notify(unsigned int cpu)
 {
-	switch (action) {
-	case CPU_ONLINE:
-	case CPU_DEAD:
-	case CPU_DOWN_FAILED:
-	case CPU_UP_CANCELED:
-		console_lock();
-		console_unlock();
-	}
-	return NOTIFY_OK;
+	console_lock();
+	console_unlock();
+	return 0;
 }
 
 /**
@@ -2667,7 +2658,9 @@ static int __init printk_late_init(void)
 			unregister_console(con);
 		}
 	}
-	hotcpu_notifier(console_cpu_notify, 0);
+	cpuhp_setup_state_nocalls(CPUHP_PRINTK_DEAD, NULL, console_cpu_notify);
+	cpuhp_setup_state_nocalls(CPUHP_PRINTK_ONLINE, console_cpu_notify,
+				  NULL);
 	return 0;
 }
 late_initcall(printk_late_init);
