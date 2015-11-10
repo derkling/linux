@@ -190,6 +190,7 @@ enum cpuhp_state {
 	CPUHP_IA64_SALINFO_ONLINE,	/* P: 0 S: salinfo_cpu_online T: salinfo_cpu_pre_down C: I */
 	CPUHP_IA64_TOPOLOGY_ONLINE,	/* P: 0 S: cache_cpu_online T: cache_cpu_pre_down C: I */
 	CPUHP_X86_MCE_ONLINE,		/* P: 0 S: mce_cpu_online T: NULL C: I */
+	CPUHP_HWMON_TEMP_ONLINE,	/* P: 0 S: coretemp_cpu_online T: coretemp_cpu_offline C: I */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_X86_KVM_CLK_ONLINE,	/* P: INT_MIN+1 S: kvmclock_cpu_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
