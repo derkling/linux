@@ -98,13 +98,6 @@ static void __exit bnx2fc_mod_exit(void);
 unsigned int bnx2fc_debug_level;
 module_param_named(debug_logging, bnx2fc_debug_level, int, S_IRUGO|S_IWUSR);
 
-static int bnx2fc_cpu_callback(struct notifier_block *nfb,
-			     unsigned long action, void *hcpu);
-/* notification function for CPU hotplug events */
-static struct notifier_block bnx2fc_cpu_notifier = {
-	.notifier_call = bnx2fc_cpu_callback,
-};
-
 static inline struct net_device *bnx2fc_netdev(const struct fc_lport *lport)
 {
 	return ((struct bnx2fc_interface *)
@@ -2519,15 +2512,17 @@ static struct fcoe_transport bnx2fc_transport = {
 };
 
 /**
- * bnx2fc_percpu_thread_create - Create a receive thread for an
+ * bnx2fc_cpu_online - Create a receive thread for an
  *				 online CPU
  *
  * @cpu: cpu index for the online cpu
  */
-static void bnx2fc_percpu_thread_create(unsigned int cpu)
+static int bnx2fc_cpu_online(unsigned int cpu)
 {
 	struct bnx2fc_percpu_s *p;
 	struct task_struct *thread;
+
+	printk(PFX "CPU %x online: Create Rx thread\n", cpu);
 
 	p = &per_cpu(bnx2fc_percpu, cpu);
 
@@ -2540,15 +2535,16 @@ static void bnx2fc_percpu_thread_create(unsigned int cpu)
 		p->iothread = thread;
 		wake_up_process(thread);
 	}
+	return 0;
 }
 
-static void bnx2fc_percpu_thread_destroy(unsigned int cpu)
+static int bnx2fc_cpu_dead(unsigned int cpu)
 {
 	struct bnx2fc_percpu_s *p;
 	struct task_struct *thread;
 	struct bnx2fc_work *work, *tmp;
 
-	BNX2FC_MISC_DBG("destroying io thread for CPU %d\n", cpu);
+	printk(PFX "CPU %x offline: Remove Rx thread\n", cpu);
 
 	/* Prevent any new work from being queued for this CPU */
 	p = &per_cpu(bnx2fc_percpu, cpu);
@@ -2568,39 +2564,7 @@ static void bnx2fc_percpu_thread_destroy(unsigned int cpu)
 
 	if (thread)
 		kthread_stop(thread);
-}
-
-/**
- * bnx2fc_cpu_callback - Handler for CPU hotplug events
- *
- * @nfb:    The callback data block
- * @action: The event triggering the callback
- * @hcpu:   The index of the CPU that the event is for
- *
- * This creates or destroys per-CPU data for fcoe
- *
- * Returns NOTIFY_OK always.
- */
-static int bnx2fc_cpu_callback(struct notifier_block *nfb,
-			     unsigned long action, void *hcpu)
-{
-	unsigned cpu = (unsigned long)hcpu;
-
-	switch (action) {
-	case CPU_ONLINE:
-	case CPU_ONLINE_FROZEN:
-		printk(PFX "CPU %x online: Create Rx thread\n", cpu);
-		bnx2fc_percpu_thread_create(cpu);
-		break;
-	case CPU_DEAD:
-	case CPU_DEAD_FROZEN:
-		printk(PFX "CPU %x offline: Remove Rx thread\n", cpu);
-		bnx2fc_percpu_thread_destroy(cpu);
-		break;
-	default:
-		break;
-	}
-	return NOTIFY_OK;
+	return 0;
 }
 
 /**
@@ -2663,16 +2627,9 @@ static int __init bnx2fc_mod_init(void)
 		spin_lock_init(&p->fp_work_lock);
 	}
 
-	cpu_notifier_register_begin();
-
-	for_each_online_cpu(cpu) {
-		bnx2fc_percpu_thread_create(cpu);
-	}
-
 	/* Initialize per CPU interrupt thread */
-	__register_hotcpu_notifier(&bnx2fc_cpu_notifier);
-
-	cpu_notifier_register_done();
+	cpuhp_setup_state(CPUHP_SCSI_BNX2FC_ONLINE, bnx2fc_cpu_online, NULL);
+	cpuhp_setup_state(CPUHP_SCSI_BNX2FC_DEAD, NULL, bnx2fc_cpu_dead);
 
 	cnic_register_driver(CNIC_ULP_FCOE, &bnx2fc_cnic_cb);
 
@@ -2695,7 +2652,6 @@ static void __exit bnx2fc_mod_exit(void)
 	struct fcoe_percpu_s *bg;
 	struct task_struct *l2_thread;
 	struct sk_buff *skb;
-	unsigned int cpu = 0;
 
 	/*
 	 * NOTE: Since cnic calls register_driver routine rtnl_lock,
@@ -2737,16 +2693,9 @@ static void __exit bnx2fc_mod_exit(void)
 	if (l2_thread)
 		kthread_stop(l2_thread);
 
-	cpu_notifier_register_begin();
-
 	/* Destroy per cpu threads */
-	for_each_online_cpu(cpu) {
-		bnx2fc_percpu_thread_destroy(cpu);
-	}
-
-	__unregister_hotcpu_notifier(&bnx2fc_cpu_notifier);
-
-	cpu_notifier_register_done();
+	cpuhp_remove_state(CPUHP_SCSI_BNX2FC_ONLINE);
+	cpuhp_remove_state(CPUHP_SCSI_BNX2FC_DEAD);
 
 	destroy_workqueue(bnx2fc_wq);
 	/*
