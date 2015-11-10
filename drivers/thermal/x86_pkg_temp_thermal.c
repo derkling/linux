@@ -514,7 +514,7 @@ static int pkg_temp_thermal_device_remove(unsigned int cpu)
 	return 0;
 }
 
-static int get_core_online(unsigned int cpu)
+static int pkg_thermal_cpu_online(unsigned int cpu)
 {
 	struct cpuinfo_x86 *c = &cpu_data(cpu);
 	struct phy_dev_entry *phdev = pkg_temp_thermal_get_phy_entry(cpu);
@@ -529,47 +529,27 @@ static int get_core_online(unsigned int cpu)
 	} else {
 		mutex_lock(&phy_dev_list_mutex);
 		++phdev->ref_cnt;
-		pr_debug("get_core_online: cpu %d ref_cnt %d\n",
+		pr_debug("%s: cpu %u ref_cnt %d\n", __func__,
 						cpu, phdev->ref_cnt);
 		mutex_unlock(&phy_dev_list_mutex);
 	}
 	INIT_DELAYED_WORK(&per_cpu(pkg_temp_thermal_threshold_work, cpu),
 			pkg_temp_thermal_threshold_work_fn);
 
-	pr_debug("get_core_online: cpu %d successful\n", cpu);
+	pr_debug("%s: cpu %u successful\n", __func__, cpu);
 
 	return 0;
 }
 
-static void put_core_offline(unsigned int cpu)
+static int pkg_thermal_cpu_pre_down(unsigned int cpu)
 {
 	if (!pkg_temp_thermal_device_remove(cpu))
 		cancel_delayed_work_sync(
 			&per_cpu(pkg_temp_thermal_threshold_work, cpu));
 
-	pr_debug("put_core_offline: cpu %d\n", cpu);
+	pr_debug("%s: cpu %u\n", __func__, cpu);
+	return 0;
 }
-
-static int pkg_temp_thermal_cpu_callback(struct notifier_block *nfb,
-				 unsigned long action, void *hcpu)
-{
-	unsigned int cpu = (unsigned long) hcpu;
-
-	switch (action) {
-	case CPU_ONLINE:
-	case CPU_DOWN_FAILED:
-		get_core_online(cpu);
-		break;
-	case CPU_DOWN_PREPARE:
-		put_core_offline(cpu);
-		break;
-	}
-	return NOTIFY_OK;
-}
-
-static struct notifier_block pkg_temp_thermal_notifier __refdata = {
-	.notifier_call = pkg_temp_thermal_cpu_callback,
-};
 
 static const struct x86_cpu_id __initconst pkg_temp_thermal_ids[] = {
 	{ X86_VENDOR_INTEL, X86_FAMILY_ANY, X86_MODEL_ANY, X86_FEATURE_PTS },
@@ -579,7 +559,7 @@ MODULE_DEVICE_TABLE(x86cpu, pkg_temp_thermal_ids);
 
 static int __init pkg_temp_thermal_init(void)
 {
-	int i;
+	int ret;
 
 	if (!x86_match_cpu(pkg_temp_thermal_ids))
 		return -ENODEV;
@@ -590,21 +570,17 @@ static int __init pkg_temp_thermal_init(void)
 	platform_thermal_package_rate_control =
 			pkg_temp_thermal_platform_thermal_rate_control;
 
-	cpu_notifier_register_begin();
-	for_each_online_cpu(i)
-		if (get_core_online(i))
-			goto err_ret;
-	__register_hotcpu_notifier(&pkg_temp_thermal_notifier);
-	cpu_notifier_register_done();
+	ret = cpuhp_setup_state(CPUHP_X86_PKG_THERM_ONLINE,
+				pkg_thermal_cpu_online,
+				pkg_thermal_cpu_pre_down);
+	if (ret)
+		goto err_ret;
 
 	pkg_temp_debugfs_init(); /* Don't care if fails */
 
 	return 0;
 
 err_ret:
-	for_each_online_cpu(i)
-		put_core_offline(i);
-	cpu_notifier_register_done();
 	kfree(pkg_work_scheduled);
 	platform_thermal_package_notify = NULL;
 	platform_thermal_package_rate_control = NULL;
@@ -614,29 +590,23 @@ err_ret:
 
 static void __exit pkg_temp_thermal_exit(void)
 {
-	struct phy_dev_entry *phdev, *n;
-	int i;
+	struct phy_dev_entry *phdev;
 
-	cpu_notifier_register_begin();
-	__unregister_hotcpu_notifier(&pkg_temp_thermal_notifier);
+	get_online_cpus();
 	mutex_lock(&phy_dev_list_mutex);
-	list_for_each_entry_safe(phdev, n, &phy_dev_list, list) {
+	list_for_each_entry(phdev, &phy_dev_list, list) {
 		/* Retore old MSR value for package thermal interrupt */
 		wrmsr_on_cpu(phdev->first_cpu,
 			MSR_IA32_PACKAGE_THERM_INTERRUPT,
 			phdev->start_pkg_therm_low,
 			phdev->start_pkg_therm_high);
-		thermal_zone_device_unregister(phdev->tzone);
-		list_del(&phdev->list);
-		kfree(phdev);
 	}
 	mutex_unlock(&phy_dev_list_mutex);
 	platform_thermal_package_notify = NULL;
 	platform_thermal_package_rate_control = NULL;
-	for_each_online_cpu(i)
-		cancel_delayed_work_sync(
-			&per_cpu(pkg_temp_thermal_threshold_work, i));
-	cpu_notifier_register_done();
+
+	cpuhp_remove_state(CPUHP_X86_PKG_THERM_ONLINE);
+	put_online_cpus();
 
 	kfree(pkg_work_scheduled);
 
