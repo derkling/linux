@@ -346,19 +346,57 @@ static int cpufreq_sched_stop(struct cpufreq_policy *policy)
 	return 0;
 }
 
+static ssize_t show_throttle_nsec(struct cpufreq_policy *policy, char *buf)
+{
+	struct gov_data *gd = policy->governor_data;
+	return sprintf(buf, "%u\n", gd->throttle_nsec);
+}
+
+static ssize_t store_throttle_nsec(struct cpufreq_policy *policy,
+				   const char *buf, size_t count)
+{
+	struct gov_data *gd = policy->governor_data;
+	unsigned int input;
+	int ret;
+
+	ret = sscanf(buf, "%u", &input);
+
+	if (ret != 1)
+		return -EINVAL;
+
+	gd->throttle_nsec = input;
+	return count;
+}
+
+static struct freq_attr sched_freq_throttle_nsec_attr =
+	__ATTR(throttle_nsec, 0644, show_throttle_nsec, store_throttle_nsec);
+
+static struct attribute *sched_freq_sysfs_attribs[] = {
+	&sched_freq_throttle_nsec_attr.attr,
+	NULL
+};
+
+static struct attribute_group sched_freq_sysfs_group = {
+	.attrs = sched_freq_sysfs_attribs,
+	.name = "sched_freq",
+};
+
 static int cpufreq_sched_setup(struct cpufreq_policy *policy, unsigned int event)
 {
 	switch (event) {
 		case CPUFREQ_GOV_START:
 			/* Start managing the frequency */
 			return cpufreq_sched_start(policy);
-
 		case CPUFREQ_GOV_STOP:
 			return cpufreq_sched_stop(policy);
-
+		case CPUFREQ_GOV_POLICY_INIT:
+			return sysfs_create_group(
+				get_governor_parent_kobj(policy),
+				&sched_freq_sysfs_group);
+		case CPUFREQ_GOV_POLICY_EXIT:
+			sysfs_remove_group(get_governor_parent_kobj(policy),
+					   &sched_freq_sysfs_group);
 		case CPUFREQ_GOV_LIMITS:	/* unused */
-		case CPUFREQ_GOV_POLICY_INIT:	/* unused */
-		case CPUFREQ_GOV_POLICY_EXIT:	/* unused */
 			break;
 	}
 	return 0;
