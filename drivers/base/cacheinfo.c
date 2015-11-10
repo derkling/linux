@@ -507,48 +507,27 @@ static void cache_remove_dev(unsigned int cpu)
 	cpu_cache_sysfs_exit(cpu);
 }
 
-static int cacheinfo_cpu_callback(struct notifier_block *nfb,
-				  unsigned long action, void *hcpu)
+static int cacheinfo_cpu_online(unsigned int cpu)
 {
-	unsigned int cpu = (unsigned long)hcpu;
-	int rc = 0;
+	int rc;
 
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_ONLINE:
-		rc = detect_cache_attributes(cpu);
-		if (!rc)
-			rc = cache_add_dev(cpu);
-		break;
-	case CPU_DEAD:
-		cache_remove_dev(cpu);
-		free_cache_attributes(cpu);
-		break;
-	}
-	return notifier_from_errno(rc);
+	rc = detect_cache_attributes(cpu);
+	if (!rc)
+		rc = cache_add_dev(cpu);
+	return rc;
+}
+
+static int cacheinfo_cpu_pre_down(unsigned int cpu)
+{
+	cache_remove_dev(cpu);
+	free_cache_attributes(cpu);
+	return 0;
 }
 
 static int __init cacheinfo_sysfs_init(void)
 {
-	int cpu, rc = 0;
-
-	cpu_notifier_register_begin();
-
-	for_each_online_cpu(cpu) {
-		rc = detect_cache_attributes(cpu);
-		if (rc)
-			goto out;
-		rc = cache_add_dev(cpu);
-		if (rc) {
-			free_cache_attributes(cpu);
-			pr_err("error populating cacheinfo..cpu%d\n", cpu);
-			goto out;
-		}
-	}
-	__hotcpu_notifier(cacheinfo_cpu_callback, 0);
-
-out:
-	cpu_notifier_register_done();
-	return rc;
+	return cpuhp_setup_state(CPUHP_CACHEINFO_ONLINE, cacheinfo_cpu_online,
+				 cacheinfo_cpu_pre_down);
 }
 
 device_initcall(cacheinfo_sysfs_init);
