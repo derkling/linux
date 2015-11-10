@@ -51,6 +51,7 @@ enum cpuhp_state {
 	CPUHP_X86_THERM_PREPARE,	/* P: 0 S: thermal_throttle_prepare T: thermal_throttle_dead C: I */
 	CPUHP_X86_CPUID_PREPARE,	/* P: 0 S: cpuid_device_create T: cpuid_device_destroy C: I */
 	CPUHP_X86_MSR_PREPARE,		/* P: 0 S: msr_device_create T: msr_device_destroy C: I */
+	CPUHP_NET_IUCV_PREPARE,		/* P: 0 S: iucv_cpu_prepare T: iucv_cpu_dead C: I */
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
 	CPUHP_X86_APB_DEAD,		/* P: -20 S: NULL T: apbt_cpu_dead C: I */
@@ -203,6 +204,7 @@ enum cpuhp_state {
 	CPUHP_SCSI_FCOE_ONLINE,		/* P: 0 S: fcoe_cpu_online T: NULL C: I */
 	CPUHP_X86_PKG_THERM_ONLINE,	/* P: 0 S: pkg_thermal_cpu_online T: pkg_thermal_cpu_pre_down C: I */
 	CPUHP_WDT_OCTEON_ONLINE,	/* P: 0 S: octeon_wdt_cpu_online T: octeon_wdt_cpu_pre_down C: I */
+	CPUHP_NET_IUCV_ONLINE,		/* P: 0 S: iucv_cpu_online T: iucv_cpu_down_prep C: I */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_X86_KVM_CLK_ONLINE,	/* P: INT_MIN+1 S: kvmclock_cpu_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
