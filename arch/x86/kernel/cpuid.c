@@ -137,7 +137,7 @@ static const struct file_operations cpuid_fops = {
 	.open = cpuid_open,
 };
 
-static int cpuid_device_create(int cpu)
+static int cpuid_device_create(unsigned int cpu)
 {
 	struct device *dev;
 
@@ -146,34 +146,11 @@ static int cpuid_device_create(int cpu)
 	return PTR_ERR_OR_ZERO(dev);
 }
 
-static void cpuid_device_destroy(int cpu)
+static int cpuid_device_destroy(unsigned int cpu)
 {
 	device_destroy(cpuid_class, MKDEV(CPUID_MAJOR, cpu));
+	return 0;
 }
-
-static int cpuid_class_cpu_callback(struct notifier_block *nfb,
-				    unsigned long action, void *hcpu)
-{
-	unsigned int cpu = (unsigned long)hcpu;
-	int err = 0;
-
-	switch (action) {
-	case CPU_UP_PREPARE:
-		err = cpuid_device_create(cpu);
-		break;
-	case CPU_UP_CANCELED:
-	case CPU_UP_CANCELED_FROZEN:
-	case CPU_DEAD:
-		cpuid_device_destroy(cpu);
-		break;
-	}
-	return notifier_from_errno(err);
-}
-
-static struct notifier_block cpuid_class_cpu_notifier =
-{
-	.notifier_call = cpuid_class_cpu_callback,
-};
 
 static char *cpuid_devnode(struct device *dev, umode_t *mode)
 {
@@ -199,24 +176,17 @@ static int __init cpuid_init(void)
 	}
 	cpuid_class->devnode = cpuid_devnode;
 
-	cpu_notifier_register_begin();
-	for_each_online_cpu(i) {
-		err = cpuid_device_create(i);
-		if (err != 0)
-			goto out_class;
-	}
-	__register_hotcpu_notifier(&cpuid_class_cpu_notifier);
-	cpu_notifier_register_done();
+	err = cpuhp_setup_state(CPUHP_X86_CPUID_PREPARE, cpuid_device_create,
+				cpuid_device_destroy);
+	if (err)
+		goto out_class;
 
 	err = 0;
 	goto out;
 
 out_class:
 	i = 0;
-	for_each_online_cpu(i) {
-		cpuid_device_destroy(i);
-	}
-	cpu_notifier_register_done();
+	cpuhp_remove_state(CPUHP_X86_CPUID_PREPARE);
 	class_destroy(cpuid_class);
 out_chrdev:
 	__unregister_chrdev(CPUID_MAJOR, 0, NR_CPUS, "cpu/cpuid");
@@ -226,15 +196,9 @@ out:
 
 static void __exit cpuid_exit(void)
 {
-	int cpu = 0;
-
-	cpu_notifier_register_begin();
-	for_each_online_cpu(cpu)
-		cpuid_device_destroy(cpu);
+	cpuhp_remove_state(CPUHP_X86_CPUID_PREPARE);
 	class_destroy(cpuid_class);
 	__unregister_chrdev(CPUID_MAJOR, 0, NR_CPUS, "cpu/cpuid");
-	__unregister_hotcpu_notifier(&cpuid_class_cpu_notifier);
-	cpu_notifier_register_done();
 }
 
 module_init(cpuid_init);
