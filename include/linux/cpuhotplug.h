@@ -194,6 +194,7 @@ enum cpuhp_state {
 	CPUHP_HWMON_TEMP_ONLINE,	/* P: 0 S: coretemp_cpu_online T: coretemp_cpu_offline C: I */
 	CPUHP_HWMON_VIA_ONLINE,		/* P: 0 S: via_cputemp_online T: via_cputemp_down_prep C: I */
 	CPUHP_PCI_XGENE_ONLINE,		/* P: 0 S: xgene_msi_hwirq_alloc T: NULL C: I */
+	CPUHP_POWERCAP_RAPL,		/* P: 0 S: rapl_cpu_online T: repl_cpu_prep_down C: P */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_X86_KVM_CLK_ONLINE,	/* P: INT_MIN+1 S: kvmclock_cpu_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */

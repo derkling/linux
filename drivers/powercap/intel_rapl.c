@@ -1471,40 +1471,35 @@ err_free_package:
  * associated domains. Cooling devices are handled accordingly at
  * per-domain level.
  */
-static int rapl_cpu_callback(struct notifier_block *nfb,
-				unsigned long action, void *hcpu)
+static int rapl_cpu_online(unsigned int cpu)
 {
-	unsigned long cpu = (unsigned long)hcpu;
 	int phy_package_id;
 	struct rapl_package *rp;
 
 	phy_package_id = topology_physical_package_id(cpu);
-	switch (action) {
-	case CPU_ONLINE:
-	case CPU_ONLINE_FROZEN:
-	case CPU_DOWN_FAILED:
-	case CPU_DOWN_FAILED_FROZEN:
-		rp = find_package_by_id(phy_package_id);
-		if (rp)
-			++rp->nr_cpus;
-		else
-			rapl_add_package(cpu);
-		break;
-	case CPU_DOWN_PREPARE:
-	case CPU_DOWN_PREPARE_FROZEN:
-		rp = find_package_by_id(phy_package_id);
-		if (!rp)
-			break;
-		if (--rp->nr_cpus == 0)
-			rapl_remove_package(rp);
-	}
 
-	return NOTIFY_OK;
+	rp = find_package_by_id(phy_package_id);
+	if (rp)
+		++rp->nr_cpus;
+	else
+		rapl_add_package(cpu);
+	return 0;
 }
 
-static struct notifier_block rapl_cpu_notifier = {
-	.notifier_call = rapl_cpu_callback,
-};
+static int repl_cpu_prep_down(unsigned int cpu)
+{
+	int phy_package_id;
+	struct rapl_package *rp;
+
+	phy_package_id = topology_physical_package_id(cpu);
+	rp = find_package_by_id(phy_package_id);
+	if (!rp)
+		return 0;
+	if (--rp->nr_cpus == 0)
+		rapl_remove_package(rp);
+
+	return 0;
+}
 
 static int __init rapl_init(void)
 {
@@ -1521,8 +1516,6 @@ static int __init rapl_init(void)
 
 	rapl_defaults = (struct rapl_defaults *)id->driver_data;
 
-	cpu_notifier_register_begin();
-
 	/* prevent CPU hotplug during detection */
 	get_online_cpus();
 	ret = rapl_detect_topology();
@@ -1534,23 +1527,21 @@ static int __init rapl_init(void)
 		ret = -ENODEV;
 		goto done;
 	}
-	__register_hotcpu_notifier(&rapl_cpu_notifier);
+	cpuhp_setup_state_nocalls(CPUHP_POWERCAP_RAPL, rapl_cpu_online,
+				  repl_cpu_prep_down);
 done:
 	put_online_cpus();
-	cpu_notifier_register_done();
 
 	return ret;
 }
 
 static void __exit rapl_exit(void)
 {
-	cpu_notifier_register_begin();
 	get_online_cpus();
-	__unregister_hotcpu_notifier(&rapl_cpu_notifier);
+	cpuhp_remove_state(CPUHP_POWERCAP_RAPL);
 	rapl_unregister_powercap();
 	rapl_cleanup_data();
 	put_online_cpus();
-	cpu_notifier_register_done();
 }
 
 module_init(rapl_init);
