@@ -1344,7 +1344,20 @@ EXPORT_SYMBOL_GPL(mce_notify_irq);
 static int __mcheck_cpu_mce_banks_init(void)
 {
 	int i;
-	u8 num_banks = mca_cfg.banks;
+	u64 cap;
+	unsigned int num_banks;
+
+	rdmsrl(MSR_IA32_MCG_CAP, cap);
+
+	num_banks = cap & MCG_BANKCNT_MASK;
+	pr_info("CPU supports %d MCE banks\n", num_banks);
+
+	if (num_banks > MAX_NR_BANKS) {
+		pr_warn("Using only %u machine check banks out of %u\n",
+			MAX_NR_BANKS, num_banks);
+		num_banks = MAX_NR_BANKS;
+	}
+	mca_cfg.banks = num_banks;
 
 	mce_banks = kzalloc(num_banks * sizeof(struct mce_bank), GFP_KERNEL);
 	if (!mce_banks)
@@ -1370,25 +1383,11 @@ static int __mcheck_cpu_cap_init(void)
 	rdmsrl(MSR_IA32_MCG_CAP, cap);
 
 	b = cap & MCG_BANKCNT_MASK;
-	if (!mca_cfg.banks)
-		pr_info("CPU supports %d MCE banks\n", b);
-
-	if (b > MAX_NR_BANKS) {
-		pr_warn("Using only %u machine check banks out of %u\n",
-			MAX_NR_BANKS, b);
+	if (b > MAX_NR_BANKS)
 		b = MAX_NR_BANKS;
-	}
 
 	/* Don't support asymmetric configurations today */
-	WARN_ON(mca_cfg.banks != 0 && b != mca_cfg.banks);
-	mca_cfg.banks = b;
-
-	if (!mce_banks) {
-		int err = __mcheck_cpu_mce_banks_init();
-
-		if (err)
-			return err;
-	}
+	WARN_ON(b != mca_cfg.banks);
 
 	/* Use accurate RIP reporting if available. */
 	if ((cap & MCG_EXT_P) && MCG_EXT_CNT(cap) >= 9)
@@ -1665,26 +1664,22 @@ void (*machine_check_vector)(struct pt_regs *, long error_code) =
  * Called for each booted CPU to set up machine checks.
  * Must be called with preempt off:
  */
-void mcheck_cpu_init(struct cpuinfo_x86 *c)
+static int mcheck_cpu_starting(unsigned int cpu)
 {
+	struct cpuinfo_x86 *c = &cpu_data(cpu);
+
 	if (mca_cfg.disabled)
-		return;
+		return 0;
 
 	if (__mcheck_cpu_ancient_init(c))
-		return;
+		return 0;
 
 	if (!mce_available(c))
-		return;
+		return 0;
 
 	if (__mcheck_cpu_cap_init() < 0 || __mcheck_cpu_apply_quirks(c) < 0) {
 		mca_cfg.disabled = true;
-		return;
-	}
-
-	if (mce_gen_pool_init()) {
-		mca_cfg.disabled = true;
-		pr_emerg("Couldn't allocate MCE records pool!\n");
-		return;
+		return 0;
 	}
 
 	machine_check_vector = do_machine_check;
@@ -1692,6 +1687,7 @@ void mcheck_cpu_init(struct cpuinfo_x86 *c)
 	__mcheck_cpu_init_generic();
 	__mcheck_cpu_init_vendor(c);
 	__mcheck_cpu_init_timer();
+	return 0;
 }
 
 /*
@@ -2146,6 +2142,8 @@ static struct bus_type mce_subsys = {
 DEFINE_PER_CPU(struct device *, mce_device);
 
 void (*threshold_cpu_callback)(unsigned long action, unsigned int cpu);
+int (*threshold_cpu_callback_online)(unsigned int cpu);
+int (*threshold_cpu_callback_dead)(unsigned int cpu);
 
 static inline struct mce_bank *attr_to_bank(struct device_attribute *attr)
 {
@@ -2358,76 +2356,47 @@ static void mce_device_remove(unsigned int cpu)
 }
 
 /* Make sure there are no machine checks on offlined CPUs. */
-static void mce_disable_cpu(void *h)
+static void mce_disable_cpu(void)
 {
-	unsigned long action = *(unsigned long *)h;
-
 	if (!mce_available(raw_cpu_ptr(&cpu_info)))
 		return;
 
-	if (!(action & CPU_TASKS_FROZEN))
+	if (!cpuhp_tasks_frozen)
 		cmci_clear();
 
 	vendor_disable_error_reporting();
 }
 
-static void mce_reenable_cpu(void *h)
+/* Get notified when a cpu comes on/off. Be hotplug friendly. */
+static int mce_cpu_online(unsigned int cpu)
 {
-	unsigned long action = *(unsigned long *)h;
-	int i;
-
-	if (!mce_available(raw_cpu_ptr(&cpu_info)))
-		return;
-
-	if (!(action & CPU_TASKS_FROZEN))
-		cmci_reenable();
-	for (i = 0; i < mca_cfg.banks; i++) {
-		struct mce_bank *b = &mce_banks[i];
-
-		if (b->init)
-			wrmsrl(MSR_IA32_MCx_CTL(i), b->ctl);
-	}
+	mce_device_create(cpu);
+	if (threshold_cpu_callback_online)
+		threshold_cpu_callback_online(cpu);
+	return 0;
 }
 
-/* Get notified when a cpu comes on/off. Be hotplug friendly. */
-static int
-mce_cpu_callback(struct notifier_block *nfb, unsigned long action, void *hcpu)
+static int mce_cpu_dead(unsigned int cpu)
 {
-	unsigned int cpu = (unsigned long)hcpu;
+	if (threshold_cpu_callback_dead)
+		threshold_cpu_callback_dead(cpu);
+	mce_device_remove(cpu);
+	mce_intel_hcpu_update(cpu);
+
+	/* intentionally ignoring frozen here */
+	if (!cpuhp_tasks_frozen)
+		cmci_rediscover();
+	return 0;
+}
+
+static int mce_cpu_down_dying(unsigned int cpu)
+{
 	struct timer_list *t = &per_cpu(mce_timer, cpu);
 
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_ONLINE:
-		mce_device_create(cpu);
-		if (threshold_cpu_callback)
-			threshold_cpu_callback(action, cpu);
-		break;
-	case CPU_DEAD:
-		if (threshold_cpu_callback)
-			threshold_cpu_callback(action, cpu);
-		mce_device_remove(cpu);
-		mce_intel_hcpu_update(cpu);
-
-		/* intentionally ignoring frozen here */
-		if (!(action & CPU_TASKS_FROZEN))
-			cmci_rediscover();
-		break;
-	case CPU_DOWN_PREPARE:
-		smp_call_function_single(cpu, mce_disable_cpu, &action, 1);
-		del_timer_sync(t);
-		break;
-	case CPU_DOWN_FAILED:
-		smp_call_function_single(cpu, mce_reenable_cpu, &action, 1);
-		mce_start_timer(cpu, t);
-		break;
-	}
-
-	return NOTIFY_OK;
+	mce_disable_cpu();
+	del_timer_sync(t);
+	return 0;
 }
-
-static struct notifier_block mce_cpu_notifier = {
-	.notifier_call = mce_cpu_callback,
-};
 
 static __init void mce_init_banks(void)
 {
@@ -2450,7 +2419,6 @@ static __init void mce_init_banks(void)
 static __init int mcheck_init_device(void)
 {
 	int err;
-	int i = 0;
 
 	if (!mce_available(&boot_cpu_data)) {
 		err = -EIO;
@@ -2462,29 +2430,33 @@ static __init int mcheck_init_device(void)
 		goto err_out;
 	}
 
-	mce_init_banks();
-
 	err = subsys_system_register(&mce_subsys, NULL);
 	if (err)
 		goto err_out_mem;
 
-	cpu_notifier_register_begin();
-	for_each_online_cpu(i) {
-		err = mce_device_create(i);
-		if (err) {
-			/*
-			 * Register notifier anyway (and do not unreg it) so
-			 * that we don't leave undeleted timers, see notifier
-			 * callback above.
-			 */
-			__register_hotcpu_notifier(&mce_cpu_notifier);
-			cpu_notifier_register_done();
-			goto err_device_create;
-		}
+	err = __mcheck_cpu_mce_banks_init();
+	if (err)
+		goto err_out_mem;
+
+	mce_init_banks();
+
+	err = mce_gen_pool_init();
+	if (err) {
+		pr_emerg("Couldn't allocate MCE records pool!\n");
+		goto err_init_pool;
 	}
 
-	__register_hotcpu_notifier(&mce_cpu_notifier);
-	cpu_notifier_register_done();
+	err = cpuhp_setup_state(CPUHP_X86_MCE_DEAD, NULL, mce_cpu_dead);
+	if (err)
+		goto err_init_pool;
+
+	err = cpuhp_setup_state(CPUHP_X86_MCE_STARTING, mcheck_cpu_starting,
+				mce_cpu_down_dying);
+	if (err)
+		goto err_hp_starting;
+	err = cpuhp_setup_state(CPUHP_X86_MCE_ONLINE, mce_cpu_online, NULL);
+	if (err)
+		goto err_hp_online;
 
 	register_syscore_ops(&mce_syscore_ops);
 
@@ -2497,22 +2469,25 @@ static __init int mcheck_init_device(void)
 
 err_register:
 	unregister_syscore_ops(&mce_syscore_ops);
+	cpuhp_remove_state(CPUHP_X86_MCE_ONLINE);
 
-err_device_create:
-	/*
-	 * We didn't keep track of which devices were created above, but
-	 * even if we had, the set of online cpus might have changed.
-	 * Play safe and remove for every possible cpu, since
-	 * mce_device_remove() will do the right thing.
-	 */
-	for_each_possible_cpu(i)
-		mce_device_remove(i);
+err_hp_online:
+	cpuhp_remove_state(CPUHP_X86_MCE_STARTING);
+
+err_hp_starting:
+	cpuhp_remove_state(CPUHP_X86_MCE_DEAD);
+
+err_init_pool:
+	mca_cfg.banks = 0;
+	kfree(mce_banks);
+	mce_banks = NULL;
 
 err_out_mem:
 	free_cpumask_var(mce_device_initialized);
 
 err_out:
 	pr_err("Unable to init device /dev/mcelog (rc: %d)\n", err);
+	mca_cfg.disabled = true;
 
 	return err;
 }

@@ -829,7 +829,7 @@ free_out:
 	per_cpu(threshold_banks, cpu)[bank] = NULL;
 }
 
-static void threshold_remove_device(unsigned int cpu)
+static int threshold_remove_device(unsigned int cpu)
 {
 	unsigned int bank;
 
@@ -839,24 +839,7 @@ static void threshold_remove_device(unsigned int cpu)
 		threshold_remove_bank(cpu, bank);
 	}
 	kfree(per_cpu(threshold_banks, cpu));
-}
-
-/* get notified when a cpu comes on/off */
-static void
-amd_64_threshold_cpu_callback(unsigned long action, unsigned int cpu)
-{
-	switch (action) {
-	case CPU_ONLINE:
-	case CPU_ONLINE_FROZEN:
-		threshold_create_device(cpu);
-		break;
-	case CPU_DEAD:
-	case CPU_DEAD_FROZEN:
-		threshold_remove_device(cpu);
-		break;
-	default:
-		break;
-	}
+	return 0;
 }
 
 static __init int threshold_init_device(void)
@@ -870,7 +853,8 @@ static __init int threshold_init_device(void)
 		if (err)
 			return err;
 	}
-	threshold_cpu_callback = amd_64_threshold_cpu_callback;
+	threshold_cpu_callback_online = threshold_create_device;
+	threshold_cpu_callback_dead = threshold_remove_device;
 
 	return 0;
 }

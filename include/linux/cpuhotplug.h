@@ -77,9 +77,11 @@ enum cpuhp_state {
 	CPUHP_RADIX_DEAD,		/* P: 0 S: NULL T: radix_tree_cpu_dead C: P */
 	CPUHP_PAGE_ALLOC_DEAD,		/* P: 0 S: NULL T: page_alloc_cpu_dead C: P */
 	CPUHP_NET_DEV_DEAD,		/* P: 0 S: NULL T: dev_cpu_dead C: P */
+	CPUHP_X86_MCE_DEAD,		/* P: 0 S: NULL T: mce_cpu_dead C: I */
 	CPUHP_SCHED_DEAD,		/* P: INT_MAX S: NULL T: sched_dead_numa_cpu C: P */
 	CPUHP_BRINGUP_CPU,		/* P: __cpu_up S: bringup_cpu T: NULL C: C */
 	CPUHP_AP_OFFLINE,
+	CPUHP_X86_MCE_STARTING,			/* P: MCE S: mcheck_cpu_starting T: mce_cpu_down_dying C: I */
 	CPUHP_AP_SCHED_STARTING,		/* P: INT_MAX S: sched_cpu_active_starting T: NULL C: C */
 	CPUHP_AP_IRQ_GIC_STARTING,		/* P: 100 S: gic_starting_cpu T: NULL C: P */
 	CPUHP_AP_IRQ_GICV3_STARTING,		/* P: 100 S: gic_starting_cpu T: NULL C: P */
@@ -183,6 +185,7 @@ enum cpuhp_state {
 	CPUHP_IA64_PALINFO_ONLINE,	/* P: 0 S: palinfo_add_proc T: palinfo_del_proc C: I */
 	CPUHP_IA64_SALINFO_ONLINE,	/* P: 0 S: salinfo_cpu_online T: salinfo_cpu_pre_down C: I */
 	CPUHP_IA64_TOPOLOGY_ONLINE,	/* P: 0 S: cache_cpu_online T: cache_cpu_pre_down C: I */
+	CPUHP_X86_MCE_ONLINE,		/* P: 0 S: mce_cpu_online T: NULL C: I */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */

@@ -972,9 +972,6 @@ static void identify_cpu(struct cpuinfo_x86 *c)
 			c->x86_capability[i] |= boot_cpu_data.x86_capability[i];
 	}
 
-	/* Init Machine Check Exception if available. */
-	mcheck_cpu_init(c);
-
 	select_idle_routine(c);
 
 #ifdef CONFIG_NUMA
