@@ -73,6 +73,7 @@ enum cpuhp_state {
 	CPUHP_MM_MEMCQ_DEAD,		/* P: 0 S: NULL T: memcg_hotplug_cpu_dead C: P */
 	CPUHP_PERCPU_CNT_DEAD,		/* P: 0 S: NULL T: percpu_counter_cpu_dead C: P */
 	CPUHP_RADIX_DEAD,		/* P: 0 S: NULL T: radix_tree_cpu_dead C: P */
+	CPUHP_PAGE_ALLOC_DEAD,		/* P: 0 S: NULL T: page_alloc_cpu_dead C: P */
 	CPUHP_SCHED_DEAD,		/* P: INT_MAX S: NULL T: sched_dead_numa_cpu C: P */
 	CPUHP_BRINGUP_CPU,		/* P: __cpu_up S: bringup_cpu T: NULL C: C */
 	CPUHP_AP_OFFLINE,
