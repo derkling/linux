@@ -69,6 +69,7 @@ enum cpuhp_state {
 	CPUHP_BLKMQ_DEAD,		/* P: 0 S: NULL T: blk_mq_main_cpu_dead C: P */
 	CPUHP_FS_BUFF_DEAD,		/* P: 0 S: NULL T: buffer_exit_cpu_dead C: P */
 	CPUHP_PRINTK_DEAD,		/* P: 0 S: NULL T: console_cpu_notify C: P */
+	CPUHP_SCHED_HRTICK_DEAD,	/* P: 0 S: NULL T: hotplug_hrtick_dead C: P */
 	CPUHP_SCHED_DEAD,		/* P: INT_MAX S: NULL T: sched_dead_numa_cpu C: P */
 	CPUHP_BRINGUP_CPU,		/* P: __cpu_up S: bringup_cpu T: NULL C: C */
 	CPUHP_AP_OFFLINE,
@@ -166,6 +167,7 @@ enum cpuhp_state {
 	CPUHP_PADATA_ONLINE,		/* P: 0 S: padata_cpu_online T: padata_cpu_prep_down C: P */
 	CPUHP_X86_X2APIC_NV_ONLINE,	/* P: 0 S: uv_heartbeat_enable T: uv_heartbeat_disable C: P */
 	CPUHP_PRINTK_ONLINE,		/* P: 0 S: console_cpu_notify T: NULL C: P */
+	CPUHP_SCHED_HRTICK_DOWN_PREP,	/* P: 0 S: NULL T: hotplug_hrtick_dead C: P */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */

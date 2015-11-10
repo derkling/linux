@@ -381,28 +381,18 @@ void hrtick_start(struct rq *rq, u64 delay)
 	}
 }
 
-static int
-hotplug_hrtick(struct notifier_block *nfb, unsigned long action, void *hcpu)
+static int hotplug_hrtick_dead(unsigned int cpu)
 {
-	int cpu = (int)(long)hcpu;
-
-	switch (action) {
-	case CPU_UP_CANCELED:
-	case CPU_UP_CANCELED_FROZEN:
-	case CPU_DOWN_PREPARE:
-	case CPU_DOWN_PREPARE_FROZEN:
-	case CPU_DEAD:
-	case CPU_DEAD_FROZEN:
-		hrtick_clear(cpu_rq(cpu));
-		return NOTIFY_OK;
-	}
-
-	return NOTIFY_DONE;
+	hrtick_clear(cpu_rq(cpu));
+	return 0;
 }
 
 static __init void init_hrtick(void)
 {
-	hotcpu_notifier(hotplug_hrtick, 0);
+	cpuhp_setup_state_nocalls(CPUHP_SCHED_HRTICK_DEAD, NULL,
+				  hotplug_hrtick_dead);
+	cpuhp_setup_state_nocalls(CPUHP_SCHED_HRTICK_DOWN_PREP, NULL,
+				  hotplug_hrtick_dead);
 }
 #else
 /*
