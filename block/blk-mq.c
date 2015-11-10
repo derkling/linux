@@ -1589,7 +1589,7 @@ static int blk_mq_hctx_cpu_offline(struct blk_mq_hw_ctx *hctx, int cpu)
 	spin_unlock(&ctx->lock);
 
 	if (list_empty(&tmp))
-		return NOTIFY_OK;
+		return 0;
 
 	ctx = blk_mq_get_ctx(q);
 	spin_lock(&ctx->lock);
@@ -1609,23 +1609,14 @@ static int blk_mq_hctx_cpu_offline(struct blk_mq_hw_ctx *hctx, int cpu)
 
 	blk_mq_run_hw_queue(hctx, true);
 	blk_mq_put_ctx(ctx);
-	return NOTIFY_OK;
+	return 0;
 }
 
-static int blk_mq_hctx_notify(void *data, unsigned long action,
-			      unsigned int cpu)
+static int blk_mq_hctx_notify(void *data, unsigned int cpu)
 {
 	struct blk_mq_hw_ctx *hctx = data;
 
-	if (action == CPU_DEAD || action == CPU_DEAD_FROZEN)
-		return blk_mq_hctx_cpu_offline(hctx, cpu);
-
-	/*
-	 * In case of CPU online, tags may be reallocated
-	 * in blk_mq_map_swqueue() after mapping is updated.
-	 */
-
-	return NOTIFY_OK;
+	return blk_mq_hctx_cpu_offline(hctx, cpu);
 }
 
 /* hctx->ctxs will be freed in queue's release handler */

@@ -9,7 +9,7 @@ struct blk_flush_queue;
 struct blk_mq_cpu_notifier {
 	struct list_head list;
 	void *data;
-	int (*notify)(void *data, unsigned long action, unsigned int cpu);
+	int (*notify)(void *data, unsigned int cpu);
 };
 
 struct blk_mq_ctxmap {
