@@ -757,7 +757,7 @@ static void uv_heartbeat(unsigned long ignored)
 	mod_timer_pinned(timer, jiffies + SCIR_CPU_HB_INTERVAL);
 }
 
-static void uv_heartbeat_enable(int cpu)
+static int uv_heartbeat_enable(unsigned int cpu)
 {
 	while (!uv_cpu_hub_info(cpu)->scir.enabled) {
 		struct timer_list *timer = &uv_cpu_hub_info(cpu)->scir.timer;
@@ -771,42 +771,24 @@ static void uv_heartbeat_enable(int cpu)
 		/* also ensure that boot cpu is enabled */
 		cpu = 0;
 	}
+	return 0;
 }
 
 #ifdef CONFIG_HOTPLUG_CPU
-static void uv_heartbeat_disable(int cpu)
+static int uv_heartbeat_disable(unsigned int cpu)
 {
 	if (uv_cpu_hub_info(cpu)->scir.enabled) {
 		uv_cpu_hub_info(cpu)->scir.enabled = 0;
 		del_timer(&uv_cpu_hub_info(cpu)->scir.timer);
 	}
 	uv_set_cpu_scir_bits(cpu, 0xff);
-}
-
-/*
- * cpu hotplug notifier
- */
-static int uv_scir_cpu_notify(struct notifier_block *self, unsigned long action,
-			      void *hcpu)
-{
-	long cpu = (long)hcpu;
-
-	switch (action) {
-	case CPU_ONLINE:
-		uv_heartbeat_enable(cpu);
-		break;
-	case CPU_DOWN_PREPARE:
-		uv_heartbeat_disable(cpu);
-		break;
-	default:
-		break;
-	}
-	return NOTIFY_OK;
+	return 0;
 }
 
 static __init void uv_scir_register_cpu_notifier(void)
 {
-	hotcpu_notifier(uv_scir_cpu_notify, 0);
+	cpuhp_setup_state_nocalls(CPUHP_X86_X2APIC_NV_ONLINE,
+				  uv_heartbeat_enable, uv_heartbeat_disable);
 }
 
 #else /* !CONFIG_HOTPLUG_CPU */
