@@ -2113,47 +2113,15 @@ static void blk_mq_queue_reinit(struct request_queue *q,
 	blk_mq_sysfs_register(q);
 }
 
-static int blk_mq_queue_reinit_notify(struct notifier_block *nb,
-				      unsigned long action, void *hcpu)
+/*
+ * New online cpumask which is going to be set in this hotplug event.
+ * Declare this cpumasks as global as cpu-hotplug operation is invoked
+ * one-by-one and dynamically allocating this could result in a failure.
+ */
+static struct cpumask cpuhp_online_new;
+static int blk_mq_queue_reinit_work(void)
 {
 	struct request_queue *q;
-	int cpu = (unsigned long)hcpu;
-	/*
-	 * New online cpumask which is going to be set in this hotplug event.
-	 * Declare this cpumasks as global as cpu-hotplug operation is invoked
-	 * one-by-one and dynamically allocating this could result in a failure.
-	 */
-	static struct cpumask online_new;
-
-	/*
-	 * Before hotadded cpu starts handling requests, new mappings must
-	 * be established.  Otherwise, these requests in hw queue might
-	 * never be dispatched.
-	 *
-	 * For example, there is a single hw queue (hctx) and two CPU queues
-	 * (ctx0 for CPU0, and ctx1 for CPU1).
-	 *
-	 * Now CPU1 is just onlined and a request is inserted into
-	 * ctx1->rq_list and set bit0 in pending bitmap as ctx1->index_hw is
-	 * still zero.
-	 *
-	 * And then while running hw queue, flush_busy_ctxs() finds bit0 is
-	 * set in pending bitmap and tries to retrieve requests in
-	 * hctx->ctxs[0]->rq_list.  But htx->ctxs[0] is a pointer to ctx0,
-	 * so the request in ctx1->rq_list is ignored.
-	 */
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_DEAD:
-	case CPU_UP_CANCELED:
-		cpumask_copy(&online_new, cpu_online_mask);
-		break;
-	case CPU_UP_PREPARE:
-		cpumask_copy(&online_new, cpu_online_mask);
-		cpumask_set_cpu(cpu, &online_new);
-		break;
-	default:
-		return NOTIFY_OK;
-	}
 
 	mutex_lock(&all_q_mutex);
 
@@ -2177,13 +2145,44 @@ static int blk_mq_queue_reinit_notify(struct notifier_block *nb,
 	}
 
 	list_for_each_entry(q, &all_q_list, all_q_node)
-		blk_mq_queue_reinit(q, &online_new);
+		blk_mq_queue_reinit(q, &cpuhp_online_new);
 
 	list_for_each_entry(q, &all_q_list, all_q_node)
 		blk_mq_unfreeze_queue(q);
 
 	mutex_unlock(&all_q_mutex);
-	return NOTIFY_OK;
+	return 0;
+}
+
+static int blk_mq_queue_reinit_dead(unsigned int cpu)
+{
+	cpumask_copy(&cpuhp_online_new, cpu_online_mask);
+	return blk_mq_queue_reinit_work();
+}
+
+static int blk_mq_queue_reinit_prepare(unsigned int cpu)
+{
+	/*
+	 * Before hotadded cpu starts handling requests, new mappings must
+	 * be established.  Otherwise, these requests in hw queue might
+	 * never be dispatched.
+	 *
+	 * For example, there is a single hw queue (hctx) and two CPU queues
+	 * (ctx0 for CPU0, and ctx1 for CPU1).
+	 *
+	 * Now CPU1 is just onlined and a request is inserted into
+	 * ctx1->rq_list and set bit0 in pending bitmap as ctx1->index_hw is
+	 * still zero.
+	 *
+	 * And then while running hw queue, flush_busy_ctxs() finds bit0 is
+	 * set in pending bitmap and tries to retrieve requests in
+	 * hctx->ctxs[0]->rq_list.  But htx->ctxs[0] is a pointer to ctx0,
+	 * so the request in ctx1->rq_list is ignored.
+	 */
+
+	cpumask_copy(&cpuhp_online_new, cpu_online_mask);
+	cpumask_set_cpu(cpu, &cpuhp_online_new);
+	return blk_mq_queue_reinit_work();
 }
 
 static int __blk_mq_alloc_rq_maps(struct blk_mq_tag_set *set)
@@ -2352,7 +2351,9 @@ static int __init blk_mq_init(void)
 {
 	blk_mq_cpu_init();
 
-	hotcpu_notifier(blk_mq_queue_reinit_notify, 0);
+	cpuhp_setup_state_nocalls(CPUHP_BLK_MQ_PREPARE,
+				  blk_mq_queue_reinit_prepare,
+				  blk_mq_queue_reinit_dead);
 
 	return 0;
 }
