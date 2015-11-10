@@ -408,28 +408,38 @@ static int flow_cache_cpu_prepare(struct flow_cache *fc, int cpu)
 	return 0;
 }
 
-static int flow_cache_cpu(struct notifier_block *nfb,
-			  unsigned long action,
-			  void *hcpu)
-{
-	struct flow_cache *fc = container_of(nfb, struct flow_cache,
-						hotcpu_notifier);
-	int res, cpu = (unsigned long) hcpu;
-	struct flow_cache_percpu *fcp = per_cpu_ptr(fc->percpu, cpu);
+static LIST_HEAD(flow_cache_list);
+static DEFINE_MUTEX(flow_list_lock);
+static atomic_t flow_hp_installed = ATOMIC_INIT(0);
 
-	switch (action) {
-	case CPU_UP_PREPARE:
-	case CPU_UP_PREPARE_FROZEN:
-		res = flow_cache_cpu_prepare(fc, cpu);
-		if (res)
-			return notifier_from_errno(res);
-		break;
-	case CPU_DEAD:
-	case CPU_DEAD_FROZEN:
-		__flow_cache_shrink(fc, fcp, 0);
-		break;
+static int flow_cache_cpu_up_prep(unsigned int cpu)
+{
+	struct flow_cache *fc;
+	int ret = 0;
+
+	mutex_lock(&flow_list_lock);
+	list_for_each_entry(fc, &flow_cache_list, cpu_notifier) {
+		ret = flow_cache_cpu_prepare(fc, cpu);
+		if (ret)
+			goto out;
 	}
-	return NOTIFY_OK;
+out:
+	mutex_unlock(&flow_list_lock);
+	return ret;
+}
+
+static int flow_cache_cpu_dead(unsigned int cpu)
+{
+	struct flow_cache *fc;
+
+	mutex_lock(&flow_list_lock);
+	list_for_each_entry(fc, &flow_cache_list, cpu_notifier) {
+		struct flow_cache_percpu *fcp = per_cpu_ptr(fc->percpu, cpu);
+
+		__flow_cache_shrink(fc, fcp, 0);
+	}
+	mutex_unlock(&flow_list_lock);
+	return 0;
 }
 
 int flow_cache_init(struct net *net)
@@ -455,18 +465,22 @@ int flow_cache_init(struct net *net)
 	if (!fc->percpu)
 		return -ENOMEM;
 
-	cpu_notifier_register_begin();
+	get_online_cpus();
 
+	if (atomic_inc_return(&flow_hp_installed) == 1)
+		cpuhp_setup_state_nocalls(CPUHP_NET_FLOW_PREPARE,
+					  flow_cache_cpu_up_prep,
+					  flow_cache_cpu_dead);
 	for_each_online_cpu(i) {
 		if (flow_cache_cpu_prepare(fc, i))
 			goto err;
 	}
-	fc->hotcpu_notifier = (struct notifier_block){
-		.notifier_call = flow_cache_cpu,
-	};
-	__register_hotcpu_notifier(&fc->hotcpu_notifier);
 
-	cpu_notifier_register_done();
+	mutex_lock(&flow_list_lock);
+	list_add_tail(&fc->cpu_notifier, &flow_cache_list);
+	mutex_unlock(&flow_list_lock);
+
+	put_online_cpus();
 
 	setup_timer(&fc->rnd_timer, flow_cache_new_hashrnd,
 		    (unsigned long) fc);
@@ -482,7 +496,7 @@ err:
 		fcp->hash_table = NULL;
 	}
 
-	cpu_notifier_register_done();
+	put_online_cpus();
 
 	free_percpu(fc->percpu);
 	fc->percpu = NULL;
@@ -497,7 +511,12 @@ void flow_cache_fini(struct net *net)
 	struct flow_cache *fc = &net->xfrm.flow_cache_global;
 
 	del_timer_sync(&fc->rnd_timer);
-	unregister_hotcpu_notifier(&fc->hotcpu_notifier);
+	mutex_lock(&flow_list_lock);
+	list_del(&fc->cpu_notifier);
+	mutex_unlock(&flow_list_lock);
+
+	if (atomic_dec_return(&flow_hp_installed) == 0)
+		cpuhp_remove_state_nocalls(CPUHP_NET_FLOW_PREPARE);
 
 	for_each_possible_cpu(i) {
 		struct flow_cache_percpu *fcp = per_cpu_ptr(fc->percpu, i);

@@ -46,6 +46,7 @@ enum cpuhp_state {
 	CPUHP_MIPS_CAVIUM_PREPARE,	/* P: 0 S: octeon_update_boot_vector T: NULL C: P */
 	CPUHP_MIPS_LOONGSON_PREPARE,	/* P: 0 S: loongson3_enable_clock T: loongson3_disable_clock C: P */
 	CPUHP_BLK_MQ_PREPARE,		/* P: 0 S: blk_mq_queue_reinit_prepare T: blk_mq_queue_reinit_dead C: P */
+	CPUHP_NET_FLOW_PREPARE,		/* P: 0 S: flow_cache_cpu_up_prep T: flow_cache_cpu_dead C: P */
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
 	CPUHP_X86_APB_DEAD,		/* P: -20 S: NULL T: apbt_cpu_dead C: I */
