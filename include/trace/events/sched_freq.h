@@ -53,11 +53,13 @@ TRACE_EVENT(sched_freq_request_opp,
 
 TRACE_EVENT(sched_freq_update_capacity,
 	    TP_PROTO(int cpu,
+		     bool request,
 		     struct sched_capacity_reqs *scr,
 		     unsigned long new_capacity),
-	    TP_ARGS(cpu, scr, new_capacity),
+	    TP_ARGS(cpu, request, scr, new_capacity),
 	    TP_STRUCT__entry(
 		    __field(	int,		cpu)
+		    __field(	bool,		request)
 		    __field(	unsigned long,	cfs)
 		    __field(	unsigned long,	rt)
 		    __field(	unsigned long,	dl)
@@ -67,6 +69,7 @@ TRACE_EVENT(sched_freq_update_capacity,
 	    ),
 	    TP_fast_assign(
 		    __entry->cpu = cpu;
+		    __entry->request = request;
 		    __entry->cfs = scr->cfs;
 		    __entry->rt = scr->rt;
 		    __entry->dl = scr->dl;
@@ -74,10 +77,11 @@ TRACE_EVENT(sched_freq_update_capacity,
 		    __entry->total = scr->total;
 		    __entry->new_total = new_capacity;
 	    ),
-	    TP_printk("cpu=%d cfs=%ld rt=%ld dl=%ld dl_min=%ld "
+	    TP_printk("cpu=%d set_cap=%d cfs=%ld rt=%ld dl=%ld dl_min=%ld "
 		      "old_tot=%ld new_tot=%ld",
-		      __entry->cpu, __entry->cfs, __entry->rt, __entry->dl,
-		      __entry->dl_min, __entry->total, __entry->new_total)
+		      __entry->cpu, __entry->request, __entry->cfs, __entry->rt,
+		      __entry->dl, __entry->dl_min, __entry->total,
+		      __entry->new_total)
 );
 
 #endif /* _TRACE_SCHED_FREQ_H */

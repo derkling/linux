@@ -243,7 +243,7 @@ out:
 	return;
 }
 
-void update_cpu_capacity_request(int cpu)
+void update_cpu_capacity_request(int cpu, bool request)
 {
 	unsigned long new_capacity;
 	struct sched_capacity_reqs *scr;
@@ -258,8 +258,8 @@ void update_cpu_capacity_request(int cpu)
 	new_capacity += scr->dl;
 	if (new_capacity < scr->dl_min)
 		new_capacity = scr->dl_min;
-	trace_sched_freq_update_capacity(cpu, scr, new_capacity);
-	if (new_capacity != scr->total) {
+	trace_sched_freq_update_capacity(cpu, request, scr, new_capacity);
+	if (request && new_capacity != scr->total) {
 		cpufreq_sched_set_cap(cpu, new_capacity);
 		scr->total = new_capacity;
 	}

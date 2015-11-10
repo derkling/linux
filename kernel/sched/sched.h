@@ -1423,15 +1423,14 @@ extern unsigned int capacity_margin;
 
 #ifdef CONFIG_CPU_FREQ_GOV_SCHED
 DECLARE_PER_CPU(struct sched_capacity_reqs, cpu_sched_capacity_reqs);
-void update_cpu_capacity_request(int cpu);
+void update_cpu_capacity_request(int cpu, bool request);
 
 static inline void set_cfs_cpu_capacity(int cpu, bool request,
 					unsigned long capacity)
 {
 	if (per_cpu(cpu_sched_capacity_reqs, cpu).cfs != capacity) {
 		per_cpu(cpu_sched_capacity_reqs, cpu).cfs = capacity;
-		if (request)
-			update_cpu_capacity_request(cpu);
+		update_cpu_capacity_request(cpu, request);
 	}
 }
 
@@ -1440,8 +1439,7 @@ static inline void set_rt_cpu_capacity(int cpu, bool request,
 {
 	if (per_cpu(cpu_sched_capacity_reqs, cpu).rt != capacity) {
 		per_cpu(cpu_sched_capacity_reqs, cpu).rt = capacity;
-		if (request)
-			update_cpu_capacity_request(cpu);
+		update_cpu_capacity_request(cpu, request);
 	}
 }
 
@@ -1455,8 +1453,7 @@ static inline void set_dl_cpu_capacity(int cpu, bool request,
 	if (scr->dl != capacity || scr->dl_min != min_capacity) {
 		scr->dl = capacity;
 		scr->dl_min = min_capacity;
-		if (request)
-			update_cpu_capacity_request(cpu);
+		update_cpu_capacity_request(cpu, request);
 	}
 }
 #else
