@@ -583,7 +583,7 @@ void play_dead(void)
 	play_dead_at_ckseg1(state_addr);
 }
 
-void loongson3_disable_clock(int cpu)
+static int loongson3_disable_clock(unsigned int cpu)
 {
 	uint64_t core_id = cpu_data[cpu].core;
 	uint64_t package_id = cpu_data[cpu].package;
@@ -596,7 +596,7 @@ void loongson3_disable_clock(int cpu)
 	}
 }
 
-void loongson3_enable_clock(int cpu)
+static int loongson3_enable_clock(unsigned int cpu)
 {
 	uint64_t core_id = cpu_data[cpu].core;
 	uint64_t package_id = cpu_data[cpu].package;
@@ -609,32 +609,11 @@ void loongson3_enable_clock(int cpu)
 	}
 }
 
-#define CPU_POST_DEAD_FROZEN	(CPU_POST_DEAD | CPU_TASKS_FROZEN)
-static int loongson3_cpu_callback(struct notifier_block *nfb,
-	unsigned long action, void *hcpu)
-{
-	unsigned int cpu = (unsigned long)hcpu;
-
-	switch (action) {
-	case CPU_POST_DEAD:
-	case CPU_POST_DEAD_FROZEN:
-		pr_info("Disable clock for CPU#%d\n", cpu);
-		loongson3_disable_clock(cpu);
-		break;
-	case CPU_UP_PREPARE:
-	case CPU_UP_PREPARE_FROZEN:
-		pr_info("Enable clock for CPU#%d\n", cpu);
-		loongson3_enable_clock(cpu);
-		break;
-	}
-
-	return NOTIFY_OK;
-}
-
 static int register_loongson3_notifier(void)
 {
-	hotcpu_notifier(loongson3_cpu_callback, 0);
-	return 0;
+	return cpuhp_setup_state_nocalls(CPUHP_MIPS_LOONGSON_PREPARE,
+					 loongson3_enable_clock,
+					 loongson3_disable_clock);
 }
 early_initcall(register_loongson3_notifier);
 
