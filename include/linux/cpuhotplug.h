@@ -50,6 +50,7 @@ enum cpuhp_state {
 	CPUHP_TOPOLOGY_PREPARE,		/* P: 0 S: topology_add_dev T: topology_remove_dev C: I */
 	CPUHP_X86_THERM_PREPARE,	/* P: 0 S: thermal_throttle_prepare T: thermal_throttle_dead C: I */
 	CPUHP_X86_CPUID_PREPARE,	/* P: 0 S: cpuid_device_create T: cpuid_device_destroy C: I */
+	CPUHP_X86_MSR_PREPARE,		/* P: 0 S: msr_device_create T: msr_device_destroy C: I */
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
 	CPUHP_X86_APB_DEAD,		/* P: -20 S: NULL T: apbt_cpu_dead C: I */
