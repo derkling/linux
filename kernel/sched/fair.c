@@ -4907,19 +4907,12 @@ static int energy_diff(struct energy_env *eenv)
 		return 0; /* Error */
 
 	sg = sd->groups;
+
 	do {
-		if (eenv->src_cpu != -1 && cpumask_test_cpu(eenv->src_cpu,
-							sched_group_cpus(sg))) {
-			eenv_before.sg_top = eenv->sg_top = sg;
-			energy_before += sched_group_energy(&eenv_before);
-			energy_after += sched_group_energy(eenv);
-
-			/* src_cpu and dst_cpu may belong to the same group */
-			continue;
-		}
-
-		if (eenv->dst_cpu != -1	&& cpumask_test_cpu(eenv->dst_cpu,
-							sched_group_cpus(sg))) {
+		if ((eenv->src_cpu != -1 && cpumask_test_cpu(eenv->src_cpu,
+						      sched_group_cpus(sg))) ||
+		    (eenv->dst_cpu != -1 && cpumask_test_cpu(eenv->dst_cpu,
+						      sched_group_cpus(sg)))) {
 			eenv_before.sg_top = eenv->sg_top = sg;
 			energy_before += sched_group_energy(&eenv_before);
 			energy_after += sched_group_energy(eenv);
