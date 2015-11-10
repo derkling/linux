@@ -173,6 +173,7 @@ enum cpuhp_state {
 	CPUHP_PRINTK_ONLINE,		/* P: 0 S: console_cpu_notify T: NULL C: P */
 	CPUHP_SCHED_HRTICK_DOWN_PREP,	/* P: 0 S: NULL T: hotplug_hrtick_dead C: P */
 	CPUHP_PERCPU_CNT_ONLINE,	/* P: 0 S: compute_batch_value T: NULL C: I */
+	CPUHP_MM_VMSCAN_ONLINE,		/* P: 0 S: kswapd_cpu_online T: NULL C: P */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
 	CPUHP_NOTIFY_DOWN_PREPARE,	/* P: CPU_DOWN_PREPARE S: NULL T: notify_down_prepare C: C */
