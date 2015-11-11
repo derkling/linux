@@ -53,6 +53,7 @@ enum cpuhp_state {
 	CPUHP_X86_CPUID_PREPARE,	/* P: 0 S: cpuid_device_create T: cpuid_device_destroy C: I */
 	CPUHP_X86_MSR_PREPARE,		/* P: 0 S: msr_device_create T: msr_device_destroy C: I */
 	CPUHP_NET_IUCV_PREPARE,		/* P: 0 S: iucv_cpu_prepare T: iucv_cpu_dead C: I */
+	CPUHP_CPUFREQ_ACPI_PREPARE,	/* P: 0 S: cpufreq_boost_prepare T: NULL C: P */
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
 	CPUHP_X86_APB_DEAD,		/* P: -20 S: NULL T: apbt_cpu_dead C: I */
@@ -213,6 +214,7 @@ enum cpuhp_state {
 	CPUHP_SPARC_TOPOLOGY_ONLINE,	/* P: 0 S: register_cpu_online T: unregister_cpu_online C: I */
 	CPUHP_X86_OPRO_NMI_ONLINE,	/* P: 0 S: oprofile_cpu_online T: oprofile_cpu_predown C: I */
 	CPUHP_PCI_AMDBUS_ONLINE,	/* P: 0 S: amd_bus_cpu_online T: NULL C: I */
+	CPUHP_CPUFREQ_ACPI_PRE_DOWN,	/* P: 0 S: NULL T: cpufreq_boost_predown C: I */
 	CPUHP_TICK_NOHZ_PREDOWN,	/* P: 0 S: NULL T: tick_nohz_cpu_down C: P */
 	CPUHP_ARM_BL_PREDOWN,		/* P: 0 S: NULL T: bL_switcher_cpu_pre C: P */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */

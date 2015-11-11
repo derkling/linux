@@ -529,13 +529,9 @@ static void free_acpi_perf_data(void)
 	free_percpu(acpi_perf_data);
 }
 
-static int boost_notify(struct notifier_block *nb, unsigned long action,
-		      void *hcpu)
+static int cpufreq_boost_prepare(unsigned int cpu)
 {
-	unsigned cpu = (long)hcpu;
-	const struct cpumask *cpumask;
-
-	cpumask = get_cpu_mask(cpu);
+	const struct cpumask *cpumask = get_cpu_mask(cpu);
 
 	/*
 	 * Clear the boost-disable bit on the CPU_DOWN path so that
@@ -544,28 +540,17 @@ static int boost_notify(struct notifier_block *nb, unsigned long action,
 	 * sync with the current global state.
 	 */
 
-	switch (action) {
-	case CPU_UP_PREPARE:
-	case CPU_UP_PREPARE_FROZEN:
-		boost_set_msrs(acpi_cpufreq_driver.boost_enabled, cpumask);
-		break;
-
-	case CPU_DOWN_PREPARE:
-	case CPU_DOWN_PREPARE_FROZEN:
-		boost_set_msrs(1, cpumask);
-		break;
-
-	default:
-		break;
-	}
-
-	return NOTIFY_OK;
+	boost_set_msrs(acpi_cpufreq_driver.boost_enabled, cpumask);
+	return 0;
 }
 
+static int cpufreq_boost_predown(unsigned int cpu)
+{
+	const struct cpumask *cpumask = get_cpu_mask(cpu);
 
-static struct notifier_block boost_nb = {
-	.notifier_call          = boost_notify,
-};
+	boost_set_msrs(1, cpumask);
+	return 0;
+}
 
 /*
  * acpi_cpufreq_early_init - initialize ACPI P-States library
@@ -919,23 +904,24 @@ static void __init acpi_cpufreq_boost_init(void)
 		acpi_cpufreq_driver.boost_supported = true;
 		acpi_cpufreq_driver.boost_enabled = boost_state(0);
 
-		cpu_notifier_register_begin();
-
+		get_online_cpus();
 		/* Force all MSRs to the same value */
 		boost_set_msrs(acpi_cpufreq_driver.boost_enabled,
 			       cpu_online_mask);
 
-		__register_cpu_notifier(&boost_nb);
-
-		cpu_notifier_register_done();
+		cpuhp_setup_state_nocalls(CPUHP_CPUFREQ_ACPI_PREPARE,
+					  cpufreq_boost_prepare, NULL);
+		cpuhp_setup_state_nocalls(CPUHP_CPUFREQ_ACPI_PRE_DOWN, NULL,
+					  cpufreq_boost_predown);
+		put_online_cpus();
 	}
 }
 
 static void acpi_cpufreq_boost_exit(void)
 {
 	if (msrs) {
-		unregister_cpu_notifier(&boost_nb);
-
+		cpuhp_remove_state_nocalls(CPUHP_CPUFREQ_ACPI_PREPARE);
+		cpuhp_remove_state_nocalls(CPUHP_CPUFREQ_ACPI_PRE_DOWN);
 		msrs_free(msrs);
 		msrs = NULL;
 	}
