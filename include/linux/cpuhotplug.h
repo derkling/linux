@@ -210,6 +210,7 @@ enum cpuhp_state {
 	CPUHP_ARM64_DMON_ONLINE,	/* P: 0 S: os_lock_online T: NULL C: I */
 	CPUHP_ARM64_HWBREAK_ONLINE,	/* P: 0 S: hw_breakpoint_online T: NULL C: I */
 	CPUHP_POWERPC_TOPOLOGY_ONLINE,	/* P: 0 S: register_cpu_online T: unregister_cpu_online C: I */
+	CPUHP_SPARC_TOPOLOGY_ONLINE,	/* P: 0 S: register_cpu_online T: unregister_cpu_online C: I */
 	CPUHP_TICK_NOHZ_PREDOWN,	/* P: 0 S: NULL T: tick_nohz_cpu_down C: P */
 	CPUHP_ARM_BL_PREDOWN,		/* P: 0 S: NULL T: bL_switcher_cpu_pre C: P */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
