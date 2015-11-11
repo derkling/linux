@@ -55,6 +55,7 @@ enum cpuhp_state {
 	CPUHP_NET_IUCV_PREPARE,		/* P: 0 S: iucv_cpu_prepare T: iucv_cpu_dead C: I */
 	CPUHP_CPUFREQ_ACPI_PREPARE,	/* P: 0 S: cpufreq_boost_prepare T: NULL C: P */
 	CPUHP_TRACE_RB_PREPARE,		/* P: 0 S: trace_rb_cpu_prepare T: NULL C: P */
+	CPUHP_MM_ZS_PREPARE,		/* P: 0 S: zs_cpu_prepare T: zs_cpu_dead C: I */
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
 	CPUHP_X86_APB_DEAD,		/* P: -20 S: NULL T: apbt_cpu_dead C: I */
