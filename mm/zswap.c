@@ -118,7 +118,7 @@ struct zswap_pool {
 	struct kref kref;
 	struct list_head list;
 	struct rcu_head rcu_head;
-	struct notifier_block notifier;
+	struct list_head notifier;
 	char tfm_name[CRYPTO_MAX_ALG_NAME];
 };
 
@@ -374,77 +374,106 @@ static int zswap_dstmem_cpu_dead(unsigned int cpu)
 	return 0;
 }
 
-static int __zswap_cpu_comp_notifier(struct zswap_pool *pool,
-				     unsigned long action, unsigned long cpu)
+static int __zswap_cpu_comp_prepare(unsigned int cpu, struct zswap_pool *pool)
 {
 	struct crypto_comp *tfm;
 
-	switch (action) {
-	case CPU_UP_PREPARE:
-		if (WARN_ON(*per_cpu_ptr(pool->tfm, cpu)))
-			break;
-		tfm = crypto_alloc_comp(pool->tfm_name, 0, 0);
-		if (IS_ERR_OR_NULL(tfm)) {
-			pr_err("could not alloc crypto comp %s : %ld\n",
-			       pool->tfm_name, PTR_ERR(tfm));
-			return NOTIFY_BAD;
-		}
-		*per_cpu_ptr(pool->tfm, cpu) = tfm;
-		break;
-	case CPU_DEAD:
-	case CPU_UP_CANCELED:
-		tfm = *per_cpu_ptr(pool->tfm, cpu);
-		if (!IS_ERR_OR_NULL(tfm))
-			crypto_free_comp(tfm);
-		*per_cpu_ptr(pool->tfm, cpu) = NULL;
-		break;
-	default:
-		break;
+	if (WARN_ON(*per_cpu_ptr(pool->tfm, cpu)))
+		return 0;
+
+	tfm = crypto_alloc_comp(pool->tfm_name, 0, 0);
+	if (IS_ERR_OR_NULL(tfm)) {
+		pr_err("could not alloc crypto comp %s : %ld\n",
+		       pool->tfm_name, PTR_ERR(tfm));
+		return -ENOMEM;
 	}
-	return NOTIFY_OK;
+	*per_cpu_ptr(pool->tfm, cpu) = tfm;
+	return 0;
 }
 
-static int zswap_cpu_comp_notifier(struct notifier_block *nb,
-				   unsigned long action, void *pcpu)
-{
-	unsigned long cpu = (unsigned long)pcpu;
-	struct zswap_pool *pool = container_of(nb, typeof(*pool), notifier);
+static LIST_HEAD(zswap_pool_list);
+static DEFINE_MUTEX(zwap_pool_lock);
 
-	return __zswap_cpu_comp_notifier(pool, action, cpu);
+static int __zswap_cpu_comp_dead(unsigned int cpu, struct zswap_pool *pool)
+{
+	struct crypto_comp *tfm;
+
+	tfm = *per_cpu_ptr(pool->tfm, cpu);
+	if (!IS_ERR_OR_NULL(tfm))
+		crypto_free_comp(tfm);
+	*per_cpu_ptr(pool->tfm, cpu) = NULL;
+	return 0;
+}
+
+static int zswap_cpu_comp_dead(unsigned int cpu)
+{
+	struct zswap_pool *pool;
+
+	mutex_lock(&zwap_pool_lock);
+	list_for_each_entry(pool, &zswap_pool_list, notifier)
+		__zswap_cpu_comp_dead(cpu, pool);
+
+	mutex_unlock(&zwap_pool_lock);
+	return 0;
+}
+
+static int zswap_cpu_comp_prepare(unsigned int cpu)
+{
+	struct zswap_pool *pool;
+	int ret = 0;
+
+	mutex_lock(&zwap_pool_lock);
+	list_for_each_entry(pool, &zswap_pool_list, notifier) {
+		ret = __zswap_cpu_comp_prepare(cpu, pool);
+		if (ret)
+			break;
+	}
+
+	if (ret) {
+		list_for_each_entry(pool, &zswap_pool_list, notifier) {
+			__zswap_cpu_comp_dead(cpu, pool);
+		}
+	}
+
+	mutex_unlock(&zwap_pool_lock);
+	return ret;
 }
 
 static int zswap_cpu_comp_init(struct zswap_pool *pool)
 {
-	unsigned long cpu;
+	unsigned int cpu;
 
-	memset(&pool->notifier, 0, sizeof(pool->notifier));
-	pool->notifier.notifier_call = zswap_cpu_comp_notifier;
+	get_online_cpus();
+	mutex_lock(&zwap_pool_lock);
+	list_add_tail(&pool->notifier, &zswap_pool_list);
+	mutex_unlock(&zwap_pool_lock);
 
-	cpu_notifier_register_begin();
-	for_each_online_cpu(cpu)
-		if (__zswap_cpu_comp_notifier(pool, CPU_UP_PREPARE, cpu) ==
-		    NOTIFY_BAD)
+	for_each_online_cpu(cpu) {
+		if (__zswap_cpu_comp_prepare(cpu, pool))
 			goto cleanup;
-	__register_cpu_notifier(&pool->notifier);
-	cpu_notifier_register_done();
+	}
+	put_online_cpus();
 	return 0;
 
 cleanup:
 	for_each_online_cpu(cpu)
-		__zswap_cpu_comp_notifier(pool, CPU_UP_CANCELED, cpu);
-	cpu_notifier_register_done();
+		__zswap_cpu_comp_dead(cpu, pool);
+	put_online_cpus();
 	return -ENOMEM;
 }
 
 static void zswap_cpu_comp_destroy(struct zswap_pool *pool)
 {
-	unsigned long cpu;
+	unsigned int cpu;
 
-	cpu_notifier_register_begin();
+	get_online_cpus();
+	mutex_lock(&zwap_pool_lock);
+	list_del(&pool->notifier);
+	mutex_unlock(&zwap_pool_lock);
+
 	for_each_online_cpu(cpu)
-		__zswap_cpu_comp_notifier(pool, CPU_UP_CANCELED, cpu);
-	__unregister_cpu_notifier(&pool->notifier);
-	cpu_notifier_register_done();
+		__zswap_cpu_comp_dead(cpu, pool);
+	put_online_cpus();
 }
 
 /*********************************
@@ -1203,6 +1232,12 @@ static int __init init_zswap(void)
 		goto dstmem_fail;
 	}
 
+	ret = cpuhp_setup_state_nocalls(CPUHP_MM_ZSWP_POOL_PREPARE,
+					zswap_cpu_comp_prepare,
+					zswap_cpu_comp_dead);
+	if (ret)
+		goto hp_fail;
+
 	pool = __zswap_pool_create_fallback();
 	if (!pool) {
 		pr_err("pool creation failed\n");
@@ -1219,6 +1254,8 @@ static int __init init_zswap(void)
 	return 0;
 
 pool_fail:
+	cpuhp_remove_state_nocalls(CPUHP_MM_ZSWP_POOL_PREPARE);
+hp_fail:
 	cpuhp_remove_state(CPUHP_MM_ZSWP_MEM_PREPARE);
 dstmem_fail:
 	zswap_entry_cache_destroy();
