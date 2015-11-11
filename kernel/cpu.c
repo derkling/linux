@@ -829,6 +829,10 @@ static struct cpuhp_step cpuhp_bp_states[] = {
 		.startup = slab_prepare_cpu,
 		.teardown = slab_dead_cpu,
 	},
+	[CPUHP_TRACE_RB_PREPARE] = {
+		.startup = trace_rb_cpu_prepare,
+		.teardown = NULL,
+	},
 	[CPUHP_NOTIFY_PREPARE] = {
 		.startup = notify_prepare,
 		.teardown = NULL,

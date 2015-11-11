@@ -479,9 +479,7 @@ struct ring_buffer {
 
 	struct ring_buffer_per_cpu	**buffers;
 
-#ifdef CONFIG_HOTPLUG_CPU
-	struct notifier_block		cpu_notify;
-#endif
+	struct list_head		cpu_notify;
 	u64				(*clock)(void);
 
 	struct rb_irq_work		irq_work;
@@ -1283,10 +1281,8 @@ static void rb_free_cpu_buffer(struct ring_buffer_per_cpu *cpu_buffer)
 	kfree(cpu_buffer);
 }
 
-#ifdef CONFIG_HOTPLUG_CPU
-static int rb_cpu_notify(struct notifier_block *self,
-			 unsigned long action, void *hcpu);
-#endif
+static LIST_HEAD(rb_buf_list);
+static DEFINE_MUTEX(rb_buf_lock);
 
 /**
  * __ring_buffer_alloc - allocate a new ring_buffer
@@ -1326,17 +1322,8 @@ struct ring_buffer *__ring_buffer_alloc(unsigned long size, unsigned flags,
 	if (nr_pages < 2)
 		nr_pages = 2;
 
-	/*
-	 * In case of non-hotplug cpu, if the ring-buffer is allocated
-	 * in early initcall, it will not be notified of secondary cpus.
-	 * In that off case, we need to allocate for all possible cpus.
-	 */
-#ifdef CONFIG_HOTPLUG_CPU
-	cpu_notifier_register_begin();
+	get_online_cpus();
 	cpumask_copy(buffer->cpumask, cpu_online_mask);
-#else
-	cpumask_copy(buffer->cpumask, cpu_possible_mask);
-#endif
 	buffer->cpus = nr_cpu_ids;
 
 	bsize = sizeof(void *) * nr_cpu_ids;
@@ -1352,12 +1339,10 @@ struct ring_buffer *__ring_buffer_alloc(unsigned long size, unsigned flags,
 			goto fail_free_buffers;
 	}
 
-#ifdef CONFIG_HOTPLUG_CPU
-	buffer->cpu_notify.notifier_call = rb_cpu_notify;
-	buffer->cpu_notify.priority = 0;
-	__register_cpu_notifier(&buffer->cpu_notify);
-	cpu_notifier_register_done();
-#endif
+	mutex_lock(&rb_buf_lock);
+	list_add_tail(&buffer->cpu_notify, &rb_buf_list);
+	mutex_unlock(&rb_buf_lock);
+	put_online_cpus();
 
 	mutex_init(&buffer->mutex);
 
@@ -1372,9 +1357,7 @@ struct ring_buffer *__ring_buffer_alloc(unsigned long size, unsigned flags,
 
  fail_free_cpumask:
 	free_cpumask_var(buffer->cpumask);
-#ifdef CONFIG_HOTPLUG_CPU
-	cpu_notifier_register_done();
-#endif
+	put_online_cpus();
 
  fail_free_buffer:
 	kfree(buffer);
@@ -1391,17 +1374,12 @@ ring_buffer_free(struct ring_buffer *buffer)
 {
 	int cpu;
 
-#ifdef CONFIG_HOTPLUG_CPU
-	cpu_notifier_register_begin();
-	__unregister_cpu_notifier(&buffer->cpu_notify);
-#endif
+	mutex_lock(&rb_buf_lock);
+	list_del(&buffer->cpu_notify);
+	mutex_unlock(&rb_buf_lock);
 
 	for_each_buffer_cpu(buffer, cpu)
 		rb_free_cpu_buffer(buffer->buffers[cpu]);
-
-#ifdef CONFIG_HOTPLUG_CPU
-	cpu_notifier_register_done();
-#endif
 
 	kfree(buffer->buffers);
 	free_cpumask_var(buffer->cpumask);
@@ -4637,21 +4615,21 @@ int ring_buffer_read_page(struct ring_buffer *buffer,
 }
 EXPORT_SYMBOL_GPL(ring_buffer_read_page);
 
-#ifdef CONFIG_HOTPLUG_CPU
-static int rb_cpu_notify(struct notifier_block *self,
-			 unsigned long action, void *hcpu)
+/*
+ * We only allocate new buffers, never free them if the CPU goes down.
+ * If we were to free the buffer, then the user would lose any trace that was in
+ * the buffer.
+ */
+int trace_rb_cpu_prepare(unsigned int cpu)
 {
-	struct ring_buffer *buffer =
-		container_of(self, struct ring_buffer, cpu_notify);
-	long cpu = (long)hcpu;
+	struct ring_buffer *buffer;
 	int cpu_i, nr_pages_same;
 	unsigned int nr_pages;
 
-	switch (action) {
-	case CPU_UP_PREPARE:
-	case CPU_UP_PREPARE_FROZEN:
+	mutex_lock(&rb_buf_lock);
+	list_for_each_entry(buffer, &rb_buf_list, cpu_notify) {
 		if (cpumask_test_cpu(cpu, buffer->cpumask))
-			return NOTIFY_OK;
+			continue;
 
 		nr_pages = 0;
 		nr_pages_same = 1;
@@ -4671,27 +4649,16 @@ static int rb_cpu_notify(struct notifier_block *self,
 		buffer->buffers[cpu] =
 			rb_allocate_cpu_buffer(buffer, nr_pages, cpu);
 		if (!buffer->buffers[cpu]) {
-			WARN(1, "failed to allocate ring buffer on CPU %ld\n",
+			WARN(1, "failed to allocate ring buffer on CPU %u\n",
 			     cpu);
-			return NOTIFY_OK;
+			continue;
 		}
 		smp_wmb();
 		cpumask_set_cpu(cpu, buffer->cpumask);
-		break;
-	case CPU_DOWN_PREPARE:
-	case CPU_DOWN_PREPARE_FROZEN:
-		/*
-		 * Do nothing.
-		 *  If we were to free the buffer, then the user would
-		 *  lose any trace that was in the buffer.
-		 */
-		break;
-	default:
-		break;
 	}
-	return NOTIFY_OK;
+	mutex_unlock(&rb_buf_lock);
+	return 0;
 }
-#endif
 
 #ifdef CONFIG_RING_BUFFER_STARTUP_TEST
 /*

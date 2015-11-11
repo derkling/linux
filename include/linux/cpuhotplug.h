@@ -54,6 +54,7 @@ enum cpuhp_state {
 	CPUHP_X86_MSR_PREPARE,		/* P: 0 S: msr_device_create T: msr_device_destroy C: I */
 	CPUHP_NET_IUCV_PREPARE,		/* P: 0 S: iucv_cpu_prepare T: iucv_cpu_dead C: I */
 	CPUHP_CPUFREQ_ACPI_PREPARE,	/* P: 0 S: cpufreq_boost_prepare T: NULL C: P */
+	CPUHP_TRACE_RB_PREPARE,		/* P: 0 S: trace_rb_cpu_prepare T: NULL C: P */
 	CPUHP_NOTIFY_PREPARE,		/* P: CPU_UP_PREPARE S: notify_prepare: T: NULL C: C */
 	CPUHP_NOTIFY_DEAD,		/* P: CPU_DEAD S: NULL: T: notify_dead C: C */
 	CPUHP_X86_APB_DEAD,		/* P: -20 S: NULL T: apbt_cpu_dead C: I */
@@ -366,6 +367,12 @@ int slab_dead_cpu(unsigned int cpu);
 #define slab_online_cpu		NULL
 #define slab_offline_cpu	NULL
 #define slab_dead_cpu		NULL
+#endif
+
+#ifdef CONFIG_RING_BUFFER
+int trace_rb_cpu_prepare(unsigned int cpu);
+#else
+#define trace_rb_cpu_prepare	NULL
 #endif
 
 #endif
