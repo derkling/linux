@@ -30,6 +30,7 @@ enum cpuhp_state {
 	CPUHP_PROFILE_PREPARE,		/* P: 0 S: profile_prepare_cpu T: profile_dead_cpu C: I */
 	CPUHP_X2APIC_PREPARE,		/* P: 0 S: x2apic_prepare_cpu T: x2apic_dead_cpu C: I */
 	CPUHP_SMPCFD_PREPARE,		/* P: 0 S: smpcfd_prepare_cpu T: smpcfd_dead_cpu C: C */
+	CPUHP_ARM_BL_PREPARE,		/* P: 0 S: bL_switcher_cpu_pre T: NULL C: P */
 	CPUHP_RELAY_PREPARE,		/* P: 0 S: relay_prepare_cpu T: NULL C: C */
 	CPUHP_SLAB_PREPARE,		/* P: 0 S: slab_prepare_cpu T: slab_dead_cpu C: C */
 	CPUHP_XEN_EV_PREPEARE,		/* P: 0 S: xen_evtchn_cpu_prepare T: NULL C: P */
@@ -206,6 +207,7 @@ enum cpuhp_state {
 	CPUHP_WDT_OCTEON_ONLINE,	/* P: 0 S: octeon_wdt_cpu_online T: octeon_wdt_cpu_pre_down C: I */
 	CPUHP_NET_IUCV_ONLINE,		/* P: 0 S: iucv_cpu_online T: iucv_cpu_down_prep C: I */
 	CPUHP_TICK_NOHZ_PREDOWN,	/* P: 0 S: NULL T: tick_nohz_cpu_down C: P */
+	CPUHP_ARM_BL_PREDOWN,		/* P: 0 S: NULL T: bL_switcher_cpu_pre C: P */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */
 	CPUHP_X86_KVM_CLK_ONLINE,	/* P: INT_MIN+1 S: kvmclock_cpu_online T: NULL C: I */
 	CPUHP_NOTIFY_ONLINE,		/* P: CPU_ONLINE S: notify_online T: NULL, C: C */
