@@ -12,6 +12,7 @@
 #include <linux/percpu.h>
 #include <linux/irq_work.h>
 #include <linux/delay.h>
+#include <linux/string.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/sched_freq.h>
@@ -25,7 +26,6 @@ static struct cpufreq_governor cpufreq_gov_sched;
 #endif
 
 static DEFINE_PER_CPU(unsigned long, enabled);
-static DEFINE_PER_CPU(unsigned long, pcpu_capacity);
 DEFINE_PER_CPU(struct sched_capacity_reqs, cpu_sched_capacity_reqs);
 
 /**
@@ -185,9 +185,6 @@ static void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
 	if (!per_cpu(enabled, cpu))
 		return;
 
-	/* update per-cpu capacity request */
-	per_cpu(pcpu_capacity, cpu) = capacity;
-
 	policy = cpufreq_cpu_get(cpu);
 	if (IS_ERR_OR_NULL(policy)) {
 		return;
@@ -200,9 +197,11 @@ static void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
 	gd = policy->governor_data;
 
 	/* find max capacity requested by cpus in this policy */
-	for_each_cpu(cpu_tmp, policy->cpus)
-		capacity_max = max(capacity_max, per_cpu(pcpu_capacity,
-							 cpu_tmp));
+	for_each_cpu(cpu_tmp, policy->cpus) {
+		struct sched_capacity_reqs *scr;
+		scr = &per_cpu(cpu_sched_capacity_reqs, cpu_tmp);
+		capacity_max = max(capacity_max, scr->total);
+	}
 
 	/*
 	 * We only change frequency if this cpu's capacity request represents a
@@ -258,11 +257,15 @@ void update_cpu_capacity_request(int cpu, bool request)
 	new_capacity += scr->dl;
 	if (new_capacity < scr->dl_min)
 		new_capacity = scr->dl_min;
+
 	trace_sched_freq_update_capacity(cpu, request, scr, new_capacity);
-	if (request && new_capacity != scr->total) {
+
+	if (new_capacity == scr->total)
+		return;
+
+	scr->total = new_capacity;
+	if (request)
 		cpufreq_sched_set_cap(cpu, new_capacity);
-		scr->total = new_capacity;
-	}
 }
 
 static inline void set_sched_freq(void)
@@ -322,9 +325,9 @@ static int cpufreq_sched_policy_init(struct cpufreq_policy *policy)
 		return -ENOMEM;
 	}
 
-	/* initialize per-cpu data */
 	for_each_cpu(cpu, policy->cpus)
-		per_cpu(pcpu_capacity, cpu) = 0;
+		memset(&per_cpu(cpu_sched_capacity_reqs, cpu), 0,
+		       sizeof(struct sched_capacity_reqs));
 
 	/*
 	 * Don't ask for freq changes at an higher rate than what
