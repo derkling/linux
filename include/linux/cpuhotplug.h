@@ -215,6 +215,7 @@ enum cpuhp_state {
 	CPUHP_X86_OPRO_NMI_ONLINE,	/* P: 0 S: oprofile_cpu_online T: oprofile_cpu_predown C: I */
 	CPUHP_PCI_AMDBUS_ONLINE,	/* P: 0 S: amd_bus_cpu_online T: NULL C: I */
 	CPUHP_CPUFREQ_ACPI_PRE_DOWN,	/* P: 0 S: NULL T: cpufreq_boost_predown C: I */
+	CPUHP_IDLE_INTEL_ONLINE,	/* P: 0 S: intel_idle_cpu_online T: NULL C: I */
 	CPUHP_TICK_NOHZ_PREDOWN,	/* P: 0 S: NULL T: tick_nohz_cpu_down C: P */
 	CPUHP_ARM_BL_PREDOWN,		/* P: 0 S: NULL T: bL_switcher_cpu_pre C: P */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */

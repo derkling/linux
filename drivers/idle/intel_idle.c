@@ -99,8 +99,6 @@ static int intel_idle(struct cpuidle_device *dev,
 			struct cpuidle_driver *drv, int index);
 static void intel_idle_freeze(struct cpuidle_device *dev,
 			      struct cpuidle_driver *drv, int index);
-static int intel_idle_cpu_init(int cpu);
-
 static struct cpuidle_state *cpuidle_state_table;
 
 /*
@@ -779,37 +777,6 @@ static void __setup_broadcast_timer(void *arg)
 		tick_broadcast_disable();
 }
 
-static int cpu_hotplug_notify(struct notifier_block *n,
-			      unsigned long action, void *hcpu)
-{
-	int hotcpu = (unsigned long)hcpu;
-	struct cpuidle_device *dev;
-
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_ONLINE:
-
-		if (lapic_timer_reliable_states != LAPIC_TIMER_ALWAYS_RELIABLE)
-			smp_call_function_single(hotcpu, __setup_broadcast_timer,
-						 (void *)true, 1);
-
-		/*
-		 * Some systems can hotplug a cpu at runtime after
-		 * the kernel has booted, we have to initialize the
-		 * driver in this case
-		 */
-		dev = per_cpu_ptr(intel_idle_cpuidle_devices, hotcpu);
-		if (!dev->registered)
-			intel_idle_cpu_init(hotcpu);
-
-		break;
-	}
-	return NOTIFY_OK;
-}
-
-static struct notifier_block cpu_hotplug_notifier = {
-	.notifier_call = cpu_hotplug_notify,
-};
-
 static void auto_demotion_disable(void *dummy)
 {
 	unsigned long long msr_bits;
@@ -964,8 +931,6 @@ static int __init intel_idle_probe(void)
 
 	if (boot_cpu_has(X86_FEATURE_ARAT))	/* Always Reliable APIC Timer */
 		lapic_timer_reliable_states = LAPIC_TIMER_ALWAYS_RELIABLE;
-	else
-		on_each_cpu(__setup_broadcast_timer, (void *)true, 1);
 
 	pr_debug(PREFIX "v" INTEL_IDLE_VERSION
 		" model 0x%X\n", boot_cpu_data.x86_model);
@@ -1094,7 +1059,7 @@ static int __init intel_idle_cpuidle_driver_init(void)
  * allocate, initialize, register cpuidle_devices
  * @cpu: cpu/core to initialize
  */
-static int intel_idle_cpu_init(int cpu)
+static int intel_idle_cpu_init(unsigned int cpu)
 {
 	struct cpuidle_device *dev;
 
@@ -1117,9 +1082,29 @@ static int intel_idle_cpu_init(int cpu)
 	return 0;
 }
 
+static int intel_idle_cpu_online(unsigned int cpu)
+{
+	struct cpuidle_device *dev;
+
+	if (lapic_timer_reliable_states != LAPIC_TIMER_ALWAYS_RELIABLE)
+		smp_call_function_single(cpu, __setup_broadcast_timer,
+					 (void *)true, 1);
+
+	/*
+	 * Some systems can hotplug a cpu at runtime after
+	 * the kernel has booted, we have to initialize the
+	 * driver in this case
+	 */
+	dev = per_cpu_ptr(intel_idle_cpuidle_devices, cpu);
+	if (!dev->registered)
+		return intel_idle_cpu_init(cpu);
+
+	return 0;
+}
+
 static int __init intel_idle_init(void)
 {
-	int retval, i;
+	int retval;
 
 	/* Do not load intel_idle at all for now if idle= is passed */
 	if (boot_option_idle_override != IDLE_NO_OVERRIDE)
@@ -1139,39 +1124,30 @@ static int __init intel_idle_init(void)
 	}
 
 	intel_idle_cpuidle_devices = alloc_percpu(struct cpuidle_device);
-	if (intel_idle_cpuidle_devices == NULL)
-		return -ENOMEM;
-
-	cpu_notifier_register_begin();
-
-	for_each_online_cpu(i) {
-		retval = intel_idle_cpu_init(i);
-		if (retval) {
-			cpu_notifier_register_done();
-			cpuidle_unregister_driver(&intel_idle_driver);
-			return retval;
-		}
+	if (intel_idle_cpuidle_devices == NULL) {
+		retval = -ENOMEM;
+		goto err;
 	}
-	__register_cpu_notifier(&cpu_hotplug_notifier);
 
-	cpu_notifier_register_done();
-
+	retval = cpuhp_setup_state(CPUHP_IDLE_INTEL_ONLINE,
+				   intel_idle_cpu_online, NULL);
+	if (retval)
+		goto err;
 	return 0;
+	/* percpu mem is freed in intel_idle_cpu_online()'s error path. */
+err:
+	cpuidle_unregister_driver(&intel_idle_driver);
+	return retval;
 }
 
 static void __exit intel_idle_exit(void)
 {
+	cpuhp_remove_state(CPUHP_IDLE_INTEL_ONLINE);
 	intel_idle_cpuidle_devices_uninit();
 	cpuidle_unregister_driver(&intel_idle_driver);
 
-	cpu_notifier_register_begin();
-
 	if (lapic_timer_reliable_states != LAPIC_TIMER_ALWAYS_RELIABLE)
 		on_each_cpu(__setup_broadcast_timer, (void *)false, 1);
-	__unregister_cpu_notifier(&cpu_hotplug_notifier);
-
-	cpu_notifier_register_done();
-
 	return;
 }
 
