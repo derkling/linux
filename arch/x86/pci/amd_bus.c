@@ -337,24 +337,11 @@ static void enable_pci_io_ecs(void *unused)
 	}
 }
 
-static int amd_cpu_notify(struct notifier_block *self, unsigned long action,
-			  void *hcpu)
+static int amd_bus_cpu_online(unsigned int cpu)
 {
-	int cpu = (long)hcpu;
-	switch (action) {
-	case CPU_ONLINE:
-	case CPU_ONLINE_FROZEN:
-		smp_call_function_single(cpu, enable_pci_io_ecs, NULL, 0);
-		break;
-	default:
-		break;
-	}
-	return NOTIFY_OK;
+	smp_call_function_single(cpu, enable_pci_io_ecs, NULL, 0);
+	return 0;
 }
-
-static struct notifier_block amd_cpu_notifier = {
-	.notifier_call	= amd_cpu_notify,
-};
 
 static void __init pci_enable_pci_io_ecs(void)
 {
@@ -385,8 +372,6 @@ static void __init pci_enable_pci_io_ecs(void)
 
 static int __init pci_io_ecs_init(void)
 {
-	int cpu;
-
 	/* assume all cpus from fam10h have IO ECS */
 	if (boot_cpu_data.x86 < 0x10)
 		return 0;
@@ -395,12 +380,7 @@ static int __init pci_io_ecs_init(void)
 	if (early_pci_allowed())
 		pci_enable_pci_io_ecs();
 
-	cpu_notifier_register_begin();
-	for_each_online_cpu(cpu)
-		amd_cpu_notify(&amd_cpu_notifier, (unsigned long)CPU_ONLINE,
-			       (void *)(long)cpu);
-	__register_cpu_notifier(&amd_cpu_notifier);
-	cpu_notifier_register_done();
+	cpuhp_setup_state(CPUHP_PCI_AMDBUS_ONLINE, amd_bus_cpu_online, NULL);
 
 	pci_probe |= PCI_HAS_IO_ECS;
 
