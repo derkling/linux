@@ -433,25 +433,17 @@ static int nmi_create_files(struct dentry *root)
 	return 0;
 }
 
-static int oprofile_cpu_notifier(struct notifier_block *b, unsigned long action,
-				 void *data)
+static int oprofile_cpu_online(unsigned int cpu)
 {
-	int cpu = (unsigned long)data;
-	switch (action) {
-	case CPU_DOWN_FAILED:
-	case CPU_ONLINE:
-		smp_call_function_single(cpu, nmi_cpu_up, NULL, 0);
-		break;
-	case CPU_DOWN_PREPARE:
-		smp_call_function_single(cpu, nmi_cpu_down, NULL, 1);
-		break;
-	}
-	return NOTIFY_DONE;
+	smp_call_function_single(cpu, nmi_cpu_up, NULL, 0);
+	return 0;
 }
 
-static struct notifier_block oprofile_cpu_nb = {
-	.notifier_call = oprofile_cpu_notifier
-};
+static int oprofile_cpu_predown(unsigned int cpu)
+{
+	smp_call_function_single(cpu, nmi_cpu_down, NULL, 1);
+	return 0;
+}
 
 static int nmi_setup(void)
 {
@@ -494,18 +486,14 @@ static int nmi_setup(void)
 	if (err)
 		goto fail;
 
-	cpu_notifier_register_begin();
-
 	/* Use get/put_online_cpus() to protect 'nmi_enabled' */
 	get_online_cpus();
 	nmi_enabled = 1;
 	/* make nmi_enabled visible to the nmi handler: */
 	smp_mb();
-	on_each_cpu(nmi_cpu_setup, NULL, 1);
-	__register_cpu_notifier(&oprofile_cpu_nb);
+	cpuhp_setup_state(CPUHP_X86_OPRO_NMI_ONLINE, oprofile_cpu_online,
+			  oprofile_cpu_predown);
 	put_online_cpus();
-
-	cpu_notifier_register_done();
 
 	return 0;
 fail:
@@ -517,17 +505,12 @@ static void nmi_shutdown(void)
 {
 	struct op_msrs *msrs;
 
-	cpu_notifier_register_begin();
-
 	/* Use get/put_online_cpus() to protect 'nmi_enabled' & 'ctr_running' */
 	get_online_cpus();
-	on_each_cpu(nmi_cpu_shutdown, NULL, 1);
+	cpuhp_remove_state(CPUHP_X86_OPRO_NMI_ONLINE);
 	nmi_enabled = 0;
 	ctr_running = 0;
-	__unregister_cpu_notifier(&oprofile_cpu_nb);
 	put_online_cpus();
-
-	cpu_notifier_register_done();
 
 	/* make variables visible to the nmi handler: */
 	smp_mb();
