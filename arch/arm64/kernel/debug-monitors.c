@@ -132,32 +132,19 @@ static void clear_os_lock(void *unused)
 	asm volatile("msr oslar_el1, %0" : : "r" (0));
 }
 
-static int os_lock_notify(struct notifier_block *self,
-				    unsigned long action, void *data)
+static int os_lock_online(unsigned int cpu)
 {
-	int cpu = (unsigned long)data;
-	if ((action & ~CPU_TASKS_FROZEN) == CPU_ONLINE)
-		smp_call_function_single(cpu, clear_os_lock, NULL, 1);
-	return NOTIFY_OK;
+	smp_call_function_single(cpu, clear_os_lock, NULL, 1);
+	return 0;
 }
-
-static struct notifier_block os_lock_nb = {
-	.notifier_call = os_lock_notify,
-};
 
 static int debug_monitors_init(void)
 {
-	cpu_notifier_register_begin();
-
-	/* Clear the OS lock. */
-	on_each_cpu(clear_os_lock, NULL, 1);
+	/* Register the hotplug callback and clear the OS lock. */
+	cpuhp_setup_state(CPUHP_ARM64_DMON_ONLINE, os_lock_online, NULL);
 	isb();
 	local_dbg_enable();
 
-	/* Register hotplug handler. */
-	__register_cpu_notifier(&os_lock_nb);
-
-	cpu_notifier_register_done();
 	return 0;
 }
 postcore_initcall(debug_monitors_init);
