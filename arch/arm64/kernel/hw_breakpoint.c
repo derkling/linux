@@ -882,19 +882,11 @@ static void hw_breakpoint_reset(void *unused)
 	}
 }
 
-static int hw_breakpoint_reset_notify(struct notifier_block *self,
-						unsigned long action,
-						void *hcpu)
+static int hw_breakpoint_online(unsigned int cpu)
 {
-	int cpu = (long)hcpu;
-	if ((action & ~CPU_TASKS_FROZEN) == CPU_ONLINE)
-		smp_call_function_single(cpu, hw_breakpoint_reset, NULL, 1);
-	return NOTIFY_OK;
+	smp_call_function_single(cpu, hw_breakpoint_reset, NULL, 1);
+	return 0;
 }
-
-static struct notifier_block hw_breakpoint_reset_nb = {
-	.notifier_call = hw_breakpoint_reset_notify,
-};
 
 #ifdef CONFIG_CPU_PM
 extern void cpu_suspend_set_dbg_restorer(void (*hw_bp_restore)(void *));
@@ -915,25 +907,17 @@ static int __init arch_hw_breakpoint_init(void)
 	pr_info("found %d breakpoint and %d watchpoint registers.\n",
 		core_num_brps, core_num_wrps);
 
-	cpu_notifier_register_begin();
-
 	/*
 	 * Reset the breakpoint resources. We assume that a halting
 	 * debugger will leave the world in a nice state for us.
 	 */
-	smp_call_function(hw_breakpoint_reset, NULL, 1);
-	hw_breakpoint_reset(NULL);
-
+	cpuhp_setup_state(CPUHP_ARM64_HWBREAK_ONLINE, hw_breakpoint_online,
+			  NULL);
 	/* Register debug fault handlers. */
 	hook_debug_fault_code(DBG_ESR_EVT_HWBP, breakpoint_handler, SIGTRAP,
 			      TRAP_HWBKPT, "hw-breakpoint handler");
 	hook_debug_fault_code(DBG_ESR_EVT_HWWP, watchpoint_handler, SIGTRAP,
 			      TRAP_HWBKPT, "hw-watchpoint handler");
-
-	/* Register hotplug notifier. */
-	__register_cpu_notifier(&hw_breakpoint_reset_nb);
-
-	cpu_notifier_register_done();
 
 	/* Register cpu_suspend hw breakpoint restore hook */
 	cpu_suspend_set_dbg_restorer(hw_breakpoint_reset);
