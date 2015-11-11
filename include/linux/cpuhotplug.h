@@ -89,6 +89,7 @@ enum cpuhp_state {
 	CPUHP_SCSI_BNX2FC_DEAD,		/* P: 0 S: NULL T: bnx2fc_cpu_dead C: I */
 	CPUHP_SCSI_BNX2I_DEAD,		/* P: 0 S: NULL T: bnx2i_cpu_dead C: I */
 	CPUHP_SCSI_FCOE_DEAD,		/* P: 0 S: NULL T: fcoe_cpu_dead C: I */
+	CPUHP_MM_VMSTAT_DEAD,		/* P: 0 S: NULL T: vmstat_cpu_dead C: P */
 	CPUHP_SCHED_DEAD,		/* P: INT_MAX S: NULL T: sched_dead_numa_cpu C: P */
 	CPUHP_BRINGUP_CPU,		/* P: __cpu_up S: bringup_cpu T: NULL C: C */
 	CPUHP_AP_OFFLINE,
@@ -218,6 +219,7 @@ enum cpuhp_state {
 	CPUHP_CPUFREQ_ACPI_PRE_DOWN,	/* P: 0 S: NULL T: cpufreq_boost_predown C: I */
 	CPUHP_IDLE_INTEL_ONLINE,	/* P: 0 S: intel_idle_cpu_online T: NULL C: I */
 	CPUHP_OPROFILE_NMI_ONLINE,	/* P: 0 S: nmi_timer_cpu_online T: nmi_timer_cpu_predown C: I */
+	CPUHP_MM_VMSTAT_ONLINE,		/* P: 0 S: vmstat_cpu_online T: vmstat_cpu_down_prep C: P */
 	CPUHP_TICK_NOHZ_PREDOWN,	/* P: 0 S: NULL T: tick_nohz_cpu_down C: P */
 	CPUHP_ARM_BL_PREDOWN,		/* P: 0 S: NULL T: bL_switcher_cpu_pre C: P */
 	CPUHP_X86_HPET_ONLINE,		/* P: -20 S: hpet_cpuhp_online T: NULL C: I */

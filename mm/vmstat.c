@@ -1486,69 +1486,53 @@ static void __init start_shepherd_timer(void)
 		round_jiffies_relative(sysctl_stat_interval));
 }
 
-static void vmstat_cpu_dead(int node)
-{
-	int cpu;
-
-	get_online_cpus();
-	for_each_online_cpu(cpu)
-		if (cpu_to_node(cpu) == node)
-			goto end;
-
-	node_clear_state(node, N_CPU);
-end:
-	put_online_cpus();
-}
 
 /*
  * Use the cpu notifier to insure that the thresholds are recalculated
  * when necessary.
  */
-static int vmstat_cpuup_callback(struct notifier_block *nfb,
-		unsigned long action,
-		void *hcpu)
+static int vmstat_cpu_online(unsigned int cpu)
 {
-	long cpu = (long)hcpu;
-
-	switch (action) {
-	case CPU_ONLINE:
-	case CPU_ONLINE_FROZEN:
-		refresh_zone_stat_thresholds();
-		node_set_state(cpu_to_node(cpu), N_CPU);
-		cpumask_set_cpu(cpu, cpu_stat_off);
-		break;
-	case CPU_DOWN_PREPARE:
-	case CPU_DOWN_PREPARE_FROZEN:
-		cancel_delayed_work_sync(&per_cpu(vmstat_work, cpu));
-		cpumask_clear_cpu(cpu, cpu_stat_off);
-		break;
-	case CPU_DOWN_FAILED:
-	case CPU_DOWN_FAILED_FROZEN:
-		cpumask_set_cpu(cpu, cpu_stat_off);
-		break;
-	case CPU_DEAD:
-	case CPU_DEAD_FROZEN:
-		refresh_zone_stat_thresholds();
-		vmstat_cpu_dead(cpu_to_node(cpu));
-		break;
-	default:
-		break;
-	}
-	return NOTIFY_OK;
+	refresh_zone_stat_thresholds();
+	node_set_state(cpu_to_node(cpu), N_CPU);
+	cpumask_set_cpu(cpu, cpu_stat_off);
+	return 0;
 }
 
-static struct notifier_block vmstat_notifier =
-	{ &vmstat_cpuup_callback, NULL, 0 };
+static int vmstat_cpu_down_prep(unsigned int cpu)
+{
+	cancel_delayed_work_sync(&per_cpu(vmstat_work, cpu));
+	cpumask_clear_cpu(cpu, cpu_stat_off);
+	return 0;
+}
+
+static int vmstat_cpu_dead(unsigned int cpu)
+{
+	unsigned int online_cpu;
+	int node = cpu_to_node(cpu);
+
+	refresh_zone_stat_thresholds();
+
+	get_online_cpus();
+	for_each_online_cpu(online_cpu) {
+		if (cpu_to_node(online_cpu) == node)
+			goto end;
+	}
+
+	node_clear_state(node, N_CPU);
+end:
+	put_online_cpus();
+	return 0;
+}
 #endif
 
 static int __init setup_vmstat(void)
 {
 #ifdef CONFIG_SMP
-	cpu_notifier_register_begin();
-	__register_cpu_notifier(&vmstat_notifier);
-
 	start_shepherd_timer();
-	cpu_notifier_register_done();
+	cpuhp_setup_state_nocalls(CPUHP_MM_VMSTAT_DEAD, NULL, vmstat_cpu_dead);
+	cpuhp_setup_state_nocalls(CPUHP_MM_VMSTAT_ONLINE, vmstat_cpu_online,
+				  vmstat_cpu_down_prep);
 #endif
 #ifdef CONFIG_PROC_FS
 	proc_create("buddyinfo", S_IRUGO, NULL, &fragmentation_file_operations);
