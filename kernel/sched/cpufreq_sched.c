@@ -161,7 +161,6 @@ static void cpufreq_sched_irq_work(struct irq_work *irq_work)
 /**
  * cpufreq_sched_set_capacity - interface to scheduler for changing capacity values
  * @cpu: cpu whose capacity utilization has recently changed
- * @capacity: the new capacity requested by cpu
  *
  * cpufreq_sched_sched_capacity is an interface exposed to the scheduler so
  * that the scheduler may inform the governor of updates to capacity
@@ -172,16 +171,15 @@ static void cpufreq_sched_irq_work(struct irq_work *irq_work)
  * cpufreq_sched_set_capacity raises an IPI. The irq_work handler for that IPI
  * wakes up the thread that does the actual work, cpufreq_sched_thread.
  *
- * This functions bails out early if either condition is true:
- * 1) this cpu did not the new maximum capacity for its frequency domain
- * 2) no change in cpu frequency is necessary to meet the new capacity request
+ * This functions bails out early if no change in cpu frequency is
+ * necessary to meet the new capacity request.
  */
-static void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
+static void cpufreq_sched_set_cap(int cpu)
 {
 	unsigned int freq_new, index_new, cpu_tmp;
 	struct cpufreq_policy *policy;
 	struct gov_data *gd;
-	unsigned long capacity_max = 0;
+	unsigned long capacity = 0;
 
 	/*
 	 * Avoid grabbing the policy if possible. A test is still
@@ -206,20 +204,8 @@ static void cpufreq_sched_set_cap(int cpu, unsigned long capacity)
 	for_each_cpu(cpu_tmp, policy->cpus) {
 		struct sched_capacity_reqs *scr;
 		scr = &per_cpu(cpu_sched_capacity_reqs, cpu_tmp);
-		capacity_max = max(capacity_max, scr->total);
+		capacity = max(capacity, scr->total);
 	}
-
-	/*
-	 * We only change frequency if this cpu's capacity request represents a
-	 * new max. If another cpu has requested a capacity greater than the
-	 * previous max then we rely on that cpu to hit this code path and make
-	 * the change. IOW, the cpu with the new max capacity is responsible
-	 * for setting the new capacity/frequency.
-	 *
-	 * If this cpu is not the new maximum then bail
-	 */
-	if (capacity_max > capacity)
-		goto out;
 
 	/* Convert the new maximum capacity request into a cpu frequency */
 	freq_new = capacity * policy->max >> SCHED_CAPACITY_SHIFT;
@@ -271,7 +257,7 @@ void update_cpu_capacity_request(int cpu, bool request)
 
 	scr->total = new_capacity;
 	if (request)
-		cpufreq_sched_set_cap(cpu, new_capacity);
+		cpufreq_sched_set_cap(cpu);
 }
 
 static inline void set_sched_freq(void)
