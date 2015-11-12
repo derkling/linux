@@ -68,20 +68,21 @@ static void cpufreq_sched_try_driver_target(struct cpufreq_policy *policy,
 	up_write(&policy->rwsem);
 }
 
-static void finish_last_request(struct gov_data *gd)
+static bool finish_last_request(struct gov_data *gd)
 {
-	int ns_left;
+	ktime_t now = ktime_get();
+
+	if (ktime_after(now, gd->throttle))
+		return false;
 
 	while (1) {
-		ktime_t now = ktime_get();
-
+		int usec_left = ktime_to_ns(ktime_sub(gd->throttle, now));
+		usec_left /= NSEC_PER_USEC;
+		trace_sched_freq_throttled(usec_left);
+		usleep_range(usec_left, usec_left);
+		now = ktime_get();
 		if (ktime_after(now, gd->throttle))
-			return;
-
-		ns_left = ktime_to_ns(ktime_sub(gd->throttle, now));
-		trace_sched_freq_throttled(ns_left/NSEC_PER_USEC);
-		usleep_range(ns_left/NSEC_PER_USEC,
-			     ns_left/NSEC_PER_USEC);
+			return true;
 	}
 }
 
@@ -131,8 +132,13 @@ static int cpufreq_sched_thread(void *data)
 		if (new_request == last_request) {
 			schedule();
 		} else {
+			/*
+			 * if the frequency thread sleeps while waiting to be
+			 * unthrottled, start over to check for a newer request
+			 */
+			if (finish_last_request(gd))
+				continue;
 			last_request = new_request;
-			finish_last_request(gd);
 			cpufreq_sched_try_driver_target(policy, new_request);
 		}
 	} while (!kthread_should_stop());
