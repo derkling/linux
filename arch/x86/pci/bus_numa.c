@@ -41,12 +41,11 @@ void x86_pci_root_bus_resources(int bus, struct list_head *resources)
 	       bus);
 
 	/* already added by acpi ? */
-	resource_list_for_each_entry(window, resources)
+	resource_list_for_each_entry(window, &info->resources)
 		if (window->res->flags & IORESOURCE_BUS) {
 			found = true;
 			break;
 		}
-
 	if (!found)
 		pci_add_resource(resources, &info->busn);
 
