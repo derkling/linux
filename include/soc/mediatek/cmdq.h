@@ -29,6 +29,28 @@ enum cmdq_hw_thread_priority {
 	CMDQ_THR_PRIO_MAX = 7, /* maximum possible priority */
 };
 
+enum cmdq_data_register {
+	/*
+	 * Value Reg, we use 32-bit, Rx
+	 * Address Reg, we use 64-bit, Px
+	 * (R1 cannot be used. Reserved.)
+	 */
+
+	CMDQ_DATA_REG_R0 = 0x00,
+	CMDQ_DATA_REG_P1 = 0x11,
+
+	CMDQ_DATA_REG_R2 = 0x02,
+	CMDQ_DATA_REG_R3 = 0x03,
+	CMDQ_DATA_REG_P2 = 0x12,
+
+	CMDQ_DATA_REG_R4 = 0x04,
+	CMDQ_DATA_REG_R5 = 0x05,
+	CMDQ_DATA_REG_P3 = 0x13,
+
+	/* invalid register ID */
+	CMDQ_DATA_REG_INVALID = -1,
+};
+
 /* events for CMDQ and display */
 enum cmdq_event {
 	/* Display start of frame(SOF) events */
@@ -136,6 +158,27 @@ int cmdq_rec_disable_prefetch(struct cmdq_rec *handle);
 int cmdq_rec_write(struct cmdq_rec *handle, u32 value, u32 addr);
 
 /**
+ * cmdq_rec_read_to_gpr() - append read command to the command queue recorder
+ * @handle:	the command queue recorder handle
+ * @reg:	the specified source register physical address
+ * @gpr:	the specified target CMDQ general purpose register(GPR) index
+ *
+ * Return: 0 for success; else the error code is returned
+ */
+int cmdq_rec_read_to_gpr(struct cmdq_rec *handle, u32 reg,
+			 enum cmdq_data_register gpr);
+
+/**
+ * cmdq_dbg_gpr_addr() - get GPR address from index
+ * @handle:	the command queue recorder handle
+ * @gpr:	CMDQ GPR index
+ *
+ * Return: CMDQ GPR address for success; else NULL is returned
+ */
+void __iomem *cmdq_dbg_gpr_addr(struct cmdq_rec *handle,
+				enum cmdq_data_register gpr);
+
+/**
  * cmdq_rec_write_mask() - append write command with mask to the command queue
  *			   recorder
  * @handle:	the command queue recorder handle
@@ -147,6 +190,18 @@ int cmdq_rec_write(struct cmdq_rec *handle, u32 value, u32 addr);
  */
 int cmdq_rec_write_mask(struct cmdq_rec *handle, u32 value,
 			u32 addr, u32 mask);
+
+/**
+ * cmdq_rec_poll() - append poll command with mask to the command queue
+ *		     recorder
+ * @handle:	the command queue recorder handle
+ * @value:	the specified target register value
+ * @addr:	the specified target register physical address
+ * @mask:	the specified target register mask
+ *
+ * Return: 0 for success; else the error code is returned
+ */
+int cmdq_rec_poll(struct cmdq_rec *handle, u32 value, u32 addr, u32 mask);
 
 /**
  * cmdq_rec_wait() - append wait command to the command queue recorder
@@ -215,6 +270,15 @@ int cmdq_rec_flush_async_callback(struct cmdq_rec *handle,
 				  void *isr_data,
 				  cmdq_async_flush_cb done_cb,
 				  void *done_data);
+
+/**
+ * cmdq_rec_dump_command() - dump command buffer to kernel log for debug
+ *
+ * @handle:	the command queue recorder handle
+ *
+ * Return: 0 for success; else the error code is returned
+ */
+int cmdq_rec_dump_command(struct cmdq_rec *handle);
 
 /**
  * cmdq_rec_destroy() - destroy command queue recorder handle
