@@ -3,3 +3,13 @@ config DRM_PTN3460
 	depends on DRM
 	select DRM_KMS_HELPER
 	---help---
+
+config DRM_PARADE_PS8640
+	tristate "Parade PS8640 MIPI DSI to eDP Converter"
+	depends on OF
+	select DRM_KMS_HELPER
+	select DRM_PANEL
+	---help---
+	  Choose this option if you have PS8640 for display
+	  The PS8640 is a high-performance and low-power
+	  MIPI DSI to eDP converter
