@@ -65,6 +65,7 @@ static bool suitable_policy(struct cpufreq_policy *policy, bool active)
 static struct cpufreq_policy *next_policy(struct cpufreq_policy *policy,
 					  bool active)
 {
+	lockdep_assert_held(&cpufreq_driver_lock);
 	do {
 		policy = list_next_entry(policy, policy_list);
 
@@ -80,6 +81,7 @@ static struct cpufreq_policy *first_policy(bool active)
 {
 	struct cpufreq_policy *policy;
 
+	lockdep_assert_held(&cpufreq_driver_lock);
 	/* No policies in the list */
 	if (list_empty(&cpufreq_policy_list))
 		return NULL;
@@ -2439,6 +2441,12 @@ int cpufreq_register_driver(struct cpufreq_driver *driver_data)
 	if (ret)
 		goto err_boost_unreg;
 
+	/*
+	 * We are accessing cpufreq_policy_list, so we should hold
+	 * cpufreq_driver_lock. However, since we just registered the driver,
+	 * there is no other path that can simultaneously update the list
+	 * here.
+	 */
 	if (!(cpufreq_driver->flags & CPUFREQ_STICKY) &&
 	    list_empty(&cpufreq_policy_list)) {
 		/* if all ->init() calls failed, unregister */
