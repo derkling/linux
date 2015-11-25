@@ -1583,6 +1583,7 @@ EXPORT_SYMBOL(cpufreq_generic_suspend);
 void cpufreq_suspend(void)
 {
 	struct cpufreq_policy *policy;
+	unsigned long flags;
 
 	if (!cpufreq_driver)
 		return;
@@ -1592,6 +1593,7 @@ void cpufreq_suspend(void)
 
 	pr_debug("%s: Suspending Governors\n", __func__);
 
+	read_lock_irqsave(&cpufreq_driver_lock, flags);
 	for_each_active_policy(policy) {
 		if (__cpufreq_governor(policy, CPUFREQ_GOV_STOP))
 			pr_err("%s: Failed to stop governor for policy: %p\n",
@@ -1601,6 +1603,7 @@ void cpufreq_suspend(void)
 			pr_err("%s: Failed to suspend driver: %p\n", __func__,
 				policy);
 	}
+	read_unlock_irqrestore(&cpufreq_driver_lock, flags);
 
 suspend:
 	cpufreq_suspended = true;
@@ -1615,6 +1618,7 @@ suspend:
 void cpufreq_resume(void)
 {
 	struct cpufreq_policy *policy;
+	unsigned long flags;
 
 	if (!cpufreq_driver)
 		return;
@@ -1626,6 +1630,7 @@ void cpufreq_resume(void)
 
 	pr_debug("%s: Resuming Governors\n", __func__);
 
+	read_lock_irqsave(&cpufreq_driver_lock, flags);
 	for_each_active_policy(policy) {
 		if (cpufreq_driver->resume && cpufreq_driver->resume(policy))
 			pr_err("%s: Failed to resume driver: %p\n", __func__,
@@ -1635,6 +1640,7 @@ void cpufreq_resume(void)
 			pr_err("%s: Failed to start governor for policy: %p\n",
 				__func__, policy);
 	}
+	read_unlock_irqrestore(&cpufreq_driver_lock, flags);
 
 	/*
 	 * schedule call cpufreq_update_policy() for first-online CPU, as that
@@ -2285,7 +2291,9 @@ static int cpufreq_boost_set_sw(int state)
 	struct cpufreq_frequency_table *freq_table;
 	struct cpufreq_policy *policy;
 	int ret = -EINVAL;
+	unsigned long flags;
 
+	read_lock_irqsave(&cpufreq_driver_lock, flags);
 	for_each_active_policy(policy) {
 		freq_table = cpufreq_frequency_get_table(policy->cpu);
 		if (freq_table) {
@@ -2300,6 +2308,7 @@ static int cpufreq_boost_set_sw(int state)
 			__cpufreq_governor(policy, CPUFREQ_GOV_LIMITS);
 		}
 	}
+	read_unlock_irqrestore(&cpufreq_driver_lock, flags);
 
 	return ret;
 }
