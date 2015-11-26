@@ -2106,6 +2106,8 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
 	pr_debug("setting new policy for CPU %u: %u - %u kHz\n",
 		 new_policy->cpu, new_policy->min, new_policy->max);
 
+	cpufreq_assert_lock_held(&policy->rwsem);
+
 	memcpy(&new_policy->cpuinfo, &policy->cpuinfo, sizeof(policy->cpuinfo));
 
 	/*
