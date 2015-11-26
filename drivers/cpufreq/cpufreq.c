@@ -38,8 +38,19 @@
  */
 static LIST_HEAD(cpufreq_governor_list);
 static DEFINE_MUTEX(cpufreq_governor_mutex);
-#define for_each_governor(__governor)				\
-	list_for_each_entry(__governor, &cpufreq_governor_list, governor_list)
+#ifdef CONFIG_LOCKDEP
+#define for_each_governor(__gov)					    \
+	for (__gov = list_first_entry(&cpufreq_governor_list, 		    \
+				      typeof(*__gov), 			    \
+				      governor_list),			    \
+				WARN_ON(debug_locks &&			    \
+				!lockdep_is_held(&cpufreq_governor_mutex)); \
+	     &__gov->governor_list != (&cpufreq_governor_list);		    \
+	     __gov = list_next_entry(__gov, governor_list))
+#else /* !CONFIG_LOCKDEP */
+#define for_each_governor(__gov)					    \
+	list_for_each_entry(__gov, &cpufreq_governor_list, governor_list)
+#endif /* CONFIG_LOCKDEP */
 
 /**
  * The "cpufreq driver" - the arch- or hardware-dependent low
