@@ -1361,13 +1361,13 @@ static void cpufreq_offline_prepare(unsigned int cpu)
 		return;
 	}
 
+	down_write(&policy->rwsem);
 	if (has_target()) {
 		int ret = __cpufreq_governor(policy, CPUFREQ_GOV_STOP);
 		if (ret)
 			pr_err("%s: Failed to stop governor\n", __func__);
 	}
 
-	down_write(&policy->rwsem);
 	cpumask_clear_cpu(cpu, policy->cpus);
 
 	if (policy_is_inactive(policy)) {
@@ -1380,12 +1380,13 @@ static void cpufreq_offline_prepare(unsigned int cpu)
 		/* Nominate new CPU */
 		policy->cpu = cpumask_any(policy->cpus);
 	}
-	up_write(&policy->rwsem);
 
 	/* Start governor again for active policy */
 	if (!policy_is_inactive(policy)) {
 		if (has_target()) {
-			int ret = __cpufreq_governor(policy, CPUFREQ_GOV_START);
+			int ret;
+
+			ret = __cpufreq_governor(policy, CPUFREQ_GOV_START);
 			if (!ret)
 				ret = __cpufreq_governor(policy, CPUFREQ_GOV_LIMITS);
 
@@ -1395,6 +1396,8 @@ static void cpufreq_offline_prepare(unsigned int cpu)
 	} else if (cpufreq_driver->stop_cpu) {
 		cpufreq_driver->stop_cpu(policy);
 	}
+
+	up_write(&policy->rwsem);
 }
 
 static void cpufreq_offline_finish(unsigned int cpu)
