@@ -1028,21 +1028,22 @@ static int cpufreq_add_policy_cpu(struct cpufreq_policy *policy, unsigned int cp
 {
 	int ret = 0;
 
+	down_write(&policy->rwsem);
+
 	/* Has this CPU been taken care of already? */
 	if (cpumask_test_cpu(cpu, policy->cpus))
-		return 0;
+		goto out;
 
 	if (has_target()) {
 		ret = __cpufreq_governor(policy, CPUFREQ_GOV_STOP);
 		if (ret) {
+			up_write(&policy->rwsem);
 			pr_err("%s: Failed to stop governor\n", __func__);
 			return ret;
 		}
 	}
 
-	down_write(&policy->rwsem);
 	cpumask_set_cpu(cpu, policy->cpus);
-	up_write(&policy->rwsem);
 
 	if (has_target()) {
 		ret = __cpufreq_governor(policy, CPUFREQ_GOV_START);
@@ -1050,11 +1051,14 @@ static int cpufreq_add_policy_cpu(struct cpufreq_policy *policy, unsigned int cp
 			ret = __cpufreq_governor(policy, CPUFREQ_GOV_LIMITS);
 
 		if (ret) {
+			up_write(&policy->rwsem);
 			pr_err("%s: Failed to start governor\n", __func__);
 			return ret;
 		}
 	}
 
+out:
+	up_write(&policy->rwsem);
 	return 0;
 }
 
