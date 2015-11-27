@@ -19,3 +19,8 @@
 	model = "Mediatek Oak rev4 board";
 	compatible = "google,oak-rev4", "google,oak", "mediatek,mt8173";
 };
+
+&ps8640_fixed_1v2 {
+	/* crosbug.com/p/48927: Leave on at boot to workaround HW issue */
+	regulator-boot-on;
+};
