@@ -829,14 +829,7 @@ static u8 sp_parse_edid_to_get_bandwidth(struct anx78xx *anx78xx)
 
 u8 sp_get_link_bandwidth(struct anx78xx *anx78xx)
 {
-	u8 bandwidth, max_bandwidth;
-
-	bandwidth = sp_get_rx_bw(anx78xx);
-	max_bandwidth = sp_parse_edid_to_get_bandwidth(anx78xx);
-	if (bandwidth > max_bandwidth)
-		return max_bandwidth;
-
-	return bandwidth;
+	return sp.changed_bandwidth;
 }
 
 static int sp_tx_aux_wr(struct anx78xx *anx78xx, u8 offset)
@@ -1316,8 +1309,9 @@ static int sp_tx_bw_lc_sel(struct anx78xx *anx78xx)
 
 	if (sp_get_link_bw(anx78xx) != link) {
 		sp.changed_bandwidth = link;
-		dev_dbg(dev,
-			"different bandwidth between sink and video %.2x",
+		dev_err(dev,
+			"different bandwidth between sink and video %.2x %.2x",
+			sp_get_link_bw(anx78xx), link);
 		return -1;
 	}
 	return 0;
@@ -1519,7 +1513,7 @@ static bool sp_link_training(struct anx78xx *anx78xx)
 	/* fallthrough */
 	case LT_CHECK_LINK_BW:
 		val = sp_get_rx_bw(anx78xx);
-		if (val < sp.changed_bandwidth) {
+		if (val < sp.changed_bandwidth && (val == 0x06 || val == 0x0a || val == 0x14)) {
 			dev_dbg(dev, "over bandwidth!\n");
 			sp.changed_bandwidth = val;
 			break;
@@ -1817,8 +1811,7 @@ static bool sp_config_video_output(struct anx78xx *anx78xx)
 	case VO_WAIT_VIDEO_STABLE:
 		sp_reg_read(anx78xx, RX_P0, SP_SYSTEM_STATUS_REG, &val);
 		if ((val & SP_TMDS_DE_DET) && (val & SP_TMDS_CLOCK_DET)) {
-			if (sp_tx_bw_lc_sel(anx78xx))
-				return false;
+			sp_tx_bw_lc_sel(anx78xx);
 			sp_enable_video_input(anx78xx, false);
 			sp_packet_avi_init(anx78xx);
 			sp_config_packets(anx78xx, AVI_PACKETS);
@@ -2920,10 +2913,9 @@ static void sp_show_information(struct anx78xx *anx78xx)
 	if (h_res == 0 || v_res == 0) {
 		refresh = 0;
 	} else {
-		refresh = pclk * 1000;
-		refresh = refresh / h_res;
-		refresh = refresh * 1000;
-		refresh = refresh / v_res;
+		refresh = pclk * 1000000;
+		refresh = DIV_ROUND_CLOSEST(refresh, h_res);
+		refresh = DIV_ROUND_CLOSEST(refresh, v_res);
 	}
 
 	dev_dbg(dev, "active resolution is %d * %d @ %ldHz\n", h_act, v_act,
@@ -3060,9 +3052,10 @@ bool sp_main_process(struct anx78xx *anx78xx)
 		if (sp_hdcp_repeater_mode(anx78xx))
 			sp_hdcp_repeater_reauth(anx78xx);
 
-		if (!sp.hdcp_enabled)
+/*		if (!sp.hdcp_enabled) {
 			sp_set_system_state(anx78xx, STATE_HDCP_AUTH);
 			sp.hdcp_enabled = true;
+		}*/
 	}
 
 	/*
