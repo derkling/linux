@@ -26,9 +26,10 @@
 #ifdef CONFIG_CPU_FREQ
 
 /**
- * dev_pm_opp_init_cpufreq_table() - create a cpufreq table for a device
+ * __dev_pm_opp_init_cpufreq_table() - create a cpufreq table for a device
  * @dev:	device for which we do this operation
  * @table:	Cpufreq table returned back to caller
+ * @extra_opps:	Number of extra table entries to allocate
  *
  * Generate a cpufreq table for a provided device- this assumes that the
  * opp list is already initialized and ready for usage.
@@ -49,8 +50,9 @@
  * structures, we use RCU read lock inside this function. As a result, users of
  * this function DONOT need to use explicit locks for invoking.
  */
-int dev_pm_opp_init_cpufreq_table(struct device *dev,
-				  struct cpufreq_frequency_table **table)
+int __dev_pm_opp_init_cpufreq_table(struct device *dev,
+				    struct cpufreq_frequency_table **table,
+				    unsigned int extra_opps)
 {
 	struct dev_pm_opp *opp;
 	struct cpufreq_frequency_table *freq_table = NULL;
@@ -65,7 +67,8 @@ int dev_pm_opp_init_cpufreq_table(struct device *dev,
 		goto out;
 	}
 
-	freq_table = kcalloc((max_opps + 1), sizeof(*freq_table), GFP_ATOMIC);
+	freq_table = kcalloc((max_opps + extra_opps + 1), sizeof(*freq_table),
+			     GFP_ATOMIC);
 	if (!freq_table) {
 		ret = -ENOMEM;
 		goto out;
@@ -98,7 +101,15 @@ out:
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(__dev_pm_opp_init_cpufreq_table);
+
+int dev_pm_opp_init_cpufreq_table(struct device *dev,
+				  struct cpufreq_frequency_table **table)
+{
+	return __dev_pm_opp_init_cpufreq_table(dev, table, 0);
+}
 EXPORT_SYMBOL_GPL(dev_pm_opp_init_cpufreq_table);
+
 
 /**
  * dev_pm_opp_free_cpufreq_table() - free the cpufreq table
