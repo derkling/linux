@@ -949,8 +949,12 @@ static int __init acpi_cpufreq_init(void)
 		return -ENODEV;
 
 	/* don't keep reloading if cpufreq_driver exists */
-	if (cpufreq_get_current_driver())
+	rcu_read_lock();
+	if (cpufreq_get_current_driver()) {
+		rcu_read_unlock();
 		return -EEXIST;
+	}
+	rcu_read_unlock();
 
 	pr_debug("acpi_cpufreq_init\n");
 
