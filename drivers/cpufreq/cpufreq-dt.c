@@ -252,10 +252,14 @@ static int cpufreq_init(struct cpufreq_policy *policy)
 	}
 
 	if (need_update) {
-		struct cpufreq_dt_platform_data *pd = cpufreq_get_driver_data();
+		struct cpufreq_dt_platform_data *pd;
+
+		rcu_read_lock();
+		pd = cpufreq_get_driver_data();
 
 		if (!pd || !pd->independent_clocks)
 			cpumask_setall(policy->cpus);
+		rcu_read_unlock();
 
 		/*
 		 * OPP tables are initialized only for policy->cpu, do it for

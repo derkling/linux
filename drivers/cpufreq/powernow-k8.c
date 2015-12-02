@@ -1173,16 +1173,19 @@ static void __request_acpi_cpufreq(void)
 {
 	const char *cur_drv, *drv = "acpi-cpufreq";
 
+	rcu_read_lock();
 	cur_drv = cpufreq_get_current_driver();
 	if (!cur_drv)
 		goto request;
 
 	if (strncmp(cur_drv, drv, min_t(size_t, strlen(cur_drv), strlen(drv))))
 		pr_warn("WTF driver: %s\n", cur_drv);
+	rcu_read_unlock();
 
 	return;
 
  request:
+	rcu_read_unlock();
 	pr_warn("This CPU is not supported anymore, using acpi-cpufreq instead.\n");
 	request_module(drv);
 }

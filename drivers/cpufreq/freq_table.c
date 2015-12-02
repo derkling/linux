@@ -41,6 +41,8 @@ int cpufreq_frequency_table_cpuinfo(struct cpufreq_policy *policy,
 	unsigned int max_freq = 0;
 	unsigned int freq;
 
+	/* For calling cpufreq_boost_enabled() */
+	rcu_read_lock();
 	cpufreq_for_each_valid_entry(pos, table) {
 		freq = pos->frequency;
 
@@ -54,6 +56,7 @@ int cpufreq_frequency_table_cpuinfo(struct cpufreq_policy *policy,
 		if (freq > max_freq)
 			max_freq = freq;
 	}
+	rcu_read_unlock();
 
 	policy->min = policy->cpuinfo.min_freq = min_freq;
 	policy->max = policy->cpuinfo.max_freq = max_freq;
