@@ -132,14 +132,21 @@ static int dbs_cpufreq_notifier(struct notifier_block *nb, unsigned long val,
 	struct cpufreq_freqs *freq = data;
 	struct cs_cpu_dbs_info_s *dbs_info =
 					&per_cpu(cs_cpu_dbs_info, freq->cpu);
-	struct cpufreq_policy *policy = cpufreq_cpu_get_raw(freq->cpu);
+	struct cpufreq_policy *policy;
 
-	if (!policy)
+	rcu_read_lock();
+	policy = cpufreq_cpu_get_raw(freq->cpu);
+
+	if (!policy) {
+		rcu_read_unlock();
 		return 0;
+	}
 
 	/* policy isn't governed by conservative governor */
-	if (policy->governor != &cpufreq_gov_conservative)
+	if (policy->governor != &cpufreq_gov_conservative) {
+		rcu_read_unlock();
 		return 0;
+	}
 
 	/*
 	 * we only care if our internally tracked freq moves outside the 'valid'
@@ -148,6 +155,7 @@ static int dbs_cpufreq_notifier(struct notifier_block *nb, unsigned long val,
 	if (dbs_info->requested_freq > policy->max
 			|| dbs_info->requested_freq < policy->min)
 		dbs_info->requested_freq = freq->new;
+	rcu_read_unlock();
 
 	return 0;
 }

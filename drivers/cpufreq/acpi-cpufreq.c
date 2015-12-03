@@ -378,13 +378,18 @@ static unsigned int get_cur_freq_on_cpu(unsigned int cpu)
 
 	pr_debug("get_cur_freq_on_cpu (%d)\n", cpu);
 
+	rcu_read_lock();
 	policy = cpufreq_cpu_get_raw(cpu);
-	if (unlikely(!policy))
+	if (unlikely(!policy)) {
+		rcu_read_unlock();
 		return 0;
+	}
 
 	data = policy->driver_data;
-	if (unlikely(!data || !data->freq_table))
+	if (unlikely(!data || !data->freq_table)) {
+		rcu_read_unlock();
 		return 0;
+	}
 
 	cached_freq = data->freq_table[to_perf_data(data)->state].frequency;
 	freq = extract_freq(get_cur_val(cpumask_of(cpu), data), data);
@@ -396,6 +401,7 @@ static unsigned int get_cur_freq_on_cpu(unsigned int cpu)
 		data->resume = 1;
 	}
 
+	rcu_read_unlock();
 	pr_debug("cur freq = %u\n", freq);
 
 	return freq;
