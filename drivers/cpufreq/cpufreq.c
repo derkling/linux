@@ -712,10 +712,8 @@ static ssize_t store_scaling_governor(struct cpufreq_policy *policy,
 		return -EINVAL;
 
 	if (cpufreq_parse_governor(str_governor, &new_policy.policy,
-						&new_policy.governor)) {
-		rcu_read_unlock();
+						&new_policy.governor))
 		return -EINVAL;
-	}
 
 	ret = cpufreq_set_policy(policy, &new_policy);
 
@@ -888,14 +886,14 @@ static ssize_t show(struct kobject *kobj, struct attribute *attr, char *buf)
 	struct freq_attr *fattr = to_attr(attr);
 	ssize_t ret;
 
-	down_read(&policy->rwsem);
+	rcu_read_lock();
 
-	if (fattr->show)
+	if (rcu_dereference(policy) && fattr->show)
 		ret = fattr->show(policy, buf);
 	else
 		ret = -EIO;
 
-	up_read(&policy->rwsem);
+	rcu_read_unlock();
 
 	return ret;
 }
@@ -913,14 +911,14 @@ static ssize_t store(struct kobject *kobj, struct attribute *attr,
 		goto unlock;
 
 	mutex_lock(&cpufreq_mutex);
-	down_write(&policy->rwsem);
+	mutex_lock(&policy->mutex);
 
 	if (fattr->store)
 		ret = fattr->store(policy, buf, count);
 	else
 		ret = -EIO;
 
-	up_write(&policy->rwsem);
+	mutex_unlock(&policy->mutex);
 	mutex_unlock(&cpufreq_mutex);
 unlock:
 	put_online_cpus();
@@ -1042,6 +1040,7 @@ static int cpufreq_init_policy(struct cpufreq_policy *policy)
 	memcpy(&new_policy, policy, sizeof(*policy));
 
 	lockdep_assert_held(&cpufreq_mutex);
+	lockdep_assert_held(&policy->mutex);
 
 	/* Update governor of new_policy to the governor used before hotplug */
 	gov = find_governor(policy->last_governor);
@@ -1069,18 +1068,15 @@ static int cpufreq_add_policy_cpu(struct cpufreq_policy *policy, unsigned int cp
 {
 	int ret = 0;
 
-	down_write(&policy->rwsem);
+	lockdep_assert_held(&policy->mutex);
 
 	/* Has this CPU been taken care of already? */
-	if (cpumask_test_cpu(cpu, policy->cpus)) {
-		up_write(&policy->rwsem);
+	if (cpumask_test_cpu(cpu, policy->cpus))
 		return 0;
-	}
 
 	if (has_target()) {
 		ret = __cpufreq_governor(policy, CPUFREQ_GOV_STOP);
 		if (ret) {
-			up_write(&policy->rwsem);
 			pr_err("%s: Failed to stop governor\n", __func__);
 			return ret;
 		}
@@ -1094,12 +1090,10 @@ static int cpufreq_add_policy_cpu(struct cpufreq_policy *policy, unsigned int cp
 			ret = __cpufreq_governor(policy, CPUFREQ_GOV_LIMITS);
 
 		if (ret) {
-			up_write(&policy->rwsem);
 			pr_err("%s: Failed to start governor\n", __func__);
 			return ret;
 		}
 	}
-	up_write(&policy->rwsem);
 
 	return 0;
 }
@@ -1127,7 +1121,7 @@ static struct cpufreq_policy *cpufreq_policy_alloc(unsigned int cpu)
 
 	kobject_init(&policy->kobj, &ktype_cpufreq);
 	INIT_LIST_HEAD(&policy->policy_list);
-	init_rwsem(&policy->rwsem);
+	mutex_init(&policy->mutex);
 	init_waitqueue_head(&policy->transition_wait);
 	init_completion(&policy->kobj_unregister);
 	INIT_WORK(&policy->update, handle_update);
@@ -1154,11 +1148,11 @@ static void cpufreq_policy_put_kobj(struct cpufreq_policy *policy, bool notify)
 		blocking_notifier_call_chain(&cpufreq_policy_notifier_list,
 					     CPUFREQ_REMOVE_POLICY, policy);
 
-	down_write(&policy->rwsem);
+	mutex_lock(&policy->mutex);
 	cpufreq_remove_dev_symlink(policy);
 	kobj = &policy->kobj;
 	cmp = &policy->kobj_unregister;
-	up_write(&policy->rwsem);
+	mutex_unlock(&policy->mutex);
 	kobject_put(kobj);
 
 	/*
@@ -1176,12 +1170,10 @@ static void cpufreq_policy_free(struct cpufreq_policy *policy, bool notify)
 	int cpu;
 
 	/* Remove policy from list */
-	mutex_lock(&cpufreq_mutex);
 	list_del_rcu(&policy->policy_list);
 
 	for_each_cpu(cpu, policy->related_cpus)
 		rcu_assign_pointer(per_cpu(cpufreq_cpu_data, cpu), NULL);
-	mutex_unlock(&cpufreq_mutex);
 	synchronize_rcu();
 
 	cpufreq_policy_put_kobj(policy, notify);
@@ -1203,25 +1195,30 @@ static int cpufreq_online(unsigned int cpu)
 	lockdep_assert_held(&cpufreq_mutex);
 
 	/* Check if this CPU already has a policy to manage it */
-	policy = per_cpu(cpufreq_cpu_data, cpu);
+	policy = rcu_dereference_check(per_cpu(cpufreq_cpu_data, cpu),
+			lockdep_is_held(&cpufreq_mutex));
 	if (policy) {
+		mutex_lock(&policy->mutex);
 		WARN_ON(!cpumask_test_cpu(cpu, policy->related_cpus));
-		if (!policy_is_inactive(policy))
-			return cpufreq_add_policy_cpu(policy, cpu);
+		if (!policy_is_inactive(policy)) {
+			ret = cpufreq_add_policy_cpu(policy, cpu);
+			mutex_unlock(&policy->mutex);
+			return ret;
+		}
 
 		/* This is the only online CPU for the policy.  Start over. */
 		new_policy = false;
-		down_write(&policy->rwsem);
 		policy->cpu = cpu;
 		policy->governor = NULL;
-		up_write(&policy->rwsem);
 	} else {
 		new_policy = true;
 		policy = cpufreq_policy_alloc(cpu);
 		if (!policy)
 			return -ENOMEM;
+		mutex_lock(&policy->mutex);
 	}
 
+	lockdep_assert_held(&policy->mutex);
 	cpumask_copy(policy->cpus, cpumask_of(cpu));
 
 	/* call driver. From then on the cpufreq must be able
@@ -1232,8 +1229,6 @@ static int cpufreq_online(unsigned int cpu)
 		pr_debug("initialization failed\n");
 		goto out_free_policy;
 	}
-
-	down_write(&policy->rwsem);
 
 	if (new_policy) {
 		/* related_cpus should at least include policy->cpus. */
@@ -1336,7 +1331,7 @@ static int cpufreq_online(unsigned int cpu)
 		goto out_exit_policy;
 	}
 
-	up_write(&policy->rwsem);
+	mutex_unlock(&policy->mutex);
 
 	kobject_uevent(&policy->kobj, KOBJ_ADD);
 
@@ -1349,12 +1344,11 @@ static int cpufreq_online(unsigned int cpu)
 	return 0;
 
 out_exit_policy:
-	up_write(&policy->rwsem);
-
 	if (cpufreq_driver->exit)
 		cpufreq_driver->exit(policy);
 out_free_policy:
 	cpufreq_policy_free(policy, !new_policy);
+	mutex_unlock(&policy->mutex);
 	return ret;
 }
 
@@ -1395,6 +1389,7 @@ static void cpufreq_offline_prepare(unsigned int cpu)
 	struct cpufreq_policy *policy;
 
 	pr_debug("%s: unregistering CPU %u\n", __func__, cpu);
+	cpufreq_assert_lock_held();
 
 	policy = cpufreq_cpu_get_raw(cpu);
 	if (!policy) {
@@ -1402,7 +1397,7 @@ static void cpufreq_offline_prepare(unsigned int cpu)
 		return;
 	}
 
-	down_write(&policy->rwsem);
+	mutex_lock(&policy->mutex);
 	if (has_target()) {
 		int ret = __cpufreq_governor(policy, CPUFREQ_GOV_STOP);
 		if (ret)
@@ -1421,25 +1416,23 @@ static void cpufreq_offline_prepare(unsigned int cpu)
 		/* Nominate new CPU */
 		policy->cpu = cpumask_any(policy->cpus);
 	}
-	up_write(&policy->rwsem);
 
 	/* Start governor again for active policy */
 	if (!policy_is_inactive(policy)) {
 		if (has_target()) {
 			int ret;
 
-			down_write(&policy->rwsem);
 			ret = __cpufreq_governor(policy, CPUFREQ_GOV_START);
 			if (!ret)
 				ret = __cpufreq_governor(policy, CPUFREQ_GOV_LIMITS);
 
 			if (ret)
 				pr_err("%s: Failed to start governor\n", __func__);
-			up_write(&policy->rwsem);
 		}
 	} else if (cpufreq_driver->stop_cpu) {
 		cpufreq_driver->stop_cpu(policy);
 	}
+	mutex_unlock(&policy->mutex);
 }
 
 static void cpufreq_offline_finish(unsigned int cpu)
@@ -1454,11 +1447,11 @@ static void cpufreq_offline_finish(unsigned int cpu)
 		return;
 	}
 
-	down_write(&policy->rwsem);
+	mutex_lock(&policy->mutex);
 
 	/* Only proceed for inactive policies */
 	if (!policy_is_inactive(policy)) {
-		up_write(&policy->rwsem);
+		mutex_unlock(&policy->mutex);
 		return;
 	}
 
@@ -1469,8 +1462,6 @@ static void cpufreq_offline_finish(unsigned int cpu)
 			pr_err("%s: Failed to exit governor\n", __func__);
 	}
 
-	up_write(&policy->rwsem);
-
 	/*
 	 * Perform the ->exit() even during light-weight tear-down,
 	 * since this is a core component, and is essential for the
@@ -1480,6 +1471,7 @@ static void cpufreq_offline_finish(unsigned int cpu)
 		cpufreq_driver->exit(policy);
 		policy->freq_table = NULL;
 	}
+	mutex_unlock(&policy->mutex);
 }
 
 /**
@@ -1639,11 +1631,9 @@ unsigned int cpufreq_get(unsigned int cpu)
 	unsigned int ret_freq = 0;
 
 	if (policy) {
-		down_read(&policy->rwsem);
 		rcu_read_lock();
 		ret_freq = __cpufreq_get(policy);
 		rcu_read_unlock();
-		up_read(&policy->rwsem);
 
 		cpufreq_cpu_put(policy);
 	}
@@ -2074,11 +2064,11 @@ int cpufreq_driver_target(struct cpufreq_policy *policy,
 	int ret = -EINVAL;
 
 	mutex_lock(&cpufreq_mutex);
-	down_write(&policy->rwsem);
+	mutex_lock(&policy->mutex);
 
 	ret = __cpufreq_driver_target(policy, target_freq, relation);
 
-	up_write(&policy->rwsem);
+	mutex_unlock(&policy->mutex);
 	mutex_unlock(&cpufreq_mutex);
 
 	return ret;
@@ -2395,7 +2385,7 @@ int cpufreq_update_policy(unsigned int cpu)
 	if (!policy)
 		return -ENODEV;
 
-	down_write(&policy->rwsem);
+	mutex_lock(&policy->mutex);
 
 	pr_debug("updating policy for CPU %u\n", cpu);
 	memcpy(&new_policy, policy, sizeof(*policy));
@@ -2429,7 +2419,7 @@ int cpufreq_update_policy(unsigned int cpu)
 
 unlock:
 	rcu_read_unlock();
-	up_write(&policy->rwsem);
+	mutex_unlock(&policy->mutex);
 
 	cpufreq_cpu_put(policy);
 	return ret;

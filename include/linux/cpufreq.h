@@ -94,14 +94,18 @@ struct cpufreq_policy {
 	struct completion	kobj_unregister;
 
 	/*
-	 * The rules for this semaphore:
-	 * - Any routine that wants to read from the policy structure will
-	 *   do a down_read on this semaphore.
-	 * - Any routine that will write to the policy structure and/or may take away
-	 *   the policy altogether (eg. CPU hotplug), will hold this lock in write
-	 *   mode before doing so.
+	 * The rules for this RCU protected mutex:
+	 * - Any routine that wants to read from the policy structure will do
+	 *   rcu_read_lock()/rcu_dereference(policy)/rcu_read_unlock().
+	 * - Any routine that will write to the policy structure and/or may
+	 *   take away the policy altogether (eg. CPU hotplug), will hold this
+	 *   mutex mode before doing so. Furthermore, if cpufreq_mutex has to
+	 *   be held as well, cpufreq_mutex has always to be locked _before_
+	 *   this mutex to avoid deadlocks. As this data structure is RCU
+	 *   protected, any update has to be followed by a proper
+	 *   synchronize_rcu() or call_rcu() invocation.
 	 */
-	struct rw_semaphore	rwsem;
+	struct mutex		mutex;
 
 	/* Synchronization for frequency transitions */
 	bool			transition_ongoing; /* Tracks transition status */
