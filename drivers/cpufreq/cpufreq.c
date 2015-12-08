@@ -2002,7 +2002,7 @@ int __cpufreq_driver_target(struct cpufreq_policy *policy,
 	if (cpufreq_disabled())
 		return -ENODEV;
 
-	lockdep_assert_held(&cpufreq_mutex);
+	lockdep_assert_held(&policy->mutex);
 
 	/* Make sure that target_freq is within supported range */
 	if (target_freq > policy->max)
@@ -2063,13 +2063,11 @@ int cpufreq_driver_target(struct cpufreq_policy *policy,
 {
 	int ret = -EINVAL;
 
-	mutex_lock(&cpufreq_mutex);
 	mutex_lock(&policy->mutex);
 
 	ret = __cpufreq_driver_target(policy, target_freq, relation);
 
 	mutex_unlock(&policy->mutex);
-	mutex_unlock(&cpufreq_mutex);
 
 	return ret;
 }
