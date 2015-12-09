@@ -2002,7 +2002,21 @@ int __cpufreq_driver_target(struct cpufreq_policy *policy,
 	if (cpufreq_disabled())
 		return -ENODEV;
 
-	lockdep_assert_held(&policy->mutex);
+	/*
+	 * When we get here policy has to be accessed and modified atomically,
+	 * but there are several way to do so (the standard one being holding
+	 * policy->mutex). We document here paths that end up calling this
+	 * function and how they ensure policy is protected:
+	 *
+	 *  - cpufreq_performance: policy->mutex held when calling
+	 *    cpufreq_add_policy_cpu()
+	 *  - cpufreq_powersave: policy->mutex held when calling
+	 *    cpufreq_add_policy_cpu()
+	 *  - cpufreq_governor: timer_mutex
+	 *  - cpufreq_ondemand: timer_mutex (from cpufreq_governor)
+	 *  - cpufreq_userspace: userspace_mutex
+	 *  - cpufreq_conservative: timer_mutex (from cpufreq_governor)
+	 */
 
 	/* Make sure that target_freq is within supported range */
 	if (target_freq > policy->max)
