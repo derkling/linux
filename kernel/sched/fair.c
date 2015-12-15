@@ -4856,10 +4856,17 @@ unsigned long capacity_curr_of(int cpu)
  * capacity_orig) as it useful for predicting the capacity required after task
  * migrations (scheduler-driven DVFS).
  */
-static unsigned long __cpu_util(int cpu, int delta)
+static unsigned long __cpu_util(int cpu, int delta, bool use_pelt)
 {
 	unsigned long util = cpu_rq(cpu)->cfs.avg.util_avg;
 	unsigned long capacity = capacity_orig_of(cpu);
+
+	/*
+	 * The CPU estimated utilization is:
+	 *   max(util_avg, util_est)
+	 */
+	if (!use_pelt && util < cpu_rq(cpu)->cfs.avg.util_est)
+		util = cpu_rq(cpu)->cfs.avg.util_est;
 
 	delta += util;
 	if (delta < 0)
@@ -4870,7 +4877,12 @@ static unsigned long __cpu_util(int cpu, int delta)
 
 unsigned long cpu_util(int cpu)
 {
-	return __cpu_util(cpu, 0);
+	return __cpu_util(cpu, 0, true);
+}
+
+unsigned long cpu_util_est(int cpu)
+{
+	return __cpu_util(cpu, 0, false);
 }
 
 static inline bool energy_aware(void)
@@ -4904,7 +4916,7 @@ struct energy_env {
  */
 static unsigned long __cpu_norm_util(int cpu, unsigned long capacity, int delta)
 {
-	int util = __cpu_util(cpu, delta);
+	int util = __cpu_util(cpu, delta, true);
 
 	if (util >= capacity)
 		return SCHED_CAPACITY_SCALE;
@@ -4929,7 +4941,7 @@ unsigned long group_max_util(struct energy_env *eenv)
 
 	for_each_cpu(i, sched_group_cpus(eenv->sg_cap)) {
 		delta = calc_util_delta(eenv, i);
-		max_util = max(max_util, __cpu_util(i, delta));
+		max_util = max(max_util, __cpu_util(i, delta, true));
 	}
 
 	return max_util;
