@@ -2828,6 +2828,17 @@ static inline void update_load_avg(struct sched_entity *se, int update_tg)
 	if (!entity_is_task(se))
 		return;
 
+	/* Update task estimated utilization */
+	if (se->avg.util_est < se->avg.util_avg) {
+		trace_printk("util_est_se_1: pid=%d comm=%s event=updated avg=%lu est=%lu",
+			task_of(se)->pid, task_of(se)->comm,
+			se->avg.util_avg, se->avg.util_est);
+		se->avg.util_est = se->avg.util_avg;
+		trace_printk("util_est_se_2: pid=%d comm=%s event=updated avg=%lu est=%lu",
+			task_of(se)->pid, task_of(se)->comm,
+			se->avg.util_avg, se->avg.util_est);
+	}
+
 	trace_sched_load_avg_task(task_of(se), &se->avg);
 	trace_sched_load_avg_cpu(cpu, cfs_rq);
 }
@@ -4282,6 +4293,15 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		if (task_new || task_wakeup)
 			update_capacity_of(cpu_of(rq));
 	}
+
+	/* Get the top level CFS RQ for the task CPU */
+	cfs_rq = &(task_rq(p)->cfs);
+
+	/* Update RQ estimated utilization */
+	trace_printk("util_est_se: pid=%d comm=%s event=enqueue avg=%lu est=%lu",
+			p->pid, p->comm,
+			cfs_rq->avg.util_avg, task_util_est(p));
+
 	hrtick_update(rq);
 }
 
@@ -4355,6 +4375,18 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 				set_cfs_cpu_capacity(cpu_of(rq), false, 0);
 		}
 	}
+	/* Update estimated utilization */
+	if (task_sleep) {
+		se = &p->se;
+		trace_printk("util_est_se_1: pid=%d comm=%s event=dequeue avg=%lu est=%lu",
+				p->pid, p->comm,
+				se->avg.util_avg, se->avg.util_est);
+		se->avg.util_est = se->avg.util_avg;
+		trace_printk("util_est_se_2: pid=%d comm=%s event=dequeue avg=%lu est=%lu",
+				p->pid, p->comm,
+				se->avg.util_avg, se->avg.util_est);
+	}
+
 	hrtick_update(rq);
 }
 
