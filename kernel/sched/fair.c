@@ -2840,6 +2840,14 @@ static inline void update_load_avg(struct sched_entity *se, int update_tg)
 			se->avg.util_avg, se->avg.util_est,
 			cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
 		cfs_rq->avg.util_est += (se->avg.util_avg - se->avg.util_est);
+		if (cfs_rq->avg.util_est > SCHED_CAPACITY_SCALE) {
+			trace_printk("evt=util_est_rq step=pst pid=%d comm=%s cpu=%d rq=%p event=attach t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+					task_of(se)->pid, task_of(se)->comm,
+					task_cpu(task_of(se)), cfs_rq,
+					task_of(se)->se.avg.util_avg, task_of(se)->se.avg.util_est,
+					cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
+			cfs_rq->avg.util_est = SCHED_LOAD_SCALE;
+		}
 		trace_printk("evt=util_est_rq step=pst pid=%d comm=%s cpu=%d rq=%p event=update t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
 			task_of(se)->pid, task_of(se)->comm,
 			task_cpu(task_of(se)), cfs_rq,
@@ -4320,17 +4328,27 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 			p->se.avg.util_avg, p->se.avg.util_est,
 			cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
 	cfs_rq->avg.util_est += task_util_est(p);
+	if (cfs_rq->avg.util_est > SCHED_CAPACITY_SCALE) {
+		trace_printk("evt=util_est_rq step=pst pid=%d comm=%s cpu=%d rq=%p event=enqueue t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+				p->pid, p->comm,
+				task_cpu(p), cfs_rq,
+				p->se.avg.util_avg, p->se.avg.util_est,
+				cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
+		cfs_rq->avg.util_est = SCHED_LOAD_SCALE;
+	}
 	trace_printk("evt=util_est_rq step=pst pid=%d comm=%s cpu=%d rq=%p event=enqueue t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
 			p->pid, p->comm,
 			task_cpu(p), cfs_rq,
 			p->se.avg.util_avg, p->se.avg.util_est,
 			cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
-	if (cfs_rq->avg.util_est > SCHED_CAPACITY_SCALE)
+	if (cfs_rq->avg.util_est > SCHED_CAPACITY_SCALE) {
 		trace_printk("evt=util_est_rq step=err pid=%d comm=%s cpu=%d rq=%p event=enqueue t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
 				p->pid, p->comm,
 				task_cpu(p), cfs_rq,
 				p->se.avg.util_avg, p->se.avg.util_est,
 				cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
+		cfs_rq->avg.util_est = SCHED_CAPACITY_SCALE;
+	}
 
 	hrtick_update(rq);
 }
