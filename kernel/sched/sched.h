@@ -1461,10 +1461,17 @@ static inline unsigned long capacity_orig_of(int cpu)
  * capacity_orig) as it useful for predicting the capacity required after task
  * migrations (scheduler-driven DVFS).
  */
-static inline unsigned long __cpu_util(int cpu, int delta)
+static inline unsigned long __cpu_util(int cpu, int delta, bool use_pelt)
 {
 	unsigned long util = cpu_rq(cpu)->cfs.avg.util_avg;
 	unsigned long capacity = capacity_orig_of(cpu);
+
+       /*
+	* The CPU estimated utilization is:
+	* 	max(util_avg, util_est)
+        */
+	if (!use_pelt && util < cpu_rq(cpu)->cfs.avg.util_est)
+		util = cpu_rq(cpu)->cfs.avg.util_est;
 
 	delta += util;
 	if (delta < 0)
@@ -1475,7 +1482,12 @@ static inline unsigned long __cpu_util(int cpu, int delta)
 
 static inline unsigned long cpu_util(int cpu)
 {
-	return __cpu_util(cpu, 0);
+	return __cpu_util(cpu, 0, true);
+}
+
+static inline unsigned long cpu_util_est(int cpu)
+{
+	return __cpu_util(cpu, 0, false);
 }
 
 /*
