@@ -2828,13 +2828,29 @@ static inline void update_load_avg(struct sched_entity *se, int update_tg)
 	if (!entity_is_task(se))
 		return;
 
+	/* Get the top level CFS RQ for the task CPU */
+	cfs_rq = &(task_rq(task_of(se))->cfs);
+
 	/* Update task estimated utilization */
 	if (se->avg.util_est < se->avg.util_avg) {
-		trace_printk("util_est_se_1: pid=%d comm=%s event=updated avg=%lu est=%lu",
+
+		trace_printk("evt=util_est_rq step=pre pid=%d comm=%s cpu=%d rq=%p event=update t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+			task_of(se)->pid, task_of(se)->comm,
+			task_cpu(task_of(se)), cfs_rq,
+			se->avg.util_avg, se->avg.util_est,
+			cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
+		cfs_rq->avg.util_est += (se->avg.util_avg - se->avg.util_est);
+		trace_printk("evt=util_est_rq step=pst pid=%d comm=%s cpu=%d rq=%p event=update t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+			task_of(se)->pid, task_of(se)->comm,
+			task_cpu(task_of(se)), cfs_rq,
+			se->avg.util_avg, se->avg.util_est,
+			cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
+
+		trace_printk("evt=util_est_se step=pre pid=%d comm=%s event=updated avg=%lu est=%lu",
 			task_of(se)->pid, task_of(se)->comm,
 			se->avg.util_avg, se->avg.util_est);
 		se->avg.util_est = se->avg.util_avg;
-		trace_printk("util_est_se_2: pid=%d comm=%s event=updated avg=%lu est=%lu",
+		trace_printk("evt=util_est_se step=pst pid=%d comm=%s event=updated avg=%lu est=%lu",
 			task_of(se)->pid, task_of(se)->comm,
 			se->avg.util_avg, se->avg.util_est);
 	}
@@ -4298,9 +4314,23 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	cfs_rq = &(task_rq(p)->cfs);
 
 	/* Update RQ estimated utilization */
-	trace_printk("util_est_se: pid=%d comm=%s event=enqueue avg=%lu est=%lu",
+	trace_printk("evt=util_est_rq step=pre pid=%d comm=%s cpu=%d rq=%p event=enqueue t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
 			p->pid, p->comm,
-			cfs_rq->avg.util_avg, task_util_est(p));
+			task_cpu(p), cfs_rq,
+			p->se.avg.util_avg, p->se.avg.util_est,
+			cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
+	cfs_rq->avg.util_est += task_util_est(p);
+	trace_printk("evt=util_est_rq step=pst pid=%d comm=%s cpu=%d rq=%p event=enqueue t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+			p->pid, p->comm,
+			task_cpu(p), cfs_rq,
+			p->se.avg.util_avg, p->se.avg.util_est,
+			cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
+	if (cfs_rq->avg.util_est > SCHED_CAPACITY_SCALE)
+		trace_printk("evt=util_est_rq step=err pid=%d comm=%s cpu=%d rq=%p event=enqueue t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+				p->pid, p->comm,
+				task_cpu(p), cfs_rq,
+				p->se.avg.util_avg, p->se.avg.util_est,
+				cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
 
 	hrtick_update(rq);
 }
@@ -4375,16 +4405,43 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 				set_cfs_cpu_capacity(cpu_of(rq), false, 0);
 		}
 	}
+
+	/* Get the top level CFS RQ for the task CPU */
+	cfs_rq = &(task_rq(p)->cfs);
+
+	/* Update RQ estimated utilization */
+	trace_printk("evt=util_est_rq step=pre pid=%d comm=%s cpu=%d rq=%p event=dequeue t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+			p->pid, p->comm,
+			task_cpu(p), cfs_rq,
+			p->se.avg.util_avg, p->se.avg.util_est,
+			cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
+	/* Maybe this check can be avoided if we are more smart on */
+	/* tracking movements of tasks between RQs. */
+	if (cfs_rq->avg.util_est >= task_util_est(p))
+		cfs_rq->avg.util_est -= task_util_est(p);
+	else {
+		trace_printk("evt=util_est_rq step=err pid=%d comm=%s cpu=%d rq=%p event=dequeue t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+				p->pid, p->comm,
+				task_cpu(p), cfs_rq,
+				p->se.avg.util_avg, p->se.avg.util_est,
+				cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
+		cfs_rq->avg.util_est = 0;
+	}
+	trace_printk("evt=util_est_rq step=pst pid=%d comm=%s cpu=%d rq=%p event=dequeue t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+			p->pid, p->comm,
+			task_cpu(p), cfs_rq,
+			p->se.avg.util_avg, p->se.avg.util_est,
+			cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
+
 	/* Update estimated utilization */
 	if (task_sleep) {
-		se = &p->se;
-		trace_printk("util_est_se_1: pid=%d comm=%s event=dequeue avg=%lu est=%lu",
+		trace_printk("evt=util_est_se step=pre pid=%d comm=%s event=dequeue avg=%lu est=%lu",
 				p->pid, p->comm,
-				se->avg.util_avg, se->avg.util_est);
-		se->avg.util_est = se->avg.util_avg;
-		trace_printk("util_est_se_2: pid=%d comm=%s event=dequeue avg=%lu est=%lu",
+				p->se.avg.util_avg, p->se.avg.util_est);
+		p->se.avg.util_est = p->se.avg.util_avg;
+		trace_printk("evt=util_est_se step=pst pid=%d comm=%s event=dequeue avg=%lu est=%lu",
 				p->pid, p->comm,
-				se->avg.util_avg, se->avg.util_est);
+				p->se.avg.util_avg, p->se.avg.util_est);
 	}
 
 	hrtick_update(rq);
@@ -6336,7 +6393,36 @@ int can_migrate_task(struct task_struct *p, struct lb_env *env)
  */
 static void detach_task(struct task_struct *p, struct lb_env *env)
 {
+	struct cfs_rq *cfs_rq;
+
 	lockdep_assert_held(&env->src_rq->lock);
+
+	/* Get the top level CFS RQ for the task CPU */
+	cfs_rq = &(task_rq(p)->cfs);
+
+	/* Migrate estimated utilziation */
+	trace_printk("evt=util_est_rq step=pre pid=%d comm=%s cpu=%d rq=%p event=detach t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+			p->pid, p->comm,
+			task_cpu(p), cfs_rq,
+			p->se.avg.util_avg, p->se.avg.util_est,
+			cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
+	/* Maybe this check can be avoided if we are more smart on */
+	/* tracking movements of tasks between RQs. */
+	if (cfs_rq->avg.util_est > task_util_est(p))
+		cfs_rq->avg.util_est -= task_util_est(p);
+	else {
+		trace_printk("evt=util_est_rq pid=%d comm=%s step=err cpu=%d rq=%p event=detach t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+				p->pid, p->comm,
+				task_cpu(p), cfs_rq,
+				p->se.avg.util_avg, p->se.avg.util_est,
+				cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
+		cfs_rq->avg.util_est = 0;
+	}
+	trace_printk("evt=util_est_rq pid=%d comm=%s step=pst cpu=%d rq=%p event=detach t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+			p->pid, p->comm,
+			task_cpu(p), cfs_rq,
+			p->se.avg.util_avg, p->se.avg.util_est,
+			cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
 
 	p->on_rq = TASK_ON_RQ_MIGRATING;
 	deactivate_task(env->src_rq, p, 0);
@@ -6469,9 +6555,36 @@ next:
  */
 static void attach_task(struct rq *rq, struct task_struct *p)
 {
+	struct cfs_rq *cfs_rq;
+
 	lockdep_assert_held(&rq->lock);
 
 	BUG_ON(task_rq(p) != rq);
+
+	/* Get the top level CFS RQ for the task CPU */
+	cfs_rq = &(task_rq(p)->cfs);
+
+	/* Migrate estimated utilziation */
+	trace_printk("evt=util_est_rq step=pre pid=%d comm=%s cpu=%d rq=%p event=attach t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+			p->pid, p->comm,
+			task_cpu(p), cfs_rq,
+			p->se.avg.util_avg, p->se.avg.util_est,
+			cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
+	cfs_rq->avg.util_est += task_util_est(p);
+	if (cfs_rq->avg.util_est > SCHED_LOAD_SCALE) {
+		trace_printk("evt=util_est_rq step=pst pid=%d comm=%s cpu=%d rq=%p event=attach t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+				p->pid, p->comm,
+				task_cpu(p), cfs_rq,
+				p->se.avg.util_avg, p->se.avg.util_est,
+				cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
+		cfs_rq->avg.util_est = SCHED_LOAD_SCALE;
+	}
+	trace_printk("evt=util_est_rq step=pst pid=%d comm=%s cpu=%d rq=%p event=attach t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+			p->pid, p->comm,
+			task_cpu(p), cfs_rq,
+			p->se.avg.util_avg, p->se.avg.util_est,
+			cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
+
 	activate_task(rq, p, 0);
 	p->on_rq = TASK_ON_RQ_QUEUED;
 	check_preempt_curr(rq, p, 0);
