@@ -683,6 +683,7 @@ void init_entity_runnable_average(struct sched_entity *se)
 	sa->load_avg = scale_load_down(se->load.weight);
 	sa->load_sum = sa->load_avg * LOAD_AVG_MAX;
 	sa->util_avg = scale_load_down(SCHED_LOAD_SCALE);
+	sa->util_est = sa->util_avg;
 	sa->util_sum = sa->util_avg * LOAD_AVG_MAX;
 	/* when this task enqueue'ed, it will contribute to its cfs_rq's load_avg */
 }
@@ -2804,6 +2805,8 @@ static inline int update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq)
 	return decayed || removed;
 }
 
+static unsigned long task_util_est(struct task_struct *p);
+
 /* Update task and its cfs_rq load average */
 static inline void update_load_avg(struct sched_entity *se, int update_tg)
 {
@@ -2822,8 +2825,10 @@ static inline void update_load_avg(struct sched_entity *se, int update_tg)
 	if (update_cfs_rq_load_avg(now, cfs_rq) && update_tg)
 		update_tg_load_avg(cfs_rq, 0);
 
-	if (entity_is_task(se))
-		trace_sched_load_avg_task(task_of(se), &se->avg);
+	if (!entity_is_task(se))
+		return;
+
+	trace_sched_load_avg_task(task_of(se), &se->avg);
 	trace_sched_load_avg_cpu(cpu, cfs_rq);
 }
 
@@ -4811,10 +4816,15 @@ unsigned long capacity_curr_of(int cpu)
  * capacity_orig) as it useful for predicting the capacity required after task
  * migrations (scheduler-driven DVFS).
  */
-static unsigned long __cpu_util(int cpu, int delta)
+static unsigned long __cpu_util(int cpu, int delta, bool use_pelt)
 {
-	unsigned long util = cpu_rq(cpu)->cfs.avg.util_avg;
 	unsigned long capacity = capacity_orig_of(cpu);
+	unsigned long util;
+
+	if (use_pelt)
+		util = cpu_rq(cpu)->cfs.avg.util_avg;
+	else
+		util = cpu_rq(cpu)->cfs.avg.util_est;
 
 	delta += util;
 	if (delta < 0)
@@ -4825,7 +4835,12 @@ static unsigned long __cpu_util(int cpu, int delta)
 
 unsigned long cpu_util(int cpu)
 {
-	return __cpu_util(cpu, 0);
+	return __cpu_util(cpu, 0, true);
+}
+
+unsigned long cpu_util_est(int cpu)
+{
+	return __cpu_util(cpu, 0, false);
 }
 
 static inline bool energy_aware(void)
@@ -4859,7 +4874,7 @@ struct energy_env {
  */
 static unsigned long __cpu_norm_util(int cpu, unsigned long capacity, int delta)
 {
-	int util = __cpu_util(cpu, delta);
+	int util = __cpu_util(cpu, delta, true);
 
 	if (util >= capacity)
 		return SCHED_CAPACITY_SCALE;
@@ -4884,7 +4899,7 @@ unsigned long group_max_util(struct energy_env *eenv)
 
 	for_each_cpu(i, sched_group_cpus(eenv->sg_cap)) {
 		delta = calc_util_delta(eenv, i);
-		max_util = max(max_util, __cpu_util(i, delta));
+		max_util = max(max_util, __cpu_util(i, delta, true));
 	}
 
 	return max_util;
@@ -5168,6 +5183,11 @@ static int wake_affine(struct sched_domain *sd, struct task_struct *p, int sync)
 static inline unsigned long task_util(struct task_struct *p)
 {
 	return p->se.avg.util_avg;
+}
+
+static inline unsigned long task_util_est(struct task_struct *p)
+{
+	return p->se.avg.util_est;
 }
 
 static inline bool __task_fits(struct task_struct *p, int cpu, int util)
