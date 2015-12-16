@@ -4224,6 +4224,12 @@ static inline void hrtick_update(struct rq *rq)
 static bool cpu_overutilized(int cpu);
 static unsigned long capacity_orig_of(int cpu);
 
+unsigned long cpu_util_est(int cpu);
+static inline bool use_util_est(void)
+{
+	return sched_feat(UTIL_EST);
+}
+
 static void update_capacity_of(int cpu)
 {
 	unsigned long req_cap;
@@ -4232,7 +4238,11 @@ static void update_capacity_of(int cpu)
 		return;
 
 	/* Convert scale-invariant capacity to cpu. */
-	req_cap = cpu_util(cpu) * SCHED_CAPACITY_SCALE / capacity_orig_of(cpu);
+	if (use_util_est())
+		req_cap = cpu_util_est(cpu);
+	else
+		req_cap = cpu_util(cpu);
+	req_cap = req_cap * SCHED_CAPACITY_SCALE / capacity_orig_of(cpu);
 	set_cfs_cpu_capacity(cpu, true, req_cap);
 }
 
