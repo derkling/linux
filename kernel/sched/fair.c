@@ -4177,6 +4177,10 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	if (task_sleep)
 		p->se.avg.util_est = p->se.avg.util_avg;
 
+	/* Update plots for Task and CPU estimated utilization */
+	trace_sched_load_avg_task(p, &p->se.avg);
+	trace_sched_load_avg_cpu(task_cpu(p), cfs_rq);
+
 	hrtick_update(rq);
 }
 
