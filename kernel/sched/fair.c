@@ -4861,6 +4861,10 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	cfs_rq = &(task_rq(p)->cfs);
 	cfs_rq->avg.util_est.last += task_util_est(p);
 
+	/* Update plots for Task and CPU estimated utilization */
+	trace_sched_load_avg_task(p, &p->se.avg);
+	trace_sched_load_avg_cpu(cpu_of(rq_of(cfs_rq)), cfs_rq);
+
 	hrtick_update(rq);
 }
 
@@ -4937,6 +4941,10 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		ewma_util_add(&p->se.avg.util_ewma, task_util(p));
 		p->se.avg.util_est.ewma = ewma_util_read(&p->se.avg.util_ewma);
 	}
+
+	/* Update plots for Task and CPU estimated utilization */
+	trace_sched_load_avg_task(p, &p->se.avg);
+	trace_sched_load_avg_cpu(cpu_of(rq_of(cfs_rq)), cfs_rq);
 
 	hrtick_update(rq);
 }
