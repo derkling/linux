@@ -756,6 +756,8 @@ void init_entity_runnable_average(struct sched_entity *se)
 	sa->util_avg = 0;
 	sa->util_sum = 0;
 	/* when this task enqueue'ed, it will contribute to its cfs_rq's load_avg */
+
+	sa->util_est = sa->util_avg;
 }
 
 static inline u64 cfs_rq_clock_task(struct cfs_rq *cfs_rq);
@@ -3309,6 +3311,8 @@ update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq, bool update_freq)
 	return decayed || removed_load;
 }
 
+static int task_util_est(struct task_struct *p);
+
 /*
  * Optional action to be done while updating the load average
  */
@@ -3339,6 +3343,17 @@ static inline void update_load_avg(struct sched_entity *se, int flags)
 
 	if (decayed && (flags & UPDATE_TG))
 		update_tg_load_avg(cfs_rq, 0);
+
+	if (!entity_is_task(se))
+		return;
+
+	/* Update (top level CFS) RQ's and Task's estimated utilization */
+	cfs_rq = &(task_rq(task_of(se))->cfs);
+	if (se->avg.util_est < se->avg.util_avg) {
+		cfs_rq->avg.util_est += (se->avg.util_avg - se->avg.util_est);
+		se->avg.util_est = se->avg.util_avg;
+	}
+
 }
 
 /**
@@ -4834,6 +4849,10 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	if (!se)
 		add_nr_running(rq, 1);
 
+	/* Update (top level CFS) RQ estimated utilization */
+	cfs_rq = &(task_rq(p)->cfs);
+	cfs_rq->avg.util_est += task_util_est(p);
+
 	hrtick_update(rq);
 }
 
@@ -4892,6 +4911,18 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 	if (!se)
 		sub_nr_running(rq, 1);
+
+
+	/* Update (top level CFS) RQ estimated utilization */
+	cfs_rq = &(task_rq(p)->cfs);
+	if (cfs_rq->avg.util_est >= task_util_est(p))
+		cfs_rq->avg.util_est -= task_util_est(p);
+	else
+		cfs_rq->avg.util_est = 0;
+
+	/* Update Task's estimated utilization */
+	if (task_sleep)
+		p->se.avg.util_est = p->se.avg.util_avg;
 
 	hrtick_update(rq);
 }
@@ -5926,6 +5957,11 @@ static inline int task_util(struct task_struct *p)
 	return p->se.avg.util_avg;
 }
 
+static inline int task_util_est(struct task_struct *p)
+{
+	return p->se.avg.util_est;
+}
+
 /*
  * cpu_util_wake: Compute cpu utilization with any contributions from
  * the waking task p removed.
@@ -6934,6 +6970,7 @@ static void attach_task(struct rq *rq, struct task_struct *p)
 	lockdep_assert_held(&rq->lock);
 
 	BUG_ON(task_rq(p) != rq);
+
 	activate_task(rq, p, ENQUEUE_NOCLOCK);
 	p->on_rq = TASK_ON_RQ_QUEUED;
 	check_preempt_curr(rq, p, 0);

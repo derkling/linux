@@ -318,6 +318,7 @@ struct sched_avg {
 	u32				period_contrib;
 	unsigned long			load_avg;
 	unsigned long			util_avg;
+	unsigned long			util_est;
 };
 
 struct sched_statistics {
