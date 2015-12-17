@@ -683,6 +683,7 @@ void init_entity_runnable_average(struct sched_entity *se)
 	sa->load_avg = scale_load_down(se->load.weight);
 	sa->load_sum = sa->load_avg * LOAD_AVG_MAX;
 	sa->util_avg = scale_load_down(SCHED_LOAD_SCALE);
+	sa->util_est = sa->util_avg;
 	sa->util_sum = sa->util_avg * LOAD_AVG_MAX;
 	/* when this task enqueue'ed, it will contribute to its cfs_rq's load_avg */
 }
@@ -2803,6 +2804,8 @@ static inline int update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq)
 	return decayed || removed;
 }
 
+static unsigned long task_util_est(struct task_struct *p);
+
 /* Update task and its cfs_rq load average */
 static inline void update_load_avg(struct sched_entity *se, int update_tg)
 {
@@ -4290,6 +4293,12 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		if (task_new || task_wakeup)
 			update_capacity_of(cpu_of(rq));
 	}
+
+	/* Get the top level CFS RQ for the task CPU */
+	cfs_rq = &(task_rq(p)->cfs);
+
+	/* Update RQ estimated utilization */
+	cfs_rq->avg.util_est += task_util_est(p);
 	hrtick_update(rq);
 }
 
@@ -4365,6 +4374,17 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 				set_cfs_cpu_capacity(cpu_of(rq), false, 0);
 		}
 	}
+
+	/* Get the top level CFS RQ for the task CPU */
+	cfs_rq = &(task_rq(p)->cfs);
+
+	/* Update RQ estimated utilization */
+	cfs_rq->avg.util_est -= task_util_est(p);
+
+	/* Update estimated utilization */
+	if (task_sleep)
+		p->se.avg.util_est = p->se.avg.util_avg;
+
 	hrtick_update(rq);
 }
 
@@ -5142,6 +5162,10 @@ static inline unsigned long task_util(struct task_struct *p)
 	return p->se.avg.util_avg;
 }
 
+static inline unsigned long task_util_est(struct task_struct *p)
+{
+	return p->se.avg.util_est;
+}
 unsigned int capacity_margin = 1280; /* ~20% margin */
 
 static inline bool __task_fits(struct task_struct *p, int cpu, int util)
