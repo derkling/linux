@@ -2834,6 +2834,9 @@ static inline void update_load_avg(struct sched_entity *se, int update_tg)
 	/* Update task estimated utilization */
 	if (se->avg.util_est < se->avg.util_avg) {
 		cfs_rq->avg.util_est += (se->avg.util_avg - se->avg.util_est);
+		if (cfs_rq->avg.util_est > SCHED_CAPACITY_SCALE)
+			cfs_rq->avg.util_est = SCHED_CAPACITY_SCALE;
+
 		se->avg.util_est = se->avg.util_avg;
 	}
 
@@ -4297,6 +4300,9 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 	/* Update RQ estimated utilization */
 	cfs_rq->avg.util_est += task_util_est(p);
+	if (cfs_rq->avg.util_est > SCHED_CAPACITY_SCALE)
+		cfs_rq->avg.util_est = SCHED_CAPACITY_SCALE;
+
 	hrtick_update(rq);
 }
 
@@ -4377,7 +4383,14 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	cfs_rq = &(task_rq(p)->cfs);
 
 	/* Update RQ estimated utilization */
-	cfs_rq->avg.util_est -= task_util_est(p);
+	/* Maybe this check can be avoided if we are more smart on
+	 * tracking movements of tasks between RQs.
+	 */
+	if (cfs_rq->avg.util_est >= task_util_est(p))
+		cfs_rq->avg.util_est -= task_util_est(p);
+	else
+		cfs_rq->avg.util_est = 0;
+
 
 	/* Update estimated utilization */
 	if (task_sleep)
@@ -6299,7 +6312,14 @@ static void detach_task(struct task_struct *p, struct lb_env *env)
 	cfs_rq = &(task_rq(p)->cfs);
 
 	/* Migrate estimated utilziation */
-	cfs_rq->avg.util_est -= task_util_est(p);
+	/* Maybe this check can be avoided if we are more smart on
+	 * tracking movements of tasks between RQs.
+	 */
+	if (cfs_rq->avg.util_est > task_util_est(p))
+		cfs_rq->avg.util_est -= task_util_est(p);
+	else
+		cfs_rq->avg.util_est = 0;
+
 	p->on_rq = TASK_ON_RQ_MIGRATING;
 	deactivate_task(env->src_rq, p, 0);
 	set_task_cpu(p, env->dst_cpu);
@@ -6442,6 +6462,9 @@ static void attach_task(struct rq *rq, struct task_struct *p)
 
 	/* Migrate estimated utilziation */
 	cfs_rq->avg.util_est += task_util_est(p);
+	if (cfs_rq->avg.util_est > SCHED_CAPACITY_SCALE)
+		cfs_rq->avg.util_est = SCHED_CAPACITY_SCALE;
+
 	activate_task(rq, p, 0);
 	p->on_rq = TASK_ON_RQ_QUEUED;
 	check_preempt_curr(rq, p, 0);
