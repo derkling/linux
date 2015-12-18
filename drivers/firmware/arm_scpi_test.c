@@ -198,7 +198,8 @@ static int set_dvfs(u8 pd, u8 opp)
 		mutex_unlock(&pd_lock[pd]);
 
 	if (fail_on(ret < 0))
-		pr_err("FAILED set_dvfs %d %d (%d)\n", pd, opp, ret);
+		if (ret != -EBUSY)
+			pr_err("FAILED set_dvfs %d %d (%d)\n", pd, opp, ret);
 
 	return ret;
 }
