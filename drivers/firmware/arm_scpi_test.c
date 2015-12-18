@@ -66,6 +66,9 @@ static struct mutex pd_lock[MAX_POWER_DOMAINS];
 static int test_flags;
 
 
+static int sensor_volt_big = -1;
+static int sensor_volt_little = -1;
+
 
 static u32 random_seed;
 
@@ -121,6 +124,12 @@ static u32 get_sensor(u16 id)
 	int ret;
 
 	ret = scpi->sensor_get_value(id, &val);
+
+	/* Workaround SENSOR_VOLT_{BIG,LITTLE} on Juno not being available if cluster off */
+	if (id == sensor_volt_big || id == sensor_volt_little)
+		if (ret == -EINVAL)
+			return 0;
+
 	if (fail_on(ret < 0))
 		pr_err("FAILED sensor_get_value %d (%d)\n", id, ret);
 
@@ -166,6 +175,11 @@ static void init_sensors(void)
 			pr_err("FAILED bad name\n");
 
 		pr_info("sensor[%d] value is %u\n", id, get_sensor(id));
+
+		if (strcmp(name, "SENSOR_VOLT_BIG") == 0)
+			sensor_volt_big = id;
+		if (strcmp(name, "SENSOR_VOLT_LITTLE") == 0)
+			sensor_volt_little = id;
 	}
 }
 
