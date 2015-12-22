@@ -68,6 +68,7 @@ static int test_flags;
 
 static int sensor_volt_big = -1;
 static int sensor_volt_little = -1;
+static int sensor_pmic = -1;
 
 
 static u32 random_seed;
@@ -180,6 +181,8 @@ static void init_sensors(void)
 			sensor_volt_big = id;
 		if (strcmp(name, "SENSOR_VOLT_LITTLE") == 0)
 			sensor_volt_little = id;
+		if (strstr(name, "PMIC"))
+			sensor_pmic = id;
 	}
 }
 
@@ -264,7 +267,33 @@ static void init_dvfs(void)
 	num_pd = pd;
 }
 
+static int stress_pmic(void *data)
+{
+	int sensor, pd, opp;
 
+	while (!kthread_should_stop()) {
+		sensor = sensor_pmic;
+		pd = random(num_pd);
+		opp = random(num_opps[pd]);
+
+		switch (random(3)) {
+		case 0:
+			if (sensor >= 0) {
+				get_sensor(sensor);
+				break;
+			}
+			/* If no sensor, do DFVS... */
+		case 1:
+			set_dvfs(pd, opp);
+			break;
+		default:
+			msleep(random(20));
+			break;
+		}
+	}
+
+	return 0;
+}
 
 static int stress_all(void *data)
 {
@@ -363,6 +392,12 @@ static struct test tests[] = {
 		stress_all,	FLAG_SERIAL_PD,		MAX_TEST_THREADS, 60},
 	{"Stress All, no concurrent DVFS",
 		stress_all,	FLAG_SERIAL_DVFS,	MAX_TEST_THREADS, 60},
+	{"Stress PMIC, concurrent DVFS",
+		stress_pmic,	0,			MAX_TEST_THREADS, 60},
+	{"Stress PMIC, concurrent DVFS on different PDs",
+		stress_pmic,	FLAG_SERIAL_PD,		MAX_TEST_THREADS, 60},
+	{"Stress PMIC, no concurrent DVFS",
+		stress_pmic,	FLAG_SERIAL_DVFS,	MAX_TEST_THREADS, 60},
 	{}
 };
 
