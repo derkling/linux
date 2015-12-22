@@ -6324,8 +6324,9 @@ static int sched_domains_curr_level;
  * SD_SHARE_CAP_STATES    - describes shared capacity states
  * SD_ASYM_CPUCAPACITY    - describes mixed capacity topologies
  *
- * Odd one out:
+ * Odd ones out:
  * SD_ASYM_PACKING        - describes SMT quirks
+ * SD_BALANCE_WAKE	  - controls wake-up balancing (expensive)
  */
 #define TOPOLOGY_SD_FLAGS		\
 	(SD_SHARE_CPUCAPACITY |		\
@@ -6334,6 +6335,7 @@ static int sched_domains_curr_level;
 	 SD_ASYM_PACKING |		\
 	 SD_SHARE_CAP_STATES |		\
 	 SD_ASYM_CPUCAPACITY |		\
+	 SD_BALANCE_WAKE |		\
 	 SD_SHARE_POWERDOMAIN)
 
 static struct sched_domain *
