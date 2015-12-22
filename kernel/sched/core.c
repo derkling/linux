@@ -6429,6 +6429,10 @@ sd_init(struct sched_domain_topology_level *tl, int cpu)
 		sd->idle_idx = 1;
 	}
 
+	if (sd->flags & SD_ASYM_CPUCAPACITY) {
+		sd->flags &= ~SD_WAKE_AFFINE;
+	}
+
 	sd->private = &tl->data;
 
 	return sd;
