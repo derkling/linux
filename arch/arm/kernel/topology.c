@@ -297,18 +297,27 @@ void store_cpu_topology(unsigned int cpuid)
 
 static inline int cpu_corepower_flags(void)
 {
-	return SD_SHARE_PKG_RESOURCES  | SD_SHARE_POWERDOMAIN;
+	int flags = SD_SHARE_PKG_RESOURCES  | SD_SHARE_POWERDOMAIN;
+
+	return big_little ? flags | SD_BALANCE_WAKE : flags;
+}
+
+static int arm_cpu_core_flags(void)
+{
+	int flags = SD_SHARE_PKG_RESOURCES;
+
+	return big_little ? flags | SD_BALANCE_WAKE : flags;
 }
 
 static int arm_cpu_cpu_flags(void)
 {
-	return big_little ? SD_ASYM_CPUCAPACITY : 0;
+	return big_little ? SD_ASYM_CPUCAPACITY | SD_BALANCE_WAKE : 0;
 }
 
 static struct sched_domain_topology_level arm_topology[] = {
 #ifdef CONFIG_SCHED_MC
 	{ cpu_corepower_mask, cpu_corepower_flags, SD_INIT_NAME(GMC) },
-	{ cpu_coregroup_mask, cpu_core_flags, SD_INIT_NAME(MC) },
+	{ cpu_coregroup_mask, arm_cpu_core_flags, SD_INIT_NAME(MC) },
 #endif
 	{ cpu_cpu_mask, arm_cpu_cpu_flags, SD_INIT_NAME(DIE) },
 	{ NULL, },
