@@ -78,6 +78,7 @@ static unsigned long *__cpu_capacity;
 #define cpu_capacity(cpu)	__cpu_capacity[cpu]
 
 static unsigned long middle_capacity = 1;
+static unsigned int big_little = 0;
 
 /*
  * Iterate all CPUs' descriptor in DT and compute the efficiency
@@ -151,6 +152,8 @@ static void __init parse_dt_topology(void)
 		middle_capacity = ((max_capacity / 3)
 				>> (SCHED_CAPACITY_SHIFT-1)) + 1;
 
+	if (max_capacity != min_capacity)
+		big_little = 1;
 }
 
 /*
@@ -297,12 +300,17 @@ static inline int cpu_corepower_flags(void)
 	return SD_SHARE_PKG_RESOURCES  | SD_SHARE_POWERDOMAIN;
 }
 
+static int arm_cpu_cpu_flags(void)
+{
+	return big_little ? SD_ASYM_CPUCAPACITY : 0;
+}
+
 static struct sched_domain_topology_level arm_topology[] = {
 #ifdef CONFIG_SCHED_MC
 	{ cpu_corepower_mask, cpu_corepower_flags, SD_INIT_NAME(GMC) },
 	{ cpu_coregroup_mask, cpu_core_flags, SD_INIT_NAME(MC) },
 #endif
-	{ cpu_cpu_mask, SD_INIT_NAME(DIE) },
+	{ cpu_cpu_mask, arm_cpu_cpu_flags, SD_INIT_NAME(DIE) },
 	{ NULL, },
 };
 
