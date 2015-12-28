@@ -1005,6 +1005,57 @@
 			clock-names = "apb_pclk";
 			cpu = <&cpu7>;
 		};
+
+		mali:mali@f4080000 {
+			compatible = "arm,mali-450", "arm,mali-utgard";
+			reg = <0x0 0x3f100000 0x0 0x00708000>;
+			interrupts = <GIC_PPI 126 IRQ_TYPE_LEVEL_HIGH>, /*gp*/
+				     <GIC_PPI 126 IRQ_TYPE_LEVEL_HIGH>, /*gp mmu*/
+				     <GIC_PPI 126 IRQ_TYPE_LEVEL_HIGH>, /*pp bc*/
+				     <GIC_PPI 126 IRQ_TYPE_LEVEL_HIGH>, /*pmu*/
+				     <GIC_PPI 126 IRQ_TYPE_LEVEL_HIGH>, /*pp0*/
+				     <GIC_PPI 126 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_PPI 126 IRQ_TYPE_LEVEL_HIGH>, /*pp1*/
+				     <GIC_PPI 126 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_PPI 126 IRQ_TYPE_LEVEL_HIGH>, /*pp2*/
+				     <GIC_PPI 126 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_PPI 126 IRQ_TYPE_LEVEL_HIGH>, /*pp4*/
+				     <GIC_PPI 126 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_PPI 126 IRQ_TYPE_LEVEL_HIGH>, /*pp5*/
+				     <GIC_PPI 126 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_PPI 126 IRQ_TYPE_LEVEL_HIGH>, /*pp6*/
+				     <GIC_PPI 126 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names =	"IRQGP",
+						"IRQGPMMU",
+						"IRQPP",
+						"IRQPMU",
+						"IRQPP0",
+						"IRQPPMMU0",
+						"IRQPP1",
+						"IRQPPMMU1",
+						"IRQPP2",
+						"IRQPPMMU2",
+						"IRQPP4",
+						"IRQPPMMU4",
+						"IRQPP5",
+						"IRQPPMMU5",
+						"IRQPP6",
+						"IRQPPMMU6";
+			clocks = <&media_ctrl HI6220_G3D_CLK>,
+				 <&media_ctrl HI6220_G3D_PCLK>;
+			clock-names = "clk_g3d", "pclk_g3d";
+
+			interrupt-parent = <&gic>;
+			mali_def_freq = <500>;
+			pclk_freq = <144>;
+			dfs_steps = <2>;
+			dfs_lockprf = <1>;
+			dfs_limit_max_prf = <1>;
+			dfs_profile_num = <2>;
+			dfs_profiles = <250 3 0>, <500 1 0>;
+			mali_type = <2>;
+
+		};
 	};
 };
 
