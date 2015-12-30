@@ -5059,6 +5059,25 @@ static int cpu_util(int cpu)
 	return (util >= capacity) ? capacity : util;
 }
 
+static inline int task_util(struct task_struct *p)
+{
+	return p->se.avg.util_avg;
+}
+
+static int wake_cap(struct task_struct *p, int cpu, int prev_cpu)
+{
+	long delta;
+	long prev_cap = capacity_of(prev_cpu);
+
+	delta = cpu_rq(cpu)->rd->max_cpu_capacity - prev_cap;
+
+	/* prev_cpu is fairly close to max, need to abort wake_affine */
+	if (delta < prev_cap >> 3)
+		return 0;
+
+	return prev_cap * 1024 < task_util(p) * 1280;
+}
+
 /*
  * select_task_rq_fair: Select target runqueue for the waking task in domains
  * that have the 'sd_flag' flag set. In practice, this is SD_BALANCE_WAKE,
@@ -5081,7 +5100,8 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	int sync = wake_flags & WF_SYNC;
 
 	if (sd_flag & SD_BALANCE_WAKE)
-		want_affine = !wake_wide(p) && cpumask_test_cpu(cpu, tsk_cpus_allowed(p));
+		want_affine = !wake_wide(p) && !wake_cap(p, cpu, prev_cpu)
+			      && cpumask_test_cpu(cpu, tsk_cpus_allowed(p));
 
 	rcu_read_lock();
 	for_each_domain(cpu, tmp) {
