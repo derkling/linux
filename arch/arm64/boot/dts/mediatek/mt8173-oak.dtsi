@@ -105,7 +105,7 @@
 
 	sound {
 		compatible = "mediatek,mt8173-rt5650-rt5676";
-		mediatek,audio-codec = <&rt5650 &rt5676>;
+		mediatek,audio-codec = <&rt5650 &rt5676 &hdmi0>;
 		mediatek,platform = <&afe>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&aud_i2s2>;
