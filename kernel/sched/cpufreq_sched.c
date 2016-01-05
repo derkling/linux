@@ -130,6 +130,7 @@ static int cpufreq_sched_thread(void *data)
 		if (new_request == last_request) {
 			schedule();
 		} else {
+			set_current_state(TASK_RUNNING);
 			/*
 			 * if the frequency thread sleeps while waiting to be
 			 * unthrottled, start over to check for a newer request
