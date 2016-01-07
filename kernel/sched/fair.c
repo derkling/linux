@@ -4789,6 +4789,11 @@ static int wake_wide(struct task_struct *p)
 	unsigned int slave = p->wakee_flips;
 	int factor = this_cpu_read(sd_llc_size);
 
+	/* Don't let the idle task prevent affine wakeups */
+	if (is_idle_task(current)) {
+		return 0;
+	}
+
 	if (master < slave)
 		swap(master, slave);
 	if (slave < factor || master < slave * factor)
