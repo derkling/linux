@@ -19,8 +19,6 @@
 
 #include "sched.h"
 
-#define THROTTLE_NSEC		50000000 /* 50ms default */
-
 struct static_key __read_mostly __sched_freq = STATIC_KEY_INIT_FALSE;
 static bool __read_mostly cpufreq_driver_slow;
 
@@ -266,10 +264,45 @@ static inline void clear_sched_freq(void)
 	static_key_slow_dec(&__sched_freq);
 }
 
+static ssize_t show_throttle_nsec(struct cpufreq_policy *policy, char *buf)
+{
+	struct gov_data *gd = policy->governor_data;
+	return sprintf(buf, "%u\n", gd->throttle_nsec);
+}
+
+static ssize_t store_throttle_nsec(struct cpufreq_policy *policy,
+				   const char *buf, size_t count)
+{
+	struct gov_data *gd = policy->governor_data;
+	unsigned int input;
+	int ret;
+
+	ret = sscanf(buf, "%u", &input);
+
+	if (ret != 1)
+		return -EINVAL;
+
+	gd->throttle_nsec = input;
+	return count;
+}
+
+static struct freq_attr sched_freq_throttle_nsec_attr =
+	__ATTR(throttle_nsec, 0644, show_throttle_nsec, store_throttle_nsec);
+
+static struct attribute *sched_freq_sysfs_attribs[] = {
+	&sched_freq_throttle_nsec_attr.attr,
+	NULL
+};
+
+static struct attribute_group sched_freq_sysfs_group = {
+	.attrs = sched_freq_sysfs_attribs,
+	.name = "sched_freq",
+};
+
 static int cpufreq_sched_policy_init(struct cpufreq_policy *policy)
 {
 	struct gov_data *gd;
-	int cpu;
+	int ret, cpu;
 
 	for_each_cpu(cpu, policy->cpus)
 		memset(&per_cpu(cpu_sched_capacity_reqs, cpu), 0,
@@ -279,11 +312,10 @@ static int cpufreq_sched_policy_init(struct cpufreq_policy *policy)
 	if (!gd)
 		return -ENOMEM;
 
-	gd->throttle_nsec = policy->cpuinfo.transition_latency ?
-			    policy->cpuinfo.transition_latency :
-			    THROTTLE_NSEC;
-	pr_debug("%s: throttle threshold = %u [ns]\n",
-		  __func__, gd->throttle_nsec);
+	ret = sysfs_create_group(get_governor_parent_kobj(policy),
+				 &sched_freq_sysfs_group);
+	if (ret)
+		goto err_mem;
 
 	sema_init(&gd->request_sem, 1);
 	if (cpufreq_driver_is_slow()) {
@@ -294,7 +326,7 @@ static int cpufreq_sched_policy_init(struct cpufreq_policy *policy)
 		if (IS_ERR_OR_NULL(gd->task)) {
 			pr_err("%s: failed to create kschedfreq thread\n",
 			       __func__);
-			goto err;
+			goto err_sysfs;
 		}
 		get_task_struct(gd->task);
 		kthread_bind_mask(gd->task, policy->related_cpus);
@@ -307,7 +339,10 @@ static int cpufreq_sched_policy_init(struct cpufreq_policy *policy)
 
 	return 0;
 
-err:
+err_sysfs:
+	sysfs_remove_group(get_governor_parent_kobj(policy),
+			   &sched_freq_sysfs_group);
+err_mem:
 	kfree(gd);
 	return -ENOMEM;
 }
@@ -323,6 +358,9 @@ static int cpufreq_sched_policy_exit(struct cpufreq_policy *policy)
 	}
 
 	policy->governor_data = NULL;
+
+	sysfs_remove_group(get_governor_parent_kobj(policy),
+			   &sched_freq_sysfs_group);
 
 	kfree(gd);
 	return 0;
