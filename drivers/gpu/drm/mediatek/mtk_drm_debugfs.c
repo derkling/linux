@@ -29,9 +29,40 @@ struct mtk_drm_debugfs_table {
 	unsigned int reg_base;
 };
 
+/* FIXME - this is copied from mtk_drm_crtc.c and must be identical */
+struct mtk_drm_crtc {
+	struct drm_crtc			base;
+	bool				enabled;
+
+	bool				do_flush;
+	bool				pending_needs_vblank;
+	struct drm_pending_vblank_event	*event;
+
+	bool				cmdq_busy;
+	bool				cmdq_wait;
+	int				cmdq_scenario;
+	int				cmdq_event;
+	struct cmdq_rec			*cmdq_handle;
+	struct work_struct		cmdq_wait_work;
+
+	struct mtk_drm_plane		planes[OVL_LAYER_NR];
+	bool				pending_planes;
+
+	void __iomem			*config_regs;
+	struct mtk_disp_mutex		*mutex;
+	unsigned int			ddp_comp_nr;
+	struct mtk_ddp_comp		**ddp_comp;
+};
+
+static inline struct mtk_drm_crtc *to_mtk_crtc(struct drm_crtc *c)
+{
+	return container_of(c, struct mtk_drm_crtc, base);
+}
+
 /* ------------------------------------------------------------------------- */
 /* External variable declarations */
 /* ------------------------------------------------------------------------- */
+struct drm_device *gdrm;
 void __iomem *gdrm_disp_base[8];
 void __iomem *gdrm_hdmi_base[6];
 struct mtk_drm_debugfs_table gdrm_disp_table[8] = {
@@ -193,6 +224,18 @@ static void process_dbg_opt(const char *opt)
 					readl(gdrm_hdmi_base[i] + j + 0x8),
 					readl(gdrm_hdmi_base[i] + j + 0xc));
 		}
+	} else if (0 == strncmp(opt, "cmdq:", 5)) {
+		struct drm_crtc *crtc;
+
+		list_for_each_entry(crtc, &gdrm->mode_config.crtc_list, head) {
+			struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
+
+			DRM_INFO("%d: busy %d wait %d %p\n",
+					drm_crtc_index(&mtk_crtc->base),
+					mtk_crtc->cmdq_busy,
+					mtk_crtc->cmdq_wait,
+					mtk_crtc->cmdq_handle);
+		}
 	} else {
 	    goto error;
 	}
@@ -292,6 +335,7 @@ void mtk_drm_debugfs_init(struct drm_device *dev,
 	gdrm_hdmi_base[i++] = priv->config_regs;
 	gdrm_hdmi_base[i] = mutex_regs;
 	gdrm_hdmi_table[i].reg_base = mutex_phys;
+	gdrm = dev;
 
 	DRM_DEBUG_DRIVER("%s..done\n", __func__);
 }

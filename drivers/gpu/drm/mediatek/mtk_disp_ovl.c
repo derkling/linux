@@ -21,6 +21,20 @@
 #include "mtk_drm_crtc.h"
 #include "mtk_drm_ddp_comp.h"
 
+#include <linux/mm.h>
+#include <soc/mediatek/cmdq.h>
+
+static phys_addr_t addr_va2pa(void __iomem *va)
+{
+	struct page *pg = vmalloc_to_page(va);
+
+	return (page_to_pfn(pg) << PAGE_SHIFT) + ((unsigned long)va & 0xfff);
+}
+
+#define cmdq_write(handle, val, reg) \
+		cmdq_rec_write((handle), (val), addr_va2pa(reg))
+#define cmdq_write_mask(handle, val, reg, mask) \
+		cmdq_rec_write_mask((handle), (val), addr_va2pa(reg), (mask))
 #define DISP_REG_OVL_INTEN			0x0004
 #define OVL_FME_CPL_INT					BIT(1)
 #define DISP_REG_OVL_INTSTA			0x0008
@@ -71,35 +85,37 @@ static irqreturn_t mtk_disp_ovl_irq_handler(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static void mtk_ovl_enable_vblank(struct mtk_ddp_comp *comp)
+static void mtk_ovl_enable_vblank(struct mtk_ddp_comp *comp,
+				  struct cmdq_rec *handle)
 {
 	writel_relaxed(OVL_FME_CPL_INT, comp->regs + DISP_REG_OVL_INTEN);
 }
 
-static void mtk_ovl_disable_vblank(struct mtk_ddp_comp *comp)
+static void mtk_ovl_disable_vblank(struct mtk_ddp_comp *comp,
+				   struct cmdq_rec *handle)
 {
 	writel_relaxed(0x0, comp->regs + DISP_REG_OVL_INTEN);
 }
 
-static void mtk_ovl_start(struct mtk_ddp_comp *comp)
+static void mtk_ovl_start(struct mtk_ddp_comp *comp, struct cmdq_rec *handle)
 {
-	writel_relaxed(0x1, comp->regs + DISP_REG_OVL_EN);
+	cmdq_write(handle, 0x1, comp->regs + DISP_REG_OVL_EN);
 }
 
-static void mtk_ovl_stop(struct mtk_ddp_comp *comp)
+static void mtk_ovl_stop(struct mtk_ddp_comp *comp, struct cmdq_rec *handle)
 {
-	writel_relaxed(0x0, comp->regs + DISP_REG_OVL_EN);
+	cmdq_write(handle, 0x0, comp->regs + DISP_REG_OVL_EN);
 }
 
 static void mtk_ovl_config(struct mtk_ddp_comp *comp, unsigned int w,
-			   unsigned int h, unsigned int vrefresh)
+			   unsigned int h, unsigned int vrefresh,
+			   struct cmdq_rec *handle)
 {
-	if (w != 0 && h != 0)
-		writel_relaxed(h << 16 | w, comp->regs + DISP_REG_OVL_ROI_SIZE);
-	writel_relaxed(0x0, comp->regs + DISP_REG_OVL_ROI_BGCLR);
+	cmdq_write(handle, h << 16 | w, comp->regs + DISP_REG_OVL_ROI_SIZE);
+	cmdq_write(handle, 0x0, comp->regs + DISP_REG_OVL_ROI_BGCLR);
 
-	writel(0x1, comp->regs + DISP_REG_OVL_RST);
-	writel(0x0, comp->regs + DISP_REG_OVL_RST);
+	cmdq_write(handle, 0x1, comp->regs + DISP_REG_OVL_RST);
+	cmdq_write(handle, 0x0, comp->regs + DISP_REG_OVL_RST);
 }
 
 static bool has_rb_swapped(unsigned int fmt)
@@ -142,31 +158,29 @@ static unsigned int ovl_fmt_convert(unsigned int fmt)
 	}
 }
 
-static void mtk_ovl_layer_on(struct mtk_ddp_comp *comp, unsigned int idx)
+static void mtk_ovl_layer_on(struct mtk_ddp_comp *comp, unsigned int idx,
+			     struct cmdq_rec *handle)
 {
-	unsigned int reg;
+	cmdq_write(handle, 0x1, comp->regs + DISP_REG_OVL_RDMA_CTRL(idx));
+	cmdq_write(handle, OVL_RDMA_MEM_GMC,
+		   comp->regs + DISP_REG_OVL_RDMA_GMC(idx));
+	cmdq_write_mask(handle, BIT(idx), comp->regs + DISP_REG_OVL_SRC_CON,
+			BIT(idx));
 
-	writel(0x1, comp->regs + DISP_REG_OVL_RDMA_CTRL(idx));
-	writel(OVL_RDMA_MEM_GMC, comp->regs + DISP_REG_OVL_RDMA_GMC(idx));
-
-	reg = readl(comp->regs + DISP_REG_OVL_SRC_CON);
-	reg = reg | BIT(idx);
-	writel(reg, comp->regs + DISP_REG_OVL_SRC_CON);
+	cmdq_write(handle, 0x1, comp->regs + DISP_REG_OVL_RST);
+	cmdq_write(handle, 0x0, comp->regs + DISP_REG_OVL_RST);
 }
 
-static void mtk_ovl_layer_off(struct mtk_ddp_comp *comp, unsigned int idx)
+static void mtk_ovl_layer_off(struct mtk_ddp_comp *comp, unsigned int idx,
+			      struct cmdq_rec *handle)
 {
-	unsigned int reg;
-
-	reg = readl(comp->regs + DISP_REG_OVL_SRC_CON);
-	reg = reg & ~BIT(idx);
-	writel(reg, comp->regs + DISP_REG_OVL_SRC_CON);
-
-	writel(0x0, comp->regs + DISP_REG_OVL_RDMA_CTRL(idx));
+	cmdq_write_mask(handle, 0, comp->regs + DISP_REG_OVL_SRC_CON, BIT(idx));
+	cmdq_write(handle, 0, comp->regs + DISP_REG_OVL_RDMA_CTRL(idx));
 }
 
 static void mtk_ovl_layer_config(struct mtk_ddp_comp *comp, unsigned int idx,
-		struct mtk_plane_state *state)
+				 struct mtk_plane_state *state,
+				 struct cmdq_rec *handle)
 {
 	struct mtk_plane_pending_state *pending = &state->pending;
 	unsigned int addr = pending->addr;
@@ -180,11 +194,11 @@ static void mtk_ovl_layer_config(struct mtk_ddp_comp *comp, unsigned int idx,
 	if (idx != 0)
 		con |= OVL_AEN | OVL_ALPHA;
 
-	writel(con, comp->regs + DISP_REG_OVL_CON(idx));
-	writel(pitch, comp->regs + DISP_REG_OVL_PITCH(idx));
-	writel(src_size, comp->regs + DISP_REG_OVL_SRC_SIZE(idx));
-	writel(offset, comp->regs + DISP_REG_OVL_OFFSET(idx));
-	writel(addr, comp->regs + DISP_REG_OVL_ADDR(idx));
+	cmdq_write(handle, con, comp->regs + DISP_REG_OVL_CON(idx));
+	cmdq_write(handle, pitch, comp->regs + DISP_REG_OVL_PITCH(idx));
+	cmdq_write(handle, src_size, comp->regs + DISP_REG_OVL_SRC_SIZE(idx));
+	cmdq_write(handle, offset, comp->regs + DISP_REG_OVL_OFFSET(idx));
+	cmdq_write(handle, addr, comp->regs + DISP_REG_OVL_ADDR(idx));
 }
 
 static const struct mtk_ddp_comp_funcs mtk_disp_ovl_funcs = {
