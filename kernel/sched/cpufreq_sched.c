@@ -43,6 +43,8 @@ DEFINE_PER_CPU(struct sched_capacity_reqs, cpu_sched_capacity_reqs);
  * @throttle_nsec: throttle period length in nanoseconds
  * @task: worker thread for dvfs transition that may block/sleep
  * @irq_work: callback used to wake up worker thread
+ * @request_sem: prevent contention between the fast and slow paths - the
+ *               fast path trylocks to ensure it will not block in cpufreq
  * @requested_freq: last frequency requested by the sched governor
  *
  * struct gov_data is the per-policy cpufreq_sched-specific data structure. A
@@ -58,6 +60,7 @@ struct gov_data {
 	unsigned int throttle_nsec;
 	struct task_struct *task;
 	struct irq_work irq_work;
+	struct semaphore request_sem;
 	unsigned int requested_freq;
 };
 
@@ -131,6 +134,8 @@ static int cpufreq_sched_thread(void *data)
 			schedule();
 		} else {
 			set_current_state(TASK_RUNNING);
+			if (down_interruptible(&gd->request_sem))
+				return -1;
 			/*
 			 * if the frequency thread sleeps while waiting to be
 			 * unthrottled, start over to check for a newer request
@@ -139,6 +144,7 @@ static int cpufreq_sched_thread(void *data)
 				continue;
 			last_request = new_request;
 			cpufreq_sched_try_driver_target(policy, new_request);
+			up(&gd->request_sem);
 		}
 	} while (!kthread_should_stop());
 
@@ -206,13 +212,20 @@ static void update_fdomain_capacity_request(int cpu)
 	gd->requested_freq = freq_new;
 
 	/*
-	 * Throttling is not yet supported on platforms with fast cpufreq
-	 * drivers.
+	 * TODO: If the cpufreq driver is both fast and synchronous, and
+	 * throttling is not used, the slow path will never be used and the
+	 * spinlock is not required. Add a faster path for this case which
+	 * skips the locking.
 	 */
-	if (cpufreq_driver_slow)
+	if (cpufreq_driver_slow || down_trylock(&gd->request_sem)) {
 		irq_work_queue_on(&gd->irq_work, cpu);
-	else
+	} else if (policy->transition_ongoing ||
+		   ktime_before(ktime_get(), gd->throttle)) {
+		up(&gd->request_sem);
+		irq_work_queue_on(&gd->irq_work, cpu);
+	} else {
 		cpufreq_sched_try_driver_target(policy, freq_new);
+	}
 
 out:
 	cpufreq_cpu_put(policy);
@@ -272,6 +285,7 @@ static int cpufreq_sched_policy_init(struct cpufreq_policy *policy)
 	pr_debug("%s: throttle threshold = %u [ns]\n",
 		  __func__, gd->throttle_nsec);
 
+	sema_init(&gd->request_sem, 1);
 	if (cpufreq_driver_is_slow()) {
 		cpufreq_driver_slow = true;
 		gd->task = kthread_create(cpufreq_sched_thread, policy,
