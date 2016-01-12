@@ -2,12 +2,22 @@
 #include <linux/err.h>
 #include <linux/percpu.h>
 #include <linux/printk.h>
+#include <linux/reciprocal_div.h>
 #include <linux/rcupdate.h>
 #include <linux/slab.h>
 
 #include "sched.h"
 
 unsigned int sysctl_sched_cfs_boost __read_mostly;
+
+/*
+ * System energy normalization constants
+ */
+static struct target_nrg {
+	unsigned long min_power;
+	unsigned long max_power;
+	struct reciprocal_value rdiv;
+} schedtune_target_nrg;
 
 #ifdef CONFIG_CGROUP_SCHEDTUNE
 
@@ -410,4 +420,181 @@ sysctl_sched_cfs_boost_handler(struct ctl_table *table, int write,
 
 	return 0;
 }
+
+/*
+ * System energy normalization
+ * Returns the normalized value, in the range [0..SCHED_LOAD_SCALE],
+ * corresponding to the specified energy variation.
+ */
+int
+schedtune_normalize_energy(int energy_diff)
+{
+	long long normalized_nrg = energy_diff;
+	int max_delta;
+
+	/* Check for boundaries */
+	max_delta  = schedtune_target_nrg.max_power;
+	max_delta -= schedtune_target_nrg.min_power;
+	WARN_ON(abs(energy_diff) >= max_delta);
+
+	/* Scale by energy magnitude */
+	normalized_nrg <<= SCHED_LOAD_SHIFT;
+
+	/* Normalize on max energy for target platform */
+	normalized_nrg = reciprocal_divide(
+			normalized_nrg, schedtune_target_nrg.rdiv);
+
+	return normalized_nrg;
+}
+
+
+#ifdef CONFIG_SCHED_DEBUG
+static void
+schedtune_test_nrg(unsigned long delta_pwr)
+{
+	unsigned long test_delta_pwr;
+	unsigned long test_norm_pwr;
+	int idx;
+
+	/*
+	 * Check normalization constants using some constant system
+	 * energy values
+	 */
+	pr_info("schedtune: verify normalization constants...\n");
+	for (idx = 0; idx < 6; ++idx) {
+		test_delta_pwr = delta_pwr >> idx;
+
+		/* Normalize on max energy for target platform */
+		test_norm_pwr = reciprocal_divide(
+					test_delta_pwr << SCHED_LOAD_SHIFT,
+					schedtune_target_nrg.rdiv);
+
+		pr_info("schedtune: max_pwr/2^%d: %4lu => norm_pwr: %5lu\n",
+			idx, test_delta_pwr, test_norm_pwr);
+	}
+}
+#else
+#define schedtune_test_nrg(delta_pwr)
+#endif
+
+/*
+ * Compute the min/max power consumption of a cluster and all its CPUs
+ */
+static void
+schedtune_add_cluster_nrg(
+		struct sched_domain *sd,
+		struct sched_group *sg,
+		struct target_nrg *ste)
+{
+	struct sched_domain *sd2;
+	struct sched_group *sg2;
+
+	struct cpumask *cluster_cpus;
+	char str[32];
+
+	unsigned long min_pwr;
+	unsigned long max_pwr;
+	int cpu;
+
+	/* Get Cluster energy using EM data for the first CPU */
+	cluster_cpus = sched_group_cpus(sg);
+	snprintf(str, 32, "CLUSTER[%*pbl]",
+		 cpumask_pr_args(cluster_cpus));
+
+	min_pwr = sg->sge->idle_states[sg->sge->nr_idle_states-1].power;
+	max_pwr = sg->sge->cap_states[sg->sge->nr_cap_states-1].power;
+	pr_info("schedtune: %-17s min_pwr: %5lu max_pwr: %5lu\n",
+		str, min_pwr, max_pwr);
+
+	/*
+	 * Keep track of this cluster's energy in the computation of the
+	 * overall system energy
+	 */
+	ste->min_power += min_pwr;
+	ste->max_power += max_pwr;
+
+	/* Get CPU energy using EM data for each CPU in the group */
+	for_each_cpu(cpu, cluster_cpus) {
+
+		/* Get a SD view for the specific CPU */
+		for_each_domain(cpu, sd2) {
+
+			/* Get the CPU group */
+			sg2 = sd2->groups;
+			min_pwr = sg2->sge->idle_states[sg2->sge->nr_idle_states-1].power;
+			max_pwr = sg2->sge->cap_states[sg2->sge->nr_cap_states-1].power;
+
+			ste->min_power += min_pwr;
+			ste->max_power += max_pwr;
+
+			snprintf(str, 32, "CPU[%d]", cpu);
+			pr_info("schedtune: %-17s min_pwr: %5lu max_pwr: %5lu\n",
+				str, min_pwr, max_pwr);
+
+			/* Assume we have EM data only at the CPU and
+			 * the upper CLUSTER level */
+			BUG_ON(!cpumask_equal(
+				sched_group_cpus(sg),
+				sched_group_cpus(sd2->parent->groups)
+				));
+			break;
+		}
+	}
+}
+
+/*
+ * Initialize the constants required to compute normalized energy.
+ * The values of these constants depends on the EM data for the specific
+ * target system and topology.
+ * Thus, this function is expected to be called by the code
+ * that bind the EM to the topology information.
+ */
+static int
+schedtune_init_late(void)
+{
+	struct target_nrg *ste = &schedtune_target_nrg;
+	unsigned long delta_pwr = 0;
+	struct sched_domain *sd;
+	struct sched_group *sg;
+
+	pr_info("schedtune: init normalization constants...\n");
+	ste->max_power = 0;
+	ste->min_power = 0;
+
+	rcu_read_lock();
+
+	/*
+	 * When EAS is in use, we always have a pointer to the highest SD
+	 * which provides EM data.
+	 */
+	sd = rcu_dereference(per_cpu(sd_ea, cpumask_first(cpu_online_mask)));
+	if (!sd) {
+		pr_info("schedtune: no energy model data\n");
+		goto nodata;
+	}
+
+	sg = sd->groups;
+	do {
+		schedtune_add_cluster_nrg(sd, sg, ste);
+	} while (sg = sg->next, sg != sd->groups);
+
+	rcu_read_unlock();
+
+	pr_info("schedtune: %-17s min_pwr: %5lu max_pwr: %5lu\n",
+		"SYSTEM", ste->min_power, ste->max_power);
+
+	/* Compute normalization constants */
+	delta_pwr = ste->max_power - ste->min_power;
+	ste->rdiv = reciprocal_value(delta_pwr);
+	pr_info("schedtune: using normalization constants mul: %u sh1: %u sh2: %u\n",
+		ste->rdiv.m, ste->rdiv.sh1, ste->rdiv.sh2);
+
+	schedtune_test_nrg(delta_pwr);
+	return 0;
+
+nodata:
+	rcu_read_unlock();
+	return -EINVAL;
+}
+late_initcall(schedtune_init_late);
 
