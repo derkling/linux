@@ -9,6 +9,8 @@ extern int schedtune_task_boost(struct task_struct *tsk);
 extern void schedtune_enqueue_task(struct task_struct *p, int cpu);
 extern void schedtune_dequeue_task(struct task_struct *p, int cpu);
 
+extern int schedtune_normalize_energy(int energy);
+
 #else /* CONFIG_CGROUP_SCHEDTUNE */
 
 #define schedtune_enqueue_task(task, cpu) do { } while (0)
@@ -20,5 +22,7 @@ extern void schedtune_dequeue_task(struct task_struct *p, int cpu);
 
 #define schedtune_enqueue_task(task, cpu) do { } while (0)
 #define schedtune_dequeue_task(task, cpu) do { } while (0)
+
+#define schedtune_normalize_energy(energy) energy
 
 #endif /* CONFIG_SCHED_TUNE */
