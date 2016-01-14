@@ -226,6 +226,11 @@ config COMMON_CLK_VC5
 	  This driver supports the IDT VersaClock 5 and VersaClock 6
 	  programmable clock generators.
 
+config GEM5_CPUFREQ_CLK
+	bool "Clk driver for GEM5 Platform"
+	---help---
+	Enable clk hardware for cpufreq in gem5 platforms
+
 source "drivers/clk/bcm/Kconfig"
 source "drivers/clk/hisilicon/Kconfig"
 source "drivers/clk/imgtec/Kconfig"
