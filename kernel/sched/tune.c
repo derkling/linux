@@ -69,6 +69,12 @@ __schedtune_accept_deltas(int nrg_delta, int cap_delta,
 		 */
 		energy_payoff  = cap_delta * threshold_gains[perf_boost_idx].nrg_gain;
 		energy_payoff -= nrg_delta * threshold_gains[perf_boost_idx].cap_gain;
+
+		trace_sched_tune_filter(
+				threshold_gains[perf_boost_idx].nrg_gain,
+				threshold_gains[perf_boost_idx].cap_gain,
+				energy_payoff, 8);
+
 		return energy_payoff;
 	}
 
@@ -82,6 +88,12 @@ __schedtune_accept_deltas(int nrg_delta, int cap_delta,
 		 */
 		energy_payoff  = nrg_delta * threshold_gains[perf_constrain_idx].cap_gain;
 		energy_payoff -= cap_delta * threshold_gains[perf_constrain_idx].nrg_gain;
+
+		trace_sched_tune_filter(
+				threshold_gains[perf_constrain_idx].nrg_gain,
+				threshold_gains[perf_constrain_idx].cap_gain,
+				energy_payoff, 6);
+
 		return energy_payoff;
 	}
 
@@ -153,12 +165,16 @@ schedtune_accept_deltas(int nrg_delta, int cap_delta,
 	int perf_constrain_idx;
 
 	/* Optimal (O) region */
-	if (nrg_delta < 0 && cap_delta > 0)
+	if (nrg_delta < 0 && cap_delta > 0) {
+		trace_sched_tune_filter(0, 0, 1, 0);
 		return INT_MAX;
+	}
 
 	/* Suboptimal (S) region */
-	if (nrg_delta > 0 && cap_delta < 0)
+	if (nrg_delta > 0 && cap_delta < 0) {
+		trace_sched_tune_filter(0, 0, -1, 5);
 		return -INT_MAX;
+	}
 
 	/* Get task specific perf Boost/Constraints indexes */
 	rcu_read_lock();
@@ -533,12 +549,16 @@ schedtune_accept_deltas(int nrg_delta, int cap_delta,
 			struct task_struct *task)
 {
 	/* Optimal (O) region */
-	if (nrg_delta < 0 && cap_delta > 0)
+	if (nrg_delta < 0 && cap_delta > 0) {
+		trace_sched_tune_filter(0, 0, 1, 0);
 		return INT_MAX;
+	}
 
 	/* Suboptimal (S) region */
-	if (nrg_delta > 0 && cap_delta < 0)
+	if (nrg_delta > 0 && cap_delta < 0) {
+		trace_sched_tune_filter(0, 0, -1, 5);
 		return -INT_MAX;
+	}
 
 	return __schedtune_accept_deltas(nrg_delta, cap_delta,
 			perf_boost_idx, perf_constrain_idx);
