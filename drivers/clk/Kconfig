@@ -209,6 +209,11 @@ config COMMON_CLK_OXNAS
 	---help---
 	  Support for the OXNAS SoC Family clocks.
 
+config GEM5_CPUFREQ_CLK
+	bool "Clk driver for GEM5 Platform"
+	---help---
+	  Enable clk hardware for cpufreq in gem5 platforms
+
 source "drivers/clk/bcm/Kconfig"
 source "drivers/clk/hisilicon/Kconfig"
 source "drivers/clk/mediatek/Kconfig"
