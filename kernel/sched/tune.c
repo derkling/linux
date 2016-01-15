@@ -57,48 +57,48 @@ static int
 __schedtune_accept_deltas(int nrg_delta, int cap_delta,
 			  int perf_boost_idx, int perf_constrain_idx)
 {
-	int energy_payoff;
+	int payoff = -INT_MAX;
 
 	/* Performance Boost (B) region */
 	if (nrg_delta > 0 && cap_delta > 0) {
-		/*
-		 * energy_payoff criteria:
-		 *    cap_delta / nrg_delta > cap_gain / nrg_gain
-		 * which is:
-		 *    nrg_delta * cap_gain < cap_delta * nrg_gain
-		 */
-		energy_payoff  = cap_delta * threshold_gains[perf_boost_idx].nrg_gain;
-		energy_payoff -= nrg_delta * threshold_gains[perf_boost_idx].cap_gain;
-
-		trace_sched_tune_filter(
-				threshold_gains[perf_boost_idx].nrg_gain,
-				threshold_gains[perf_boost_idx].cap_gain,
-				energy_payoff, 8);
-
-		return energy_payoff;
-	}
-
-	/* Performance Constraint (C) region */
-	if (nrg_delta < 0 && cap_delta < 0) {
 		/*
 		 * energy_payoff criteria:
 		 *    cap_delta / nrg_delta < cap_gain / nrg_gain
 		 * which is:
 		 *    nrg_delta * cap_gain > cap_delta * nrg_gain
 		 */
-		energy_payoff  = nrg_delta * threshold_gains[perf_constrain_idx].cap_gain;
-		energy_payoff -= cap_delta * threshold_gains[perf_constrain_idx].nrg_gain;
+		payoff  = nrg_delta * threshold_gains[perf_boost_idx].cap_gain;
+		payoff -= cap_delta * threshold_gains[perf_boost_idx].nrg_gain;
+
+		trace_sched_tune_filter(
+				threshold_gains[perf_boost_idx].nrg_gain,
+				threshold_gains[perf_boost_idx].cap_gain,
+				energy_payoff, 8);
+
+		return payoff;
+	}
+
+	/* Performance Constraint (C) region */
+	if (nrg_delta < 0 && cap_delta < 0) {
+		/*
+		 * energy_payoff criteria:
+		 *    cap_delta / nrg_delta > cap_gain / nrg_gain
+		 * which is:
+		 *    cap_delta * nrg_gain > nrg_delta * cap_gain
+		 */
+		payoff  = cap_delta * threshold_gains[perf_constrain_idx].nrg_gain;
+		payoff -= nrg_delta * threshold_gains[perf_constrain_idx].cap_gain;
 
 		trace_sched_tune_filter(
 				threshold_gains[perf_constrain_idx].nrg_gain,
 				threshold_gains[perf_constrain_idx].cap_gain,
 				energy_payoff, 6);
 
-		return energy_payoff;
+		return payoff;
 	}
 
 	/* Default: reject schedule candidate */
-	return -INT_MAX;
+	return payoff;
 }
 
 #ifdef CONFIG_CGROUP_SCHEDTUNE
