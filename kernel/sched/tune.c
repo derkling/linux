@@ -595,13 +595,18 @@ sysctl_sched_cfs_boost_handler(struct ctl_table *table, int write,
 int
 schedtune_normalize_energy(int energy_diff)
 {
-	long long normalized_nrg = energy_diff;
+	uint32_t normalized_nrg;
 	int max_delta;
 
+#ifdef CONFIG_SCHED_DEBUG
 	/* Check for boundaries */
 	max_delta  = schedtune_target_nrg.max_power;
 	max_delta -= schedtune_target_nrg.min_power;
 	WARN_ON(abs(energy_diff) >= max_delta);
+#endif
+
+	/* Do scaling using positive numbers to increase the range */
+	normalized_nrg = (energy_diff < 0) ? -energy_diff : energy_diff;
 
 	/* Scale by energy magnitude */
 	normalized_nrg <<= SCHED_LOAD_SHIFT;
@@ -610,9 +615,8 @@ schedtune_normalize_energy(int energy_diff)
 	normalized_nrg = reciprocal_divide(
 			normalized_nrg, schedtune_target_nrg.rdiv);
 
-	return normalized_nrg;
+	return (energy_diff < 0) ? -normalized_nrg : normalized_nrg;
 }
-
 
 #ifdef CONFIG_SCHED_DEBUG
 static void
