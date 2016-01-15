@@ -71,6 +71,7 @@ __schedtune_accept_deltas(int nrg_delta, int cap_delta,
 		payoff -= cap_delta * threshold_gains[perf_boost_idx].nrg_gain;
 
 		trace_sched_tune_filter(
+				nrg_delta, cap_delta,
 				threshold_gains[perf_boost_idx].nrg_gain,
 				threshold_gains[perf_boost_idx].cap_gain,
 				payoff, 8);
@@ -90,6 +91,7 @@ __schedtune_accept_deltas(int nrg_delta, int cap_delta,
 		payoff -= nrg_delta * threshold_gains[perf_constrain_idx].cap_gain;
 
 		trace_sched_tune_filter(
+				nrg_delta, cap_delta,
 				threshold_gains[perf_constrain_idx].nrg_gain,
 				threshold_gains[perf_constrain_idx].cap_gain,
 				payoff, 6);
@@ -166,13 +168,13 @@ schedtune_accept_deltas(int nrg_delta, int cap_delta,
 
 	/* Optimal (O) region */
 	if (nrg_delta < 0 && cap_delta > 0) {
-		trace_sched_tune_filter(0, 0, 1, 0);
+		trace_sched_tune_filter(nrg_delta, cap_delta, 0, 0, 1, 0);
 		return INT_MAX;
 	}
 
 	/* Suboptimal (S) region */
 	if (nrg_delta > 0 && cap_delta < 0) {
-		trace_sched_tune_filter(0, 0, -1, 5);
+		trace_sched_tune_filter(nrg_delta, cap_delta, 0, 0, -1, 5);
 		return -INT_MAX;
 	}
 
@@ -550,13 +552,13 @@ schedtune_accept_deltas(int nrg_delta, int cap_delta,
 {
 	/* Optimal (O) region */
 	if (nrg_delta < 0 && cap_delta > 0) {
-		trace_sched_tune_filter(0, 0, 1, 0);
+		trace_sched_tune_filter(nrg_delta, cap_delta, 0, 0, 1, 0);
 		return INT_MAX;
 	}
 
 	/* Suboptimal (S) region */
 	if (nrg_delta > 0 && cap_delta < 0) {
-		trace_sched_tune_filter(0, 0, -1, 5);
+		trace_sched_tune_filter(nrg_delta, cap_delta, 0, 0, -1, 5);
 		return -INT_MAX;
 	}
 
