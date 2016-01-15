@@ -10,6 +10,8 @@ extern void schedtune_enqueue_task(struct task_struct *p, int cpu);
 extern void schedtune_dequeue_task(struct task_struct *p, int cpu);
 
 extern int schedtune_normalize_energy(int energy);
+extern int schedtune_accept_deltas(int nrg_delta, int cap_delta,
+				   struct task_struct *task);
 
 #else /* CONFIG_CGROUP_SCHEDTUNE */
 
@@ -24,5 +26,6 @@ extern int schedtune_normalize_energy(int energy);
 #define schedtune_dequeue_task(task, cpu) do { } while (0)
 
 #define schedtune_normalize_energy(energy) energy
+#define schedtune_accept_deltas(nrg_delta, cap_delta, task) nrg_delta
 
 #endif /* CONFIG_SCHED_TUNE */
