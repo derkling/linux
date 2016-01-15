@@ -73,7 +73,7 @@ __schedtune_accept_deltas(int nrg_delta, int cap_delta,
 		trace_sched_tune_filter(
 				threshold_gains[perf_boost_idx].nrg_gain,
 				threshold_gains[perf_boost_idx].cap_gain,
-				energy_payoff, 8);
+				payoff, 8);
 
 		return payoff;
 	}
@@ -92,7 +92,7 @@ __schedtune_accept_deltas(int nrg_delta, int cap_delta,
 		trace_sched_tune_filter(
 				threshold_gains[perf_constrain_idx].nrg_gain,
 				threshold_gains[perf_constrain_idx].cap_gain,
-				energy_payoff, 6);
+				payoff, 6);
 
 		return payoff;
 	}
