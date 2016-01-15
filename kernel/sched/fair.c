@@ -4807,7 +4807,7 @@ struct energy_env {
 	int			src_cpu;
 	int			dst_cpu;
 	int			energy;
-	int			energy_payoff;
+	int			payoff;
 	struct task_struct	*task;
 	struct {
 		int before;
@@ -5052,7 +5052,7 @@ static int energy_diff_evaluate(struct energy_env *eenv)
 	nrg_delta = schedtune_normalize_energy(eenv->nrg.diff);
 	eenv->nrg.delta = nrg_delta;
 
-	eenv->energy_payoff = schedtune_accept_deltas(
+	eenv->payoff = schedtune_accept_deltas(
 			eenv->nrg.delta,
 			eenv->cap.delta,
 			eenv->task);
@@ -5062,10 +5062,10 @@ static int energy_diff_evaluate(struct energy_env *eenv)
 	 * the computed energy payoff value. Since the energy_diff() return
 	 * value is expected to be negative by its callers, this evaluation
 	 * function return a negative value each time the evaluation return a
-	 * positive energy payoff, which is the condition for the acceptance of
+	 * positive payoff, which is the condition for the acceptance of
 	 * a scheduling decision
 	 */
-	return -eenv->energy_payoff;
+	return -eenv->payoff;
 }
 #else /* CONFIG_SCHED_TUNE */
 #define energy_diff_evaluate(eenv) eenv->nrg.diff
@@ -5125,14 +5125,14 @@ static int energy_diff(struct energy_env *eenv)
 	eenv->nrg.before = energy_before;
 	eenv->nrg.after = energy_after;
 	eenv->nrg.diff = eenv->nrg.after - eenv->nrg.before;
-	eenv->energy_payoff = 0;
+	eenv->payoff = 0;
 
 	result = energy_diff_evaluate(eenv);
 	trace_sched_energy_diff(eenv->task,
 			eenv->src_cpu, eenv->dst_cpu, eenv->util_delta,
 			eenv->nrg.before, eenv->nrg.after, eenv->nrg.diff,
 			eenv->cap.before, eenv->cap.after, eenv->cap.delta,
-			eenv->nrg.delta, eenv->energy_payoff);
+			eenv->nrg.delta, eenv->payoff);
 
 	return result;
 }
