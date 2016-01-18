@@ -88,6 +88,7 @@
 			#cooling-min-level = <0>;
 			#cooling-max-level = <7>;
 			dynamic-power-coefficient = <263>;
+			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_0>;
 		};
 
 		cpu1: cpu@1 {
@@ -111,6 +112,7 @@
 			#cooling-min-level = <0>;
 			#cooling-max-level = <7>;
 			dynamic-power-coefficient = <263>;
+			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_0>;
 		};
 
 		cpu2: cpu@100 {
@@ -135,6 +137,7 @@
 			#cooling-min-level = <0>;
 			#cooling-max-level = <7>;
 			dynamic-power-coefficient = <530>;
+			sched-energy-costs = <&CPU_COST_1 &CLUSTER_COST_1>;
 		};
 
 		cpu3: cpu@101 {
@@ -159,6 +162,7 @@
 			#cooling-min-level = <0>;
 			#cooling-max-level = <7>;
 			dynamic-power-coefficient = <530>;
+			sched-energy-costs = <&CPU_COST_1 &CLUSTER_COST_1>;
 		};
 
 		idle-states {
@@ -173,6 +177,9 @@
 				arm,psci-suspend-param = <0x0010000>;
 			};
 		};
+
+		/include/ "mt8173-sched-energy.dtsi"
+
 	};
 
 	psci {
