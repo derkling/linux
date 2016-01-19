@@ -4818,6 +4818,7 @@ struct energy_env {
 	int			src_cpu;
 	int			dst_cpu;
 	int			energy;
+	struct task_struct	*task;
 	struct {
 		int before;
 		int after;
@@ -5109,6 +5110,11 @@ static int energy_diff(struct energy_env *eenv)
 	eenv->nrg.before = energy_before;
 	eenv->nrg.after = energy_after;
 	eenv->nrg.diff = eenv->nrg.after - eenv->nrg.before;
+
+	trace_sched_energy_diff(eenv->task,
+			eenv->src_cpu, eenv->dst_cpu, eenv->util_delta,
+			eenv->nrg.before, eenv->nrg.after, eenv->nrg.diff,
+			eenv->cap.before, eenv->cap.after, eenv->cap.delta);
 
 	return eenv->nrg.diff;
 }
@@ -5499,6 +5505,7 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 			.util_delta	= task_util(p),
 			.src_cpu	= task_cpu(p),
 			.dst_cpu	= target_cpu,
+			.task		= p,
 		};
 
 		/* Not enough spare capacity on previous cpu */
