@@ -5710,6 +5710,11 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 		 */
 		new_util = max(min_util, new_util);
 
+		trace_printk("cpu=%d cpu_util=%lu task_util=%lu new_util=%lu cap_org=%lu cap_cur=%lu nr=%d",
+				i, cpu_util(i), task_util(p), new_util,
+				capacity_orig_of(i), capacity_curr_of(i),
+				cpu_rq(i)->nr_running);
+
 		if (new_util > capacity_orig_of(i))
 			continue;
 
