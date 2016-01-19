@@ -4997,6 +4997,7 @@ static int sched_group_energy(struct energy_env *eenv, bool before)
 				unsigned long group_util;
 				int sg_busy_energy, sg_idle_energy;
 				int cap_idx, idle_idx = -1;
+				char buff[64];
 
 				if (sg_shared_cap && sg_shared_cap->group_weight >= sg->group_weight)
 					eenv->sg_cap = sg_shared_cap;
@@ -5043,6 +5044,20 @@ static int sched_group_energy(struct energy_env *eenv, bool before)
 								>> SCHED_CAPACITY_SHIFT;
 
 				total_energy += sg_busy_energy + sg_idle_energy;
+
+				if (before)
+					snprintf(buff, 64, "BEFORE: [%*pbl]",
+							cpumask_pr_args(sched_group_cpus(sg)));
+				else
+					snprintf(buff, 64, " AFTER: [%*pbl]",
+							cpumask_pr_args(sched_group_cpus(sg)));
+				trace_printk("%s idl_idx=%d cap_idx=%d group_util=%lu cap_pwr=%lu cap_nrg=%d idl_pwr=%lu idl_nrg=%d tot=%d",
+						buff, idle_idx, cap_idx, group_util,
+						sg->sge->cap_states[cap_idx].power,
+						sg_busy_energy,
+						sg->sge->idle_states[idle_idx].power,
+						sg_idle_energy,
+						total_energy);
 
 				if (!sd->child)
 					cpumask_xor(&visit_cpus, &visit_cpus, sched_group_cpus(sg));
