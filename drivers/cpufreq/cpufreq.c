@@ -513,13 +513,34 @@ static ssize_t store_boost(struct kobject *kobj, struct attribute *attr,
 }
 define_one_global_rw(boost);
 
-static struct cpufreq_governor *find_governor(const char *str_governor)
+/**
+ * __find_governor - unlocked variant of find_governor
+ */
+static struct cpufreq_governor *__find_governor(const char *str_governor)
 {
 	struct cpufreq_governor *t;
 
 	for_each_governor(t)
 		if (!strncasecmp(str_governor, t->name, CPUFREQ_NAME_LEN))
 			return t;
+
+	return NULL;
+}
+
+/**
+ * find_governor - search if a governor is present in cpufreq_governor_list
+ */
+static struct cpufreq_governor *find_governor(const char *str_governor)
+{
+	struct cpufreq_governor *t;
+
+	mutex_lock(&cpufreq_governor_mutex);
+	for_each_governor(t)
+		if (!strncasecmp(str_governor, t->name, CPUFREQ_NAME_LEN)) {
+			mutex_unlock(&cpufreq_governor_mutex);
+			return t;
+		}
+	mutex_unlock(&cpufreq_governor_mutex);
 
 	return NULL;
 }
@@ -546,7 +567,7 @@ static int cpufreq_parse_governor(char *str_governor, unsigned int *policy,
 
 		mutex_lock(&cpufreq_governor_mutex);
 
-		t = find_governor(str_governor);
+		t = __find_governor(str_governor);
 
 		if (t == NULL) {
 			int ret;
@@ -556,7 +577,7 @@ static int cpufreq_parse_governor(char *str_governor, unsigned int *policy,
 			mutex_lock(&cpufreq_governor_mutex);
 
 			if (ret == 0)
-				t = find_governor(str_governor);
+				t = __find_governor(str_governor);
 		}
 
 		if (t != NULL) {
@@ -981,7 +1002,6 @@ static int cpufreq_init_policy(struct cpufreq_policy *policy)
 
 	memcpy(&new_policy, policy, sizeof(*policy));
 
-	mutex_lock(&cpufreq_governor_mutex);
 	/* Update governor of new_policy to the governor used before hotplug */
 	gov = find_governor(policy->last_governor);
 	if (gov)
@@ -989,7 +1009,6 @@ static int cpufreq_init_policy(struct cpufreq_policy *policy)
 				policy->governor->name, policy->cpu);
 	else
 		gov = CPUFREQ_DEFAULT_GOVERNOR;
-	mutex_unlock(&cpufreq_governor_mutex);
 
 	new_policy.governor = gov;
 
@@ -2039,7 +2058,7 @@ int cpufreq_register_governor(struct cpufreq_governor *governor)
 
 	governor->initialized = 0;
 	err = -EBUSY;
-	if (!find_governor(governor->name)) {
+	if (!__find_governor(governor->name)) {
 		err = 0;
 		list_add(&governor->governor_list, &cpufreq_governor_list);
 	}
