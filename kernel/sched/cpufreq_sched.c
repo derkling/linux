@@ -1,5 +1,6 @@
 /*
  *  Copyright (C)  2015 Michael Turquette <mturquette@linaro.org>
+ *  Copyright (C)  2015-2016 Steve Muckle <smuckle@linaro.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -22,6 +23,14 @@
 struct static_key __read_mostly __sched_freq = STATIC_KEY_INIT_FALSE;
 static bool __read_mostly cpufreq_driver_slow;
 
+/*
+ * The number of enabled schedfreq policies is modified during GOV_START/STOP.
+ * It, along with whether the schedfreq static key is enabled, is protected by
+ * the gov_enable_lock.
+ */
+static int enabled_policies;
+static DEFINE_MUTEX(gov_enable_lock);
+
 #ifndef CONFIG_CPU_FREQ_DEFAULT_GOV_SCHED
 static struct cpufreq_governor cpufreq_gov_sched;
 #endif
@@ -32,7 +41,7 @@ static struct cpufreq_governor cpufreq_gov_sched;
  */
 unsigned int capacity_margin = 1280;
 
-static DEFINE_PER_CPU(unsigned long, enabled);
+static DEFINE_PER_CPU(struct gov_data *, cpu_gov_data);
 DEFINE_PER_CPU(struct sched_capacity_reqs, cpu_sched_capacity_reqs);
 
 /**
@@ -41,24 +50,30 @@ DEFINE_PER_CPU(struct sched_capacity_reqs, cpu_sched_capacity_reqs);
  * @throttle_nsec: throttle period length in nanoseconds
  * @task: worker thread for dvfs transition that may block/sleep
  * @irq_work: callback used to wake up worker thread
- * @request_sem: prevent contention between the fast and slow paths - the
- *               fast path trylocks to ensure it will not block in cpufreq
+ * @policy: pointer to cpufreq policy associated with this governor data
+ * @fastpath_lock: prevents multiple CPUs in a frequency domain from racing
+ * with each other in fast path during calculation of domain frequency
+ * @enable_lock: mutex used to ensure policy remains enabled during execution
+ * of slow path
+ * @enabled: boolean value indicating that the policy is started, protected
+ * by the enable_lock
  * @requested_freq: last frequency requested by the sched governor
  *
- * struct gov_data is the per-policy cpufreq_sched-specific data structure. A
- * per-policy instance of it is created when the cpufreq_sched governor receives
- * the CPUFREQ_GOV_START condition and a pointer to it exists in the gov_data
- * member of struct cpufreq_policy.
- *
- * Readers of this data must call down_read(policy->rwsem). Writers must
- * call down_write(policy->rwsem).
+ * struct gov_data is the per-policy cpufreq_sched-specific data
+ * structure. A per-policy instance of it is created when the
+ * cpufreq_sched governor receives the CPUFREQ_GOV_POLICY_INIT
+ * condition and a pointer to it exists in the gov_data member of
+ * struct cpufreq_policy.
  */
 struct gov_data {
 	ktime_t throttle;
 	unsigned int throttle_nsec;
 	struct task_struct *task;
 	struct irq_work irq_work;
-	struct semaphore request_sem;
+	struct cpufreq_policy *policy;
+	raw_spinlock_t fastpath_lock;
+	struct mutex enable_lock;
+	unsigned int enabled;
 	unsigned int requested_freq;
 };
 
@@ -67,14 +82,8 @@ static void cpufreq_sched_try_driver_target(struct cpufreq_policy *policy,
 {
 	struct gov_data *gd = policy->governor_data;
 
-	/* avoid race with cpufreq_sched_stop */
-	if (!down_write_trylock(&policy->rwsem))
-		return;
-
 	__cpufreq_driver_target(policy, freq, CPUFREQ_RELATION_L);
-
 	gd->throttle = ktime_add_ns(ktime_get(), gd->throttle_nsec);
-	up_write(&policy->rwsem);
 }
 
 static bool finish_last_request(struct gov_data *gd)
@@ -96,24 +105,14 @@ static bool finish_last_request(struct gov_data *gd)
 	}
 }
 
-/*
- * we pass in struct cpufreq_policy. This is safe because changing out the
- * policy requires a call to __cpufreq_governor(policy, CPUFREQ_GOV_STOP),
- * which tears down all of the data structures and __cpufreq_governor(policy,
- * CPUFREQ_GOV_START) will do a full rebuild, including this kthread with the
- * new policy pointer
- */
 static int cpufreq_sched_thread(void *data)
 {
 	struct sched_param param;
-	struct cpufreq_policy *policy;
-	struct gov_data *gd;
+	struct gov_data *gd = (struct gov_data*) data;
+	struct cpufreq_policy *policy = gd->policy;
 	unsigned int new_request = 0;
 	unsigned int last_request = 0;
 	int ret;
-
-	policy = (struct cpufreq_policy *) data;
-	gd = policy->governor_data;
 
 	param.sched_priority = 50;
 	ret = sched_setscheduler_nocheck(gd->task, SCHED_FIFO, &param);
@@ -125,15 +124,24 @@ static int cpufreq_sched_thread(void *data)
 				__func__, gd->task->pid);
 	}
 
-	do {
+	down_write(&policy->rwsem);
+	mutex_lock(&gd->enable_lock);
+
+	while (true) {
 		set_current_state(TASK_INTERRUPTIBLE);
+		if (kthread_should_stop()) {
+			set_current_state(TASK_RUNNING);
+			break;
+		}
 		new_request = gd->requested_freq;
-		if (new_request == last_request) {
+		if (!gd->enabled || new_request == last_request) {
+			mutex_unlock(&gd->enable_lock);
+			up_write(&policy->rwsem);
 			schedule();
+			down_write(&policy->rwsem);
+			mutex_lock(&gd->enable_lock);
 		} else {
 			set_current_state(TASK_RUNNING);
-			if (down_interruptible(&gd->request_sem))
-				return -1;
 			/*
 			 * if the frequency thread sleeps while waiting to be
 			 * unthrottled, start over to check for a newer request
@@ -142,9 +150,11 @@ static int cpufreq_sched_thread(void *data)
 				continue;
 			last_request = new_request;
 			cpufreq_sched_try_driver_target(policy, new_request);
-			up(&gd->request_sem);
 		}
-	} while (!kthread_should_stop());
+	}
+
+	mutex_unlock(&gd->enable_lock);
+	up_write(&policy->rwsem);
 
 	return 0;
 }
@@ -164,28 +174,17 @@ static void update_fdomain_capacity_request(int cpu)
 {
 	unsigned int freq_new, index_new, cpu_tmp;
 	struct cpufreq_policy *policy;
-	struct gov_data *gd;
+	struct gov_data *gd = per_cpu(cpu_gov_data, cpu);
 	unsigned long capacity = 0;
 
-	/*
-	 * Avoid grabbing the policy if possible. A test is still
-	 * required after locking the CPU's policy to avoid racing
-	 * with the governor changing.
-	 */
-	if (!per_cpu(enabled, cpu))
+	if (!gd)
 		return;
 
-	policy = cpufreq_cpu_get(cpu);
-	if (IS_ERR_OR_NULL(policy))
-		return;
+	/* interrupts already disabled here via rq locked */
+	raw_spin_lock(&gd->fastpath_lock);
 
-	if (policy->governor != &cpufreq_gov_sched ||
-	    !policy->governor_data)
-		goto out;
+	policy = gd->policy;
 
-	gd = policy->governor_data;
-
-	/* find max capacity requested by cpus in this policy */
 	for_each_cpu(cpu_tmp, policy->cpus) {
 		struct sched_capacity_reqs *scr;
 
@@ -193,8 +192,13 @@ static void update_fdomain_capacity_request(int cpu)
 		capacity = max(capacity, scr->total);
 	}
 
-	/* Convert the new maximum capacity request into a cpu frequency */
 	freq_new = capacity * policy->max >> SCHED_CAPACITY_SHIFT;
+
+	/*
+	 * Calling this without locking policy->rwsem means we race
+	 * against changes with policy->min and policy->max. This should
+	 * be okay though.
+	 */
 	if (cpufreq_frequency_table_target(policy, policy->freq_table,
 					   freq_new, CPUFREQ_RELATION_L,
 					   &index_new))
@@ -209,24 +213,19 @@ static void update_fdomain_capacity_request(int cpu)
 
 	gd->requested_freq = freq_new;
 
-	/*
-	 * TODO: If the cpufreq driver is both fast and synchronous, and
-	 * throttling is not used, the slow path will never be used and the
-	 * spinlock is not required. Add a faster path for this case which
-	 * skips the locking.
-	 */
-	if (cpufreq_driver_slow || down_trylock(&gd->request_sem)) {
+	if (cpufreq_driver_slow || !down_write_trylock(&policy->rwsem)) {
 		irq_work_queue_on(&gd->irq_work, cpu);
 	} else if (policy->transition_ongoing ||
 		   ktime_before(ktime_get(), gd->throttle)) {
-		up(&gd->request_sem);
+		up_write(&policy->rwsem);
 		irq_work_queue_on(&gd->irq_work, cpu);
 	} else {
 		cpufreq_sched_try_driver_target(policy, freq_new);
+		up_write(&policy->rwsem);
 	}
 
 out:
-	cpufreq_cpu_put(policy);
+	raw_spin_unlock(&gd->fastpath_lock);
 }
 
 void update_cpu_capacity_request(int cpu, bool request)
@@ -252,16 +251,6 @@ void update_cpu_capacity_request(int cpu, bool request)
 	scr->total = new_capacity;
 	if (request)
 		update_fdomain_capacity_request(cpu);
-}
-
-static inline void set_sched_freq(void)
-{
-	static_key_slow_inc(&__sched_freq);
-}
-
-static inline void clear_sched_freq(void)
-{
-	static_key_slow_dec(&__sched_freq);
 }
 
 static ssize_t show_throttle_nsec(struct cpufreq_policy *policy, char *buf)
@@ -302,25 +291,28 @@ static struct attribute_group sched_freq_sysfs_group = {
 static int cpufreq_sched_policy_init(struct cpufreq_policy *policy)
 {
 	struct gov_data *gd;
-	int ret, cpu;
-
-	for_each_cpu(cpu, policy->cpus)
-		memset(&per_cpu(cpu_sched_capacity_reqs, cpu), 0,
-		       sizeof(struct sched_capacity_reqs));
+	int ret;
 
 	gd = kzalloc(sizeof(*gd), GFP_KERNEL);
 	if (!gd)
 		return -ENOMEM;
+	policy->governor_data = gd;
+	gd->policy = policy;
+	raw_spin_lock_init(&gd->fastpath_lock);
+	mutex_init(&gd->enable_lock);
 
 	ret = sysfs_create_group(get_governor_parent_kobj(policy),
 				 &sched_freq_sysfs_group);
 	if (ret)
 		goto err_mem;
 
-	sema_init(&gd->request_sem, 1);
+	/*
+	 * Set up schedfreq thread for slow path freq transitions if
+	 * required by the driver.
+	 */
 	if (cpufreq_driver_is_slow()) {
 		cpufreq_driver_slow = true;
-		gd->task = kthread_create(cpufreq_sched_thread, policy,
+		gd->task = kthread_create(cpufreq_sched_thread, gd,
 					  "kschedfreq:%d",
 					  cpumask_first(policy->related_cpus));
 		if (IS_ERR_OR_NULL(gd->task)) {
@@ -333,10 +325,6 @@ static int cpufreq_sched_policy_init(struct cpufreq_policy *policy)
 		wake_up_process(gd->task);
 		init_irq_work(&gd->irq_work, cpufreq_sched_irq_work);
 	}
-
-	policy->governor_data = gd;
-	set_sched_freq();
-
 	return 0;
 
 err_sysfs:
@@ -351,37 +339,101 @@ static int cpufreq_sched_policy_exit(struct cpufreq_policy *policy)
 {
 	struct gov_data *gd = policy->governor_data;
 
-	clear_sched_freq();
+	/* Stop the schedfreq thread associated with this policy. */
 	if (cpufreq_driver_slow) {
 		kthread_stop(gd->task);
 		put_task_struct(gd->task);
 	}
-
-	policy->governor_data = NULL;
-
 	sysfs_remove_group(get_governor_parent_kobj(policy),
 			   &sched_freq_sysfs_group);
-
+	policy->governor_data = NULL;
 	kfree(gd);
 	return 0;
 }
 
 static int cpufreq_sched_start(struct cpufreq_policy *policy)
 {
+	struct gov_data *gd = policy->governor_data;
 	int cpu;
 
-	for_each_cpu(cpu, policy->cpus)
-		per_cpu(enabled, cpu) = 1;
+	/*
+	 * The schedfreq static key is managed here so the global schedfreq
+	 * lock must be taken - a per-policy lock such as policy->rwsem is
+	 * not sufficient.
+	 */
+	mutex_lock(&gov_enable_lock);
+
+	gd->enabled = 1;
+
+	/*
+	 * Set up percpu information. Writing the percpu gd pointer will
+	 * enable the fast path if the static key is already enabled.
+	 */
+	for_each_cpu(cpu, policy->cpus) {
+		memset(&per_cpu(cpu_sched_capacity_reqs, cpu), 0,
+		       sizeof(struct sched_capacity_reqs));
+		per_cpu(cpu_gov_data, cpu) = gd;
+	}
+
+	if (enabled_policies == 0)
+		static_key_slow_inc(&__sched_freq);
+	enabled_policies++;
+	mutex_unlock(&gov_enable_lock);
 
 	return 0;
 }
 
+static void dummy(void *info) {}
+
 static int cpufreq_sched_stop(struct cpufreq_policy *policy)
 {
+	struct gov_data *gd = policy->governor_data;
 	int cpu;
 
+	/*
+	 * The schedfreq static key is managed here so the global schedfreq
+	 * lock must be taken - a per-policy lock such as policy->rwsem is
+	 * not sufficient.
+	 */
+	mutex_lock(&gov_enable_lock);
+
+	/*
+	 * The governor stop path may or may not hold policy->rwsem. There
+	 * must be synchronization with the slow path however.
+	 */
+	mutex_lock(&gd->enable_lock);
+
+	/*
+	 * Stop new entries into the hot path for all CPUs. This will
+	 * potentially affect other policies which are still running but
+	 * this is an infrequent operation.
+	 */
+	static_key_slow_dec(&__sched_freq);
+	enabled_policies--;
+
+	/*
+	 * Ensure that all CPUs currently part of this policy are out
+	 * of the hot path so that if this policy exits we can free gd.
+	 */
+	preempt_disable();
+	smp_call_function_many(policy->cpus, dummy, NULL, true);
+	preempt_enable();
+
+	/*
+	 * Other CPUs in other policies may still have the schedfreq
+	 * static key enabled. The percpu gd is used to signal which
+	 * CPUs are enabled in the sched gov during the hot path.
+	 */
 	for_each_cpu(cpu, policy->cpus)
-		per_cpu(enabled, cpu) = 0;
+		per_cpu(cpu_gov_data, cpu) = NULL;
+
+	/* Pause the slow path for this policy. */
+	gd->enabled = 0;
+
+	if (enabled_policies)
+		static_key_slow_inc(&__sched_freq);
+	mutex_unlock(&gd->enable_lock);
+	mutex_unlock(&gov_enable_lock);
 
 	return 0;
 }
@@ -415,10 +467,6 @@ struct cpufreq_governor cpufreq_gov_sched = {
 
 static int __init cpufreq_sched_init(void)
 {
-	int cpu;
-
-	for_each_cpu(cpu, cpu_possible_mask)
-		per_cpu(enabled, cpu) = 0;
 	return cpufreq_register_governor(&cpufreq_gov_sched);
 }
 
