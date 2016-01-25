@@ -5280,6 +5280,10 @@ static inline bool __task_fits(struct task_struct *p, int cpu, int util)
 
 	util += boosted_task_util(p);
 
+	trace_printk("task_fits: cpu=%d comm=%s pid=%d util=%d cap_curr=%lu cap_next=%lu",
+			cpu, p->comm, p->pid, util,
+			capacity_curr, capacity_next);
+
 	/* Hysteresis filter: migration to lower capacity CPU */
 	if (capacity_curr > capacity_next)
 		return (capacity_next * 1024) > (util * capacity_margin_down);
