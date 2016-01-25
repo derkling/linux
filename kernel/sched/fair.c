@@ -5626,6 +5626,8 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 	unsigned long spare_capacity_dst;
 	unsigned long spare_capacity;
 	unsigned long spreading_threshold;
+	char sg1[16], sg2[16];
+
 	sd = rcu_dereference(per_cpu(sd_ea, task_cpu(p)));
 
 	if (!sd)
@@ -5655,6 +5657,10 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 			sg_target = sg;
 			target_max_cap = capacity_of(max_cap_cpu);
 		}
+		snprintf(sg1, 16, "%*pbl", cpumask_pr_args(sched_group_cpus(sg)));
+		snprintf(sg2, 16, "%*pbl", cpumask_pr_args(sched_group_cpus(sg_target)));
+		trace_printk("cluster: sg_cur=[%s] sg_tgt=[%s] tgt_max_cap=[%d]",
+				sg1, sg2, target_max_cap);
 	} while (sg = sg->next, sg != sd->groups);
 
 
@@ -5684,6 +5690,9 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 	 */
 	if (spare_capacity_max < spreading_threshold) {
 
+		trace_printk("cpu: cpu_src=%d spare_cap_max=%lu spread_tld=%lu strat=spread",
+			      task_cpu(p), spare_capacity_max, spreading_threshold);
+
 		/*
 		 * Task spreading strategy:
 		 * Look for possibilities to lower the Cluster OPP
@@ -5697,6 +5706,8 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 				spare_capacity_dst = spare_capacity;
 				target_cpu = i;
 			}
+			trace_printk("cpu=%d spare_cap_dst=%lu cpu_dst=%d",
+				      i, spare_capacity_dst, target_cpu);
 		}
 
 	/*
@@ -5705,6 +5716,8 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 	 */
 	} else {
 
+		trace_printk("cpu_src=%d spare_cap_max=%lu spread_tld=%lu strat=pack",
+			      task_cpu(p), spare_capacity_max, spreading_threshold);
 
 		/*
 		 * Task packing strategy:
@@ -5722,6 +5735,8 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 				spare_capacity_dst = spare_capacity;
 				target_cpu = i;
 			}
+			trace_printk("cpu=%d spare_cap_dst=%lu cpu_dst=%d",
+				      i, spare_capacity_dst, target_cpu);
 		}
 	}
 
