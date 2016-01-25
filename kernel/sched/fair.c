@@ -5650,6 +5650,14 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 		}
 	} while (sg = sg->next, sg != sd->groups);
 
+
+	/*
+	 * Temporary detach SE from the previous CPU to not bias the following
+	 * CPU selection strategies.
+	 */
+	cached_se_avg = se->avg;
+	detach_entity_load_avg(cfs_rq, se);
+
 	/* Find cpu with sufficient capacity */
 	for_each_cpu_and(i, tsk_cpus_allowed(p), sched_group_cpus(sg_target)) {
 		/*
@@ -5678,6 +5686,16 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 			target_cpu = i;
 	}
 
+	/*
+	 * Re-attach the SE to the original CPU
+	 */
+	se->avg = cached_se_avg;
+	attach_entity_load_avg(cfs_rq, se);
+
+	/*
+	 * If a different CPU has been selected by one of the previous
+	 * strategies, let's validate that choice using the energy model.
+	 */
 	if (target_cpu != task_cpu(p)) {
 		struct energy_env eenv = {
 			.util_delta	= task_util(p),
