@@ -5616,9 +5616,16 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 	struct sched_domain *sd;
 	struct sched_group *sg, *sg_target;
 	int target_max_cap = INT_MAX;
-	int target_cpu = task_cpu(p);
+	int target_cpu = -1;
 	int i;
 
+	struct sched_entity *se = &p->se;
+	struct cfs_rq *cfs_rq = cfs_rq_of(se);
+	struct sched_avg cached_se_avg;
+	unsigned long spare_capacity_max;
+	unsigned long spare_capacity_dst;
+	unsigned long spare_capacity;
+	unsigned long spreading_threshold;
 	sd = rcu_dereference(per_cpu(sd_ea, task_cpu(p)));
 
 	if (!sd)
@@ -5658,32 +5665,64 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 	cached_se_avg = se->avg;
 	detach_entity_load_avg(cfs_rq, se);
 
-	/* Find cpu with sufficient capacity */
-	for_each_cpu_and(i, tsk_cpus_allowed(p), sched_group_cpus(sg_target)) {
+	/*
+	 * Max spare capacity availabe on that current CPU
+	 */
+	target_cpu = task_cpu(p);
+	spare_capacity_max  = capacity_orig_of(target_cpu);
+	spare_capacity_max -= cpu_util(target_cpu);
+
+	/*
+	 * Spread vs Packing Thresshold
+	 */
+	spreading_threshold = task_util(p);
+	spreading_threshold >>= 1;
+
+	/*
+	 * Task wakeup on an highly used CPU
+	 * => more possibilities to lower the energy by spreading tasks
+	 */
+	if (spare_capacity_max < spreading_threshold) {
+
 		/*
-		 * p's blocked utilization is still accounted for on prev_cpu
-		 * so prev_cpu will receive a negative bias due to the double
-		 * accounting. However, the blocked utilization may be zero.
+		 * Task spreading strategy:
+		 * Look for possibilities to lower the Cluster OPP
 		 */
-		int new_util = cpu_util(i) + task_util(p);
-
-		trace_printk("cpu=%d cpu_util=%lu task_util=%lu new_util=%d cap_org=%lu cap_cur=%lu nr=%d",
-				i, cpu_util(i), task_util(p), new_util,
-				capacity_orig_of(i), capacity_curr_of(i),
-				cpu_rq(i)->nr_running);
-
-		if (new_util > capacity_orig_of(i))
-			continue;
-
-		if (new_util < capacity_curr_of(i)) {
-			target_cpu = i;
-			if (cpu_rq(i)->nr_running)
-				break;
+		spare_capacity_dst = 0;
+		for_each_cpu_and(i, tsk_cpus_allowed(p), sched_group_cpus(sg_target)) {
+			spare_capacity  = capacity_orig_of(i);
+			spare_capacity -= capacity_curr_of(i);
+			/* Select the CPU with max spare capacity */
+			if (spare_capacity > spare_capacity_dst) {
+				spare_capacity_dst = spare_capacity;
+				target_cpu = i;
+			}
 		}
 
-		/* cpu has capacity at higher OPP, keep it as fallback */
-		if (target_cpu == task_cpu(p))
-			target_cpu = i;
+	/*
+	 * Task wakeup on an lightly used CPU
+	 * => more possibilities to lower the energy by packing tasks
+	 */
+	} else {
+
+
+		/*
+		 * Task packing strategy:
+		 * Look for possibilities to switch-off a CPU
+		 * while still not raising the cluster OPP
+		 */
+		spare_capacity_dst = INT_MAX;
+		for_each_cpu_and(i, tsk_cpus_allowed(p), sched_group_cpus(sg_target)) {
+			spare_capacity  = capacity_orig_of(i);
+			spare_capacity -= capacity_curr_of(i);
+			/* Select the CPU with min spare capacity
+			 * Where the task still can fit */
+			if (spare_capacity < spare_capacity_dst &&
+			    spare_capacity >= task_util(p)) {
+				spare_capacity_dst = spare_capacity;
+				target_cpu = i;
+			}
+		}
 	}
 
 	/*
