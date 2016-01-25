@@ -5268,16 +5268,24 @@ static inline unsigned long task_util(struct task_struct *p)
 }
 
 unsigned int capacity_margin = 1280; /* ~20% margin */
+unsigned int capacity_margin_down = 1312; /* ~22% margin */
+unsigned int capacity_margin_up = 1248; /* ~18% margin */
 
 static inline unsigned long boosted_task_util(struct task_struct *task);
 
 static inline bool __task_fits(struct task_struct *p, int cpu, int util)
 {
-	unsigned long capacity = capacity_of(cpu);
+	unsigned long capacity_curr = capacity_of(task_cpu(p));
+	unsigned long capacity_next = capacity_of(cpu);
 
 	util += boosted_task_util(p);
 
-	return (capacity * 1024) > (util * capacity_margin);
+	/* Hysteresis filter: migration to lower capacity CPU */
+	if (capacity_curr > capacity_next)
+		return (capacity_next * 1024) > (util * capacity_margin_down);
+
+	/* Hysteresis filter: migration to higher capacity CPU */
+	return (capacity_next * 1024) > (util * capacity_margin_up);
 }
 
 static inline bool task_fits_max(struct task_struct *p, int cpu)
