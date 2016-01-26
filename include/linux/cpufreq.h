@@ -203,11 +203,11 @@ struct freq_attr {
 /* Marks a group of attribute with skip-lock attribute */
 static inline void cpufreq_mark_attr_skip_lock(struct attribute_group *group)
 {
-	struct attribute *attr = *group->attrs;
+	struct attribute **attr = group->attrs;
 	struct freq_attr *fattr;
 
-	while (attr) {
-		fattr = to_attr(attr);
+	while (*attr) {
+		fattr = to_attr(*attr);
 		fattr->skip_lock = true;
 		attr++;
 	}
