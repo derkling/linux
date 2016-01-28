@@ -4217,6 +4217,18 @@ static inline void hrtick_update(struct rq *rq)
 }
 #endif
 
+static void update_capacity_of(int cpu)
+{
+	unsigned long req_cap;
+
+	if (!sched_freq())
+		return;
+
+	/* Convert scale-invariant capacity to cpu. */
+	req_cap = cpu_util(cpu) * SCHED_CAPACITY_SCALE / capacity_orig_of(cpu);
+	set_cfs_cpu_capacity(cpu, true, req_cap);
+}
+
 /*
  * The enqueue_task method is called before nr_running is
  * increased. Here we update the fair scheduling stats and
@@ -4227,6 +4239,8 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &p->se;
+	int task_new = flags & ENQUEUE_WAKEUP_NEW;
+	int task_wakeup = flags & ENQUEUE_WAKEUP;
 
 	for_each_sched_entity(se) {
 		if (se->on_rq)
@@ -4258,9 +4272,19 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		update_cfs_shares(cfs_rq);
 	}
 
-	if (!se)
+	if (!se) {
 		add_nr_running(rq, 1);
 
+		/*
+		 * We want to potentially trigger a freq switch
+		 * request only for tasks that are waking up; this is
+		 * because we get here also during load balancing, but
+		 * in these cases it seems wise to trigger as single
+		 * request after load balancing is done.
+		 */
+		if (task_new || task_wakeup)
+			update_capacity_of(cpu_of(rq));
+	}
 	hrtick_update(rq);
 }
 
@@ -4318,9 +4342,24 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		update_cfs_shares(cfs_rq);
 	}
 
-	if (!se)
+	if (!se) {
 		sub_nr_running(rq, 1);
 
+		/*
+		 * We want to potentially trigger a freq switch
+		 * request only for tasks that are going to sleep;
+		 * this is because we get here also during load
+		 * balancing, but in these cases it seems wise to
+		 * trigger as single request after load balancing is
+		 * done.
+		 */
+		if (task_sleep) {
+			if (rq->cfs.nr_running)
+				update_capacity_of(cpu_of(rq));
+			else if (sched_freq())
+				set_cfs_cpu_capacity(cpu_of(rq), false, 0);
+		}
+	}
 	hrtick_update(rq);
 }
 
@@ -4577,15 +4616,6 @@ static unsigned long target_load(int cpu, int type)
 	return max(rq->cpu_load[type-1], total);
 }
 
-static unsigned long capacity_of(int cpu)
-{
-	return cpu_rq(cpu)->cpu_capacity;
-}
-
-static unsigned long capacity_orig_of(int cpu)
-{
-	return cpu_rq(cpu)->cpu_capacity_orig;
-}
 
 static unsigned long cpu_avg_load_per_task(int cpu)
 {
@@ -4995,40 +5025,6 @@ next:
 	}
 done:
 	return target;
-}
-
-/*
- * cpu_util returns the amount of capacity of a CPU that is used by CFS
- * tasks. The unit of the return value must be the one of capacity so we can
- * compare the utilization with the capacity of the CPU that is available for
- * CFS task (ie cpu_capacity).
- *
- * cfs_rq.avg.util_avg is the sum of running time of runnable tasks plus the
- * recent utilization of currently non-runnable tasks on a CPU. It represents
- * the amount of utilization of a CPU in the range [0..capacity_orig] where
- * capacity_orig is the cpu_capacity available at the highest frequency
- * (arch_scale_freq_capacity()).
- * The utilization of a CPU converges towards a sum equal to or less than the
- * current capacity (capacity_curr <= capacity_orig) of the CPU because it is
- * the running time on this CPU scaled by capacity_curr.
- *
- * Nevertheless, cfs_rq.avg.util_avg can be higher than capacity_curr or even
- * higher than capacity_orig because of unfortunate rounding in
- * cfs.avg.util_avg or just after migrating tasks and new task wakeups until
- * the average stabilizes with the new running time. We need to check that the
- * utilization stays within the range of [0..capacity_orig] and cap it if
- * necessary. Without utilization capping, a group could be seen as overloaded
- * (CPU0 utilization at 121% + CPU1 utilization at 80%) whereas CPU1 has 20% of
- * available capacity. We allow utilization to overshoot capacity_curr (but not
- * capacity_orig) as it useful for predicting the capacity required after task
- * migrations (scheduler-driven DVFS).
- */
-static int cpu_util(int cpu)
-{
-	unsigned long util = cpu_rq(cpu)->cfs.avg.util_avg;
-	unsigned long capacity = capacity_orig_of(cpu);
-
-	return (util >= capacity) ? capacity : util;
 }
 
 /*
@@ -5988,6 +5984,10 @@ static void attach_one_task(struct rq *rq, struct task_struct *p)
 {
 	raw_spin_lock(&rq->lock);
 	attach_task(rq, p);
+	/*
+	 * We want to potentially raise target_cpu's OPP.
+	 */
+	update_capacity_of(cpu_of(rq));
 	raw_spin_unlock(&rq->lock);
 }
 
@@ -6008,6 +6008,11 @@ static void attach_tasks(struct lb_env *env)
 
 		attach_task(env->dst_rq, p);
 	}
+
+	/*
+	 * We want to potentially raise env.dst_cpu's OPP.
+	 */
+	update_capacity_of(env->dst_cpu);
 
 	raw_spin_unlock(&env->dst_rq->lock);
 }
@@ -7148,6 +7153,11 @@ more_balance:
 		 * ld_moved     - cumulative load moved across iterations
 		 */
 		cur_ld_moved = detach_tasks(&env);
+		/*
+		 * We want to potentially lower env.src_cpu's OPP.
+		 */
+		if (cur_ld_moved)
+			update_capacity_of(env.src_cpu);
 
 		/*
 		 * We've detached some tasks from busiest_rq. Every
@@ -7512,8 +7522,13 @@ static int active_load_balance_cpu_stop(void *data)
 		schedstat_inc(sd, alb_count);
 
 		p = detach_one_task(&env);
-		if (p)
+		if (p) {
 			schedstat_inc(sd, alb_pushed);
+			/*
+			 * We want to potentially lower env.src_cpu's OPP.
+			 */
+			update_capacity_of(env.src_cpu);
+		}
 		else
 			schedstat_inc(sd, alb_failed);
 	}

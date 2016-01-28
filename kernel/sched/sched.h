@@ -1139,6 +1139,7 @@ extern const u32 sched_prio_to_wmult[40];
 #endif
 #define ENQUEUE_REPLENISH	0x08
 #define ENQUEUE_RESTORE	0x10
+#define ENQUEUE_WAKEUP_NEW	0x20
 
 #define DEQUEUE_SLEEP		0x01
 #define DEQUEUE_SAVE		0x02
@@ -1381,6 +1382,116 @@ unsigned long arch_scale_cpu_capacity(struct sched_domain *sd, int cpu)
 
 	return SCHED_CAPACITY_SCALE;
 }
+#endif
+
+#ifdef CONFIG_SMP
+static inline unsigned long capacity_of(int cpu)
+{
+	return cpu_rq(cpu)->cpu_capacity;
+}
+
+static inline unsigned long capacity_orig_of(int cpu)
+{
+	return cpu_rq(cpu)->cpu_capacity_orig;
+}
+
+/*
+ * cpu_util returns the amount of capacity of a CPU that is used by CFS
+ * tasks. The unit of the return value must be the one of capacity so we can
+ * compare the utilization with the capacity of the CPU that is available for
+ * CFS task (ie cpu_capacity).
+ *
+ * cfs_rq.avg.util_avg is the sum of running time of runnable tasks plus the
+ * recent utilization of currently non-runnable tasks on a CPU. It represents
+ * the amount of utilization of a CPU in the range [0..capacity_orig] where
+ * capacity_orig is the cpu_capacity available at the highest frequency
+ * (arch_scale_freq_capacity()).
+ * The utilization of a CPU converges towards a sum equal to or less than the
+ * current capacity (capacity_curr <= capacity_orig) of the CPU because it is
+ * the running time on this CPU scaled by capacity_curr.
+ *
+ * Nevertheless, cfs_rq.avg.util_avg can be higher than capacity_curr or even
+ * higher than capacity_orig because of unfortunate rounding in
+ * cfs.avg.util_avg or just after migrating tasks and new task wakeups until
+ * the average stabilizes with the new running time. We need to check that the
+ * utilization stays within the range of [0..capacity_orig] and cap it if
+ * necessary. Without utilization capping, a group could be seen as overloaded
+ * (CPU0 utilization at 121% + CPU1 utilization at 80%) whereas CPU1 has 20% of
+ * available capacity. We allow utilization to overshoot capacity_curr (but not
+ * capacity_orig) as it useful for predicting the capacity required after task
+ * migrations (scheduler-driven DVFS).
+ */
+static inline int cpu_util(int cpu)
+{
+	unsigned long util = cpu_rq(cpu)->cfs.avg.util_avg;
+	unsigned long capacity = capacity_orig_of(cpu);
+
+	return (util >= capacity) ? capacity : util;
+}
+
+/*
+ * Returns the current capacity of cpu after applying both
+ * cpu and freq scaling.
+ */
+static inline unsigned long capacity_curr_of(int cpu)
+{
+	return cpu_rq(cpu)->cpu_capacity_orig *
+	       arch_scale_freq_capacity(NULL, cpu)
+	       >> SCHED_CAPACITY_SHIFT;
+}
+
+#endif
+
+#ifdef CONFIG_CPU_FREQ_GOV_SCHED
+#define capacity_max SCHED_CAPACITY_SCALE
+extern unsigned int capacity_margin;
+extern struct static_key __sched_freq;
+
+static inline bool sched_freq(void)
+{
+	return static_key_false(&__sched_freq);
+}
+
+DECLARE_PER_CPU(struct sched_capacity_reqs, cpu_sched_capacity_reqs);
+void update_cpu_capacity_request(int cpu, bool request);
+
+static inline void set_cfs_cpu_capacity(int cpu, bool request,
+					unsigned long capacity)
+{
+	if (per_cpu(cpu_sched_capacity_reqs, cpu).cfs != capacity) {
+		per_cpu(cpu_sched_capacity_reqs, cpu).cfs = capacity;
+		update_cpu_capacity_request(cpu, request);
+	}
+}
+
+static inline void set_rt_cpu_capacity(int cpu, bool request,
+				       unsigned long capacity)
+{
+	if (per_cpu(cpu_sched_capacity_reqs, cpu).rt != capacity) {
+		per_cpu(cpu_sched_capacity_reqs, cpu).rt = capacity;
+		update_cpu_capacity_request(cpu, request);
+	}
+}
+
+static inline void set_dl_cpu_capacity(int cpu, bool request,
+				       unsigned long capacity)
+{
+	if (per_cpu(cpu_sched_capacity_reqs, cpu).dl != capacity) {
+		per_cpu(cpu_sched_capacity_reqs, cpu).dl = capacity;
+		update_cpu_capacity_request(cpu, request);
+	}
+}
+#else
+static inline bool sched_freq(void) { return false; }
+static inline void set_cfs_cpu_capacity(int cpu, bool request,
+					unsigned long capacity)
+{ }
+static inline void set_rt_cpu_capacity(int cpu, bool request,
+				       unsigned long capacity)
+{ }
+static inline void set_dl_cpu_capacity(int cpu, bool request,
+				       unsigned long capacity)
+{ }
 #endif
 
 static inline void sched_rt_avg_update(struct rq *rq, u64 rt_delta)
