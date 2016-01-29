@@ -4937,7 +4937,7 @@ static int group_idle_state(struct sched_group *sg)
  * This can probably be done in a faster but more complex way.
  * Note: sched_group_energy() may fail when racing with sched_domain updates.
  */
-static int sched_group_energy(struct energy_env *eenv)
+static int sched_group_energy(struct energy_env *eenv, bool before)
 {
 	struct sched_domain *sd;
 	int cpu, total_energy = 0;
@@ -4980,7 +4980,7 @@ static int sched_group_energy(struct energy_env *eenv)
 			do {
 				unsigned long group_util;
 				int sg_busy_energy, sg_idle_energy;
-				int cap_idx, idle_idx;
+				int cap_idx, idle_idx = -1;
 
 				if (sg_shared_cap && sg_shared_cap->group_weight >= sg->group_weight)
 					eenv->sg_cap = sg_shared_cap;
@@ -4989,22 +4989,36 @@ static int sched_group_energy(struct energy_env *eenv)
 
 				cap_idx = find_new_capacity(eenv, sg->sge);
 
+				/* SG is a CPU */
 				if (sg->group_weight == 1) {
-					/* Remove capacity of src CPU (before task move) */
-					if (eenv->util_delta == 0 &&
+
+					/* SG is the src CPU */
+					if (before &&
 					    cpumask_test_cpu(eenv->src_cpu, sched_group_cpus(sg))) {
 						eenv->cap.before = sg->sge->cap_states[cap_idx].cap;
 						eenv->cap.delta -= eenv->cap.before;
-					}
-					/* Add capacity of dst CPU  (after task move) */
-					if (eenv->util_delta != 0 &&
+
+					/* SG is the dst CPU */
+					} else if (!before &&
 					    cpumask_test_cpu(eenv->dst_cpu, sched_group_cpus(sg))) {
 						eenv->cap.after = sg->sge->cap_states[cap_idx].cap;
 						eenv->cap.delta += eenv->cap.after;
+						idle_idx = 0;
 					}
-				}
 
-				idle_idx = group_idle_state(sg);
+				/* SG is the destination cluster */
+				} else if (cpumask_test_cpu(eenv->dst_cpu, sched_group_cpus(sg)))
+					idle_idx = 0;
+
+				/*
+				 * It's not easy to estimate the idle state
+				 * once a task as been moved. However, for sure we
+				 * know that at least dst CPU and higher level
+				 * SGs will be in the shallowest idle state.
+				 */
+				if (idle_idx == -1)
+					idle_idx = group_idle_state(sg);
+
 				group_util = group_norm_util(eenv, sg);
 				sg_busy_energy = (group_util * sg->sge->cap_states[cap_idx].power)
 								>> SCHED_CAPACITY_SHIFT;
@@ -5071,7 +5085,7 @@ static inline int __energy_diff(struct energy_env *eenv)
 		if (cpu_in_sg(sg, eenv->src_cpu) || cpu_in_sg(sg, eenv->dst_cpu)) {
 			eenv_before.sg_top = eenv->sg_top = sg;
 
-			if (sched_group_energy(&eenv_before))
+			if (sched_group_energy(&eenv_before, true))
 				return 0; /* Invalid result abort */
 			energy_before += eenv_before.energy;
 
@@ -5079,7 +5093,7 @@ static inline int __energy_diff(struct energy_env *eenv)
 			eenv->cap.before = eenv_before.cap.before;
 			eenv->cap.delta = eenv_before.cap.delta;
 
-			if (sched_group_energy(eenv))
+			if (sched_group_energy(eenv, false))
 				return 0; /* Invalid result abort */
 			energy_after += eenv->energy;
 		}
