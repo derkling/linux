@@ -53,10 +53,8 @@ DEFINE_PER_CPU(struct sched_capacity_reqs, cpu_sched_capacity_reqs);
  * @policy: pointer to cpufreq policy associated with this governor data
  * @fastpath_lock: prevents multiple CPUs in a frequency domain from racing
  * with each other in fast path during calculation of domain frequency
- * @enable_lock: mutex used to ensure policy remains enabled during execution
- * of slow path
  * @enabled: boolean value indicating that the policy is started, protected
- * by the enable_lock
+ * by the policy->rwsem
  * @requested_freq: last frequency requested by the sched governor
  *
  * struct gov_data is the per-policy cpufreq_sched-specific data
@@ -72,7 +70,6 @@ struct gov_data {
 	struct irq_work irq_work;
 	struct cpufreq_policy *policy;
 	raw_spinlock_t fastpath_lock;
-	struct mutex enable_lock;
 	unsigned int enabled;
 	unsigned int requested_freq;
 };
@@ -82,7 +79,9 @@ static void cpufreq_sched_try_driver_target(struct cpufreq_policy *policy,
 {
 	struct gov_data *gd = policy->governor_data;
 
+	trace_printk("kschedfreq (%d) asks freq=%u", task_pid_nr(gd->task), freq);
 	__cpufreq_driver_target(policy, freq, CPUFREQ_RELATION_L);
+	trace_printk("kschedfreq (%d) done", task_pid_nr(gd->task));
 	gd->throttle = ktime_add_ns(ktime_get(), gd->throttle_nsec);
 }
 
@@ -122,39 +121,40 @@ static int cpufreq_sched_thread(void *data)
 	} else {
 		pr_debug("%s: kthread (%d) set to SCHED_FIFO\n",
 				__func__, gd->task->pid);
+		trace_printk("kschedfreq (%d) set to SCHED_FIFO",
+				task_pid_nr(gd->task));
 	}
 
-	down_write(&policy->rwsem);
-	mutex_lock(&gd->enable_lock);
 
 	while (true) {
-		set_current_state(TASK_INTERRUPTIBLE);
 		if (kthread_should_stop()) {
-			set_current_state(TASK_RUNNING);
+			trace_printk("%s exiting (%d)", gd->task->comm, task_pid_nr(gd->task));
 			break;
 		}
+		down_write(&policy->rwsem);
+		set_current_state(TASK_INTERRUPTIBLE);
 		new_request = gd->requested_freq;
+		trace_printk("kschedfreq (%d) new_request=%u", task_pid_nr(gd->task), new_request);
 		if (!gd->enabled || new_request == last_request) {
-			mutex_unlock(&gd->enable_lock);
+			trace_printk("kschedfreq (%d) goes to sleep: enabled=%d last_request=%d", task_pid_nr(gd->task), gd->enabled, last_request);
 			up_write(&policy->rwsem);
 			schedule();
-			down_write(&policy->rwsem);
-			mutex_lock(&gd->enable_lock);
 		} else {
 			set_current_state(TASK_RUNNING);
 			/*
 			 * if the frequency thread sleeps while waiting to be
 			 * unthrottled, start over to check for a newer request
 			 */
-			if (finish_last_request(gd))
+			if (finish_last_request(gd)) {
+				trace_printk("kschedfreq (%d) last_request done", task_pid_nr(gd->task));
+				up_write(&policy->rwsem);
 				continue;
+			}
 			last_request = new_request;
 			cpufreq_sched_try_driver_target(policy, new_request);
+			up_write(&policy->rwsem);
 		}
 	}
-
-	mutex_unlock(&gd->enable_lock);
-	up_write(&policy->rwsem);
 
 	return 0;
 }
@@ -177,8 +177,10 @@ static void update_fdomain_capacity_request(int cpu)
 	struct gov_data *gd = per_cpu(cpu_gov_data, cpu);
 	unsigned long capacity = 0;
 
-	if (!gd)
+	if (!gd) {
+		trace_printk("cpu=%d: no gov data", cpu);
 		return;
+	}
 
 	/* interrupts already disabled here via rq locked */
 	raw_spin_lock(&gd->fastpath_lock);
@@ -201,25 +203,38 @@ static void update_fdomain_capacity_request(int cpu)
 	 */
 	if (cpufreq_frequency_table_target(policy, policy->freq_table,
 					   freq_new, CPUFREQ_RELATION_L,
-					   &index_new))
+					   &index_new)) {
+		trace_printk("cpu=%d: already at freq_new=%u", cpu, freq_new);
 		goto out;
+	}
 	freq_new = policy->freq_table[index_new].frequency;
 
 	trace_cpufreq_sched_request_opp(cpu, capacity, freq_new,
 					gd->requested_freq);
 
-	if (freq_new == gd->requested_freq)
+	if (freq_new == gd->requested_freq) {
+		trace_printk("%s (%d): already requested freq_new=%u", gd->task->comm, task_pid_nr(gd->task), freq_new);
 		goto out;
+	}
 
 	gd->requested_freq = freq_new;
 
 	if (cpufreq_driver_slow || !down_write_trylock(&policy->rwsem)) {
+			trace_printk("1: kschedfreq:%d (%d) cpu=%d freq_new=%d",
+					cpumask_first(policy->related_cpus), task_pid_nr(gd->task),
+					cpu, freq_new);
 		irq_work_queue_on(&gd->irq_work, cpu);
 	} else if (policy->transition_ongoing ||
 		   ktime_before(ktime_get(), gd->throttle)) {
 		up_write(&policy->rwsem);
+		trace_printk("2: kschedfreq:%d (%d) cpu=%d freq_new=%d",
+				cpumask_first(policy->related_cpus), task_pid_nr(gd->task),
+				cpu, freq_new);
 		irq_work_queue_on(&gd->irq_work, cpu);
 	} else {
+		trace_printk("3: kschedfreq:%d (%d) cpu=%d freq_new=%d",
+				cpumask_first(policy->related_cpus), task_pid_nr(gd->task),
+				cpu, freq_new);
 		cpufreq_sched_try_driver_target(policy, freq_new);
 		up_write(&policy->rwsem);
 	}
@@ -293,13 +308,14 @@ static int cpufreq_sched_policy_init(struct cpufreq_policy *policy)
 	struct gov_data *gd;
 	int ret;
 
+	lockdep_assert_held(&policy->rwsem);
+
 	gd = kzalloc(sizeof(*gd), GFP_KERNEL);
 	if (!gd)
 		return -ENOMEM;
 	policy->governor_data = gd;
 	gd->policy = policy;
 	raw_spin_lock_init(&gd->fastpath_lock);
-	mutex_init(&gd->enable_lock);
 
 	ret = sysfs_create_group(get_governor_parent_kobj(policy),
 				 &sched_freq_sysfs_group);
@@ -320,6 +336,7 @@ static int cpufreq_sched_policy_init(struct cpufreq_policy *policy)
 			       __func__);
 			goto err_sysfs;
 		}
+		trace_printk("init: %s (%d) created", gd->task->comm, task_pid_nr(gd->task));
 		get_task_struct(gd->task);
 		kthread_bind_mask(gd->task, policy->related_cpus);
 		wake_up_process(gd->task);
@@ -339,8 +356,11 @@ static int cpufreq_sched_policy_exit(struct cpufreq_policy *policy)
 {
 	struct gov_data *gd = policy->governor_data;
 
+	lockdep_assert_held(&policy->rwsem);
+
 	/* Stop the schedfreq thread associated with this policy. */
 	if (cpufreq_driver_slow) {
+		trace_printk("exit: stopping %s (%d)", gd->task->comm, task_pid_nr(gd->task));
 		kthread_stop(gd->task);
 		put_task_struct(gd->task);
 	}
@@ -356,6 +376,8 @@ static int cpufreq_sched_start(struct cpufreq_policy *policy)
 	struct gov_data *gd = policy->governor_data;
 	int cpu;
 
+	lockdep_assert_held(&policy->rwsem);
+
 	/*
 	 * The schedfreq static key is managed here so the global schedfreq
 	 * lock must be taken - a per-policy lock such as policy->rwsem is
@@ -364,6 +386,8 @@ static int cpufreq_sched_start(struct cpufreq_policy *policy)
 	mutex_lock(&gov_enable_lock);
 
 	gd->enabled = 1;
+	gd->requested_freq = policy->cur;
+	trace_printk("start: %s (%d) policy enabled", gd->task->comm, task_pid_nr(gd->task));
 
 	/*
 	 * Set up percpu information. Writing the percpu gd pointer will
@@ -374,10 +398,12 @@ static int cpufreq_sched_start(struct cpufreq_policy *policy)
 		       sizeof(struct sched_capacity_reqs));
 		per_cpu(cpu_gov_data, cpu) = gd;
 	}
+	trace_printk("start: %s (%d) per_cpu information setup", gd->task->comm, task_pid_nr(gd->task));
 
 	if (enabled_policies == 0)
 		static_key_slow_inc(&__sched_freq);
 	enabled_policies++;
+	trace_printk("start: %s (%d) enabled_policies=%d", gd->task->comm, task_pid_nr(gd->task), enabled_policies);
 	mutex_unlock(&gov_enable_lock);
 
 	return 0;
@@ -390,6 +416,8 @@ static int cpufreq_sched_stop(struct cpufreq_policy *policy)
 	struct gov_data *gd = policy->governor_data;
 	int cpu;
 
+	lockdep_assert_held(&policy->rwsem);
+
 	/*
 	 * The schedfreq static key is managed here so the global schedfreq
 	 * lock must be taken - a per-policy lock such as policy->rwsem is
@@ -398,18 +426,13 @@ static int cpufreq_sched_stop(struct cpufreq_policy *policy)
 	mutex_lock(&gov_enable_lock);
 
 	/*
-	 * The governor stop path may or may not hold policy->rwsem. There
-	 * must be synchronization with the slow path however.
-	 */
-	mutex_lock(&gd->enable_lock);
-
-	/*
 	 * Stop new entries into the hot path for all CPUs. This will
 	 * potentially affect other policies which are still running but
 	 * this is an infrequent operation.
 	 */
 	static_key_slow_dec(&__sched_freq);
 	enabled_policies--;
+	trace_printk("stop: %s (%d) enabled_policies=%d", gd->task->comm, task_pid_nr(gd->task), enabled_policies);
 
 	/*
 	 * Ensure that all CPUs currently part of this policy are out
@@ -426,13 +449,14 @@ static int cpufreq_sched_stop(struct cpufreq_policy *policy)
 	 */
 	for_each_cpu(cpu, policy->cpus)
 		per_cpu(cpu_gov_data, cpu) = NULL;
+	trace_printk("stop: %s (%d) per_cpu information reset)", gd->task->comm, task_pid_nr(gd->task));
 
 	/* Pause the slow path for this policy. */
 	gd->enabled = 0;
+	trace_printk("stop: %s (%d) policy disabled", gd->task->comm, task_pid_nr(gd->task));
 
 	if (enabled_policies)
 		static_key_slow_inc(&__sched_freq);
-	mutex_unlock(&gd->enable_lock);
 	mutex_unlock(&gov_enable_lock);
 
 	return 0;
