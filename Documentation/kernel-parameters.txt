@@ -1517,6 +1517,10 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 
 	initrd=		[BOOT] Specify the location of the initial ramdisk
 
+	init_cpu_capacity
+			[KNL,ARM] Enables dynamic CPUs capacity benchmarking
+			at boot.
+
 	inport.irq=	[HW] Inport (ATI XL and Microsoft) busmouse driver
 			Format: <irq>
 
