@@ -83,6 +83,23 @@ void init_dl_rq(struct dl_rq *dl_rq)
 #else
 	init_dl_bw(&dl_rq->dl_bw);
 #endif
+	dl_rq->ac_bw = 0;
+}
+
+static inline void sub_ac_bw(struct sched_dl_entity *dl_se,
+			     struct rq *rq)
+{
+	WARN_ON(rq->dl.ac_bw == 0);
+
+	rq->dl.ac_bw -= dl_se->dl_bw;
+	trace_printk("removed dl_bw=%llu from cpu%d: rq ac_bw=%lld", dl_se->dl_bw, cpu_of(rq), rq->dl.ac_bw);
+}
+
+static inline void add_ac_bw(struct sched_dl_entity *dl_se,
+			     struct rq *rq)
+{
+	rq->dl.ac_bw += dl_se->dl_bw;
+	trace_printk("added dl_bw=%llu to cpu%d: rq ac_bw=%lld", dl_se->dl_bw, cpu_of(rq), rq->dl.ac_bw);
 }
 
 #ifdef CONFIG_SMP
@@ -274,12 +291,19 @@ static struct rq *dl_task_offline_migration(struct rq *rq, struct task_struct *p
 		double_lock_balance(rq, later_rq);
 	}
 
+	trace_printk("offline_migration task=%d from_cpu=%d ac_bw=%lld to_cpu=%d ac_bw=%lld",
+			task_pid_nr(p), cpu_of(rq), rq->dl.ac_bw, cpu_of(later_rq), later_rq->dl.ac_bw);
 	/*
 	 * By now the task is replenished and enqueued; migrate it.
 	 */
 	deactivate_task(rq, p, 0);
 	set_task_cpu(p, later_rq->cpu);
 	activate_task(later_rq, p, 0);
+	/*
+	 * rq_offline_dl has already taken care of removing p's dl_bw from
+	 * rq's ac_bw.
+	 */
+	add_ac_bw(&p->dl, later_rq);
 
 	if (!fallback)
 		resched_curr(later_rq);
@@ -506,6 +530,7 @@ static void update_dl_entity(struct sched_dl_entity *dl_se,
 	 */
 	if (dl_se->dl_new) {
 		setup_new_dl_entity(dl_se, pi_se);
+		add_ac_bw(dl_se, rq);
 		return;
 	}
 
@@ -593,7 +618,10 @@ static enum hrtimer_restart dl_task_timer(struct hrtimer *timer)
 	unsigned long flags;
 	struct rq *rq;
 
+
 	rq = task_rq_lock(p, &flags);
+	trace_printk("rep_timer task=%d cpu=%d ac_bw=%lld", task_pid_nr(p),
+			cpu_of(rq), rq->dl.ac_bw);
 
 	/*
 	 * The task might have changed its scheduling policy to something
@@ -625,8 +653,11 @@ static enum hrtimer_restart dl_task_timer(struct hrtimer *timer)
 	 * Spurious timer due to start_dl_timer() race; or we already received
 	 * a replenishment from rt_mutex_setprio().
 	 */
-	if (!dl_se->dl_throttled)
+	if (!dl_se->dl_throttled) {
+		trace_printk("!throttled task=%d cpu=%d ac_bw=%lld", task_pid_nr(p),
+				cpu_of(rq), rq->dl.ac_bw);
 		goto unlock;
+	}
 
 	sched_clock_tick();
 	update_rq_clock(rq);
@@ -646,6 +677,8 @@ static enum hrtimer_restart dl_task_timer(struct hrtimer *timer)
 	 * but do not enqueue -- wait for our wakeup to do that.
 	 */
 	if (!task_on_rq_queued(p)) {
+		trace_printk("!queued task=%d cpu=%d ac_bw=%lld", task_pid_nr(p),
+				cpu_of(rq), rq->dl.ac_bw);
 		replenish_dl_entity(dl_se, dl_se);
 		goto unlock;
 	}
@@ -935,6 +968,9 @@ static void enqueue_task_dl(struct rq *rq, struct task_struct *p, int flags)
 	struct task_struct *pi_task = rt_mutex_get_top_task(p);
 	struct sched_dl_entity *pi_se = &p->dl;
 
+	trace_printk("task=%d cpu=%d ac_bw=%lld", task_pid_nr(p),
+			cpu_of(rq), rq->dl.ac_bw);
+
 	/*
 	 * Use the scheduling parameters of the top pi-waiter
 	 * task if we have one and its (absolute) deadline is
@@ -978,6 +1014,8 @@ static void __dequeue_task_dl(struct rq *rq, struct task_struct *p, int flags)
 
 static void dequeue_task_dl(struct rq *rq, struct task_struct *p, int flags)
 {
+	trace_printk("task=%d cpu=%d ac_bw=%lld", task_pid_nr(p),
+			cpu_of(rq), rq->dl.ac_bw);
 	update_curr_dl(rq);
 	__dequeue_task_dl(rq, p, flags);
 }
@@ -1218,6 +1256,8 @@ static void task_fork_dl(struct task_struct *p)
 static void task_dead_dl(struct task_struct *p)
 {
 	struct dl_bw *dl_b = dl_bw_of(task_cpu(p));
+
+	sub_ac_bw(&p->dl, task_rq(p));
 
 	/*
 	 * Since we are TASK_DEAD we won't slip out of the domain!
@@ -1511,8 +1551,10 @@ retry:
 	}
 
 	deactivate_task(rq, next_task, 0);
+	sub_ac_bw(&next_task->dl, rq);
 	set_task_cpu(next_task, later_rq->cpu);
 	activate_task(later_rq, next_task, 0);
+	add_ac_bw(&next_task->dl, later_rq);
 	ret = 1;
 
 	resched_curr(later_rq);
@@ -1599,8 +1641,10 @@ static void pull_dl_task(struct rq *this_rq)
 			resched = true;
 
 			deactivate_task(src_rq, p, 0);
+			sub_ac_bw(&p->dl, src_rq);
 			set_task_cpu(p, this_cpu);
 			activate_task(this_rq, p, 0);
+			add_ac_bw(&p->dl, this_rq);
 			dmin = p->dl.deadline;
 
 			/* Is there any other task even earlier? */
@@ -1668,6 +1712,8 @@ static void rq_online_dl(struct rq *rq)
 	if (rq->dl.overloaded)
 		dl_set_overload(rq);
 
+	rq->rd->dl_bw.total_bw += rq->dl.ac_bw;
+	trace_printk("added ac_bw=%llu (of cpu%d): total_bw=%llu (%p)", rq->dl.ac_bw, cpu_of(rq), rq->rd->dl_bw.total_bw, rq->rd);
 	cpudl_set_freecpu(&rq->rd->cpudl, rq->cpu);
 	if (rq->dl.dl_nr_running > 0)
 		cpudl_set(&rq->rd->cpudl, rq->cpu, rq->dl.earliest_dl.curr, 1);
@@ -1681,6 +1727,8 @@ static void rq_offline_dl(struct rq *rq)
 
 	cpudl_set(&rq->rd->cpudl, rq->cpu, 0, 0);
 	cpudl_clear_freecpu(&rq->rd->cpudl, rq->cpu);
+	rq->rd->dl_bw.total_bw -= rq->dl.ac_bw;
+	trace_printk("removed ac_bw=%llu (of cpu%d): total_bw=%llu (%p)", rq->dl.ac_bw, cpu_of(rq), rq->rd->dl_bw.total_bw, rq->rd);
 }
 
 void __init init_sched_dl_class(void)
@@ -1704,6 +1752,8 @@ static void switched_from_dl(struct rq *rq, struct task_struct *p)
 	 */
 	if (!start_dl_timer(p))
 		__dl_clear_params(p);
+
+	sub_ac_bw(&p->dl, rq);
 
 	/*
 	 * Since this might be the only -deadline task on the rq,

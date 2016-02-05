@@ -5626,6 +5626,8 @@ static void rq_attach_root(struct rq *rq, struct root_domain *rd)
 	struct root_domain *old_rd = NULL;
 	unsigned long flags;
 
+	trace_printk("cpu=%d rd=%p (%d)", cpu_of(rq), rd, rd == &def_root_domain);
+
 	raw_spin_lock_irqsave(&rq->lock, flags);
 
 	if (rq->rd) {
@@ -6763,10 +6765,14 @@ static int build_sched_domains(const struct cpumask *cpu_map,
 	struct sched_domain *sd;
 	struct s_data d;
 	int i, ret = -ENOMEM;
+	char buf[32];
 
 	alloc_state = __visit_domain_allocation_hell(&d, cpu_map);
 	if (alloc_state != sa_rootdomain)
 		goto error;
+
+	sprintf(buf, "%*pbl", cpumask_pr_args(cpu_map));
+	trace_printk("build map=%s", buf);
 
 	/* Set up domains for cpus specified by the cpu_map. */
 	for_each_cpu(i, cpu_map) {
@@ -6898,7 +6904,10 @@ static int init_sched_domains(const struct cpumask *cpu_map)
 static void detach_destroy_domains(const struct cpumask *cpu_map)
 {
 	int i;
+	char buf[32];
 
+	sprintf(buf, "%*pbl", cpumask_pr_args(cpu_map));
+	trace_printk("destroy map=%s", buf);
 	rcu_read_lock();
 	for_each_cpu(i, cpu_map)
 		cpu_attach_domain(NULL, &def_root_domain, i);
@@ -6962,6 +6971,8 @@ void partition_sched_domains(int ndoms_new, cpumask_var_t doms_new[],
 	new_topology = arch_update_cpu_topology();
 
 	n = doms_new ? ndoms_new : 0;
+
+	trace_printk("ndoms_new=%d", ndoms_new);
 
 	/* Destroy deleted domains */
 	for (i = 0; i < ndoms_cur; i++) {

@@ -520,6 +520,14 @@ struct dl_rq {
 #else
 	struct dl_bw dl_bw;
 #endif
+
+	/*
+	 * ac_bw keeps track of per rq admitted bandwidth. It only changes
+	 * when a new task is admitted, it dies, it changes scheduling policy
+	 * or is migrated to another rq. It is used to correctly save/resore
+	 * total_bw on root_domain changes.
+	 */
+	u64 ac_bw;
 };
 
 #ifdef CONFIG_SMP
