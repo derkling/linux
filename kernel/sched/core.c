@@ -2432,7 +2432,7 @@ static int dl_overflow(struct task_struct *p, int policy,
 	u64 new_bw = dl_policy(policy) ? to_ratio(period, runtime) : 0;
 	int cpus, err = -1;
 
-	if (new_bw == p->dl.dl_bw)
+	if (task_has_dl_policy(p) && new_bw == p->dl.dl_bw)
 		return 0;
 
 	/*
@@ -2445,14 +2445,18 @@ static int dl_overflow(struct task_struct *p, int policy,
 	if (dl_policy(policy) && !task_has_dl_policy(p) &&
 	    !__dl_overflow(dl_b, cpus, 0, new_bw)) {
 		__dl_add(dl_b, new_bw);
+		__dl_add_ac(task_rq(p), new_bw);
 		err = 0;
 	} else if (dl_policy(policy) && task_has_dl_policy(p) &&
 		   !__dl_overflow(dl_b, cpus, p->dl.dl_bw, new_bw)) {
 		__dl_clear(dl_b, p->dl.dl_bw);
+		__dl_sub_ac(task_rq(p), p->dl.dl_bw);
 		__dl_add(dl_b, new_bw);
+		__dl_add_ac(task_rq(p), new_bw);
 		err = 0;
 	} else if (!dl_policy(policy) && task_has_dl_policy(p)) {
 		__dl_clear(dl_b, p->dl.dl_bw);
+		__dl_sub_ac(task_rq(p), p->dl.dl_bw);
 		err = 0;
 	}
 	raw_spin_unlock(&dl_b->lock);
