@@ -83,6 +83,7 @@ void init_dl_rq(struct dl_rq *dl_rq)
 #else
 	init_dl_bw(&dl_rq->dl_bw);
 #endif
+	dl_rq->ac_bw = 0;
 }
 
 #ifdef CONFIG_SMP
@@ -278,8 +279,10 @@ static struct rq *dl_task_offline_migration(struct rq *rq, struct task_struct *p
 	 * By now the task is replenished and enqueued; migrate it.
 	 */
 	deactivate_task(rq, p, 0);
+	__dl_sub_ac(rq, p->dl.dl_bw);
 	set_task_cpu(p, later_rq->cpu);
 	activate_task(later_rq, p, 0);
+	__dl_add_ac(later_rq, p->dl.dl_bw);
 
 	if (!fallback)
 		resched_curr(later_rq);
@@ -597,7 +600,7 @@ static enum hrtimer_restart dl_task_timer(struct hrtimer *timer)
 
 	/*
 	 * The task might have changed its scheduling policy to something
-	 * different than SCHED_DEADLINE (through switched_fromd_dl()).
+	 * different than SCHED_DEADLINE (through switched_from_dl()).
 	 */
 	if (!dl_task(p)) {
 		__dl_clear_params(p);
@@ -955,6 +958,9 @@ static void enqueue_task_dl(struct rq *rq, struct task_struct *p, int flags)
 		return;
 	}
 
+	if (p->on_rq == TASK_ON_RQ_MIGRATING)
+		__dl_add_ac(rq, p->dl.dl_bw);
+
 	/*
 	 * If p is throttled, we do nothing. In fact, if it exhausted
 	 * its budget it needs a replenishment and, since it now is on
@@ -980,6 +986,8 @@ static void dequeue_task_dl(struct rq *rq, struct task_struct *p, int flags)
 {
 	update_curr_dl(rq);
 	__dequeue_task_dl(rq, p, flags);
+	if (p->on_rq == TASK_ON_RQ_MIGRATING)
+		__dl_sub_ac(rq, p->dl.dl_bw);
 }
 
 /*
@@ -1218,6 +1226,8 @@ static void task_fork_dl(struct task_struct *p)
 static void task_dead_dl(struct task_struct *p)
 {
 	struct dl_bw *dl_b = dl_bw_of(task_cpu(p));
+
+	__dl_sub_ac(task_rq(p), p->dl.dl_bw);
 
 	/*
 	 * Since we are TASK_DEAD we won't slip out of the domain!
@@ -1511,8 +1521,10 @@ retry:
 	}
 
 	deactivate_task(rq, next_task, 0);
+	__dl_sub_ac(rq, next_task->dl.dl_bw);
 	set_task_cpu(next_task, later_rq->cpu);
 	activate_task(later_rq, next_task, 0);
+	__dl_add_ac(later_rq, next_task->dl.dl_bw);
 	ret = 1;
 
 	resched_curr(later_rq);
@@ -1599,8 +1611,10 @@ static void pull_dl_task(struct rq *this_rq)
 			resched = true;
 
 			deactivate_task(src_rq, p, 0);
+			__dl_sub_ac(src_rq, p->dl.dl_bw);
 			set_task_cpu(p, this_cpu);
 			activate_task(this_rq, p, 0);
+			__dl_add_ac(this_rq, p->dl.dl_bw);
 			dmin = p->dl.deadline;
 
 			/* Is there any other task even earlier? */
