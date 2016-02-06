@@ -275,6 +275,8 @@ static struct rq *dl_task_offline_migration(struct rq *rq, struct task_struct *p
 		double_lock_balance(rq, later_rq);
 	}
 
+	trace_printk("offline_migration task=%d from_cpu=%d ac_bw=%lld to_cpu=%d ac_bw=%lld",
+			task_pid_nr(p), cpu_of(rq), rq->dl.ac_bw, cpu_of(later_rq), later_rq->dl.ac_bw);
 	/*
 	 * By now the task is replenished and enqueued; migrate it.
 	 */
@@ -597,7 +599,10 @@ static enum hrtimer_restart dl_task_timer(struct hrtimer *timer)
 	unsigned long flags;
 	struct rq *rq;
 
+
 	rq = task_rq_lock(p, &flags);
+	trace_printk("rep_timer task=%d cpu=%d ac_bw=%lld", task_pid_nr(p),
+			cpu_of(rq), rq->dl.ac_bw);
 
 	/*
 	 * The task might have changed its scheduling policy to something
@@ -629,8 +634,11 @@ static enum hrtimer_restart dl_task_timer(struct hrtimer *timer)
 	 * Spurious timer due to start_dl_timer() race; or we already received
 	 * a replenishment from rt_mutex_setprio().
 	 */
-	if (!dl_se->dl_throttled)
+	if (!dl_se->dl_throttled) {
+		trace_printk("!throttled task=%d cpu=%d ac_bw=%lld", task_pid_nr(p),
+				cpu_of(rq), rq->dl.ac_bw);
 		goto unlock;
+	}
 
 	sched_clock_tick();
 	update_rq_clock(rq);
@@ -650,6 +658,8 @@ static enum hrtimer_restart dl_task_timer(struct hrtimer *timer)
 	 * but do not enqueue -- wait for our wakeup to do that.
 	 */
 	if (!task_on_rq_queued(p)) {
+		trace_printk("!queued task=%d cpu=%d ac_bw=%lld", task_pid_nr(p),
+				cpu_of(rq), rq->dl.ac_bw);
 		replenish_dl_entity(dl_se, dl_se);
 		goto unlock;
 	}
@@ -939,6 +949,10 @@ static void enqueue_task_dl(struct rq *rq, struct task_struct *p, int flags)
 	struct task_struct *pi_task = rt_mutex_get_top_task(p);
 	struct sched_dl_entity *pi_se = &p->dl;
 
+	trace_printk("task=%d (%d) cpu=%d ac_bw=%lld flags=%d",
+			task_pid_nr(p), p->on_rq,
+			cpu_of(rq), rq->dl.ac_bw, flags);
+
 	/*
 	 * Use the scheduling parameters of the top pi-waiter
 	 * task if we have one and its (absolute) deadline is
@@ -985,6 +999,9 @@ static void __dequeue_task_dl(struct rq *rq, struct task_struct *p, int flags)
 
 static void dequeue_task_dl(struct rq *rq, struct task_struct *p, int flags)
 {
+	trace_printk("task=%d (%d) cpu=%d ac_bw=%lld flags=%d",
+			task_pid_nr(p), p->on_rq,
+			cpu_of(rq), rq->dl.ac_bw, flags);
 	update_curr_dl(rq);
 	__dequeue_task_dl(rq, p, flags);
 	if (p->on_rq == TASK_ON_RQ_MIGRATING)
@@ -1684,6 +1701,7 @@ static void rq_online_dl(struct rq *rq)
 		dl_set_overload(rq);
 
 	__dl_add(&rq->rd->dl_bw, rq->dl.ac_bw);
+	trace_printk("added ac_bw=%llu (of cpu%d): total_bw=%llu (%p)", rq->dl.ac_bw, cpu_of(rq), rq->rd->dl_bw.total_bw, rq->rd);
 	cpudl_set_freecpu(&rq->rd->cpudl, rq->cpu);
 	if (rq->dl.dl_nr_running > 0)
 		cpudl_set(&rq->rd->cpudl, rq->cpu, rq->dl.earliest_dl.curr, 1);
@@ -1698,6 +1716,7 @@ static void rq_offline_dl(struct rq *rq)
 	cpudl_set(&rq->rd->cpudl, rq->cpu, 0, 0);
 	cpudl_clear_freecpu(&rq->rd->cpudl, rq->cpu);
 	__dl_clear(&rq->rd->dl_bw, rq->dl.ac_bw);
+	trace_printk("removed ac_bw=%llu (of cpu%d): total_bw=%llu (%p)", rq->dl.ac_bw, cpu_of(rq), rq->rd->dl_bw.total_bw, rq->rd);
 }
 
 void __init init_sched_dl_class(void)

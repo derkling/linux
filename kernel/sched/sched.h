@@ -193,12 +193,14 @@ static inline
 void __dl_clear(struct dl_bw *dl_b, u64 tsk_bw)
 {
 	dl_b->total_bw -= tsk_bw;
+	trace_printk("removed dl_bw=%llu: total_bw=%llu", tsk_bw, dl_b->total_bw);
 }
 
 static inline
 void __dl_add(struct dl_bw *dl_b, u64 tsk_bw)
 {
 	dl_b->total_bw += tsk_bw;
+	trace_printk("added dl_bw=%llu: total_bw=%llu", tsk_bw, dl_b->total_bw);
 }
 
 static inline
@@ -735,12 +737,14 @@ void __dl_sub_ac(struct rq *rq, u64 tsk_bw)
 	WARN_ON(rq->dl.ac_bw == 0);
 
 	rq->dl.ac_bw -= tsk_bw;
+	trace_printk("removed tsk_bw=%llu from cpu%d: rq ac_bw=%lld", tsk_bw, cpu_of(rq), rq->dl.ac_bw);
 }
 
 static inline
 void __dl_add_ac(struct rq *rq, u64 tsk_bw)
 {
 	rq->dl.ac_bw += tsk_bw;
+	trace_printk("added tsk_bw=%llu to cpu%d: rq ac_bw=%lld", tsk_bw, cpu_of(rq), rq->dl.ac_bw);
 }
 
 static inline u64 __rq_clock_broken(struct rq *rq)
