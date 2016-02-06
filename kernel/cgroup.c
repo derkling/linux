@@ -664,6 +664,9 @@ static void css_set_move_task(struct task_struct *task,
 {
 	lockdep_assert_held(&css_set_lock);
 
+	trace_printk("moving task=%d from_cset=%p to_cset=%p",
+			task_pid_nr(task), from_cset, to_cset);
+
 	if (from_cset) {
 		struct css_task_iter *it, *pos;
 
@@ -2582,6 +2585,7 @@ static int cgroup_migrate(struct task_struct *leader, bool threadgroup,
 	struct cgroup_taskset tset = CGROUP_TASKSET_INIT(tset);
 	struct task_struct *task;
 
+	trace_printk("migrate task=%d cgrp=%d", task_pid_nr(leader), cgrp->id);
 	/*
 	 * Prevent freeing of tasks while we take a snapshot. Tasks that are
 	 * already PF_EXITING could be freed from underneath us unless we
@@ -2727,6 +2731,7 @@ static ssize_t __cgroup_procs_write(struct kernfs_open_file *of, char *buf,
 	get_task_struct(tsk);
 	rcu_read_unlock();
 
+	trace_printk("attaching task=%d cgrp=%d", task_pid_nr(tsk), cgrp->id);
 	ret = cgroup_procs_write_permission(tsk, cgrp, of);
 	if (!ret)
 		ret = cgroup_attach_task(cgrp, tsk, threadgroup);
