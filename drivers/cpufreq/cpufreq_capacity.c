@@ -172,3 +172,34 @@ void cpufreq_init_cpu_capacity(void)
 
 	pr_info("dynamic CPUs capacity installed\n");
 }
+
+static __init int init_cpu_capacity(void)
+{
+	int cpu;
+	unsigned long long elapsed_min = ULLONG_MAX;
+
+	if (!arch_wants_init_cpu_capacity() || !init_cpu_capacity_enabled)
+		return 1;
+
+	for_each_possible_cpu(cpu) {
+		run_bogus_benchmark(cpu);
+		if (elapsed[cpu] < elapsed_min)
+			elapsed_min = elapsed[cpu];
+		pr_debug("%s: cpu=%d elapsed=%llu (min=%llu)\n",
+				__func__, cpu, elapsed[cpu], elapsed_min);
+	}
+
+	for_each_possible_cpu(cpu) {
+		unsigned long capacity;
+
+		capacity = div64_u64((elapsed_min << 10), elapsed[cpu]);
+		pr_debug("%s: CPU%d capacity=%lu\n", __func__, cpu, capacity);
+		set_capacity_scale(cpu, capacity);
+	}
+
+	pr_info("dynamic CPUs capacity installed\n");
+
+	return 0;
+}
+
+late_initcall(init_cpu_capacity);
