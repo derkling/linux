@@ -49,10 +49,8 @@ static ssize_t show_cpu_capacity(struct device *dev,
 {
 	struct cpu *cpu = container_of(dev, struct cpu, dev);
 	ssize_t rc;
-	int cpunum = cpu->dev.id;
-	unsigned long capacity = arch_scale_cpu_capacity(NULL, cpunum);
 
-	rc = sprintf(buf, "%lu\n", capacity);
+	rc = sprintf(buf, "%lu\n", per_cpu(cpu_scale, cpu->dev.id));
 
 	return rc;
 }
