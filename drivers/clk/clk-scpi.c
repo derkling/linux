@@ -41,6 +41,8 @@ static unsigned long scpi_clk_recalc_rate(struct clk_hw *hw,
 {
 	struct scpi_clk *clk = to_scpi_clk(hw);
 
+	printk("%s\n", __func__);
+
 	return clk->scpi_ops->clk_get_val(clk->id);
 }
 
@@ -60,6 +62,8 @@ static int scpi_clk_set_rate(struct clk_hw *hw, unsigned long rate,
 			     unsigned long parent_rate)
 {
 	struct scpi_clk *clk = to_scpi_clk(hw);
+
+	printk("%s rate=%lu\n", __func__, rate);
 
 	return clk->scpi_ops->clk_set_val(clk->id, rate);
 }
@@ -97,6 +101,8 @@ static unsigned long scpi_dvfs_recalc_rate(struct clk_hw *hw,
 	int idx = clk->scpi_ops->dvfs_get_idx(clk->id);
 	const struct scpi_opp *opp;
 
+	printk("%s\n", __func__);
+
 	if (idx < 0)
 		return 0;
 
@@ -109,6 +115,8 @@ static long scpi_dvfs_round_rate(struct clk_hw *hw, unsigned long rate,
 {
 	struct scpi_clk *clk = to_scpi_clk(hw);
 
+	printk("%s rate=%lu\n", __func__, rate);
+
 	return __scpi_dvfs_round_rate(clk, rate);
 }
 
@@ -117,9 +125,13 @@ static int __scpi_find_dvfs_index(struct scpi_clk *clk, unsigned long rate)
 	int idx, max_opp = clk->info->count;
 	const struct scpi_opp *opp = clk->info->opps;
 
+	printk("%s rate=%lu\n", __func__, rate);
+
 	for (idx = 0; idx < max_opp; idx++, opp++)
-		if (opp->freq == rate)
+		if (opp->freq == rate) {
+			printk("%s return idx=%d\n", __func__, idx);
 			return idx;
+		}
 	return -EINVAL;
 }
 
@@ -128,6 +140,8 @@ static int scpi_dvfs_set_rate(struct clk_hw *hw, unsigned long rate,
 {
 	struct scpi_clk *clk = to_scpi_clk(hw);
 	int ret = __scpi_find_dvfs_index(clk, rate);
+
+	printk("%s rate=%lu\n", __func__, rate);
 
 	if (ret < 0)
 		return ret;
@@ -153,6 +167,8 @@ scpi_clk_ops_init(struct device *dev, const struct of_device_id *match,
 	struct clk_init_data init;
 	struct clk *clk;
 	unsigned long min = 0, max = 0;
+
+	printk("%s name=%s\n", __func__, name);
 
 	init.name = name;
 	init.flags = CLK_IS_ROOT;
