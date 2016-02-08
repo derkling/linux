@@ -1,6 +1,10 @@
 # CPUfreq core
 obj-$(CONFIG_CPU_FREQ)			+= cpufreq.o freq_table.o cpufreq_capacity.o
 
+ CFLAGS_cpufreq.o := -DDEBUG
+ CFLAGS_freq_table.o := -DDEBUG
+ CFLAGS_cpufreq_capacity.o := -DDEBUG
+
 # CPUfreq stats
 obj-$(CONFIG_CPU_FREQ_STAT)             += cpufreq_stats.o
 
