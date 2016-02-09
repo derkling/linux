@@ -15,6 +15,9 @@
  */
 #include <linux/cpufreq.h>
 #include <linux/sched.h>
+#include <linux/cpu.h>
+#include <linux/clk.h>
+#include <linux/clk-provider.h>
 
 #define MAX_TRIALS 10 /* how many times benchmark is executed */
 static unsigned long long elapsed[NR_CPUS];
@@ -173,6 +176,49 @@ void cpufreq_init_cpu_capacity(void)
 	pr_info("dynamic CPUs capacity installed\n");
 }
 
+static DEFINE_PER_CPU(unsigned long, init_rate);
+
+static __init int init_cpu_capacity_set_max_rate(void)
+{
+	int cpu;
+
+	if (!arch_wants_init_cpu_capacity() || !init_cpu_capacity_enabled)
+		return 1;
+
+	for_each_possible_cpu(cpu) {
+		int fcpu, ret;
+		struct clk *clk;
+		unsigned long max_rate;
+
+		fcpu = cpumask_first(topology_core_cpumask(cpu));
+		if (cpu != fcpu)
+			continue;
+
+		clk = clk_get(get_cpu_device(cpu), NULL);
+
+		if (!clk) {
+			printk("%s no clk for cpu=%d\n", __func__, cpu);
+			return 1;
+		}
+
+		per_cpu(init_rate, cpu) = clk_get_rate(clk);
+
+		max_rate = clk_round_rate(clk, ~0UL);
+
+		ret = clk_set_rate(clk, max_rate);
+
+		if (ret) {
+			printk("%s name=%s ret=%d\n", __func__, __clk_get_name(clk), ret);
+			return 1;
+		}
+
+		while (max_rate != clk_get_rate(clk)) {}
+	}
+
+	return 0;
+}
+late_initcall(init_cpu_capacity_set_max_rate);
+
 static __init int init_cpu_capacity(void)
 {
 	int cpu;
@@ -182,11 +228,41 @@ static __init int init_cpu_capacity(void)
 		return 1;
 
 	for_each_possible_cpu(cpu) {
+		int fcpu, ret;
+		struct clk *clk;
+
+		/*
+		 * We profile only first CPU of each cluster (socket);
+		 * and use that value as capacity of every CPU in the domain.
+		 */
+		fcpu = cpumask_first(topology_core_cpumask(cpu));
+		if (cpu != fcpu) {
+			elapsed[cpu] = elapsed[fcpu];
+			continue;
+		}
+
 		run_bogus_benchmark(cpu);
+
 		if (elapsed[cpu] < elapsed_min)
 			elapsed_min = elapsed[cpu];
 		pr_debug("%s: cpu=%d elapsed=%llu (min=%llu)\n",
 				__func__, cpu, elapsed[cpu], elapsed_min);
+
+		clk = clk_get(get_cpu_device(cpu), NULL);
+
+		if (!clk) {
+			printk("%s no clk for cpu=%d\n", __func__, cpu);
+			return 1;
+		}
+
+		ret = clk_set_rate(clk, per_cpu(init_rate, cpu));
+
+		if (ret) {
+			printk("%s name=%s ret=%d\n", __func__, __clk_get_name(clk), ret);
+			return 1;
+		}
+
+		while (per_cpu(init_rate, cpu) != clk_get_rate(clk)) {}
 	}
 
 	for_each_possible_cpu(cpu) {
@@ -202,4 +278,4 @@ static __init int init_cpu_capacity(void)
 	return 0;
 }
 
-late_initcall(init_cpu_capacity);
+late_initcall_sync(init_cpu_capacity);
