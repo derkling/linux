@@ -4286,8 +4286,10 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	if (!se) {
 		add_nr_running(rq, 1);
 		if (!task_new && !rq->rd->overutilized &&
-		    cpu_overutilized(rq->cpu))
+		    cpu_overutilized(rq->cpu)) {
 			rq->rd->overutilized = true;
+			trace_sched_overutilized(true);
+		}
 
 		schedtune_enqueue_task(p, cpu_of(rq));
 
@@ -7399,12 +7401,17 @@ next_group:
 			env->dst_rq->rd->overload = overload;
 
 		/* Update over-utilization (tipping point, U >= 0) indicator */
-		if (env->dst_rq->rd->overutilized != overutilized)
+		if (env->dst_rq->rd->overutilized != overutilized) {
 			env->dst_rq->rd->overutilized = overutilized;
+			trace_sched_overutilized(overutilized);
+		}
 	} else {
-		if (!env->dst_rq->rd->overutilized && overutilized)
+		if (!env->dst_rq->rd->overutilized && overutilized) {
 			env->dst_rq->rd->overutilized = true;
+			trace_sched_overutilized(true);
+		}
 	}
+
 }
 
 /**
@@ -8809,8 +8816,10 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 	if (static_branch_unlikely(&sched_numa_balancing))
 		task_tick_numa(rq, curr);
 
-	if (!rq->rd->overutilized && cpu_overutilized(task_cpu(curr)))
+	if (!rq->rd->overutilized && cpu_overutilized(task_cpu(curr))) {
 		rq->rd->overutilized = true;
+		trace_sched_overutilized(true);
+	}
 }
 
 /*
