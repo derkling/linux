@@ -189,7 +189,7 @@ static void od_check_cpu(int cpu, unsigned int load)
 	}
 }
 
-static unsigned int od_dbs_timer(struct cpufreq_policy *policy, bool modify_all)
+static unsigned int od_dbs_timer(struct cpufreq_policy *policy)
 {
 	struct dbs_data *dbs_data = policy->governor_data;
 	unsigned int cpu = policy->cpu;
@@ -197,9 +197,6 @@ static unsigned int od_dbs_timer(struct cpufreq_policy *policy, bool modify_all)
 			cpu);
 	struct od_dbs_tuners *od_tuners = dbs_data->tuners;
 	int delay = 0, sample_type = dbs_info->sample_type;
-
-	if (!modify_all)
-		goto max_delay;
 
 	/* Common NORMAL_SAMPLE setup */
 	dbs_info->sample_type = OD_NORMAL_SAMPLE;
@@ -216,7 +213,6 @@ static unsigned int od_dbs_timer(struct cpufreq_policy *policy, bool modify_all)
 		}
 	}
 
-max_delay:
 	if (!delay)
 		delay = delay_for_sampling_rate(od_tuners->sampling_rate
 				* dbs_info->rate_mult);
@@ -244,36 +240,69 @@ static void update_sampling_rate(struct dbs_data *dbs_data,
 		unsigned int new_rate)
 {
 	struct od_dbs_tuners *od_tuners = dbs_data->tuners;
+	struct cpumask cpumask;
 	int cpu;
 
 	od_tuners->sampling_rate = new_rate = max(new_rate,
 			dbs_data->min_sampling_rate);
 
-	for_each_online_cpu(cpu) {
+	/*
+	 * Lock governor so that governor start/stop can't execute in parallel.
+	 */
+	mutex_lock(&od_dbs_cdata.mutex);
+
+	cpumask_copy(&cpumask, cpu_online_mask);
+
+	for_each_cpu(cpu, &cpumask) {
 		struct cpufreq_policy *policy;
 		struct od_cpu_dbs_info_s *dbs_info;
-		unsigned long next_sampling, appointed_at;
+		struct cpu_dbs_info *cdbs;
+		struct cpu_common_dbs_info *shared;
 
-		policy = cpufreq_cpu_get(cpu);
-		if (!policy)
-			continue;
-		if (policy->governor != &cpufreq_gov_ondemand) {
-			cpufreq_cpu_put(policy);
-			continue;
-		}
 		dbs_info = &per_cpu(od_cpu_dbs_info, cpu);
-		cpufreq_cpu_put(policy);
+		cdbs = &dbs_info->cdbs;
+		shared = cdbs->shared;
 
-		if (!delayed_work_pending(&dbs_info->cdbs.dwork))
+		/*
+		 * A valid shared and shared->policy means governor hasn't
+		 * stopped or exited yet.
+		 */
+		if (!shared || !shared->policy)
 			continue;
 
-		next_sampling = jiffies + usecs_to_jiffies(new_rate);
-		appointed_at = dbs_info->cdbs.timer.expires;
+		policy = shared->policy;
 
-		if (time_before(next_sampling, appointed_at)) {
-			gov_cancel_work(shared);
-			gov_add_timers(policy, usecs_to_jiffies(new_rate));
+		/* clear all CPUs of this policy */
+		cpumask_andnot(&cpumask, &cpumask, policy->cpus);
 
+		/*
+		 * Update sampling rate for CPUs whose policy is governed by
+		 * dbs_data. In case of governor_per_policy, only a single
+		 * policy will be governed by dbs_data, otherwise there can be
+		 * multiple policies that are governed by the same dbs_data.
+		 */
+		if (dbs_data == policy->governor_data) {
+			mutex_lock(&shared->timer_mutex);
+			/*
+			 * On 32-bit architectures this may race with the
+			 * sample_delay_ns read in dbs_update_util_handler(),
+			 * but that really doesn't matter.  If the read returns
+			 * a value that's too big, the sample will be skipped,
+			 * but the next invocation of dbs_update_util_handler()
+			 * (when the update has been completed) will take a
+			 * sample.  If the returned value is too small, the
+			 * sample will be taken immediately, but that isn't a
+			 * problem, as we want the new rate to take effect
+			 * immediately anyway.
+			 *
+			 * If this runs in parallel with dbs_work_handler(), we
+			 * may end up overwriting the sample_delay_ns value that
+			 * it has just written, but the difference should not be
+			 * too big and it will be corrected next time a sample
+			 * is taken, so it shouldn't be significant.
+			 */
+			gov_update_sample_delay(shared, new_rate);
+			mutex_unlock(&shared->timer_mutex);
 		}
 	}
 }
