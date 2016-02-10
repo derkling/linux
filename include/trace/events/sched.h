@@ -241,7 +241,7 @@ DECLARE_EVENT_CLASS(sched_process_template,
 DEFINE_EVENT(sched_process_template, sched_process_free,
 	     TP_PROTO(struct task_struct *p),
 	     TP_ARGS(p));
-	     
+
 
 /*
  * Tracepoint for a task exiting:
@@ -824,6 +824,27 @@ TRACE_EVENT(sched_compute_energy,
 	TP_printk("comm=%s pid=%d prev_cpu=%d dst_cpu=%d energy=%lu",
 			__entry->comm, __entry->pid, __entry->prev_cpu,
 			__entry->dst_cpu, __entry->energy)
+);
+
+/*
+ * Tracepoint for system overutilized flag.
+ */
+TRACE_EVENT(sched_overutilized,
+
+	TP_PROTO(int overutilized),
+
+	TP_ARGS(overutilized),
+
+	TP_STRUCT__entry(
+		__field(int,  overutilized)
+	),
+
+	TP_fast_assign(
+		__entry->overutilized = overutilized;
+	),
+
+	TP_printk("overutilized=%d",
+		  __entry->overutilized)
 );
 #endif /* CONFIG_SMP */
 
