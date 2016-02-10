@@ -566,6 +566,7 @@ void print_dl_rq(struct seq_file *m, int cpu, struct dl_rq *dl_rq)
 
 	SEQ_printf(m, "\ndl_rq[%d]:\n", cpu);
 	SEQ_printf(m, "  .%-30s: %ld\n", "dl_nr_running", dl_rq->dl_nr_running);
+	SEQ_printf(m, "  .%-30s: %lld\n", "ac_bw", dl_rq->ac_bw);
 #ifdef CONFIG_SMP
 	dl_bw = &cpu_rq(cpu)->rd->dl_bw;
 #else
