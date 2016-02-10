@@ -6332,29 +6332,11 @@ static inline void check_sched_energy_data(int cpu, sched_domain_energy_f fn,
 	struct cpumask mask;
 	int i;
 
-	if (cpumask_weight(cpumask) <= 1)
-		return;
+	if (cpumask_weight(cpumask) > 1) {
+		cpumask_xor(&mask, cpumask, get_cpu_mask(cpu));
 
-	cpumask_xor(&mask, cpumask, get_cpu_mask(cpu));
-
-	for_each_cpu(i, &mask) {
-		const struct sched_group_energy * const e = fn(i);
-		int y;
-
-		BUG_ON(e->nr_idle_states != sge->nr_idle_states);
-
-		for (y = 0; y < (e->nr_idle_states); y++) {
-			BUG_ON(e->idle_states[y].power !=
-					sge->idle_states[y].power);
-		}
-
-		BUG_ON(e->nr_cap_states != sge->nr_cap_states);
-
-		for (y = 0; y < (e->nr_cap_states); y++) {
-			BUG_ON(e->cap_states[y].cap != sge->cap_states[y].cap);
-			BUG_ON(e->cap_states[y].power !=
-					sge->cap_states[y].power);
-		}
+		for_each_cpu(i, &mask)
+			BUG_ON(sge != fn(i));
 	}
 }
 
