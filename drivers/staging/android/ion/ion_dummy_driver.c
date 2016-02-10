@@ -66,7 +66,14 @@ static struct ion_platform_heap dummy_heaps[] = {
 			.type   = ION_HEAP_TYPE_DMA,
 			.name   = "ion_dma_heap",
 			.priv   = &dummy_device_ion.dev,
-		}
+		},
+		{
+			.id	= ION_HEAP_TYPE_SECURE_MEMORY,
+			.type	= ION_HEAP_TYPE_CARVEOUT,
+			.name	= "secure",
+			.size	= SZ_256M,
+			.base	= 0x880000000UL,
+		},
 };
 
 static struct ion_platform_data dummy_ion_pdata = {
