@@ -1034,11 +1034,16 @@ void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
 {
 	struct rq *rq = task_rq(p);
 	bool queued, running;
+	char buf[32];
 
 	lockdep_assert_held(&p->pi_lock);
 
 	queued = task_on_rq_queued(p);
 	running = task_current(rq, p);
+
+	sprintf(buf, "%*pbl", cpumask_pr_args(new_mask));
+	trace_printk("task=%d queued=%d running=%d new_mask=%s", task_pid_nr(p), queued,
+			running, buf);
 
 	if (queued) {
 		/*
@@ -1104,6 +1109,7 @@ static int __set_cpus_allowed_ptr(struct task_struct *p,
 	dest_cpu = cpumask_any_and(cpu_active_mask, new_mask);
 	if (task_running(rq, p) || p->state == TASK_WAKING) {
 		struct migration_arg arg = { p, dest_cpu };
+		trace_printk("task=%d running or waking", task_pid_nr(p));
 		/* Need help from migration thread: drop lock and wait. */
 		task_rq_unlock(rq, p, &flags);
 		stop_one_cpu(cpu_of(rq), migration_cpu_stop, &arg);
@@ -1114,6 +1120,7 @@ static int __set_cpus_allowed_ptr(struct task_struct *p,
 		 * OK, since we're going to drop the lock immediately
 		 * afterwards anyway.
 		 */
+		trace_printk("task=%d move queued", task_pid_nr(p));
 		lockdep_unpin_lock(&rq->lock);
 		rq = move_queued_task(rq, p, dest_cpu);
 		lockdep_pin_lock(&rq->lock);
@@ -1428,6 +1435,8 @@ static int select_fallback_rq(int cpu, struct task_struct *p)
 	enum { cpuset, possible, fail } state = cpuset;
 	int dest_cpu;
 
+	trace_printk("task=%d selecting fallback", task_pid_nr(p));
+
 	/*
 	 * If the node that the cpu is on has been offlined, cpu_to_node()
 	 * will return -1. There is no cpu on the node, and we should
@@ -1443,8 +1452,10 @@ static int select_fallback_rq(int cpu, struct task_struct *p)
 			if (!cpu_active(dest_cpu))
 				continue;
 			if (cpumask_test_cpu(dest_cpu, tsk_cpus_allowed(p))) {
+				trace_printk("task=%d falls back to %d", task_pid_nr(p), dest_cpu);
 				p->fallback_cpu = dest_cpu;
 				return dest_cpu;
+			}
 		}
 	}
 
@@ -1491,6 +1502,7 @@ out:
 		}
 	}
 
+	trace_printk("task=%d fallback to %d", task_pid_nr(p), dest_cpu);
 	p->fallback_cpu = dest_cpu;
 	return dest_cpu;
 }
