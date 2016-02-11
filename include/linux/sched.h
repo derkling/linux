@@ -1401,6 +1401,7 @@ struct task_struct {
 	struct task_struct *last_wakee;
 
 	int wake_cpu;
+	int fallback_cpu;
 #endif
 	int on_rq;
 

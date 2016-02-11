@@ -1026,6 +1026,24 @@ static void yield_task_dl(struct rq *rq)
 
 #ifdef CONFIG_SMP
 
+/*
+ * Move a task's dl_bw contribution between two cpus atomically.
+ */
+static void move_task_ac_bw(struct task_struct *p,
+			    struct rq *from,
+			    struct rq *to)
+{
+	unsigned long flags;
+
+	lockdep_assert_held(&p->pi_lock);
+	local_irq_save(flags);
+	double_rq_lock(from, to);
+	__dl_sub_ac(from, p->dl.dl_bw);
+	__dl_add_ac(to, p->dl.dl_bw);
+	double_rq_unlock(from, to);
+	local_irq_restore(flags);
+}
+
 static int find_later_rq(struct task_struct *task);
 
 static int
@@ -1060,8 +1078,14 @@ select_task_rq_dl(struct task_struct *p, int cpu, int sd_flag, int flags)
 		if (target != -1 &&
 				(dl_time_before(p->dl.deadline,
 					cpu_rq(target)->dl.earliest_dl.curr) ||
-				(cpu_rq(target)->dl.dl_nr_running == 0)))
+				(cpu_rq(target)->dl.dl_nr_running == 0))) {
 			cpu = target;
+			/*
+			 * We didn't remove p's dl_bw from its cpu when it
+			 * went to sleep. Let's do it now.
+			 */
+			move_task_ac_bw(p, rq, cpu_rq(target));
+		}
 	}
 	rcu_read_unlock();
 
@@ -1786,6 +1810,24 @@ static void prio_changed_dl(struct rq *rq, struct task_struct *p,
 		switched_to_dl(rq, p);
 }
 
+#ifdef CONFIG_SMP
+static void migrate_task_rq_dl(struct task_struct *p)
+{
+	/*
+	 * p->fallback_cpu is set by kernel/core.c:select_fallback_rq()
+	 * and reset by ttwu() after set_task_cpu().
+	 */
+	if (p->fallback_cpu != -1)
+		/*
+		 * We didn't remove p's dl_bw from its cpu when it went to
+		 * sleep, and its cpus_allowed mask is changed in the
+		 * meantime. Let's move its contribution now that we know to
+		 * which cpu it will fallback.
+		 */
+		move_task_ac_bw(p, task_rq(p), cpu_rq(p->fallback_cpu));
+}
+#endif /* CONFIG_SMP */
+
 const struct sched_class dl_sched_class = {
 	.next			= &rt_sched_class,
 	.enqueue_task		= enqueue_task_dl,
@@ -1799,6 +1841,7 @@ const struct sched_class dl_sched_class = {
 
 #ifdef CONFIG_SMP
 	.select_task_rq		= select_task_rq_dl,
+	.migrate_task_rq	= migrate_task_rq_dl,
 	.set_cpus_allowed       = set_cpus_allowed_dl,
 	.rq_online              = rq_online_dl,
 	.rq_offline             = rq_offline_dl,

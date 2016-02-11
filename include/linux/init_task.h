@@ -22,6 +22,13 @@
 # define INIT_PUSHABLE_TASKS(tsk)
 #endif
 
+#ifdef CONFIG_SMP
+# define INIT_FALLBACK_CPU(tsk)						\
+	.fallback_cpu	= -1,
+#else
+# define INIT_FALLBACK_CPU(tsk)
+#endif
+
 extern struct files_struct init_files;
 extern struct fs_struct init_fs;
 
@@ -213,6 +220,7 @@ extern struct task_group root_task_group;
 	},								\
 	.tasks		= LIST_HEAD_INIT(tsk.tasks),			\
 	INIT_PUSHABLE_TASKS(tsk)					\
+	INIT_FALLBACK_CPU(tsk)						\
 	INIT_CGROUP_SCHED(tsk)						\
 	.ptraced	= LIST_HEAD_INIT(tsk.ptraced),			\
 	.ptrace_entry	= LIST_HEAD_INIT(tsk.ptrace_entry),		\
