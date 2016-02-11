@@ -1043,6 +1043,21 @@ static void yield_task_dl(struct rq *rq)
 
 #ifdef CONFIG_SMP
 
+static void swap_task_ac_bw(struct task_struct *p,
+			    struct rq *from,
+			    struct rq *to)
+{
+	unsigned long flags;
+
+	lockdep_assert_held(&p->pi_lock);
+	local_irq_save(flags);
+	double_rq_lock(from, to);
+	__dl_sub_ac(from, p->dl.dl_bw);
+	__dl_add_ac(to, p->dl.dl_bw);
+	double_rq_unlock(from, to);
+	local_irq_restore(flags);
+}
+
 static int find_later_rq(struct task_struct *task);
 
 static int
@@ -1077,8 +1092,10 @@ select_task_rq_dl(struct task_struct *p, int cpu, int sd_flag, int flags)
 		if (target != -1 &&
 				(dl_time_before(p->dl.deadline,
 					cpu_rq(target)->dl.earliest_dl.curr) ||
-				(cpu_rq(target)->dl.dl_nr_running == 0)))
+				(cpu_rq(target)->dl.dl_nr_running == 0))) {
 			cpu = target;
+			swap_task_ac_bw(p, rq, cpu_rq(target));
+		}
 	}
 	rcu_read_unlock();
 
@@ -1807,6 +1824,14 @@ static void prio_changed_dl(struct rq *rq, struct task_struct *p,
 		switched_to_dl(rq, p);
 }
 
+#ifdef CONFIG_SMP
+static void migrate_task_rq_dl(struct task_struct *p)
+{
+	if (p->fallback_cpu != -1)
+		swap_task_ac_bw(p, task_rq(p), cpu_rq(p->fallback_cpu));
+}
+#endif /* CONFIG_SMP */
+
 const struct sched_class dl_sched_class = {
 	.next			= &rt_sched_class,
 	.enqueue_task		= enqueue_task_dl,
@@ -1820,6 +1845,7 @@ const struct sched_class dl_sched_class = {
 
 #ifdef CONFIG_SMP
 	.select_task_rq		= select_task_rq_dl,
+	.migrate_task_rq	= migrate_task_rq_dl,
 	.set_cpus_allowed       = set_cpus_allowed_dl,
 	.rq_online              = rq_online_dl,
 	.rq_offline             = rq_offline_dl,

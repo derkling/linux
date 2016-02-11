@@ -1442,7 +1442,8 @@ static int select_fallback_rq(int cpu, struct task_struct *p)
 				continue;
 			if (!cpu_active(dest_cpu))
 				continue;
-			if (cpumask_test_cpu(dest_cpu, tsk_cpus_allowed(p)))
+			if (cpumask_test_cpu(dest_cpu, tsk_cpus_allowed(p))) {
+				p->fallback_cpu = dest_cpu;
 				return dest_cpu;
 		}
 	}
@@ -1490,6 +1491,7 @@ out:
 		}
 	}
 
+	p->fallback_cpu = dest_cpu;
 	return dest_cpu;
 }
 
@@ -1954,6 +1956,7 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 	if (task_cpu(p) != cpu) {
 		wake_flags |= WF_MIGRATED;
 		set_task_cpu(p, cpu);
+		p->fallback_cpu = -1;
 	}
 #endif /* CONFIG_SMP */
 
