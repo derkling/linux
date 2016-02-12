@@ -79,3 +79,8 @@ SCHED_FEAT(ENERGY_AWARE, false)
  * UtilEstimation. Use estimated CPU utiliation.
  */
 SCHED_FEAT(UTIL_EST, false)
+
+/*
+ * UtilEstimation. Cap util estimation of SCHED_LOAD_SCALE
+ */
+SCHED_FEAT(CAP_UTIL_EST, true)

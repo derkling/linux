@@ -2809,6 +2809,11 @@ static inline bool use_util_est(void)
 	return sched_feat(UTIL_EST);
 }
 
+static inline bool cap_util_est(void)
+{
+	return sched_feat(CAP_UTIL_EST);
+}
+
 static unsigned long task_util_est(struct task_struct *p);
 
 /* Update task and its cfs_rq load average */
@@ -2832,7 +2837,7 @@ static inline void update_load_avg(struct sched_entity *se, int update_tg)
 	/* Update task estimated utilization */
 	if (se->avg.util_est < se->avg.util_avg) {
 		cfs_rq->avg.util_est += (se->avg.util_avg - se->avg.util_est);
-		if (cfs_rq->avg.util_est > SCHED_CAPACITY_SCALE)
+		if (cap_util_est() && cfs_rq->avg.util_est > SCHED_CAPACITY_SCALE)
 			cfs_rq->avg.util_est = SCHED_CAPACITY_SCALE;
 		se->avg.util_est = se->avg.util_avg;
 	}
@@ -4317,7 +4322,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 	/* Update RQ estimated utilization */
 	cfs_rq->avg.util_est += task_util_est(p);
-	if (cfs_rq->avg.util_est > SCHED_CAPACITY_SCALE)
+	if (cap_util_est() && cfs_rq->avg.util_est > SCHED_CAPACITY_SCALE)
 		cfs_rq->avg.util_est = SCHED_CAPACITY_SCALE;
 
 	hrtick_update(rq);
