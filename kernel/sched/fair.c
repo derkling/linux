@@ -2836,10 +2836,35 @@ static inline void update_load_avg(struct sched_entity *se, int update_tg)
 
 	/* Update task estimated utilization */
 	if (se->avg.util_est < se->avg.util_avg) {
+
+		trace_printk("evt=util_est_rq step=pre pid=%d comm=%s cpu=%d rq=%p event=update t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+			task_of(se)->pid, task_of(se)->comm,
+			task_cpu(task_of(se)), cfs_rq,
+			se->avg.util_avg, se->avg.util_est,
+			cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
 		cfs_rq->avg.util_est += (se->avg.util_avg - se->avg.util_est);
-		if (cap_util_est() && cfs_rq->avg.util_est > SCHED_CAPACITY_SCALE)
+		if (cap_util_est() && cfs_rq->avg.util_est > SCHED_CAPACITY_SCALE) {
+			trace_printk("evt=util_est_rq step=cap_up pid=%d comm=%s cpu=%d rq=%p event=attach t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+					task_of(se)->pid, task_of(se)->comm,
+					task_cpu(task_of(se)), cfs_rq,
+					task_of(se)->se.avg.util_avg, task_of(se)->se.avg.util_est,
+					cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
 			cfs_rq->avg.util_est = SCHED_CAPACITY_SCALE;
+		} else {
+			trace_printk("evt=util_est_rq step=pst pid=%d comm=%s cpu=%d rq=%p event=update t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+				task_of(se)->pid, task_of(se)->comm,
+				task_cpu(task_of(se)), cfs_rq,
+				se->avg.util_avg, se->avg.util_est,
+				cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
+		}
+
+		trace_printk("evt=util_est_se step=pre pid=%d comm=%s event=updated avg=%lu est=%lu",
+			task_of(se)->pid, task_of(se)->comm,
+			se->avg.util_avg, se->avg.util_est);
 		se->avg.util_est = se->avg.util_avg;
+		trace_printk("evt=util_est_se step=pst pid=%d comm=%s event=updated avg=%lu est=%lu",
+			task_of(se)->pid, task_of(se)->comm,
+			se->avg.util_avg, se->avg.util_est);
 	}
 
 	if (!entity_is_task(se))
@@ -4332,9 +4357,26 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	cfs_rq = &(task_rq(p)->cfs);
 
 	/* Update RQ estimated utilization */
+	trace_printk("evt=util_est_rq step=pre pid=%d comm=%s cpu=%d rq=%p event=enqueue t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+			p->pid, p->comm,
+			task_cpu(p), cfs_rq,
+			p->se.avg.util_avg, p->se.avg.util_est,
+			cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
 	cfs_rq->avg.util_est += task_util_est(p);
-	if (cap_util_est() && cfs_rq->avg.util_est > SCHED_CAPACITY_SCALE)
+	if (cap_util_est() && cfs_rq->avg.util_est > SCHED_CAPACITY_SCALE) {
+		trace_printk("evt=util_est_rq step=cap_up pid=%d comm=%s cpu=%d rq=%p event=enqueue t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+				p->pid, p->comm,
+				task_cpu(p), cfs_rq,
+				p->se.avg.util_avg, p->se.avg.util_est,
+				cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
 		cfs_rq->avg.util_est = SCHED_CAPACITY_SCALE;
+	} else {
+		trace_printk("evt=util_est_rq step=pst pid=%d comm=%s cpu=%d rq=%p event=enqueue t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+				p->pid, p->comm,
+				task_cpu(p), cfs_rq,
+				p->se.avg.util_avg, p->se.avg.util_est,
+				cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
+	}
 
 	hrtick_update(rq);
 }
@@ -4417,15 +4459,37 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	cfs_rq = &(task_rq(p)->cfs);
 
 	/* Update RQ estimated utilization */
-	if (cfs_rq->avg.util_est >= task_util_est(p))
+	trace_printk("evt=util_est_rq step=pre pid=%d comm=%s cpu=%d rq=%p event=dequeue t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+			p->pid, p->comm,
+			task_cpu(p), cfs_rq,
+			p->se.avg.util_avg, p->se.avg.util_est,
+			cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
+	if (cfs_rq->avg.util_est >= task_util_est(p)) {
 		cfs_rq->avg.util_est -= task_util_est(p);
-	else
+		trace_printk("evt=util_est_rq step=pst pid=%d comm=%s cpu=%d rq=%p event=dequeue t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+				p->pid, p->comm,
+				task_cpu(p), cfs_rq,
+				p->se.avg.util_avg, p->se.avg.util_est,
+				cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
+	} else {
 		cfs_rq->avg.util_est = 0;
-
+		trace_printk("evt=util_est_rq step=cap_dw pid=%d comm=%s cpu=%d rq=%p event=dequeue t_avg=%lu t_est=%lu q_avg=%lu q_est=%lu",
+				p->pid, p->comm,
+				task_cpu(p), cfs_rq,
+				p->se.avg.util_avg, p->se.avg.util_est,
+				cfs_rq->avg.util_avg, cfs_rq->avg.util_est);
+	}
 
 	/* Update estimated utilization */
-	if (task_sleep)
+	if (task_sleep) {
+		trace_printk("evt=util_est_se step=pre pid=%d comm=%s event=dequeue avg=%lu est=%lu",
+				p->pid, p->comm,
+				p->se.avg.util_avg, p->se.avg.util_est);
 		p->se.avg.util_est = p->se.avg.util_avg;
+		trace_printk("evt=util_est_se step=pst pid=%d comm=%s event=dequeue avg=%lu est=%lu",
+				p->pid, p->comm,
+				p->se.avg.util_avg, p->se.avg.util_est);
+	}
 
 	/* Update plots for Task and CPU estimated utilization */
 	trace_sched_load_avg_task(p, &p->se.avg);
