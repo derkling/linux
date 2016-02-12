@@ -2823,6 +2823,15 @@ static inline void update_load_avg(struct sched_entity *se, int update_tg)
 
 	if (update_cfs_rq_load_avg(now, cfs_rq) && update_tg)
 		update_tg_load_avg(cfs_rq, 0);
+
+	/* Update task estimated utilization */
+	if (se->avg.util_est < se->avg.util_avg) {
+		cfs_rq->avg.util_est += (se->avg.util_avg - se->avg.util_est);
+		if (cfs_rq->avg.util_est > SCHED_CAPACITY_SCALE)
+			cfs_rq->avg.util_est = SCHED_CAPACITY_SCALE;
+		se->avg.util_est = se->avg.util_avg;
+	}
+
 }
 
 static void attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se)
@@ -4299,6 +4308,9 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 	/* Update RQ estimated utilization */
 	cfs_rq->avg.util_est += task_util_est(p);
+	if (cfs_rq->avg.util_est > SCHED_CAPACITY_SCALE)
+		cfs_rq->avg.util_est = SCHED_CAPACITY_SCALE;
+
 	hrtick_update(rq);
 }
 
@@ -4379,7 +4391,14 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	cfs_rq = &(task_rq(p)->cfs);
 
 	/* Update RQ estimated utilization */
-	cfs_rq->avg.util_est -= task_util_est(p);
+	/* Maybe this check can be avoided if we are more smart on
+	 * tracking movements of tasks between RQs.
+	 */
+	if (cfs_rq->avg.util_est >= task_util_est(p))
+		cfs_rq->avg.util_est -= task_util_est(p);
+	else
+		cfs_rq->avg.util_est = 0;
+
 
 	/* Update estimated utilization */
 	if (task_sleep)
