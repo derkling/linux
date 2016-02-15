@@ -66,8 +66,8 @@ static int should_io_be_busy(void)
 
 /*
  * Find right freq to be set now with powersave_bias on.
- * Returns the freq_hi to be used right now and will set freq_hi_jiffies,
- * freq_lo, and freq_lo_jiffies in percpu area for averaging freqs.
+ * Returns the freq_hi to be used right now and will set freq_hi_delay_us,
+ * freq_lo, and freq_lo_delay_us in percpu area for averaging freqs.
  */
 static unsigned int generic_powersave_bias_target(struct cpufreq_policy *policy,
 		unsigned int freq_next, unsigned int relation)
@@ -75,7 +75,7 @@ static unsigned int generic_powersave_bias_target(struct cpufreq_policy *policy,
 	unsigned int freq_req, freq_reduc, freq_avg;
 	unsigned int freq_hi, freq_lo;
 	unsigned int index = 0;
-	unsigned int jiffies_total, jiffies_hi, jiffies_lo;
+	unsigned int delay_hi_us;
 	struct od_cpu_dbs_info_s *dbs_info = &per_cpu(od_cpu_dbs_info,
 						   policy->cpu);
 	struct policy_dbs_info *policy_dbs = policy->governor_data;
@@ -84,7 +84,7 @@ static unsigned int generic_powersave_bias_target(struct cpufreq_policy *policy,
 
 	if (!dbs_info->freq_table) {
 		dbs_info->freq_lo = 0;
-		dbs_info->freq_lo_jiffies = 0;
+		dbs_info->freq_lo_delay_us = 0;
 		return freq_next;
 	}
 
@@ -107,17 +107,15 @@ static unsigned int generic_powersave_bias_target(struct cpufreq_policy *policy,
 	/* Find out how long we have to be in hi and lo freqs */
 	if (freq_hi == freq_lo) {
 		dbs_info->freq_lo = 0;
-		dbs_info->freq_lo_jiffies = 0;
+		dbs_info->freq_lo_delay_us = 0;
 		return freq_lo;
 	}
-	jiffies_total = usecs_to_jiffies(dbs_data->sampling_rate);
-	jiffies_hi = (freq_avg - freq_lo) * jiffies_total;
-	jiffies_hi += ((freq_hi - freq_lo) / 2);
-	jiffies_hi /= (freq_hi - freq_lo);
-	jiffies_lo = jiffies_total - jiffies_hi;
+	delay_hi_us = (freq_avg - freq_lo) * dbs_data->sampling_rate;
+	delay_hi_us += (freq_hi - freq_lo) / 2;
+	delay_hi_us /= freq_hi - freq_lo;
+	dbs_info->freq_hi_delay_us = delay_hi_us;
 	dbs_info->freq_lo = freq_lo;
-	dbs_info->freq_lo_jiffies = jiffies_lo;
-	dbs_info->freq_hi_jiffies = jiffies_hi;
+	dbs_info->freq_lo_delay_us = dbs_data->sampling_rate - delay_hi_us;
 	return freq_hi;
 }
 
@@ -194,7 +192,7 @@ static unsigned int od_dbs_timer(struct cpufreq_policy *policy)
 	struct policy_dbs_info *policy_dbs = policy->governor_data;
 	struct dbs_data *dbs_data = policy_dbs->dbs_data;
 	struct od_cpu_dbs_info_s *dbs_info = &per_cpu(od_cpu_dbs_info, policy->cpu);
-	int delay = 0, sample_type = dbs_info->sample_type;
+	int sample_type = dbs_info->sample_type;
 
 	/* Common NORMAL_SAMPLE setup */
 	dbs_info->sample_type = OD_NORMAL_SAMPLE;
@@ -203,26 +201,20 @@ static unsigned int od_dbs_timer(struct cpufreq_policy *policy)
 	 * it then.
 	 */
 	if (sample_type == OD_SUB_SAMPLE && policy_dbs->sample_delay_ns > 0) {
-		delay = dbs_info->freq_lo_jiffies;
 		__cpufreq_driver_target(policy, dbs_info->freq_lo,
 					CPUFREQ_RELATION_H);
-	} else {
-		od_update(policy);
-		if (dbs_info->freq_lo) {
-			/* Setup timer for SUB_SAMPLE */
-			dbs_info->sample_type = OD_SUB_SAMPLE;
-			delay = dbs_info->freq_hi_jiffies;
-		} else {
-			delay = delay_for_sampling_rate(dbs_data->sampling_rate
-							* policy_dbs->rate_mult);
-		}
+		return dbs_info->freq_lo_delay_us;
 	}
 
-	if (!delay)
-		delay = delay_for_sampling_rate(dbs_data->sampling_rate
-				* dbs_info->rate_mult);
+	od_update(policy);
 
-	return delay;
+	if (dbs_info->freq_lo) {
+		/* Setup timer for SUB_SAMPLE */
+		dbs_info->sample_type = OD_SUB_SAMPLE;
+		return dbs_info->freq_hi_delay_us;
+	}
+
+	return dbs_data->sampling_rate * policy_dbs->rate_mult;
 }
 
 /************************** sysfs interface ************************/
