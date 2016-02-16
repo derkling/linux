@@ -5184,7 +5184,7 @@ static inline bool __task_fits(struct task_struct *p, int cpu, int util)
 {
 	unsigned long capacity = capacity_of(cpu);
 
-	util += task_util(p, UTIL_AVG);
+	util += task_util(p, UTIL_EST);
 
 	return (capacity * 1024) > (util * capacity_margin);
 }
@@ -5447,7 +5447,7 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 		 * so prev_cpu will receive a negative bias due to the double
 		 * accounting. However, the blocked utilization may be zero.
 		 */
-		int new_util = cpu_util(i, UTIL_AVG) + task_util(p, UTIL_AVG);
+		int new_util = cpu_util(i, UTIL_AVG) + task_util(p, UTIL_EST);
 
 		if (new_util > capacity_orig_of(i))
 			continue;
@@ -5465,7 +5465,7 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 
 	if (target_cpu != task_cpu(p)) {
 		struct energy_env eenv = {
-			.util_delta	= task_util(p, UTIL_AVG),
+			.util_delta	= task_util(p, UTIL_EST),
 			.src_cpu	= task_cpu(p),
 			.dst_cpu	= target_cpu,
 		};
