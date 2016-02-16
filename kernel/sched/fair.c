@@ -4238,7 +4238,7 @@ static void update_capacity_of(int cpu)
 		return;
 
 	/* Convert scale-invariant capacity to cpu. */
-	req_cap = cpu_util(cpu, UTIL_AVG) * SCHED_CAPACITY_SCALE / capacity_orig_of(cpu);
+	req_cap = cpu_util(cpu, UTIL_EST) * SCHED_CAPACITY_SCALE / capacity_orig_of(cpu);
 	set_cfs_cpu_capacity(cpu, true, req_cap);
 }
 
