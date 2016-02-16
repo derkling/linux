@@ -4854,7 +4854,7 @@ struct energy_env {
  */
 static unsigned long __cpu_norm_util(int cpu, unsigned long capacity, int delta)
 {
-	int util = __cpu_util(cpu, delta, UTIL_AVG);
+	int util = __cpu_util(cpu, delta, UTIL_EST);
 
 	if (util >= capacity)
 		return SCHED_CAPACITY_SCALE;
@@ -4879,7 +4879,7 @@ unsigned long group_max_util(struct energy_env *eenv)
 
 	for_each_cpu(i, sched_group_cpus(eenv->sg_cap)) {
 		delta = calc_util_delta(eenv, i);
-		max_util = max(max_util, __cpu_util(i, delta, UTIL_AVG));
+		max_util = max(max_util, __cpu_util(i, delta, UTIL_EST));
 	}
 
 	return max_util;
@@ -5447,7 +5447,7 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 		 * so prev_cpu will receive a negative bias due to the double
 		 * accounting. However, the blocked utilization may be zero.
 		 */
-		int new_util = cpu_util(i, UTIL_AVG) + task_util(p, UTIL_EST);
+		int new_util = cpu_util(i, UTIL_EST) + task_util(p, UTIL_EST);
 
 		if (new_util > capacity_orig_of(i))
 			continue;
