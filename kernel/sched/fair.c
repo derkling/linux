@@ -5117,7 +5117,7 @@ schedtune_task_margin(struct task_struct *task)
 static inline unsigned long
 boosted_cpu_util(int cpu)
 {
-	unsigned long util = cpu_util(cpu, UTIL_AVG);
+	unsigned long util = cpu_util(cpu, UTIL_EST);
 	unsigned long margin = schedtune_cpu_margin(util, cpu);
 
 	return util + margin;
