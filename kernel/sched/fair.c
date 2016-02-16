@@ -4238,7 +4238,7 @@ static void update_capacity_of(int cpu)
 		return;
 
 	/* Convert scale-invariant capacity to cpu. */
-	req_cap = cpu_util(cpu) * SCHED_CAPACITY_SCALE / capacity_orig_of(cpu);
+	req_cap = cpu_util(cpu, UTIL_AVG) * SCHED_CAPACITY_SCALE / capacity_orig_of(cpu);
 	set_cfs_cpu_capacity(cpu, true, req_cap);
 }
 
@@ -4854,7 +4854,7 @@ struct energy_env {
  */
 static unsigned long __cpu_norm_util(int cpu, unsigned long capacity, int delta)
 {
-	int util = __cpu_util(cpu, delta);
+	int util = __cpu_util(cpu, delta, UTIL_AVG);
 
 	if (util >= capacity)
 		return SCHED_CAPACITY_SCALE;
@@ -4879,7 +4879,7 @@ unsigned long group_max_util(struct energy_env *eenv)
 
 	for_each_cpu(i, sched_group_cpus(eenv->sg_cap)) {
 		delta = calc_util_delta(eenv, i);
-		max_util = max(max_util, __cpu_util(i, delta));
+		max_util = max(max_util, __cpu_util(i, delta, UTIL_AVG));
 	}
 
 	return max_util;
@@ -5171,8 +5171,10 @@ static int wake_affine(struct sched_domain *sd, struct task_struct *p, int sync)
 	return 1;
 }
 
-static inline unsigned long task_util(struct task_struct *p)
+static inline unsigned long task_util(struct task_struct *p, bool use_pelt)
 {
+	if (use_util_est() && !use_pelt)
+		return p->se.avg.util_est;
 	return p->se.avg.util_avg;
 }
 
@@ -5182,7 +5184,7 @@ static inline bool __task_fits(struct task_struct *p, int cpu, int util)
 {
 	unsigned long capacity = capacity_of(cpu);
 
-	util += task_util(p);
+	util += task_util(p, UTIL_AVG);
 
 	return (capacity * 1024) > (util * capacity_margin);
 }
@@ -5203,12 +5205,12 @@ static inline bool task_fits_max(struct task_struct *p, int cpu)
 
 static inline bool task_fits_spare(struct task_struct *p, int cpu)
 {
-	return __task_fits(p, cpu, cpu_util(cpu));
+	return __task_fits(p, cpu, cpu_util(cpu, UTIL_AVG));
 }
 
 static bool cpu_overutilized(int cpu)
 {
-	return (capacity_of(cpu) * 1024) < (cpu_util(cpu) * capacity_margin);
+	return (capacity_of(cpu) * 1024) < (cpu_util(cpu, UTIL_AVG) * capacity_margin);
 }
 
 /*
@@ -5268,7 +5270,7 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 			 * Look for group which has most spare capacity on a
 			 * single cpu.
 			 */
-			spare_capacity = capacity_of(i) - cpu_util(i);
+			spare_capacity = capacity_of(i) - cpu_util(i, UTIL_AVG);
 			if (spare_capacity > max_spare_capacity) {
 				max_spare_capacity = spare_capacity;
 				spare_group = group;
@@ -5445,7 +5447,7 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 		 * so prev_cpu will receive a negative bias due to the double
 		 * accounting. However, the blocked utilization may be zero.
 		 */
-		int new_util = cpu_util(i) + task_util(p);
+		int new_util = cpu_util(i, UTIL_AVG) + task_util(p, UTIL_AVG);
 
 		if (new_util > capacity_orig_of(i))
 			continue;
@@ -5463,7 +5465,7 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 
 	if (target_cpu != task_cpu(p)) {
 		struct energy_env eenv = {
-			.util_delta	= task_util(p),
+			.util_delta	= task_util(p, UTIL_AVG),
 			.src_cpu	= task_cpu(p),
 			.dst_cpu	= target_cpu,
 		};
@@ -6937,7 +6939,7 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 			load = source_load(i, load_idx);
 
 		sgs->group_load += load;
-		sgs->group_util += cpu_util(i);
+		sgs->group_util += cpu_util(i, UTIL_AVG);
 		sgs->sum_nr_running += rq->cfs.h_nr_running;
 
 		nr_running = rq->nr_running;
