@@ -4247,10 +4247,7 @@ static void update_capacity_of(int cpu)
 		return;
 
 	/* Convert scale-invariant capacity to cpu. */
-	if (use_util_est())
-		req_cap = cpu_util_est(cpu);
-	else
-		req_cap = cpu_util(cpu);
+	req_cap = cpu_util(cpu, false);
 	req_cap = req_cap * SCHED_CAPACITY_SCALE / capacity_orig_of(cpu);
 	set_cfs_cpu_capacity(cpu, true, req_cap);
 }
@@ -4873,7 +4870,7 @@ struct energy_env {
  */
 static unsigned long __cpu_norm_util(int cpu, unsigned long capacity, int delta)
 {
-	int util = __cpu_util(cpu, delta, true);
+	int util = __cpu_util(cpu, delta, false);
 
 	if (util >= capacity)
 		return SCHED_CAPACITY_SCALE;
@@ -4898,7 +4895,7 @@ unsigned long group_max_util(struct energy_env *eenv)
 
 	for_each_cpu(i, sched_group_cpus(eenv->sg_cap)) {
 		delta = calc_util_delta(eenv, i);
-		max_util = max(max_util, __cpu_util(i, delta, true));
+		max_util = max(max_util, __cpu_util(i, delta, false));
 	}
 
 	return max_util;
@@ -5192,6 +5189,8 @@ static int wake_affine(struct sched_domain *sd, struct task_struct *p, int sync)
 
 static inline unsigned long task_util(struct task_struct *p)
 {
+	if (use_util_est())
+		return p->se.avg.util_est;
 	return p->se.avg.util_avg;
 }
 
@@ -5226,12 +5225,12 @@ static inline bool task_fits_max(struct task_struct *p, int cpu)
 
 static inline bool task_fits_spare(struct task_struct *p, int cpu)
 {
-	return __task_fits(p, cpu, cpu_util(cpu));
+	return __task_fits(p, cpu, cpu_util(cpu, false));
 }
 
 static bool cpu_overutilized(int cpu)
 {
-	return (capacity_of(cpu) * 1024) < (cpu_util(cpu) * capacity_margin);
+	return (capacity_of(cpu) * 1024) < (cpu_util(cpu, true) * capacity_margin);
 }
 
 /*
@@ -5291,7 +5290,7 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 			 * Look for group which has most spare capacity on a
 			 * single cpu.
 			 */
-			spare_capacity = capacity_of(i) - cpu_util(i);
+			spare_capacity = capacity_of(i) - cpu_util(i, false);
 			if (spare_capacity > max_spare_capacity) {
 				max_spare_capacity = spare_capacity;
 				spare_group = group;
@@ -5468,7 +5467,7 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 		 * so prev_cpu will receive a negative bias due to the double
 		 * accounting. However, the blocked utilization may be zero.
 		 */
-		int new_util = cpu_util(i) + task_util(p);
+		int new_util = cpu_util(i, false) + task_util(p);
 
 		if (new_util > capacity_orig_of(i))
 			continue;
@@ -6960,7 +6959,7 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 			load = source_load(i, load_idx);
 
 		sgs->group_load += load;
-		sgs->group_util += cpu_util(i);
+		sgs->group_util += cpu_util(i, true);
 		sgs->sum_nr_running += rq->cfs.h_nr_running;
 
 		nr_running = rq->nr_running;

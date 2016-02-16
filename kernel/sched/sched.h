@@ -1480,8 +1480,11 @@ static inline unsigned long __cpu_util(int cpu, int delta, bool use_pelt)
 	return (delta >= capacity) ? capacity : delta;
 }
 
-static inline unsigned long cpu_util(int cpu)
+
+static inline unsigned long cpu_util(int cpu, bool use_pelt)
 {
+	if (sched_feat(UTIL_EST))
+		return __cpu_util(cpu, 0, use_pelt);
 	return __cpu_util(cpu, 0, true);
 }
 
