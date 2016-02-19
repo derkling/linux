@@ -236,7 +236,8 @@ enum acpi_einj_actions {
 	ACPI_EINJ_CHECK_BUSY_STATUS = 6,
 	ACPI_EINJ_GET_COMMAND_STATUS = 7,
 	ACPI_EINJ_SET_ERROR_TYPE_WITH_ADDRESS = 8,
-	ACPI_EINJ_ACTION_RESERVED = 9,	/* 9 and greater are reserved */
+	ACPI_EINJ_GET_EXECUTE_TIMINGS = 9,
+	ACPI_EINJ_ACTION_RESERVED = 10,	/* 10 and greater are reserved */
 	ACPI_EINJ_TRIGGER_ERROR = 0xFF	/* Except for this value */
 };
 
@@ -348,7 +349,8 @@ enum acpi_erst_actions {
 	ACPI_ERST_GET_ERROR_RANGE = 13,
 	ACPI_ERST_GET_ERROR_LENGTH = 14,
 	ACPI_ERST_GET_ERROR_ATTRIBUTES = 15,
-	ACPI_ERST_ACTION_RESERVED = 16	/* 16 and greater are reserved */
+	ACPI_ERST_EXECUTE_TIMINGS = 16,
+	ACPI_ERST_ACTION_RESERVED = 17	/* 17 and greater are reserved */
 };
 
 /* Values for Instruction field above */
@@ -427,7 +429,8 @@ enum acpi_hest_types {
 	ACPI_HEST_TYPE_AER_ENDPOINT = 7,
 	ACPI_HEST_TYPE_AER_BRIDGE = 8,
 	ACPI_HEST_TYPE_GENERIC_ERROR = 9,
-	ACPI_HEST_TYPE_RESERVED = 10	/* 10 and greater are reserved */
+	ACPI_HEST_TYPE_GENERIC_ERROR_V2 = 10,
+	ACPI_HEST_TYPE_RESERVED = 11	/* 11 and greater are reserved */
 };
 
 /*
@@ -603,6 +606,24 @@ struct acpi_hest_generic {
 	u32 error_block_length;
 };
 
+/* 10: Generic Hardware Error Source, version 2 */
+
+struct acpi_hest_generic_v2 {
+	struct acpi_hest_header header;
+	u16 related_source_id;
+	u8 reserved;
+	u8 enabled;
+	u32 records_to_preallocate;
+	u32 max_sections_per_record;
+	u32 max_raw_data_length;
+	struct acpi_generic_address error_status_address;
+	struct acpi_hest_notify notify;
+	u32 error_block_length;
+	struct acpi_generic_address read_ack_register;
+	u64 read_ack_preserve;
+	u64 read_ack_write;
+};
+
 /* Generic Error Status block */
 
 struct acpi_hest_generic_status {
@@ -632,6 +653,7 @@ struct acpi_hest_generic_data {
 	u32 error_data_length;
 	u8 fru_id[16];
 	u8 fru_text[20];
+	u64 time_stamp;
 };
 
 /*******************************************************************************
@@ -1015,6 +1037,7 @@ struct acpi_nfit_memory_map {
 #define ACPI_NFIT_MEM_NOT_ARMED         (1<<3)	/* 03: Memory Device is not armed */
 #define ACPI_NFIT_MEM_HEALTH_OBSERVED   (1<<4)	/* 04: Memory Device observed SMART/health events */
 #define ACPI_NFIT_MEM_HEALTH_ENABLED    (1<<5)	/* 05: SMART/health events enabled */
+#define ACPI_NFIT_MEM_MAP_FAILED        (1<<6)	/* 06: Mapping to SPA failed */
 
 /* 2: Interleave Structure */
 
