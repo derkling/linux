@@ -42,6 +42,7 @@ extern unsigned int sysctl_sched_child_runs_first;
 extern unsigned int sysctl_sched_enable_colocation;
 extern unsigned int sysctl_sched_restrict_cluster_spill;
 extern unsigned int sysctl_sched_pred_alert_freq;
+extern unsigned int sysctl_sched_is_big_little;
 
 enum sched_tunable_scaling {
 	SCHED_TUNABLESCALING_NONE,
