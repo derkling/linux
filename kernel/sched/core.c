@@ -7364,6 +7364,24 @@ void free_sched_domains(cpumask_var_t doms[], unsigned int ndoms)
 	kfree(doms);
 }
 
+static void print_sched_domains(const struct cpumask *cpu_map)
+{
+	int cpu;
+
+	for_each_cpu(cpu, cpu_map) {
+		struct sched_domain *sd;
+
+		for_each_domain(cpu, sd) {
+			struct sched_group *sg = sd->groups;
+
+			do {
+				printk("%s cpu=%d sd=%p sg=%p sgc=%p sge=%p\n",
+				       sd->name, cpu, sd, sg, sg->sgc, sg->sge);
+			} while (sg = sg->next, sg != sd->groups);
+		}
+	}
+}
+
 /*
  * Set up scheduler domains and groups. Callers must hold the hotplug lock.
  * For now this just excludes isolated cpus, but could be used to
@@ -7381,6 +7399,8 @@ static int init_sched_domains(const struct cpumask *cpu_map)
 	cpumask_andnot(doms_cur[0], cpu_map, cpu_isolated_map);
 	err = build_sched_domains(doms_cur[0], NULL);
 	register_sched_domain_sysctl();
+
+	print_sched_domains(cpu_map);
 
 	return err;
 }
