@@ -2615,6 +2615,64 @@ static u32 __compute_runnable_contrib(u64 n)
 
 #define cap_scale(v, s) ((v)*(s) >> SCHED_CAPACITY_SHIFT)
 
+static __always_inline void trace_se(struct sched_entity *se, struct sched_avg *sa, const char *tag) {
+	const char *name = "upd_ld_probe";
+	unsigned int c = 0;
+
+	for_each_sched_entity(se) {
+		if (entity_is_task(se)) {
+			trace_printk("%s: tag=%s cpu=%d se=%p load_avg_old=%lu load_avg=%lu util_avg_old=%lu util_avg=%lu l_u_time_old=%lld l_u_time=%lld p=%s pid=%d\n",
+				     name, tag, task_cpu(task_of(se)), se,
+				     sa->load_avg, se->avg.load_avg,
+				     sa->util_avg, se->avg.util_avg,
+				     sa->last_update_time, se->avg.last_update_time,
+				     task_of(se)->comm, task_of(se)->pid);
+			c++;
+		}
+		else
+			if (!c++)
+				trace_printk("%s: tag=%s cpu=%d se=%p load_avg_old=%lu load_avg=%lu util_avg_old=%lu util_avg=%lu l_u_time_old=%lld l_u_time=%lld tg_id=%d\n",
+					name, tag, cpu_of(rq_of(cfs_rq_of(se))), se,
+					sa->load_avg, se->avg.load_avg, sa->util_avg,
+					se->avg.util_avg, sa->last_update_time,
+					se->avg.last_update_time, group_cfs_rq(se)->tg->css.id);
+			else
+				trace_printk("%s: tag=%s cpu=%d se=%p load_avg=%lu util_avg=%lu l_u_time=%lld tg_id=%d\n",
+					name, tag, cpu_of(rq_of(cfs_rq_of(se))), se,
+					se->avg.load_avg,
+					se->avg.util_avg,
+					se->avg.last_update_time,
+					group_cfs_rq(se)->tg->css.id);
+	}
+}
+
+static __always_inline void trace_cfs_rq(struct cfs_rq *cfs_rq, struct sched_avg *sa, const char *tag) {
+	int cpu = cpu_of(rq_of(cfs_rq));
+	const char *name = "upd_ld_probe";
+	unsigned int c = 0;
+
+	while (cfs_rq) {
+		struct sched_entity *se = cfs_rq->tg->se[cpu];
+
+		if (!c++)
+			trace_printk("%s: tag=%s cpu=%d cfs_rq=%p load_avg_old=%lu load_avg=%lu util_avg_old=%lu util_avg=%lu l_u_time_old=%lld l_u_time=%lld tg_id=%d\n",
+				     name, tag, cpu, cfs_rq,
+				     sa->load_avg, cfs_rq->avg.load_avg,
+				     sa->util_avg, cfs_rq->avg.util_avg,
+				     sa->last_update_time, cfs_rq->avg.last_update_time,
+				     cfs_rq->tg->css.id);
+		else
+			trace_printk("%s: tag=%s cpu=%d cfs_rq=%p load_avg=%lu util_avg=%lu l_u_time=%lld tg_id=%d\n",
+				     name, tag, cpu, cfs_rq,
+				     cfs_rq->avg.load_avg,
+				     cfs_rq->avg.util_avg,
+				     cfs_rq->avg.last_update_time,
+				     cfs_rq->tg->css.id);
+
+		cfs_rq = se ? cfs_rq_of(se) : NULL;
+	}
+}
+
 /*
  * We can represent the historical contribution to runnable average as the
  * coefficients of a geometric series.  To do this we sub-divide our runnable
@@ -2651,6 +2709,15 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 	u32 contrib;
 	unsigned int delta_w, scaled_delta_w, decayed = 0;
 	unsigned long scale_freq, scale_cpu;
+	struct sched_avg sa_old;
+
+	BUG_ON(!update_util && running);
+
+	sa_old.load_avg = sa->load_avg;
+	sa_old.load_sum = sa->load_sum;
+	sa_old.util_avg = sa->util_avg;
+	sa_old.util_sum = sa->util_sum;
+	sa_old.last_update_time = sa->last_update_time;
 
 	delta = now - sa->last_update_time;
 	/*
@@ -2744,6 +2811,11 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		}
 		sa->util_avg = sa->util_sum / LOAD_AVG_MAX;
 	}
+
+	if (cfs_rq)
+		trace_cfs_rq(cfs_rq, &sa_old, "__u_l_a");
+	else
+		trace_se(container_of(sa, struct sched_entity, avg), &sa_old, "__u_l_a");
 
 	return decayed;
 }
@@ -2872,6 +2944,15 @@ static inline void update_load_avg(struct sched_entity *se, int update_tg)
 
 static void attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
+	struct sched_avg se_sa_old;
+	struct sched_avg cfs_rq_sa_old;
+
+	se_sa_old.load_avg = se->avg.load_avg;
+	se_sa_old.load_sum = se->avg.load_sum;
+	se_sa_old.util_avg = se->avg.util_avg;
+	se_sa_old.util_sum = se->avg.util_sum;
+	se_sa_old.last_update_time = se->avg.last_update_time;
+
 	if (!sched_feat(ATTACH_AGE_LOAD))
 		goto skip_aging;
 
@@ -2891,22 +2972,50 @@ static void attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 
 skip_aging:
 	se->avg.last_update_time = cfs_rq->avg.last_update_time;
+
+	cfs_rq_sa_old.load_avg = cfs_rq->avg.load_avg;
+	cfs_rq_sa_old.load_sum = cfs_rq->avg.load_sum;
+	cfs_rq_sa_old.util_avg = cfs_rq->avg.util_avg;
+	cfs_rq_sa_old.util_sum = cfs_rq->avg.util_sum;
+	cfs_rq_sa_old.last_update_time = cfs_rq->avg.last_update_time;
+
 	cfs_rq->avg.load_avg += se->avg.load_avg;
 	cfs_rq->avg.load_sum += se->avg.load_sum;
 	cfs_rq->avg.util_avg += se->avg.util_avg;
 	cfs_rq->avg.util_sum += se->avg.util_sum;
+
+	trace_se(se, &se_sa_old, "a_e_l_a");
+	trace_cfs_rq(cfs_rq, &cfs_rq_sa_old, "a_e_l_a");
 }
 
 static void detach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
+	struct sched_avg se_sa_old;
+	struct sched_avg cfs_rq_sa_old;
+
+	se_sa_old.load_avg = se->avg.load_avg;
+	se_sa_old.load_sum = se->avg.load_sum;
+	se_sa_old.util_avg = se->avg.util_avg;
+	se_sa_old.util_sum = se->avg.util_sum;
+	se_sa_old.last_update_time = se->avg.last_update_time;
+
 	__update_load_avg(cfs_rq->avg.last_update_time, cpu_of(rq_of(cfs_rq)),
 			  &se->avg, se->on_rq * scale_load_down(se->load.weight),
 			  cfs_rq->curr == se, NULL);
+
+	cfs_rq_sa_old.load_avg = cfs_rq->avg.load_avg;
+	cfs_rq_sa_old.load_sum = cfs_rq->avg.load_sum;
+	cfs_rq_sa_old.util_avg = cfs_rq->avg.util_avg;
+	cfs_rq_sa_old.util_sum = cfs_rq->avg.util_sum;
+	cfs_rq_sa_old.last_update_time = cfs_rq->avg.last_update_time;
 
 	cfs_rq->avg.load_avg = max_t(long, cfs_rq->avg.load_avg - se->avg.load_avg, 0);
 	cfs_rq->avg.load_sum = max_t(s64,  cfs_rq->avg.load_sum - se->avg.load_sum, 0);
 	cfs_rq->avg.util_avg = max_t(long, cfs_rq->avg.util_avg - se->avg.util_avg, 0);
 	cfs_rq->avg.util_sum = max_t(s32,  cfs_rq->avg.util_sum - se->avg.util_sum, 0);
+
+	trace_se(se, &se_sa_old, "d_e_l_a");
+	trace_cfs_rq(cfs_rq, &cfs_rq_sa_old, "d_e_l_a");
 }
 
 /* Add the load generated by se into cfs_rq's load average */
