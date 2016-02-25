@@ -83,12 +83,23 @@ static unsigned int sugov_next_freq(struct policy_dbs_info *policy_dbs,
 static void sugov_update_commit(struct policy_dbs_info *policy_dbs, u64 time,
 				unsigned int next_freq)
 {
-	struct sugov_policy *sg_policy = to_sg_policy(policy_dbs);
-
-	sg_policy->next_freq = next_freq;
 	policy_dbs->last_sample_time = time;
-	policy_dbs->work_in_progress = true;
-	irq_work_queue(&policy_dbs->irq_work);
+
+	if (policy_dbs->fast_switch_enabled) {
+		cpufreq_driver_fast_switch(policy_dbs->policy, next_freq);
+		/*
+		 * Restore the sample delay in case it has been set to 0 from
+		 * sysfs in the meantime.
+		 */
+		gov_update_sample_delay(policy_dbs,
+					policy_dbs->dbs_data->sampling_rate);
+	} else {
+		struct sugov_policy *sg_policy = to_sg_policy(policy_dbs);
+
+		sg_policy->next_freq = next_freq;
+		policy_dbs->work_in_progress = true;
+		irq_work_queue(&policy_dbs->irq_work);
+	}
 }
 
 static void sugov_update_shared(struct update_util_data *data, u64 time,
@@ -188,6 +199,7 @@ static bool sugov_start(struct cpufreq_policy *policy)
 
 	gov_update_sample_delay(policy_dbs, policy_dbs->dbs_data->sampling_rate);
 	policy_dbs->last_sample_time = 0;
+	policy_dbs->fast_switch_enabled = policy->fast_switch_possible;
 
 	for_each_cpu(cpu, policy->cpus) {
 		struct sugov_cpu *sg_cpu = &per_cpu(sugov_cpu, cpu);

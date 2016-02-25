@@ -70,6 +70,7 @@ struct acpi_cpufreq_data {
 	unsigned int cpu_feature;
 	unsigned int acpi_perf_cpu;
 	cpumask_var_t freqdomain_cpus;
+	void (*cpu_freq_fast_write)(u32 val);
 };
 
 /* acpi_perf_data is a pointer to percpu data. */
@@ -241,6 +242,15 @@ static unsigned extract_freq(u32 val, struct acpi_cpufreq_data *data)
 	default:
 		return 0;
 	}
+}
+
+void cpu_freq_fast_write_intel(u32 val)
+{
+	u32 lo, hi;
+
+	rdmsr(MSR_IA32_PERF_CTL, lo, hi);
+	lo = (lo & ~INTEL_MSR_RANGE) | (val & INTEL_MSR_RANGE);
+	wrmsr(MSR_IA32_PERF_CTL, lo, hi);
 }
 
 struct msr_addr {
@@ -482,6 +492,50 @@ static int acpi_cpufreq_target(struct cpufreq_policy *policy,
 
 out:
 	return result;
+}
+
+unsigned int acpi_cpufreq_fast_switch(struct cpufreq_policy *policy,
+				      unsigned int target_freq)
+{
+	struct acpi_cpufreq_data *data = policy->driver_data;
+	struct cpufreq_frequency_table *entry;
+	struct acpi_processor_performance *perf;
+	unsigned int uninitialized_var(next_perf_state);
+	unsigned int uninitialized_var(next_freq);
+	unsigned int best_diff;
+
+	for (entry = data->freq_table, best_diff = UINT_MAX;
+	     entry->frequency != CPUFREQ_TABLE_END; entry++) {
+		unsigned int diff, freq = entry->frequency;
+
+		if (freq == CPUFREQ_ENTRY_INVALID)
+			continue;
+
+		diff = abs(freq - target_freq);
+		if (diff >= best_diff)
+			continue;
+
+		best_diff = diff;
+		next_perf_state = entry->driver_data;
+		next_freq = freq;
+		if (best_diff == 0)
+			goto found;
+	}
+	if (best_diff == UINT_MAX)
+		return CPUFREQ_ENTRY_INVALID;
+
+ found:
+	perf = to_perf_data(data);
+	if (perf->state == next_perf_state) {
+		if (unlikely(data->resume))
+			data->resume = 0;
+		else
+			return next_freq;
+	}
+
+	data->cpu_freq_fast_write(perf->states[next_perf_state].control);
+	perf->state = next_perf_state;
+	return next_freq;
 }
 
 static unsigned long
@@ -745,6 +799,7 @@ static int acpi_cpufreq_cpu_init(struct cpufreq_policy *policy)
 		pr_debug("HARDWARE addr space\n");
 		if (check_est_cpu(cpu)) {
 			data->cpu_feature = SYSTEM_INTEL_MSR_CAPABLE;
+			data->cpu_freq_fast_write = cpu_freq_fast_write_intel;
 			break;
 		}
 		if (check_amd_hwpstate_cpu(cpu)) {
@@ -759,6 +814,10 @@ static int acpi_cpufreq_cpu_init(struct cpufreq_policy *policy)
 		result = -ENODEV;
 		goto err_unreg;
 	}
+
+	policy->fast_switch_possible = data->cpu_freq_fast_write != NULL &&
+		!acpi_pstate_strict && !(policy_is_shared(policy) &&
+			policy->shared_type != CPUFREQ_SHARED_TYPE_ANY);
 
 	data->freq_table = kzalloc(sizeof(*data->freq_table) *
 		    (perf->state_count+1), GFP_KERNEL);
@@ -894,6 +953,7 @@ static struct freq_attr *acpi_cpufreq_attr[] = {
 static struct cpufreq_driver acpi_cpufreq_driver = {
 	.verify		= cpufreq_generic_frequency_table_verify,
 	.target_index	= acpi_cpufreq_target,
+	.fast_switch	= acpi_cpufreq_fast_switch,
 	.bios_limit	= acpi_processor_get_bios_limit,
 	.init		= acpi_cpufreq_cpu_init,
 	.exit		= acpi_cpufreq_cpu_exit,
