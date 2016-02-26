@@ -5740,6 +5740,8 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	}
 	rcu_read_unlock();
 
+	trace_tsk(new_cpu, &p->se, "s_t_r_f_1");
+
 	return new_cpu;
 }
 
@@ -6016,6 +6018,8 @@ again:
 	if (hrtick_enabled(rq))
 		hrtick_start_fair(rq, p);
 
+	trace_tsk(task_cpu(p), &p->se, "p_n_t_f_1");
+
 	return p;
 simple:
 	cfs_rq = &rq->cfs;
@@ -6036,6 +6040,8 @@ simple:
 
 	if (hrtick_enabled(rq))
 		hrtick_start_fair(rq, p);
+
+	trace_tsk(task_cpu(p), &p->se, "p_n_t_f_2");
 
 	return p;
 
@@ -8878,6 +8884,8 @@ static void task_move_group_fair(struct task_struct *p)
 {
 	detach_task_cfs_rq(p);
 	set_task_rq(p, task_cpu(p));
+
+	trace_tsk(task_cpu(p), &p->se, "t_m_g_f_1");
 
 #ifdef CONFIG_SMP
 	/* Tell se's cfs_rq has been changed -- migrated */

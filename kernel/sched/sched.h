@@ -84,6 +84,25 @@ static inline void update_cpu_load_active(struct rq *this_rq) { }
  */
 #define RUNTIME_INF	((u64)~0ULL)
 
+static inline void trace_tsk(int cpu, struct sched_entity *se, const char *tag)
+{
+	struct task_struct *p;
+	const char *name="trace_tsk";
+
+	if (!se || se->my_q)
+		return;
+
+	p = container_of(se, struct task_struct, se);
+
+	if (!strncmp(p->comm, "rt-app", strlen("rt-app")) ||
+	    !strncmp(p->comm, "task", strlen("task")) ||
+	    !strncmp(p->comm, "bash", strlen("bash")))
+		trace_printk("%s: tag=%s cpu=%d comm=%s pid=%d load_avg=%lu "
+			     "util_avg=%lu last_update_time=%lld\n",
+			     name, tag, cpu, p->comm, p->pid, se->avg.load_avg,
+			     se->avg.util_avg, se->avg.last_update_time);
+}
+
 static inline int idle_policy(int policy)
 {
 	return policy == SCHED_IDLE;
