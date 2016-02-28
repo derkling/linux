@@ -2703,7 +2703,8 @@ static __always_inline void trace_cfs_rq(struct cfs_rq *cfs_rq, struct sched_avg
  */
 static __always_inline int
 __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
-		  unsigned long weight, int running, struct cfs_rq *cfs_rq)
+		  unsigned long weight, int running, struct cfs_rq *cfs_rq,
+		  int update_util)
 {
 	u64 delta, scaled_delta, periods;
 	u32 contrib;
@@ -2809,7 +2810,8 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 			cfs_rq->runnable_load_avg =
 				div_u64(cfs_rq->runnable_load_sum, LOAD_AVG_MAX);
 		}
-		sa->util_avg = sa->util_sum / LOAD_AVG_MAX;
+		if (update_util)
+			sa->util_avg = sa->util_sum / LOAD_AVG_MAX;
 	}
 
 	if (cfs_rq)
@@ -2883,7 +2885,7 @@ void set_task_rq_fair(struct sched_entity *se,
 		n_last_update_time = next->avg.last_update_time;
 #endif
 		__update_load_avg(p_last_update_time, cpu_of(rq_of(prev)),
-				  &se->avg, 0, 0, NULL);
+				  &se->avg, 0, 0, NULL, 1);
 		se->avg.last_update_time = n_last_update_time;
 	}
 }
@@ -2913,7 +2915,7 @@ static inline int update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq)
 	}
 
 	decayed = __update_load_avg(now, cpu_of(rq_of(cfs_rq)), sa,
-		scale_load_down(cfs_rq->load.weight), cfs_rq->curr != NULL, cfs_rq);
+		scale_load_down(cfs_rq->load.weight), cfs_rq->curr != NULL, cfs_rq, 1);
 
 #ifndef CONFIG_64BIT
 	smp_wmb();
@@ -2924,11 +2926,13 @@ static inline int update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq)
 }
 
 /* Update task and its cfs_rq load average */
-static inline void update_load_avg(struct sched_entity *se, int update_tg)
+static inline void update_load_avg(struct sched_entity *se, int update_tg,
+		                   int update_util)
 {
 	struct cfs_rq *cfs_rq = cfs_rq_of(se);
 	u64 now = cfs_rq_clock_task(cfs_rq);
 	int cpu = cpu_of(rq_of(cfs_rq));
+	int running = update_util ? (cfs_rq->curr == se) : 0;
 
 	/*
 	 * Track task load average for carrying it to new CPU after migrated, and
@@ -2936,7 +2940,7 @@ static inline void update_load_avg(struct sched_entity *se, int update_tg)
 	 */
 	__update_load_avg(now, cpu, &se->avg,
 			  se->on_rq * scale_load_down(se->load.weight),
-			  cfs_rq->curr == se, NULL);
+			  running, NULL, update_util);
 
 	if (update_cfs_rq_load_avg(now, cfs_rq) && update_tg)
 		update_tg_load_avg(cfs_rq, 0);
@@ -2962,7 +2966,7 @@ static void attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 	 */
 	if (se->avg.last_update_time) {
 		__update_load_avg(cfs_rq->avg.last_update_time, cpu_of(rq_of(cfs_rq)),
-				  &se->avg, 0, 0, NULL);
+				  &se->avg, 0, 0, NULL, 1);
 
 		/*
 		 * XXX: we could have just aged the entire load away if we've been
@@ -3001,7 +3005,7 @@ static void detach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 
 	__update_load_avg(cfs_rq->avg.last_update_time, cpu_of(rq_of(cfs_rq)),
 			  &se->avg, se->on_rq * scale_load_down(se->load.weight),
-			  cfs_rq->curr == se, NULL);
+			  cfs_rq->curr == se, NULL, 1);
 
 	cfs_rq_sa_old.load_avg = cfs_rq->avg.load_avg;
 	cfs_rq_sa_old.load_sum = cfs_rq->avg.load_sum;
@@ -3030,7 +3034,7 @@ enqueue_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	if (!migrated) {
 		__update_load_avg(now, cpu_of(rq_of(cfs_rq)), sa,
 			se->on_rq * scale_load_down(se->load.weight),
-			cfs_rq->curr == se, NULL);
+			cfs_rq->curr == se, NULL, 1);
 	}
 
 	decayed = update_cfs_rq_load_avg(now, cfs_rq);
@@ -3049,7 +3053,7 @@ enqueue_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se)
 static inline void
 dequeue_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
-	update_load_avg(se, 1);
+	update_load_avg(se, 1, 1);
 
 	cfs_rq->runnable_load_avg =
 		max_t(long, cfs_rq->runnable_load_avg - se->avg.load_avg, 0);
@@ -3096,7 +3100,7 @@ void remove_entity_load_avg(struct sched_entity *se)
 
 	last_update_time = cfs_rq_last_update_time(cfs_rq);
 
-	__update_load_avg(last_update_time, cpu_of(rq_of(cfs_rq)), &se->avg, 0, 0, NULL);
+	__update_load_avg(last_update_time, cpu_of(rq_of(cfs_rq)), &se->avg, 0, 0, NULL, 1);
 	atomic_long_add(se->avg.load_avg, &cfs_rq->removed_load_avg);
 	atomic_long_add(se->avg.util_avg, &cfs_rq->removed_util_avg);
 }
@@ -3115,7 +3119,7 @@ static int idle_balance(struct rq *this_rq);
 
 #else /* CONFIG_SMP */
 
-static inline void update_load_avg(struct sched_entity *se, int update_tg) {}
+static inline void update_load_avg(struct sched_entity *se, int update_tg, int update_util) {}
 static inline void
 enqueue_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se) {}
 static inline void
@@ -3436,7 +3440,7 @@ set_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 		if (schedstat_enabled())
 			update_stats_wait_end(cfs_rq, se);
 		__dequeue_entity(cfs_rq, se);
-		update_load_avg(se, 1);
+		update_load_avg(se, 1, 1);
 	}
 
 	update_stats_curr_start(cfs_rq, se);
@@ -3540,7 +3544,7 @@ static void put_prev_entity(struct cfs_rq *cfs_rq, struct sched_entity *prev)
 		/* Put 'current' back into the tree. */
 		__enqueue_entity(cfs_rq, prev);
 		/* in !on_rq case, update occurred at dequeue */
-		update_load_avg(prev, 0);
+		update_load_avg(prev, 0, 1);
 	}
 	cfs_rq->curr = NULL;
 }
@@ -3556,7 +3560,7 @@ entity_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr, int queued)
 	/*
 	 * Ensure that runnable average is periodically updated.
 	 */
-	update_load_avg(curr, 1);
+	update_load_avg(curr, 1, 1);
 	update_cfs_shares(cfs_rq);
 
 #ifdef CONFIG_SCHED_HRTICK
@@ -4394,6 +4398,40 @@ static inline void hrtick_update(struct rq *rq)
 
 static bool cpu_overutilized(int cpu);
 
+static void sync_tg_se(struct sched_entity *se)
+{
+	struct cfs_rq *cfs_rq = group_cfs_rq(se);
+
+	BUG_ON(entity_is_task(se));
+	BUG_ON(!cfs_rq);
+
+	se->avg.util_avg = cfs_rq->avg.util_avg;
+	se->avg.util_sum = cfs_rq->avg.util_sum;
+	se->avg.last_update_time = cfs_rq->avg.last_update_time;
+}
+
+static void attach_tg_se(struct sched_entity *se)
+{
+	struct cfs_rq *cfs_rq = cfs_rq_of(se);
+
+	BUG_ON(entity_is_task(se));
+	BUG_ON(!cfs_rq);
+
+	cfs_rq->avg.util_avg += se->avg.util_avg;
+	cfs_rq->avg.util_sum += se->avg.util_sum;
+}
+
+static void detach_tg_se(struct sched_entity *se)
+{
+	struct cfs_rq *cfs_rq = cfs_rq_of(se);
+
+	BUG_ON(entity_is_task(se));
+	BUG_ON(!cfs_rq);
+
+	cfs_rq->avg.util_avg = max_t(long, cfs_rq->avg.util_avg - se->avg.util_avg, 0);
+	cfs_rq->avg.util_sum = max_t(s32, cfs_rq->avg.util_sum - se->avg.util_sum, 0);
+}
+
 /*
  * The enqueue_task method is called before nr_running is
  * increased. Here we update the fair scheduling stats and
@@ -4432,7 +4470,10 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		if (cfs_rq_throttled(cfs_rq))
 			break;
 
-		update_load_avg(se, 1);
+		sync_tg_se(se);
+		update_load_avg(se, 1, 0);
+		attach_tg_se(se);
+
 		update_cfs_shares(cfs_rq);
 	}
 
@@ -4483,6 +4524,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 			/* avoid re-evaluating load for this entity */
 			se = parent_entity(se);
+
 			break;
 		}
 		flags |= DEQUEUE_SLEEP;
@@ -4495,7 +4537,10 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		if (cfs_rq_throttled(cfs_rq))
 			break;
 
-		update_load_avg(se, 1);
+		sync_tg_se(se);
+		update_load_avg(se, 1, 0);
+		detach_tg_se(se);
+
 		update_cfs_shares(cfs_rq);
 	}
 
