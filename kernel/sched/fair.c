@@ -4402,34 +4402,56 @@ static void sync_tg_se(struct sched_entity *se)
 {
 	struct cfs_rq *cfs_rq = group_cfs_rq(se);
 
+	unsigned long util_avg_old = se->avg.util_avg;
+	unsigned int util_sum_old = se->avg.util_sum;
+	unsigned long long last_update_time_old = se->avg.last_update_time;
+
 	BUG_ON(entity_is_task(se));
 	BUG_ON(!cfs_rq);
 
 	se->avg.util_avg = cfs_rq->avg.util_avg;
 	se->avg.util_sum = cfs_rq->avg.util_sum;
 	se->avg.last_update_time = cfs_rq->avg.last_update_time;
+
+	trace_printk("sync_tg_se: cfs_rq=%p se=%p util_avg=[%lu->%lu] util_sum=[%u->%u] last_update_time=[%llu->%llu]\n",
+		     cfs_rq, se, util_avg_old, se->avg.util_avg, util_sum_old, se->avg.util_sum,
+		     last_update_time_old, se->avg.last_update_time);
 }
 
 static void attach_tg_se(struct sched_entity *se)
 {
 	struct cfs_rq *cfs_rq = cfs_rq_of(se);
 
+	unsigned long util_avg_old = cfs_rq->avg.util_avg;
+	unsigned int util_sum_old = cfs_rq->avg.util_sum;
+
 	BUG_ON(entity_is_task(se));
 	BUG_ON(!cfs_rq);
 
 	cfs_rq->avg.util_avg += se->avg.util_avg;
 	cfs_rq->avg.util_sum += se->avg.util_sum;
+
+	trace_printk("attach_tg_se: se=%p cfs_rq=%p util_avg=[%lu->%lu] util_sum=[%u->%u] last_update_time=%llu\n",
+		     se, cfs_rq, util_avg_old, cfs_rq->avg.util_avg, util_sum_old, cfs_rq->avg.util_sum,
+		     cfs_rq->avg.last_update_time);
 }
 
 static void detach_tg_se(struct sched_entity *se)
 {
 	struct cfs_rq *cfs_rq = cfs_rq_of(se);
 
+	unsigned long util_avg_old = cfs_rq->avg.util_avg;
+	unsigned int util_sum_old = cfs_rq->avg.util_sum;
+
 	BUG_ON(entity_is_task(se));
 	BUG_ON(!cfs_rq);
 
 	cfs_rq->avg.util_avg = max_t(long, cfs_rq->avg.util_avg - se->avg.util_avg, 0);
 	cfs_rq->avg.util_sum = max_t(s32, cfs_rq->avg.util_sum - se->avg.util_sum, 0);
+
+	trace_printk("detach_tg_se: se=%p cfs_rq=%p util_avg=[%lu->%lu] util_sum=[%u->%u] last_update_time=%llu\n",
+		     se, cfs_rq, util_avg_old, cfs_rq->avg.util_avg, util_sum_old, cfs_rq->avg.util_sum,
+		     cfs_rq->avg.last_update_time);
 }
 
 /*
