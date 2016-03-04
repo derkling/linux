@@ -248,19 +248,15 @@ static struct idle_state idle_states_cluster_a57[] = {
 static struct capacity_state cap_states_cluster_a53[] = {
         /* Power per cluster */
 	{ .cap =  235, .power = 26, }, /*  450 MHz */
-	{ .cap =  303, .power = 30, }, /*  575 MHz */
-	{ .cap =  368, .power = 39, }, /*  700 MHz */
-	{ .cap =  406, .power = 47, }, /*  775 MHz */
-	{ .cap =  447, .power = 57, }, /*  850 Mhz */
+	{ .cap =  368, .power = 39, }, /*  800 MHz */
+	{ .cap =  425, .power = 57, }, /*  950 Mhz */
 };
 
 static struct capacity_state cap_states_cluster_a57[] = {
         /* Power per cluster */
-	{ .cap =  417, .power = 24, }, /*  450 MHz */
-	{ .cap =  579, .power = 32, }, /*  625 MHz */
-	{ .cap =  744, .power = 43, }, /*  800 MHz */
-	{ .cap =  883, .power = 49, }, /*  950 MHz */
-	{ .cap = 1024, .power = 64, }, /* 1100 MHz */
+	{ .cap =  512, .power = 32, }, /*  600 MHz */
+	{ .cap =  883, .power = 49, }, /* 1000 MHz */
+	{ .cap = 1024, .power = 64, }, /* 1200 MHz */
 };
 
 static struct sched_group_energy energy_cluster_a53 = {
@@ -294,19 +290,15 @@ static struct idle_state idle_states_core_a57[] = {
 static struct capacity_state cap_states_core_a53[] = {
         /* Power per cpu */
 	{ .cap =  235, .power =  33, }, /*  450 MHz */
-	{ .cap =  302, .power =  46, }, /*  575 MHz */
-	{ .cap =  368, .power =  61, }, /*  700 MHz */
-	{ .cap =  406, .power =  76, }, /*  775 MHz */
-	{ .cap =  447, .power =  93, }, /*  850 Mhz */
+	{ .cap =  368, .power =  61, }, /*  800 MHz */
+	{ .cap =  425, .power =  93, }, /*  950 Mhz */
 };
 
 static struct capacity_state cap_states_core_a57[] = {
         /* Power per cpu */
-	{ .cap =  417, .power = 168, }, /*  450 MHz */
-	{ .cap =  579, .power = 251, }, /*  625 MHz */
-	{ .cap =  744, .power = 359, }, /*  800 MHz */
-	{ .cap =  883, .power = 479, }, /*  950 MHz */
-	{ .cap = 1024, .power = 616, }, /* 1100 MHz */
+	{ .cap =  512, .power = 251, }, /*  600 MHz */
+	{ .cap =  883, .power = 479, }, /* 1000 MHz */
+	{ .cap = 1024, .power = 616, }, /* 1200 MHz */
 };
 
 static struct sched_group_energy energy_core_a53 = {
