@@ -1417,6 +1417,8 @@ extern struct drm_tile_group *drm_mode_get_tile_group(struct drm_device *dev,
 extern void drm_mode_put_tile_group(struct drm_device *dev,
 				   struct drm_tile_group *tg);
 
+extern int drm_create_virtual_connector(struct drm_device *dev);
+
 /* Helpers */
 static inline struct drm_crtc *drm_crtc_find(struct drm_device *dev,
 	uint32_t id)
