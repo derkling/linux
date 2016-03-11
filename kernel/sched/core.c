@@ -6405,8 +6405,12 @@ static void init_sched_groups_capacity(int cpu, struct sched_domain *sd)
 		sg = sg->next;
 	} while (sg != sd->groups);
 
-	if (cpu != group_balance_cpu(sg))
+	if (cpu != group_balance_cpu(sg)) {
+		printk("%s: cpu=%d return\n", __func__, cpu);
 		return;
+	}
+
+	printk("%s: cpu=%d sg=%p sgc=%p\n", __func__, cpu, sg, sg->sgc);
 
 	update_group_capacity(sd, cpu);
 	atomic_set(&sg->sgc->nr_busy_cpus, sg->group_weight);
@@ -6425,8 +6429,10 @@ static void init_sched_groups_energy(int cpu, struct sched_domain *sd,
 	if (!(fn && fn(cpu)))
 		return;
 
-	if (cpu != group_balance_cpu(sg))
+	if (cpu != group_balance_cpu(sg)) {
+		printk("%s: cpu=%d return\n", __func__, cpu);
 		return;
+	}
 
 	if (sd->flags & SD_OVERLAP) {
 		pr_err("BUG: EAS does not support overlapping sd spans\n");
@@ -6477,6 +6483,7 @@ static void init_sched_groups_energy(int cpu, struct sched_domain *sd,
 	}
 
 	sd->groups->sge = fn(cpu);
+	printk("%s: cpu=%d sg=%p sge=%p\n", __func__, cpu, sd->groups, sd->groups->sge);
 }
 
 /*
