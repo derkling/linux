@@ -6463,8 +6463,8 @@ static inline void check_sched_energy_data(int cpu, sched_domain_energy_f fn,
 	}
 }
 
-static void init_sched_energy(int cpu, struct sched_domain *sd,
-			      sched_domain_energy_f fn)
+static void init_sched_groups_energy(int cpu, struct sched_domain *sd,
+				     sched_domain_energy_f fn)
 {
 	if (!(fn && fn(cpu)))
 		return;
@@ -6473,7 +6473,7 @@ static void init_sched_energy(int cpu, struct sched_domain *sd,
 		return;
 
 	if (sd->child && !sd->child->groups->sge) {
-		pr_err("BUG: EAS setup broken for CPU%d\n", cpu);
+		pr_err("BUG: EAS setup borken for CPU%d\n", cpu);
 #ifdef CONFIG_SCHED_DEBUG
 		pr_err("     energy data on %s but not on %s domain\n",
 			sd->name, sd->child->name);
@@ -7200,7 +7200,7 @@ static int build_sched_domains(const struct cpumask *cpu_map,
 			continue;
 
 		for (sd = *per_cpu_ptr(d.sd, i); sd; sd = sd->parent, tl++) {
-			init_sched_energy(i, sd, tl->energy);
+			init_sched_groups_energy(i, sd, tl->energy);
 			claim_allocations(i, sd);
 			init_sched_groups_capacity(i, sd);
 		}
