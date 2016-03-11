@@ -6426,22 +6426,43 @@ static void init_sched_groups_capacity(int cpu, struct sched_domain *sd)
 	atomic_set(&sg->sgc->nr_busy_cpus, sg->group_weight);
 }
 
+#define energy_eff(e, n) \
+    ((e->cap_states[n].cap << SCHED_CAPACITY_SHIFT)/e->cap_states[n].power)
+
 /*
  * Check that the per-cpu provided sd energy data is consistent for all cpus
  * within the mask.
  */
-static inline void check_sched_energy_data(int cpu, sched_domain_energy_f fn,
-					   const struct cpumask *cpumask)
+static inline void check_sched_energy_data(int cpu, struct sched_domain *sd,
+					   sched_domain_energy_f fn)
 {
 	const struct sched_group_energy * const sge = fn(cpu);
-	struct cpumask mask;
+	struct cpumask *groupmask = sched_group_cpus(sd->groups);
 	int i;
 
-	if (cpumask_weight(cpumask) > 1) {
-		cpumask_xor(&mask, cpumask, get_cpu_mask(cpu));
+	if (cpumask_weight(groupmask) > 1) {
+		struct cpumask mask;
+
+		cpumask_xor(&mask, groupmask, get_cpu_mask(cpu));
 
 		for_each_cpu(i, &mask)
 			BUG_ON(sge != fn(i));
+	}
+
+	/* Check that energy efficiency (capacity/power) is monotonically
+	 * decreasing in the capacity state vector with higher indexes
+	 */
+	for (i = 0; i < (sge->nr_cap_states - 1); i++) {
+		if (energy_eff(sge, i) > energy_eff(sge, i+1))
+			continue;
+#ifdef CONFIG_SCHED_DEBUG
+		pr_warn("WARN: cpu=%d, domain=%s: incr. energy eff %lu[%d]->%lu[%d]\n",
+			cpu, sd->name, energy_eff(sge, i), i,
+			energy_eff(sge, i+1), i+1);
+#else
+		pr_warn("WARN: cpu=%d: incr. energy eff %lu[%d]->%lu[%d]\n",
+			cpu, energy_eff(sge, i), i, energy_eff(sge, i+1), i+1);
+#endif
 	}
 }
 
