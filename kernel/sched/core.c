@@ -6324,21 +6324,38 @@ static void init_sched_groups_capacity(int cpu, struct sched_domain *sd)
 #define energy_eff(e, n) \
     ((e->cap_states[n].cap << SCHED_CAPACITY_SHIFT)/e->cap_states[n].power)
 
-/*
- * Check that the per-cpu provided sd energy data is consistent for all cpus
- * within the mask.
- */
-static inline void check_sched_energy_data(int cpu, struct sched_domain *sd,
-					   sched_domain_energy_f fn)
+static void init_sched_groups_energy(int cpu, struct sched_domain *sd,
+				     sched_domain_energy_f fn)
 {
-	const struct sched_group_energy * const sge = fn(cpu);
-	struct cpumask *groupmask = sched_group_cpus(sd->groups);
+	struct sched_group *sg = sd->groups;
+	const struct sched_group_energy *sge;
 	int i;
 
-	if (cpumask_weight(groupmask) > 1) {
+	if (!(fn && fn(cpu)))
+		return;
+
+	if (cpu != group_balance_cpu(sg))
+		return;
+
+	if (sd->child && !sd->child->groups->sge) {
+		pr_err("BUG: EAS setup borken for CPU%d\n", cpu);
+#ifdef CONFIG_SCHED_DEBUG
+		pr_err("     energy data on %s but not on %s domain\n",
+			sd->name, sd->child->name);
+#endif
+		return;
+	}
+
+	sge = fn(cpu);
+
+	/*
+	 * Check that the per-cpu provided sd energy data is consistent for all
+	 * cpus within the mask.
+	 */
+	if (cpumask_weight(sched_group_cpus(sg)) > 1) {
 		struct cpumask mask;
 
-		cpumask_xor(&mask, groupmask, get_cpu_mask(cpu));
+		cpumask_xor(&mask, sched_group_cpus(sg), get_cpu_mask(cpu));
 
 		for_each_cpu(i, &mask)
 			BUG_ON(sge != fn(i));
@@ -6359,27 +6376,6 @@ static inline void check_sched_energy_data(int cpu, struct sched_domain *sd,
 			cpu, energy_eff(sge, i), i, energy_eff(sge, i+1), i+1);
 #endif
 	}
-}
-
-static void init_sched_groups_energy(int cpu, struct sched_domain *sd,
-				     sched_domain_energy_f fn)
-{
-	if (!(fn && fn(cpu)))
-		return;
-
-	if (cpu != group_balance_cpu(sd->groups))
-		return;
-
-	if (sd->child && !sd->child->groups->sge) {
-		pr_err("BUG: EAS setup borken for CPU%d\n", cpu);
-#ifdef CONFIG_SCHED_DEBUG
-		pr_err("     energy data on %s but not on %s domain\n",
-			sd->name, sd->child->name);
-#endif
-		return;
-	}
-
-	check_sched_energy_data(cpu, fn, sched_group_cpus(sd->groups));
 
 	sd->groups->sge = fn(cpu);
 }
