@@ -641,18 +641,25 @@ TRACE_EVENT(sched_load_avg_cpu,
 
 	TP_STRUCT__entry(
 		__field( int,	cpu				)
+		__field( int,	id				)
 		__field( unsigned long,	load_avg		)
 		__field( unsigned long,	util_avg		)
 	),
 
 	TP_fast_assign(
 		__entry->cpu			= cpu;
+#ifdef CONFIG_FAIR_GROUP_SCHED
+		__entry->id			= cfs_rq->tg->css.id;
+#else
+		__entry->id			= 0;
+#endif
 		__entry->load_avg		= cfs_rq->avg.load_avg;
 		__entry->util_avg		= cfs_rq->avg.util_avg;
 	),
 
-	TP_printk("cpu=%d load_avg=%lu util_avg=%lu",
-		  __entry->cpu, __entry->load_avg, __entry->util_avg)
+	TP_printk("cpu=%d tg_css_id=%d load_avg=%lu util_avg=%lu",
+		  __entry->cpu, __entry->id, __entry->load_avg,
+		  __entry->util_avg)
 );
 
 /*
