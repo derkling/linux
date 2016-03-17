@@ -4883,6 +4883,11 @@ static int wake_affine(struct sched_domain *sd, struct task_struct *p,
 static inline int task_util(struct task_struct *p);
 static unsigned long cpu_util(int cpu);
 
+static unsigned long capacity_spare(int cpu)
+{
+	return capacity_of(cpu) - cpu_util(cpu);
+}
+
 /*
  * find_idlest_group finds and returns the least busy CPU group within the
  * domain.
@@ -4892,7 +4897,9 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 		  int this_cpu, int sd_flag)
 {
 	struct sched_group *idlest = NULL, *group = sd->groups;
+	struct sched_group *most_spare_sg = NULL;
 	unsigned long min_load = ULONG_MAX, this_load = 0;
+	unsigned long most_spare = 0, this_spare = 0;
 	int load_idx = sd->forkexec_idx;
 	int imbalance = 100 + (sd->imbalance_pct-100)/2;
 
@@ -4900,7 +4907,7 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 		load_idx = sd->wake_idx;
 
 	do {
-		unsigned long load, avg_load;
+		unsigned long load, avg_load, spare_cap, max_spare_cap;
 		int local_group;
 		int i;
 
@@ -4914,6 +4921,7 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 
 		/* Tally up the load of all CPUs in the group */
 		avg_load = 0;
+		max_spare_cap = 0;
 
 		for_each_cpu(i, sched_group_cpus(group)) {
 			/* Bias balancing toward cpus of our domain */
@@ -4923,6 +4931,23 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 				load = target_load(i, load_idx);
 
 			avg_load += load;
+
+			spare_cap = capacity_spare(i);
+
+			/*
+			 * XXX task_util() is not decayed yet, while
+			 * capacity_spare() might be and hence over-
+			 * estimate the spare capacity of the previous
+			 * cpu.
+			 */
+			if (i == task_cpu(p))
+				spare_cap = min(capacity_of(i),
+						spare_cap + task_util(p));
+
+			if (spare_cap > max_spare_cap &&
+			    spare_cap > capacity_of(i) >> 3) {
+				max_spare_cap = spare_cap;
+			}
 		}
 
 		/* Adjust by relative CPU capacity of the group */
@@ -4930,11 +4955,24 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 
 		if (local_group) {
 			this_load = avg_load;
-		} else if (avg_load < min_load) {
-			min_load = avg_load;
-			idlest = group;
+			this_spare = max_spare_cap;
+		} else {
+			if (avg_load < min_load) {
+				min_load = avg_load;
+				idlest = group;
+			}
+
+			if (most_spare < max_spare_cap) {
+				most_spare = max_spare_cap;
+				most_spare_sg = group;
+			}
 		}
 	} while (group = group->next, group != sd->groups);
+
+	if (imbalance*this_spare > 100*most_spare)
+		return NULL;
+	else if (most_spare > task_util(p) >> 1)
+		return most_spare_sg;
 
 	if (!idlest || 100*this_load < imbalance*min_load)
 		return NULL;
