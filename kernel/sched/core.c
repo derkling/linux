@@ -6442,6 +6442,14 @@ static void init_sched_groups_energy(int cpu, struct sched_domain *sd,
 	if (cpu != group_balance_cpu(sg))
 		return;
 
+	if (sd->flags & SD_OVERLAP) {
+		pr_err("BUG: EAS does not support overlapping sd spans\n");
+#ifdef CONFIG_SCHED_DEBUG
+		pr_err("     the %s domain has SD_OVERLAP set\n", sd->name);
+#endif
+		return;
+	}
+
 	if (sd->child && !sd->child->groups->sge) {
 		pr_err("BUG: EAS setup borken for CPU%d\n", cpu);
 #ifdef CONFIG_SCHED_DEBUG
