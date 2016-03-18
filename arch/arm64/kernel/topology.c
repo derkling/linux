@@ -277,7 +277,32 @@ static struct sched_group_energy energy_core_a53 = {
 	.cap_states     = cap_states_core_a53,
 };
 
+static struct idle_state idle_states_system_a53[] = {
+	{ .power = 0 }, /* arch_cpu_idle() (active idle) = WFI */
+	{ .power = 0 }, /* WFI */
+	{ .power = 0 }, /* cpu-sleep */
+	{ .power = 0 }, /* cluster-sleep */
+};
+
+static struct capacity_state cap_states_system_a53[] = {
+        /* Power per cpu */
+	{ .cap = 1024, .power = 0, },
+};
+
+static struct sched_group_energy energy_system_a53 = {
+	.nr_idle_states = ARRAY_SIZE(idle_states_system_a53),
+	.idle_states    = idle_states_system_a53,
+	.nr_cap_states  = ARRAY_SIZE(cap_states_system_a53),
+	.cap_states     = cap_states_system_a53,
+};
+
 /* sd energy functions */
+static inline
+const struct sched_group_energy * const cpu_system_energy(int cpu)
+{
+	return &energy_system_a53;
+}
+
 static inline
 const struct sched_group_energy * const cpu_cluster_energy(int cpu)
 {
@@ -311,6 +336,7 @@ static struct sched_domain_topology_level arm64_topology[] = {
 	{ cpu_coregroup_mask, cpu_corepower_flags, cpu_core_energy, SD_INIT_NAME(MC) },
 #endif
 	{ cpu_cpu_mask, cluster_corepower_flags, cpu_cluster_energy, SD_INIT_NAME(DIE) },
+	{ cpu_cpu_mask, NULL, cpu_system_energy, SD_INIT_NAME(SYS) },
 	{ NULL, },
 };
 
