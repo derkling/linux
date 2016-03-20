@@ -5010,6 +5010,7 @@ static int sched_group_energy(struct energy_env *eenv)
 
 				cap_idx = find_new_capacity(eenv, sg->sge);
 				idle_idx = group_idle_state(sg);
+				BUG_ON(idle_idx >= sg->sge->nr_idle_states);
 				group_util = group_norm_util(eenv, sg);
 				sg_busy_energy = (group_util * sg->sge->cap_states[cap_idx].power)
 								>> SCHED_CAPACITY_SHIFT;
