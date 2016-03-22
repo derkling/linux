@@ -183,7 +183,6 @@ running at twice the clock-frequency of cpu@2 and cpu@3)
 cpus {
 	#address-cells = <1>;
 	#size-cells = <0>;
-	capacity-scale = <2>;
 
 	cpu0: cpu@0 {
 		device_type = "cpu";
