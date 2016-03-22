@@ -193,7 +193,7 @@ static void __init normalize_cpu_capacity(void)
 	u64 capacity;
 	int cpu;
 
-	if (cap_parsing_failed)
+	if (WARN_ON(!raw_capacity) || cap_parsing_failed)
 		return;
 
 	pr_info("cpu_capacity: capacity_scale=%u\n", capacity_scale);
@@ -204,9 +204,74 @@ static void __init normalize_cpu_capacity(void)
 		pr_info("cpu_capacity: CPU%d cpu_capacity=%lu\n",
 			cpu, arch_scale_cpu_capacity(NULL, cpu));
 	}
+}
 
+#ifdef CONFIG_CPU_FREQ
+static cpumask_var_t cpus_to_visit;
+static bool cap_parsing_done;
+
+static int
+init_cpu_capacity_callback(struct notifier_block *nb,
+			   unsigned long val,
+			   void *data)
+{
+	struct cpufreq_policy *policy = data;
+	int cpu;
+
+	if (cap_parsing_failed || cap_parsing_done)
+		return 0;
+
+	switch (val) {
+	case CPUFREQ_NOTIFY:
+		pr_debug("cpu_capacity: init cpu capacity for CPUs [%*pbl] "
+				"(to_visit=%*pbl)\n",
+				cpumask_pr_args(policy->related_cpus),
+				cpumask_pr_args(cpus_to_visit));
+		cpumask_andnot(cpus_to_visit,
+			       cpus_to_visit,
+			       policy->related_cpus);
+		for_each_cpu(cpu, policy->related_cpus) {
+			raw_capacity[cpu] = arch_scale_cpu_capacity(NULL, cpu) *
+					    policy->max / 1000UL;
+			capacity_scale = max(raw_capacity[cpu], capacity_scale);
+		}
+		if (cpumask_empty(cpus_to_visit)) {
+			normalize_cpu_capacity();
+			kfree(raw_capacity);
+			pr_debug("cpu_capacity: parsing done\n");
+			cap_parsing_done = true;
+		}
+	}
+	return 0;
+}
+
+static struct notifier_block init_cpu_capacity_notifier = {
+	.notifier_call = init_cpu_capacity_callback,
+};
+
+static int __init register_cpufreq_notifier(void)
+{
+	if (cap_parsing_failed)
+		return -EINVAL;
+
+	if (!alloc_cpumask_var(&cpus_to_visit, GFP_KERNEL)) {
+		pr_err("cpu_capacity: failed to allocate memory for "
+				"cpus_to_visit\n");
+		return -ENOMEM;
+	}
+	cpumask_copy(cpus_to_visit, cpu_possible_mask);
+
+	return cpufreq_register_notifier(&init_cpu_capacity_notifier,
+					 CPUFREQ_POLICY_NOTIFIER);
+}
+core_initcall(register_cpufreq_notifier);
+#else
+static int __init free_raw_capacity(void)
+{
 	kfree(raw_capacity);
 }
+core_initcall(free_raw_capacity);
+#endif
 
 /*
  * Iterate all CPUs' descriptor in DT and compute the efficiency
