@@ -1,5 +1,4 @@
-/*
- * Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -11,14 +10,20 @@
  * GNU General Public License for more details.
  */
 
+
 /dts-v1/;
 
-#include "apq8917.dtsi"
-#include "msm8917-pmi8950-mtp.dtsi"
+#include "../qcom/msm8996pro.dtsi"
+#include "../qcom/msm-pmi8996.dtsi"
+#include "../qcom/msm8996-mtp.dtsi"
+#include "msm8996-htc_marlin.dtsi"
 
 / {
-	model = "Qualcomm Technologies, Inc. APQ8917-PMI8950 MTP";
-	compatible = "qcom,apq8917-mtp", "qcom,apq8917", "qcom,mtp";
-	qcom,board-id= <8 0>;
-	qcom,pmic-id = <0x10019 0x010011 0x0 0x0>;
+	model = "HTC Corporation. MSM8996pro + PMI8996 Marlin XA";
+	qcom,msm-id = <422 0x10000>, <423 0x10000>;
+	qcom,board-id = <0 0>;
+};
+
+&mdss_fb0 {
+	qcom,mdss-mixer-swap;
 };
