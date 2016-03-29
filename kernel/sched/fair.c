@@ -5039,14 +5039,17 @@ static int select_idle_sibling(struct task_struct *p, int target)
 	 */
 	sd = rcu_dereference(per_cpu(sd_llc, target));
 	for_each_lower_domain(sd) {
-		sg = sd->groups;
+		/*
+		 * Skip first sched group because it contains target cpu
+		 */
+		sg = sd->groups->next;
 		do {
 			if (!cpumask_intersects(sched_group_cpus(sg),
 						tsk_cpus_allowed(p)))
 				goto next;
 
 			for_each_cpu(i, sched_group_cpus(sg)) {
-				if (i == target || !idle_cpu(i))
+				if (!idle_cpu(i))
 					goto next;
 			}
 
