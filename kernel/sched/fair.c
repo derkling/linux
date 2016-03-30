@@ -5009,6 +5009,7 @@ static inline int __energy_diff(struct energy_env *eenv)
 	struct sched_domain *sd;
 	struct sched_group *sg;
 	int sd_cpu = -1;
+	int diff, margin;
 
 	if (eenv->src_cpu == eenv->dst_cpu)
 		return 0;
@@ -5034,6 +5035,16 @@ static inline int __energy_diff(struct energy_env *eenv)
 
 	trace_sched_energy_diff(eenv);
 	trace_sched_energy_perf_deltas(eenv);
+
+	/*
+	 * Dead-zone margin preventing too many migrations.
+	 */
+
+	margin = eenv->before.energy >> 6; /* ~1.56% */
+
+	diff = eenv->after.energy - eenv->before.energy;
+
+	eenv->nrg_delta = (abs(diff) < margin) ? 0 : eenv->nrg_delta;
 
 	return eenv->nrg_delta;
 }
