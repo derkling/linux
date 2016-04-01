@@ -458,6 +458,7 @@ struct mdss_dsi_ctrl_pdata {
 	u32 dsi_irq_mask;
 	struct mdss_hw *dsi_hw;
 	struct mdss_intf_recovery *recovery;
+	struct mdss_intf_recovery *mdp_callback;
 
 	struct dsi_panel_cmds on_cmds;
 	struct dsi_panel_cmds post_dms_on_cmds;
@@ -544,8 +545,6 @@ struct mdss_dsi_ctrl_pdata {
 
 	bool timing_db_mode;
 	bool update_phy_timing; /* flag to recalculate PHY timings */
-
-	bool phy_power_off;
 };
 
 struct dsi_status_data {

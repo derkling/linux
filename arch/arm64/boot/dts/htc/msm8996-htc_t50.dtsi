@@ -13,6 +13,7 @@
 
 #include "msm8996-htc-common.dtsi"
 #include "msm8996-htc-regulator.dtsi"
+#include "msm8996-htc-pm.dtsi"
 #include "dsi-panel-t50-hx8396c2.dtsi"
 #include "dsi-panel-t50.dtsi"
 #include "msm8996-touch-t50.dtsi"
@@ -20,6 +21,7 @@
 #include "msm8996-audio-t50.dtsi"
 #include "msm8996-htc-led.dtsi"
 #include "msm8996-camera-sensor-t50_xc.dtsi"
+#include "msm8996-htc-nfc.dtsi"
 
 / {
 	model = "HTC Corporation. MSM8996 v3 + PMI8996 T50";
