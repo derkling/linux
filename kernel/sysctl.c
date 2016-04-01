@@ -325,13 +325,6 @@ static struct ctl_table kern_table[] = {
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
-	{
-		.procname	= "sched_small_wakee_task_load",
-		.data		= &sysctl_sched_small_wakee_task_load_pct,
-		.maxlen		= sizeof(unsigned int),
-		.mode		= 0644,
-		.proc_handler   = sched_hmp_proc_update_handler,
-	},
 	},
 	{
 		.procname	= "sched_wakeup_granularity_ns",
