@@ -5455,6 +5455,8 @@ static inline int find_best_target(struct task_struct *p)
 	return target_cpu;
 }
 
+unsigned int sysctl_sched_cfs_max_nrgi __read_mostly;
+
 static int energy_aware_wake_cpu(struct task_struct *p, int target, int sync)
 {
 	struct sched_domain *sd;
@@ -5557,7 +5559,7 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target, int sync)
 		if (cpu_overutilized(task_cpu(p)))
 			return target_cpu;
 
-		if (energy_diff(&eenv) >= 0)
+		if (energy_diff(&eenv) >= sysctl_sched_cfs_max_nrgi)
 			return task_cpu(p);
 	}
 
