@@ -45,6 +45,7 @@ extern unsigned int sysctl_sched_pred_alert_freq;
 extern unsigned int sysctl_sched_is_big_little;
 extern unsigned int sysctl_sched_sync_hint_enable;
 extern unsigned int sysctl_sched_initial_task_util;
+extern unsigned int sysctl_sched_cfs_max_nrgi;
 
 enum sched_tunable_scaling {
 	SCHED_TUNABLESCALING_NONE,
