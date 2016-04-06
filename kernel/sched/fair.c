@@ -4747,6 +4747,7 @@ static inline bool cpu_in_sg(struct sched_group *sg, int cpu)
 	return cpu != -1 && cpumask_test_cpu(cpu, sched_group_cpus(sg));
 }
 
+unsigned int sysctl_sched_nrg_dead_zone = 5;
 /*
  * energy_diff(): Estimate the energy impact of changing the utilization
  * distribution. eenv specifies the change: utilisation amount, source, and
@@ -4759,6 +4760,7 @@ static int energy_diff(struct energy_env *eenv)
 	struct sched_domain *sd;
 	struct sched_group *sg;
 	int sd_cpu = -1, energy_before = 0, energy_after = 0;
+	int diff, margin;
 
 	struct energy_env eenv_before = {
 		.util_delta	= 0,
@@ -4791,7 +4793,10 @@ static int energy_diff(struct energy_env *eenv)
 		}
 	} while (sg = sg->next, sg != sd->groups);
 
-	return energy_after - energy_before;
+	margin = energy_before * sysctl_sched_nrg_dead_zone / 100;
+	diff = energy_after - energy_before;
+
+	return abs(diff) <= margin ? 0 : diff;
 }
 
 /*
