@@ -263,11 +263,36 @@ static inline int cpu_corepower_flags(void)
 	       SD_SHARE_CAP_STATES;
 }
 
+static int arm_big_little(void)
+{
+	int i, cap_max = -1;
+
+	for (i=0;i<NR_CPUS;i++) {
+		if (cpu_core_energy(i)) {
+			int cap;
+			int cap_idx = cpu_core_energy(i)->nr_cap_states -1;
+			cap = cpu_core_energy(i)->cap_states[cap_idx].cap;
+			if (cap_max == -1) {
+				cap_max = cap;
+			} else if (cap_max != cap) {
+				return 1;
+			}
+		}
+	}
+
+	return 0;
+}
+
+static int arm_cpu_cpu_flags(void)
+{
+	return arm_big_little() ? SD_ASYM_CPUCAPACITY : 0;
+}
+
 static struct sched_domain_topology_level arm64_topology[] = {
 #ifdef CONFIG_SCHED_MC
 	{ cpu_coregroup_mask, cpu_corepower_flags, cpu_core_energy, SD_INIT_NAME(MC) },
 #endif
-	{ cpu_cpu_mask, NULL, cpu_cluster_energy, SD_INIT_NAME(DIE) },
+	{ cpu_cpu_mask, arm_cpu_cpu_flags, cpu_cluster_energy, SD_INIT_NAME(DIE) },
 	{ NULL, },
 };
 
