@@ -257,12 +257,6 @@ const struct cpumask *cpu_coregroup_mask(int cpu)
 	return &cpu_topology[cpu].core_sibling;
 }
 
-static inline int cpu_corepower_flags(void)
-{
-	return SD_SHARE_PKG_RESOURCES | SD_SHARE_POWERDOMAIN | \
-	       SD_SHARE_CAP_STATES;
-}
-
 static int arm_big_little(void)
 {
 	int i, cap_max = -1;
@@ -281,6 +275,14 @@ static int arm_big_little(void)
 	}
 
 	return 0;
+}
+
+static inline int cpu_corepower_flags(void)
+{
+	int flags =  SD_SHARE_PKG_RESOURCES | SD_SHARE_POWERDOMAIN | \
+		     SD_SHARE_CAP_STATES;
+
+	return arm_big_little() ? flags | SD_BALANCE_WAKE : flags;
 }
 
 static int arm_cpu_cpu_flags(void)
