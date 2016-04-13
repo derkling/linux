@@ -4542,17 +4542,6 @@ struct energy_env {
 };
 
 /*
- * Returns the current capacity of cpu after applying both
- * cpu and freq scaling.
- */
-static unsigned long capacity_curr_of(int cpu)
-{
-	return cpu_rq(cpu)->cpu_capacity_orig *
-	       arch_scale_freq_capacity(NULL, cpu)
-	       >> SCHED_CAPACITY_SHIFT;
-}
-
-/*
  * __cpu_norm_util() returns the cpu util relative to a specific capacity,
  * i.e. it's busy ratio, in the range [0..SCHED_LOAD_SCALE] which is useful for
  * energy calculations. Using the scale-invariant util returned by
