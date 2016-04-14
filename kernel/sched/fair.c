@@ -5180,6 +5180,10 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 			target_cpu = i;
 	}
 
+	/* Agressively go for idle cpus if prev_cpu is not idle */
+	if (idle_cpu(target_cpu) && !idle_cpu(task_cpu(p)))
+		return target_cpu;
+
 	if (target_cpu != task_cpu(p)) {
 		struct energy_env eenv = {
 			.util_delta	= task_util(p),
