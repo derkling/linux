@@ -5808,7 +5808,7 @@ static int select_energy_cpu_brute(struct task_struct *p, int prev_cpu)
 	sd = rcu_dereference(per_cpu(sd_ea, prev_cpu));
 
 	if (!sd)
-		return prev_cpu;
+		goto unlock;
 
 	for_each_cpu_and(i, tsk_cpus_allowed(p), sched_domain_span(sd)) {
 		int diff;
@@ -5841,6 +5841,7 @@ static int select_energy_cpu_brute(struct task_struct *p, int prev_cpu)
 		}
 	}
 
+unlock:
 	rcu_read_unlock();
 
 	if (energy_cpu == prev_cpu && !cpu_overutilized(prev_cpu))
