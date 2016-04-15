@@ -4768,6 +4768,9 @@ static int energy_diff(struct energy_env *eenv)
 		.dst_cpu	= eenv->dst_cpu,
 	};
 
+	trace_printk("ediff: src_cpu=%d dst_cpu=%d",
+			eenv->src_cpu, eenv->dst_cpu);
+
 	if (eenv->src_cpu == eenv->dst_cpu)
 		return 0;
 
@@ -5124,6 +5127,9 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 	int target_cpu = task_cpu(p);
 	int i;
 
+	trace_printk("eaw: task=%d target=%d task_cpu=%d",
+			task_pid_nr(p), target, task_cpu(p));
+
 	sd = rcu_dereference(per_cpu(sd_ea, task_cpu(p)));
 
 	if (!sd)
@@ -5153,8 +5159,11 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 	}
 
 	/* Agressively go for idle cpus if prev_cpu is not idle */
-	if (idle_cpu(target_cpu) && !idle_cpu(task_cpu(p)))
+	if (idle_cpu(target_cpu) && !idle_cpu(task_cpu(p))) {
+		trace_printk("eaw_bail1: task=%d target_cpu=%d task_cpu=%d",
+				task_pid_nr(p), target_cpu, task_cpu(p));
 		return target_cpu;
+	}
 
 	if (target_cpu != task_cpu(p)) {
 		struct energy_env eenv = {
@@ -5164,13 +5173,21 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 		};
 
 		/* Not enough spare capacity on previous cpu */
-		if (cpu_overutilized(task_cpu(p)))
+		if (cpu_overutilized(task_cpu(p))) {
+			trace_printk("eaw_bail2: task=%d target_cpu=%d task_cpu=%d",
+					task_pid_nr(p), target_cpu, task_cpu(p));
 			return target_cpu;
+		}
 
-		if (energy_diff(&eenv) >= 0)
+		if (energy_diff(&eenv) >= 0) {
+			trace_printk("eaw_bail3: task=%d target_cpu=%d task_cpu=%d",
+					task_pid_nr(p), task_cpu(p), task_cpu(p));
 			return task_cpu(p);
+		}
 	}
 
+	trace_printk("eaw_bail4: task=%d target_cpu=%d task_cpu=%d",
+			task_pid_nr(p), target_cpu, task_cpu(p));
 	return target_cpu;
 }
 
