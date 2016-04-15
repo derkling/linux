@@ -287,7 +287,7 @@ static inline int cpu_corepower_flags(void)
 
 static int arm_cpu_cpu_flags(void)
 {
-	return arm_big_little() ? SD_ASYM_CPUCAPACITY : 0;
+	return arm_big_little() ? SD_ASYM_CPUCAPACITY | SD_BALANCE_WAKE : 0;
 }
 
 static struct sched_domain_topology_level arm64_topology[] = {
