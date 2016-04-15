@@ -5121,8 +5121,6 @@ done:
 static int energy_aware_wake_cpu(struct task_struct *p, int target)
 {
 	struct sched_domain *sd;
-	struct sched_group *sg, *sg_target;
-	int target_max_cap = INT_MAX;
 	int target_cpu = task_cpu(p);
 	int i;
 
@@ -5131,34 +5129,8 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 	if (!sd)
 		return target;
 
-	sg = sd->groups;
-	sg_target = sg;
-
-	/*
-	 * Find group with sufficient capacity. We only get here if no cpu is
-	 * overutilized. We may end up overutilizing a cpu by adding the task,
-	 * but that should not be any worse than select_idle_sibling().
-	 * load_balance() should sort it out later as we get above the tipping
-	 * point.
-	 */
-	do {
-		/* Assuming all cpus are the same in group */
-		int max_cap_cpu = group_first_cpu(sg);
-
-		/*
-		 * Assume smaller max capacity means more energy-efficient.
-		 * Ideally we should query the energy model for the right
-		 * answer but it easily ends up in an exhaustive search.
-		 */
-		if (capacity_of(max_cap_cpu) < target_max_cap &&
-		    task_fits_max(p, max_cap_cpu)) {
-			sg_target = sg;
-			target_max_cap = capacity_of(max_cap_cpu);
-		}
-	} while (sg = sg->next, sg != sd->groups);
-
 	/* Find cpu with sufficient capacity */
-	for_each_cpu_and(i, tsk_cpus_allowed(p), sched_group_cpus(sg_target)) {
+	for_each_cpu_and(i, tsk_cpus_allowed(p), sched_domain_span(sd)) {
 		/*
 		 * p's blocked utilization is still accounted for on prev_cpu
 		 * so prev_cpu will receive a negative bias due to the double
