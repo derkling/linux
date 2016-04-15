@@ -26,6 +26,7 @@
 #include "msm-pcm-routing-v2.h"
 #include <sound/audio_cal_utils.h>
 #include <sound/adsp_err.h>
+#include <linux/qdsp6v2/apr_tal.h>
 
 #define WAKELOCK_TIMEOUT	5000
 
@@ -45,7 +46,6 @@ enum {
 	AFE_FB_SPKR_PROT_CAL,
 	AFE_HW_DELAY_CAL,
 	AFE_SIDETONE_CAL,
-	AFE_SIDETONE_IIR_CAL,
 	AFE_TOPOLOGY_CAL,
 	AFE_CUST_TOPOLOGY_CAL,
 	AFE_FB_SPKR_PROT_TH_VI_CAL,
@@ -1524,53 +1524,75 @@ static int afe_send_codec_reg_page_config(
 static int afe_send_codec_reg_config(
 	struct afe_param_cdc_reg_cfg_data *cdc_reg_cfg)
 {
-	int i, ret;
-	int pkt_size, payload_size;
+	int i, j, ret;
+	int pkt_size, payload_size, reg_per_pkt, num_pkts, num_regs;
 	struct afe_svc_cmd_cdc_reg_cfg *config;
 	struct afe_svc_cmd_set_param *param;
 
-	payload_size = sizeof(struct afe_param_cdc_reg_cfg_payload) *
-		       cdc_reg_cfg->num_registers;
-	pkt_size = sizeof(*config) + payload_size;
-
-	pr_debug("%s: pkt_size %d, payload_size %d\n", __func__, pkt_size,
-		 payload_size);
-	config = kzalloc(pkt_size, GFP_KERNEL);
-	if (!config) {
-		pr_warn("%s: Not enought memory, pkt_size %d\n", __func__,
-			pkt_size);
-		return -ENOMEM;
+	reg_per_pkt = (APR_MAX_BUF - sizeof(*config)) /
+			sizeof(struct afe_param_cdc_reg_cfg_payload);
+	if (reg_per_pkt > 0) {
+		num_pkts = (cdc_reg_cfg->num_registers / reg_per_pkt) +
+			(cdc_reg_cfg->num_registers % reg_per_pkt == 0 ? 0 : 1);
+	} else {
+		pr_err("%s: Failed to build codec reg config APR packet\n",
+			__func__);
+		return -EINVAL;
 	}
 
-	config->hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
-					      APR_HDR_LEN(APR_HDR_SIZE),
-					      APR_PKT_VER);
-	config->hdr.pkt_size = pkt_size;
-	config->hdr.src_port = 0;
-	config->hdr.dest_port = 0;
-	config->hdr.token = IDX_GLOBAL_CFG;
-	config->hdr.opcode = AFE_SVC_CMD_SET_PARAM;
+	for (j = 0; j < num_pkts; ++j) {
+		/*
+		 * num_regs is set to reg_per_pkt on each pass through the loop
+		 * except the last, when it is set to the number of registers
+		 * remaining from the total
+		 */
+		num_regs = (j < (num_pkts - 1) ? reg_per_pkt :
+				cdc_reg_cfg->num_registers - (reg_per_pkt * j));
+		payload_size = sizeof(struct afe_param_cdc_reg_cfg_payload) *
+				num_regs;
+		pkt_size = sizeof(*config) + payload_size;
+		pr_debug("%s: pkt_size %d, payload_size %d\n", __func__,
+			 pkt_size, payload_size);
+		config = kzalloc(pkt_size, GFP_KERNEL);
+		if (!config)
+			return -ENOMEM;
 
-	param = &config->param;
-	param->payload_size = payload_size;
-	param->payload_address_lsw = 0x00;
-	param->payload_address_msw = 0x00;
-	param->mem_map_handle = 0x00;
+		config->hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+						      APR_HDR_LEN(APR_HDR_SIZE),
+						      APR_PKT_VER);
+		config->hdr.pkt_size = pkt_size;
+		config->hdr.src_port = 0;
+		config->hdr.dest_port = 0;
+		config->hdr.token = IDX_GLOBAL_CFG;
+		config->hdr.opcode = AFE_SVC_CMD_SET_PARAM;
 
-	for (i = 0; i < cdc_reg_cfg->num_registers; i++) {
-		config->reg_data[i].common.module_id = AFE_MODULE_CDC_DEV_CFG;
-		config->reg_data[i].common.param_id = AFE_PARAM_ID_CDC_REG_CFG;
-		config->reg_data[i].common.param_size =
-		    sizeof(config->reg_data[i].reg_cfg);
-		config->reg_data[i].reg_cfg = cdc_reg_cfg->reg_data[i];
+		param = &config->param;
+		param->payload_size = payload_size;
+		param->payload_address_lsw = 0x00;
+		param->payload_address_msw = 0x00;
+		param->mem_map_handle = 0x00;
+
+		for (i = 0; i < num_regs; i++) {
+			config->reg_data[i].common.module_id =
+						AFE_MODULE_CDC_DEV_CFG;
+			config->reg_data[i].common.param_id =
+						AFE_PARAM_ID_CDC_REG_CFG;
+			config->reg_data[i].common.param_size =
+			    sizeof(config->reg_data[i].reg_cfg);
+			config->reg_data[i].reg_cfg =
+				cdc_reg_cfg->reg_data[i + (j * reg_per_pkt)];
+		}
+
+		ret = afe_apr_send_pkt(config, &this_afe.wait[IDX_GLOBAL_CFG]);
+		if (ret) {
+			pr_err("%s: AFE_PARAM_ID_CDC_REG_CFG failed %d\n",
+				__func__, ret);
+			kfree(config);
+			break;
+		}
+		kfree(config);
 	}
 
-	ret = afe_apr_send_pkt(config, &this_afe.wait[IDX_GLOBAL_CFG]);
-	if (ret)
-		pr_err("%s: AFE_PARAM_ID_CDC_REG_CFG failed %d\n", __func__,
-		       ret);
-
-	kfree(config);
 	return ret;
 }
 
@@ -4474,21 +4496,14 @@ fail_cmd:
 	return ret;
 }
 
-static int afe_sidetone_iir(u16 tx_port_id, u16 rx_port_id, bool enable)
+int afe_sidetone(u16 tx_port_id, u16 rx_port_id, u16 enable, uint16_t gain)
 {
-	struct afe_loopback_iir_cfg_v2 iir_sidetone;
+	struct afe_loopback_cfg_v1 cmd_sidetone;
 	int ret = 0;
 	int index = 0;
-	uint16_t size = 0;
-	int cal_index =AFE_SIDETONE_IIR_CAL;
-	int iir_pregain = 0;
-	int iir_num_biquad_stages=0;
-	int iir_enable = 0;
-	struct cal_block_data *cal_block = NULL;
-	int mid =0;
 
-	pr_info("%s: tx_port_id: 0x%x rx_port_id: 0x%x enable:%d\n",
-			__func__, tx_port_id, rx_port_id, enable);
+	pr_info("%s: tx_port_id: 0x%x rx_port_id: 0x%x enable:%d gain:%d\n",
+			__func__, tx_port_id, rx_port_id, enable, gain);
 	index = q6audio_get_port_index(rx_port_id);
 	if (index < 0 || index > AFE_MAX_PORTS) {
 		pr_err("%s: AFE port index[%d] invalid!\n",
@@ -4500,130 +4515,13 @@ static int afe_sidetone_iir(u16 tx_port_id, u16 rx_port_id, bool enable)
 		pr_err("%s: Invalid port 0x%x %d", __func__, rx_port_id, ret);
 		return -EINVAL;
 	}
-	iir_sidetone.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
-				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
-	iir_sidetone.hdr.pkt_size = sizeof(iir_sidetone);
-	iir_sidetone.hdr.src_port = 0;
-	iir_sidetone.hdr.dest_port = 0;
-	iir_sidetone.hdr.token = index;
-	iir_sidetone.hdr.opcode = AFE_PORT_CMD_SET_PARAM_V2;
-	iir_sidetone.param.port_id = tx_port_id;
-	iir_sidetone.param.payload_address_lsw = 0x00;
-	iir_sidetone.param.payload_address_msw = 0x00;
-	iir_sidetone.param.mem_map_handle = 0x00;	/* size of data param & payload */
-
-	if(this_afe.cal_data[cal_index]== NULL) {
-		pr_err( "%s cal data is wrong\n", __func__);
-		goto done;
-	}
-	mutex_lock(&this_afe.cal_data[cal_index]->lock);
-	cal_block = cal_utils_get_only_cal_block(this_afe.cal_data[cal_index]);
-	if(cal_block == NULL) {
-		pr_err( "%s Cal_block  not found\n ", __func__);
-	mutex_unlock(&this_afe.cal_data[cal_index]->lock);
-		goto done;
-	}
-        iir_pregain = ((struct audio_cal_info_sidetone_iir *) cal_block->cal_info)->pregain;
-        iir_enable= ((struct audio_cal_info_sidetone_iir *) cal_block->cal_info)->iir_enable;
-        iir_num_biquad_stages= ((struct audio_cal_info_sidetone_iir *) cal_block->cal_info)->num_biquad_stages;
-
-        mid =  ((struct audio_cal_info_sidetone_iir *) cal_block->cal_info)->mid;
-
-
-	/* calculate the actual size of payload based on no of stages
-	 * enabled in calibration
-	 */
-        size = (MAX_SIDETONE_IIR_DATA_SIZE / MAX_NO_IIR_FILTER_STAGE) *
-		iir_num_biquad_stages;
-
-	/* For an odd number of stages, 2 bytes of padding are
-	 * required at the end of the payload.
-	 */
-	if (iir_num_biquad_stages % 2) {
-		pr_debug("%s: adding 2 to size:%d\n", __func__, size);
-		size = size + 2;
-	}
-        memcpy(&iir_sidetone.st_iir_filter_config_data.iir_config, &((struct audio_cal_info_sidetone_iir *) cal_block->cal_info)->iir_config,
-		       sizeof(iir_sidetone.st_iir_filter_config_data.iir_config));
-
-	mutex_unlock(&this_afe.cal_data[cal_index]->lock);
-
-	/* Calculate the payload size for the setparams command*/
-	iir_sidetone.param.payload_size = (sizeof(iir_sidetone) -
-				sizeof(struct apr_hdr) -
-				sizeof(struct afe_port_cmd_set_param_v2) -
-				(MAX_SIDETONE_IIR_DATA_SIZE - size));
-
-	pr_debug("%s: payload size :%d\n", __func__,  iir_sidetone.param.payload_size);
-
-	/* Setup IIR enable params*/
-	iir_sidetone.st_iir_enable_pdata.module_id = AFE_MODULE_SIDETONE_IIR_FILTER;
-	iir_sidetone.st_iir_enable_pdata.param_id = AFE_PARAM_ID_ENABLE;
-	iir_sidetone.st_iir_enable_pdata.param_size = sizeof(iir_sidetone.st_iir_mode_enable_data);
-	iir_sidetone.st_iir_mode_enable_data.enable = ((enable == true) ? iir_enable : 0);
-
-	/* Setup IIR filter config params*/
-	iir_sidetone.st_iir_filter_config_pdata.module_id = AFE_MODULE_SIDETONE_IIR_FILTER;
-	iir_sidetone.st_iir_filter_config_pdata.param_id = AFE_PARAM_ID_SIDETONE_IIR_FILTER_CONFIG;
-	iir_sidetone.st_iir_filter_config_pdata.param_size = sizeof(iir_sidetone.st_iir_filter_config_data.num_biquad_stages) +
-	sizeof(iir_sidetone.st_iir_filter_config_data.pregain) + size;
-	iir_sidetone.st_iir_filter_config_pdata.reserved = 0;
-	iir_sidetone.st_iir_filter_config_data.num_biquad_stages = iir_num_biquad_stages;
-	iir_sidetone.st_iir_filter_config_data.pregain = iir_pregain;
-	pr_debug("%s: rx_port_id =0x%x tx_port_id =0x%x enable = %d, mid =0x%x,  iir_enable=%d no_of_stages =%d pregain =0x%x payload size:%d\n",  __func__,
-		rx_port_id, tx_port_id, enable, mid,
-		iir_sidetone.st_iir_mode_enable_data.enable, iir_sidetone.st_iir_filter_config_data.num_biquad_stages,
-		iir_sidetone.st_iir_filter_config_data.pregain, iir_sidetone.st_iir_filter_config_pdata.param_size);
-
-	ret = afe_apr_send_pkt(&iir_sidetone, &this_afe.wait[index]);
-	if (ret)
-		pr_err("%s: AFE sidetone failed for tx_port:%d rx_port:%d\n", __func__, tx_port_id, rx_port_id);
-
-done:
-	return ret ;
-
-}
-
-static int afe_sidetone(u16 tx_port_id, u16 rx_port_id, bool enable)
-{
-	struct afe_st_loopback_cfg_v1 cmd_sidetone;
-	int ret = 0;
-	int index = 0;
-	int cal_index =AFE_SIDETONE_CAL;
-	int sidetone_gain = 0;
-	int sidetone_enable =0;
-	struct cal_block_data *cal_block = NULL;
-	int mid =0;
-
-	if(this_afe.cal_data[cal_index]== NULL) {
-		pr_err( "%s cal data is wrong\n", __func__);
-		goto done;
-	}
-	mutex_lock(&this_afe.cal_data[cal_index]->lock);
-	cal_block = cal_utils_get_only_cal_block(this_afe.cal_data[cal_index]);
-	if(cal_block == NULL) {
-		pr_err( "%s Cal_block  not found\n ", __func__);
-		mutex_unlock(&this_afe.cal_data[cal_index]->lock);
-		goto done;
-	}
-        sidetone_gain = ((struct audio_cal_info_sidetone *) cal_block->cal_info)->gain;
-
-        sidetone_enable= ((struct audio_cal_info_sidetone *) cal_block->cal_info)->enable;
-
-        mid =  ((struct audio_cal_info_sidetone *) cal_block->cal_info)->mid;
-
-	mutex_unlock(&this_afe.cal_data[cal_index]->lock);
-
-	index = q6audio_get_port_index(rx_port_id);
-	if (q6audio_validate_port(rx_port_id) < 0)
-		return -EINVAL;
 
 	cmd_sidetone.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
 				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
 	cmd_sidetone.hdr.pkt_size = sizeof(cmd_sidetone);
 	cmd_sidetone.hdr.src_port = 0;
 	cmd_sidetone.hdr.dest_port = 0;
-	cmd_sidetone.hdr.token = index;
+	cmd_sidetone.hdr.token = 0;
 	cmd_sidetone.hdr.opcode = AFE_PORT_CMD_SET_PARAM_V2;
 	/* should it be rx or tx port id ?? , bharath*/
 	cmd_sidetone.param.port_id = tx_port_id;
@@ -4634,50 +4532,22 @@ static int afe_sidetone(u16 tx_port_id, u16 rx_port_id, bool enable)
 	cmd_sidetone.param.payload_address_lsw = 0x00;
 	cmd_sidetone.param.payload_address_msw = 0x00;
 	cmd_sidetone.param.mem_map_handle = 0x00;
-
-
-	cmd_sidetone.gain_pdata.module_id = AFE_MODULE_LOOPBACK;
-	cmd_sidetone.gain_pdata.param_id = AFE_PARAM_ID_LOOPBACK_GAIN_PER_PATH;
+	cmd_sidetone.pdata.module_id = AFE_MODULE_LOOPBACK;
+	cmd_sidetone.pdata.param_id = AFE_PARAM_ID_LOOPBACK_CONFIG;
 	/* size of actual payload only */
-	cmd_sidetone.gain_pdata.param_size = sizeof(struct afe_loopback_sidetone_gain);
-	cmd_sidetone.gain_data.rx_port_id = rx_port_id;
-	cmd_sidetone.gain_data.gain = sidetone_gain;
+	cmd_sidetone.pdata.param_size =  cmd_sidetone.param.payload_size -
+				sizeof(struct afe_port_param_data_v2);
 
-	cmd_sidetone.cfg_pdata.module_id = AFE_MODULE_LOOPBACK;
-	cmd_sidetone.cfg_pdata.param_id = AFE_PARAM_ID_LOOPBACK_CONFIG;
-	/* size of actual payload only */
-	cmd_sidetone.cfg_pdata.param_size =  sizeof(struct loopback_cfg_data);
-	cmd_sidetone.cfg_data.loopback_cfg_minor_version =
+	cmd_sidetone.loopback_cfg_minor_version =
 					AFE_API_VERSION_LOOPBACK_CONFIG;
-	cmd_sidetone.cfg_data.dst_port_id = rx_port_id;
-	cmd_sidetone.cfg_data.routing_mode = LB_MODE_SIDETONE;
-	cmd_sidetone.cfg_data.enable = ((enable ==1) ?  sidetone_enable : 0) ;
-
-        pr_debug( "%s rx_port_id =0x%x, tx_port_id =0x%x, enable =%d, mid =0x%x,  sidetone_gain = %d, sidetone_enable =%d  \n", __func__, rx_port_id, tx_port_id, enable, mid, sidetone_gain, sidetone_enable);
+	cmd_sidetone.dst_port_id = rx_port_id;
+	cmd_sidetone.routing_mode = LB_MODE_SIDETONE;
+	cmd_sidetone.enable = enable;
 
 	ret = afe_apr_send_pkt(&cmd_sidetone, &this_afe.wait[index]);
 	if (ret)
-		pr_err("%s: AFE sidetone failed for tx_port:%d rx_port:%d\n", __func__, tx_port_id, rx_port_id);
-
-done:
-	return ret;
-}
-
-int afe_sidetone_enable(u16 tx_port_id, u16 rx_port_id,  bool enable)
-{
-	int ret = 0;
-	ret = afe_sidetone_iir(tx_port_id, rx_port_id, enable);
-	if (ret) {
-		pr_err("%s: Failed to set AFE sidetone IIR config, err=%d\n", __func__, ret);
-		goto done;
-		}
-	afe_sidetone(tx_port_id, rx_port_id, enable);
-	if (ret) {
-		pr_err("%s: Failed to enable AFE sidetone, err=%d\n", __func__, ret);
-		goto done;
-	}
-
-done:
+		pr_err("%s: sidetone failed tx_port:0x%x rx_port:0x%x ret%d\n",
+		__func__, tx_port_id, rx_port_id, ret);
 	return ret;
 }
 
@@ -5752,9 +5622,6 @@ static int get_cal_type_index(int32_t cal_type)
 	case AFE_SIDETONE_CAL_TYPE:
 		ret = AFE_SIDETONE_CAL;
 		break;
-	case AFE_SIDETONE_IIR_CAL_TYPE:
-		ret = AFE_SIDETONE_IIR_CAL;
-		break;
 	case AFE_TOPOLOGY_CAL_TYPE:
 		ret = AFE_TOPOLOGY_CAL;
 		break;
@@ -6262,11 +6129,6 @@ static int afe_init_cal_data(void)
 		{NULL, NULL, cal_utils_match_buf_num} },
 
 		{{AFE_SIDETONE_CAL_TYPE,
-		{NULL, NULL, NULL,
-		afe_set_cal, NULL, NULL} },
-		{NULL, NULL, cal_utils_match_buf_num} },
-
-		{{AFE_SIDETONE_IIR_CAL_TYPE,
 		{NULL, NULL, NULL,
 		afe_set_cal, NULL, NULL} },
 		{NULL, NULL, cal_utils_match_buf_num} },

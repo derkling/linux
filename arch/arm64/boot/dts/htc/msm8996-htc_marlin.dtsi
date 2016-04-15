@@ -26,6 +26,7 @@
 #include "msm8996-camera-sensor-m1s1.dtsi"
 #include "msm8996-camera-laser-m1s1.dtsi"
 #include "msm8996-htc-nfc.dtsi"
+#include "msm8996-htc-usb.dtsi"
 
 &mdss_dsi0 {
 	vddio-supply = <&pm8994_lvs2>;
@@ -105,4 +106,24 @@
                 #include "batterydata-m1s1-prototype-id1.dtsi"
                 #include "batterydata-m1s1-prototype-id2.dtsi"
         };
+};
+
+&pmi8994_haptics {
+	status = "okay";
+	qcom,wave-play-rate-us = <4878>;
+	qcom,actuator-type = "lra";
+	qcom,wave-shape = "sine";
+	qcom,vmax-mv = <2828>;
+};
+
+&pmi8994_flash0 {
+	qcom,duration = <600>;
+};
+
+&pmi8994_flash1 {
+	qcom,duration = <600>;
+};
+
+&pmi8994_switch {
+	qcom,duration = <600>;
 };
