@@ -90,4 +90,4 @@ SCHED_FEAT(ENERGY_AWARE, true)
 /*
  * UtilEstimation. Use estimated CPU utiliation.
  */
-SCHED_FEAT(UTIL_EST, true)
+SCHED_FEAT(UTIL_EST, false)
