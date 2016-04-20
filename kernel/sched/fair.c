@@ -5137,12 +5137,7 @@ schedtune_cpu_margin(unsigned long util, int cpu)
 	int boost;
 
 #ifdef CONFIG_CGROUP_SCHEDTUNE
-	if (util)
-		boost = schedtune_cpu_boost(cpu);
-	else {
-		boost = 0;
-		schedtune_idle(cpu);
-	}
+	boost = schedtune_cpu_boost(cpu);
 #else
 	boost = get_sysctl_sched_cfs_boost();
 #endif

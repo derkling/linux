@@ -213,7 +213,6 @@ static struct schedtune *allocated_group[BOOSTGROUPS_COUNT] = {
  */
 struct boost_groups {
 	/* Maximum boost value for all RUNNABLE tasks on a CPU */
-	bool idle;
 	int boost_max;
 	struct {
 		/* The boost for tasks on that boost group */
@@ -305,21 +304,6 @@ schedtune_boostgroup_update(int idx, int boost)
 	return 0;
 }
 
-void
-schedtune_idle(int cpu)
-{
-	int idx;
-	struct boost_groups *bg;
-
-	bg = &per_cpu(cpu_boost_groups, cpu);
-	if (!bg->idle) {
-		bg->idle = true;
-		for (idx = 1; idx < BOOSTGROUPS_COUNT; ++idx) {
-			bg->group[idx].tasks = 0;
-		}
-	}
-}
-
 static inline void
 schedtune_tasks_update(struct task_struct *p, int cpu, int idx, int task_count)
 {
@@ -327,7 +311,6 @@ schedtune_tasks_update(struct task_struct *p, int cpu, int idx, int task_count)
 	int tasks;
 
 	bg = &per_cpu(cpu_boost_groups, cpu);
-	bg->idle = false;
 
 	/* Update boosted tasks count while avoiding to make it negative */
 	if (task_count < 0 && bg->group[idx].tasks <= -task_count)
