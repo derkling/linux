@@ -5489,7 +5489,7 @@ static inline int find_best_target(struct task_struct *p)
 	return target_cpu;
 }
 
-unsigned int sysctl_sched_cfs_max_nrgi __read_mostly;
+unsigned int sysctl_sched_cfs_max_nrgi __read_mostly = 0UL;
 
 static int energy_aware_wake_cpu(struct task_struct *p, int target, int sync)
 {
