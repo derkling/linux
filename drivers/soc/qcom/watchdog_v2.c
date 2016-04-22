@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -357,7 +357,7 @@ static __ref int watchdog_kthread(void *arg)
 {
 	struct msm_watchdog_data *wdog_dd =
 		(struct msm_watchdog_data *)arg;
-	unsigned long delay_time;
+	unsigned long delay_time = 0;
 	struct sched_param param = {.sched_priority = MAX_RT_PRIO-1};
 
 	sched_setscheduler(current, SCHED_FIFO, &param);
@@ -525,6 +525,10 @@ static void configure_bark_dump(struct msm_watchdog_data *wdog_dd)
 			 */
 		}
 	} else {
+#if defined(CONFIG_HTC_DEBUG_MEM_DUMP_TABLE)
+		/* cpu dump data entry and cpu_buf are already configured and registered in LK, so just return */
+		return;
+#endif
 		cpu_data = kzalloc(sizeof(struct msm_dump_data) *
 				   num_present_cpus(), GFP_KERNEL);
 		if (!cpu_data) {

@@ -54,6 +54,17 @@ struct synaptics_dsx_button_map {
 	unsigned char nbuttons;
 	unsigned int *map;
 };
+#ifdef HTC_FEATURE
+#define SYN_CFG_BLK_UNIT        (16)
+#define SYN_CONFIG_SIZE         (128 * SYN_CFG_BLK_UNIT)
+
+struct synaptics_rmi4_config {
+	uint32_t sensor_id;
+	uint32_t pr_number;
+	uint16_t length;
+	uint8_t  config[SYN_CONFIG_SIZE];
+};
+#endif
 
 /*
  * struct synaptics_dsx_board_data - DSX board data
@@ -97,7 +108,6 @@ struct synaptics_dsx_board_data {
 	int power_on_state;
 	int reset_gpio;
 	int reset_on_state;
-	int switch_gpio;
 	int max_y_for_2d;
 	unsigned long irq_flags;
 	unsigned short i2c_addr;
@@ -116,7 +126,11 @@ struct synaptics_dsx_board_data {
 	struct synaptics_dsx_button_map *cap_button_map;
 	struct synaptics_dsx_button_map *vir_button_map;
 #ifdef HTC_FEATURE
+	int switch_gpio;
 	uint8_t update_feature;
+	uint16_t tw_pin_mask;
+	int config_num;
+	struct synaptics_rmi4_config *config_table;
 #endif
 };
 

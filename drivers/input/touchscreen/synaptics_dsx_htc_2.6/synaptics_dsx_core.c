@@ -131,6 +131,7 @@ static int synaptics_rmi4_reinit_device(struct synaptics_rmi4_data *rmi4_data);
 static int synaptics_rmi4_reset_device(struct synaptics_rmi4_data *rmi4_data,
 		bool rebuild);
 static int synaptics_rmi4_hw_reset_device(struct synaptics_rmi4_data *rmi4_data);
+static irqreturn_t synaptics_rmi4_irq(int irq, void *data);
 
 #ifdef CONFIG_FB
 static int synaptics_rmi4_fb_notifier_cb(struct notifier_block *self,
@@ -178,9 +179,6 @@ static ssize_t synaptics_rmi4_wake_gesture_show(struct device *dev,
 		struct device_attribute *attr, char *buf);
 
 static ssize_t synaptics_rmi4_wake_gesture_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count);
-
-static ssize_t synaptics_reset_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count);
 
 #ifdef USE_DATA_SERVER
@@ -714,9 +712,6 @@ static struct device_attribute attrs[] = {
 	__ATTR(wake_gesture, (S_IRUGO | S_IWUSR | S_IWGRP),
 			synaptics_rmi4_wake_gesture_show,
 			synaptics_rmi4_wake_gesture_store),
-	__ATTR(hw_reset, S_IRUGO | S_IWUSR | S_IWGRP,
-			synaptics_rmi4_show_error,
-			synaptics_reset_store),
 #ifdef USE_DATA_SERVER
 	__ATTR(synad_pid, S_IWUGO,
 			synaptics_rmi4_show_error,
@@ -904,45 +899,46 @@ static ssize_t synaptics_rmi4_wake_gesture_store(struct device *dev,
 	return count;
 }
 
+#ifdef HTC_FEATURE
 static ssize_t synaptics_reset_store(struct device *dev,
-                struct device_attribute *attr, const char *buf, size_t count)
+		struct device_attribute *attr, const char *buf, size_t count)
 {
-        ssize_t ret = 0;
-        struct synaptics_rmi4_data *rmi4_data = exp_data.rmi4_data;
-        unsigned int reset;
+	ssize_t ret = 0;
+	struct synaptics_rmi4_data *rmi4_data = exp_data.rmi4_data;
+	unsigned int reset;
 
-        pr_info(" %s\n", __func__);
-        if (sscanf(buf, "%u", &reset) != 1)
-                return -EINVAL;
+	pr_info(" %s\n", __func__);
+	if (sscanf(buf, "%u", &reset) != 1)
+		return -EINVAL;
 
-        if (reset != 1)
-                return -EINVAL;
+	if (reset != 1)
+		return -EINVAL;
 
-        ret = synaptics_rmi4_hw_reset_device(rmi4_data);
-        if (ret < 0) {
-                dev_err(rmi4_data->pdev->dev.parent,
-                                "%s: Failed to issue reset command, error = %ld\n",
-                                __func__, ret);
-                return ret;
-        }
+	ret = synaptics_rmi4_hw_reset_device(rmi4_data);
+	if (ret < 0) {
+		dev_err(rmi4_data->pdev->dev.parent,
+				"%s: Failed to issue reset command, error = %ld\n",
+				__func__, ret);
+		return ret;
+	}
 
-        return count;
+	return count;
 }
 
-#ifdef HTC_FEATURE
 static ssize_t touch_vendor_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	ssize_t ret = 0;
 	struct synaptics_rmi4_data *rmi4_data = exp_data.rmi4_data;
-///TODO
-/*	const struct synaptics_dsx_board_data *bdata =
+
+	const struct synaptics_dsx_board_data *bdata =
 			rmi4_data->hw_if->board_data;
-*/
+
 	ret = snprintf(buf, PAGE_SIZE, "synaptics-%d", rmi4_data->chip_id);
-///TODO
-/*	if (bdata->tw_pin_mask != 0)
+
+	if (bdata->tw_pin_mask != 0)
 		ret += scnprintf(buf+ret, PAGE_SIZE-ret, "_twID-0x%x", rmi4_data->tw_vendor);
+/*
 	if (strlen(rmi4_data->lcm_vendor))
 		ret += scnprintf(buf+ret, PAGE_SIZE-ret, "_LCM-%s", rmi4_data->lcm_vendor);
 */
@@ -1019,14 +1015,64 @@ static ssize_t synaptics_diag_store(struct device *dev,
 	return count;
 }
 */
+
+static ssize_t int_status_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct synaptics_rmi4_data *rmi4_data = exp_data.rmi4_data;
+	size_t count = 0;
+
+	count += snprintf(buf + count, PAGE_SIZE, "%d ", rmi4_data->irq_enabled);
+	count += snprintf(buf + count, PAGE_SIZE, "\n");
+
+	return count;
+}
+
+static ssize_t int_status_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct synaptics_rmi4_data *rmi4_data = exp_data.rmi4_data;
+	const struct synaptics_dsx_board_data *bdata =
+			rmi4_data->hw_if->board_data;
+	int value, ret = 0;
+
+	if (sysfs_streq(buf, "0"))
+		value = false;
+	else if (sysfs_streq(buf, "1"))
+		value = true;
+	else
+		return -EINVAL;
+
+	if (value) {
+		ret = request_threaded_irq(rmi4_data->irq, NULL,
+				synaptics_rmi4_irq, bdata->irq_flags,
+				PLATFORM_DRIVER_NAME, rmi4_data);
+		if (ret == 0) {
+			rmi4_data->irq_enabled = true;
+			pr_info("%s: interrupt enable: %x\n", __func__, rmi4_data->irq_enabled);
+		}
+	} else {
+		disable_irq(rmi4_data->irq);
+		free_irq(rmi4_data->irq, rmi4_data);
+		rmi4_data->irq_enabled = false;
+		pr_info("%s: interrupt disable: %x\n", __func__, rmi4_data->irq_enabled);
+	}
+
+	return count;
+}
+
+static DEVICE_ATTR(reset, S_IWUSR, NULL, synaptics_reset_store);
 static DEVICE_ATTR(vendor, S_IRUGO, touch_vendor_show, NULL);
 static DEVICE_ATTR(config, S_IRUGO, touch_config_show, NULL);
 //static DEVICE_ATTR(diag, (S_IWUSR | S_IRUGO), synaptics_diag_show, synaptics_diag_store),
+static DEVICE_ATTR(enabled, (S_IWUSR|S_IRUGO), int_status_show, int_status_store);
 
 static struct attribute *htc_attrs[] = {
+	&dev_attr_reset.attr,
 	&dev_attr_vendor.attr,
 	&dev_attr_config.attr,
 //	&dev_attr_diag.attr,
+	&dev_attr_enabled.attr,
 	NULL
 };
 
@@ -1223,7 +1269,6 @@ static int synaptics_rmi4_f11_abs_report(struct synaptics_rmi4_data *rmi4_data,
 				x = rmi4_data->sensor_max_x - x;
 			if (rmi4_data->hw_if->board_data->y_flip)
 				y = rmi4_data->sensor_max_y - y;
-
 			input_report_key(rmi4_data->input_dev,
 					BTN_TOUCH, 1);
 			input_report_key(rmi4_data->input_dev,
@@ -1438,7 +1483,6 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 			input_mt_report_slot_state(rmi4_data->input_dev,
 					MT_TOOL_FINGER, 1);
 #endif
-
 			input_report_key(rmi4_data->input_dev,
 					BTN_TOUCH, 1);
 			input_report_key(rmi4_data->input_dev,
@@ -1477,8 +1521,11 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 					pressure = (int)f_data[f_lsb];
 #endif
 				}
-
 				pressure = pressure > 0 ? pressure : 1;
+				input_report_abs(rmi4_data->input_dev,
+						ABS_MT_PRESSURE, pressure);
+			} else {
+				pressure = finger_data->z;
 				input_report_abs(rmi4_data->input_dev,
 						ABS_MT_PRESSURE, pressure);
 			}
@@ -1555,6 +1602,8 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 			input_mt_report_slot_state(rmi4_data->input_dev,
 					MT_TOOL_FINGER, 0);
 #endif
+			if(rmi4_data->report_pressure == true)
+				input_report_abs(rmi4_data->input_dev, ABS_MT_PRESSURE, 0);
 			break;
 		}
 	}
@@ -1584,6 +1633,9 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 			}
 			input_sync(rmi4_data->stylus_dev);
 		}
+
+		if(rmi4_data->report_pressure == true)
+			input_report_abs(rmi4_data->input_dev, ABS_MT_PRESSURE, 0);
 	}
 
 	input_sync(rmi4_data->input_dev);
@@ -3417,12 +3469,13 @@ flash_prog_mode:
 				__func__, rmi4_data->chip_id, rmi4_data->firmware_id);
 
 	switch (rmi4_data->chip_id) {
-		case 3708:
-			config_id_size = V7_CONFIG_ID_SIZE;
-			break;
-		default:
-			config_id_size = V5V6_CONFIG_ID_SIZE;
-			break;
+	case 3708:
+	case 3718:
+		config_id_size = V7_CONFIG_ID_SIZE;
+		break;
+	default:
+		config_id_size = V5V6_CONFIG_ID_SIZE;
+		break;
 	}
 
 	retval = synaptics_rmi4_reg_read(rmi4_data,
@@ -3528,11 +3581,9 @@ static void synaptics_rmi4_set_params(struct synaptics_rmi4_data *rmi4_data)
 #endif
 
 #ifdef REPORT_2D_PRESSURE
-	if (rmi4_data->report_pressure) {
-		input_set_abs_params(rmi4_data->input_dev,
-				ABS_MT_PRESSURE, rmi4_data->force_min,
-				rmi4_data->force_max, 0, 0);
-	}
+	input_set_abs_params(rmi4_data->input_dev,
+			ABS_MT_PRESSURE, rmi4_data->force_min,
+			rmi4_data->force_max, 0, 0);
 #elif defined(F51_DISCRETE_FORCE)
 	input_set_abs_params(rmi4_data->input_dev,
 			ABS_MT_PRESSURE, 0,
@@ -3663,7 +3714,6 @@ static int synaptics_rmi4_set_input_dev(struct synaptics_rmi4_data *rmi4_data)
 #ifdef INPUT_PROP_DIRECT
 	set_bit(INPUT_PROP_DIRECT, rmi4_data->stylus_dev->propbit);
 #endif
-
 	input_set_abs_params(rmi4_data->stylus_dev, ABS_X, 0,
 			rmi4_data->sensor_max_x, 0, 0);
 	input_set_abs_params(rmi4_data->stylus_dev, ABS_Y, 0,
@@ -3806,6 +3856,7 @@ static int synaptics_rmi4_set_gpio(struct synaptics_rmi4_data *rmi4_data)
 		}
 	}
 
+#ifdef HTC_FEATURE
 	if (bdata->switch_gpio >= 0) {
 		retval = synaptics_rmi4_gpio_setup(
 				bdata->switch_gpio,
@@ -3817,6 +3868,7 @@ static int synaptics_rmi4_set_gpio(struct synaptics_rmi4_data *rmi4_data)
 			goto err_gpio_switch;
 		}
 	}
+#endif
 
 	if (bdata->power_gpio >= 0) {
 		gpio_set_value(bdata->power_gpio, bdata->power_on_state);
@@ -3832,9 +3884,12 @@ static int synaptics_rmi4_set_gpio(struct synaptics_rmi4_data *rmi4_data)
 
 	return 0;
 
+#ifdef HTC_FEATURE
 err_gpio_switch:
 	if (bdata->switch_gpio >= 0)
 		synaptics_rmi4_gpio_setup(bdata->switch_gpio, false, 0, 0);
+#endif
+
 err_gpio_reset:
 	if (bdata->power_gpio >= 0)
 		synaptics_rmi4_gpio_setup(bdata->power_gpio, false, 0, 0);
@@ -4093,24 +4148,24 @@ exit:
 
 static int synaptics_rmi4_hw_reset(struct synaptics_rmi4_data *rmi4_data)
 {
-        const struct synaptics_dsx_board_data *bdata =
-                        rmi4_data->hw_if->board_data;
-        int retval;
+	const struct synaptics_dsx_board_data *bdata =
+			rmi4_data->hw_if->board_data;
+	int retval;
 
-        if (bdata->reset_gpio >= 0) { 
-                gpio_set_value(bdata->reset_gpio, bdata->reset_on_state);
-                msleep(bdata->reset_active_ms);
-                gpio_set_value(bdata->reset_gpio, !bdata->reset_on_state);
-        }    
+	if (bdata->reset_gpio >= 0) {
+		gpio_set_value(bdata->reset_gpio, bdata->reset_on_state);
+		msleep(bdata->reset_active_ms);
+		gpio_set_value(bdata->reset_gpio, !bdata->reset_on_state);
+	}
 
-        if (rmi4_data->hw_if->ui_hw_init) {
-                retval = rmi4_data->hw_if->ui_hw_init(rmi4_data);
-                if (retval < 0) 
-                        return retval;
-        }    
+	if (rmi4_data->hw_if->ui_hw_init) {
+		retval = rmi4_data->hw_if->ui_hw_init(rmi4_data);
+		if (retval < 0)
+			return retval;
+	}
 
-        return 0;
-}                                      
+	return 0;
+}
 
 static int synaptics_rmi4_reinit_device(struct synaptics_rmi4_data *rmi4_data)
 {
@@ -4157,19 +4212,19 @@ exit:
 
 static int synaptics_rmi4_hw_reset_device(struct synaptics_rmi4_data *rmi4_data)
 {
-        int retval;
+	int retval;
 
-        pr_info(" %s\n", __func__);
+	pr_info(" %s\n", __func__);
 
-        retval = synaptics_rmi4_hw_reset(rmi4_data);
-        if (retval < 0) {
-                dev_err(rmi4_data->pdev->dev.parent,
-                                "%s: Failed to issue reset command\n",
-                                __func__);
-                return retval;
-        }
+	retval = synaptics_rmi4_hw_reset(rmi4_data);
+	if (retval < 0) {
+		dev_err(rmi4_data->pdev->dev.parent,
+				"%s: Failed to issue reset command\n",
+				__func__);
+		return retval;
+	}
 
-        return 0;
+	return 0;
 }
 
 static int synaptics_rmi4_reset_device(struct synaptics_rmi4_data *rmi4_data,
@@ -4383,6 +4438,25 @@ exit:
 }
 EXPORT_SYMBOL(synaptics_rmi4_new_function);
 
+#ifdef HTC_FEATURE
+static int check_chip_exist(struct synaptics_rmi4_data *rmi4_data)
+{
+	unsigned char data;
+	int retval;
+
+	retval = synaptics_rmi4_reg_read(rmi4_data,
+			(PDT_PROPS-1),
+			&data,
+			sizeof(data));
+	if (retval > 0 && (data == SYNAPTICS_RMI4_F34)) {
+		dev_info(rmi4_data->pdev->dev.parent, "%s: Synaptics chip exist\n", __func__);
+		return 0;
+	}
+
+	return -1;
+}
+#endif
+
 static int synaptics_rmi4_probe(struct platform_device *pdev)
 {
 	int retval;
@@ -4476,6 +4550,14 @@ static int synaptics_rmi4_probe(struct platform_device *pdev)
 			goto err_ui_hw_init;
 		}
 	}
+
+#ifdef HTC_FEATURE
+	retval = check_chip_exist(rmi4_data);
+	if (retval < 0) {
+		dev_info(&pdev->dev, "%s: No Synaptics chip\n", __func__);
+		goto err_set_input_dev;
+	}
+#endif
 
 	retval = synaptics_rmi4_set_input_dev(rmi4_data);
 	if (retval < 0) {
@@ -4625,6 +4707,11 @@ err_enable_irq:
 err_set_input_dev:
 	synaptics_rmi4_gpio_setup(bdata->irq_gpio, false, 0, 0);
 
+#ifdef HTC_FEATURE
+	if (bdata->switch_gpio >= 0)
+		synaptics_rmi4_gpio_setup(bdata->switch_gpio, false, 0, 0);
+#endif
+
 	if (bdata->reset_gpio >= 0)
 		synaptics_rmi4_gpio_setup(bdata->reset_gpio, false, 0, 0);
 
@@ -4702,6 +4789,11 @@ static int synaptics_rmi4_remove(struct platform_device *pdev)
 	}
 
 	synaptics_rmi4_gpio_setup(bdata->irq_gpio, false, 0, 0);
+
+#ifdef HTC_FEATURE
+	if (bdata->switch_gpio >= 0)
+		synaptics_rmi4_gpio_setup(bdata->switch_gpio, false, 0, 0);
+#endif
 
 	if (bdata->reset_gpio >= 0)
 		synaptics_rmi4_gpio_setup(bdata->reset_gpio, false, 0, 0);
