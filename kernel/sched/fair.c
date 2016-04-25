@@ -5379,10 +5379,14 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 	for_each_cpu_and(i, tsk_cpus_allowed(p), sched_group_cpus(sg_target)) {
 		/*
 		 * p's blocked utilization is still accounted for on prev_cpu
-		 * so prev_cpu will receive a negative bias due to the double
-		 * accounting. However, the blocked utilization may be zero.
+		 * Since of high interactive workloads tasks sleep for a
+		 * limited amount of time (<16ms) let's assume that the
+		 * blocked load already account for the task utilization in
+		 * the prev_cpu.
 		 */
-		new_util = cpu_util(i) + task_util(p);
+		new_util = cpu_util(i);
+		if (i != task_cpu(p))
+			new_util += task_util(p);
 
 		/*
 		 * Ensure minimum capacity to grant the required boost.
