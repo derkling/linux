@@ -119,6 +119,33 @@
         };
 };
 
+&pm8994_mpps {
+    mpp@a600 { /* MPP 7 */
+    /* USB_PWR_TEMP - To detect USB board temperature
+    for VZW requirement */
+
+        qcom,mode = <4>;                /* QPNP_PIN_MODE_AIN */
+        qcom,vin-sel = <2>;             /* S4 1.8V */
+        qcom,src-sel = <0>;             /* Constant */
+        qcom,ain-route = <2>;           /* QPNP_PIN_AIN_AMUX_CH7 */
+        qcom,master-en = <1>;           /* Enable GPIO */
+        status = "okay";
+    };
+};
+
+&pmi8994_gpios {
+    gpio@c600 {  /* GPIO 7 */
+    /* ACOK - Charger OVP IC power good pin */
+
+    qcom,mode = <0>;                /* DIGITAL INPUT */
+    qcom,pull = <5>;                /* No Pull */
+    qcom,vin-sel = <0>;             /* VDD_MSM_IO 1.8V */
+    qcom,src-sel = <0>;             /* CONSTANT */
+    qcom,master-en = <1>;           /* ENABLE GPIO */
+    status = "okay";
+    };
+};
+
 /{
         qcom,battery-data {
                 qcom,batt-id-range-pct = <15>;
@@ -135,6 +162,43 @@
 	qcom,vmax-mv = <2828>;
 };
 
+&pm8994_gpios {	/* COVER_INT1 & COVER_INT2 */
+	gpio@c100 { /* GPIO 2 */
+		qcom,mode = <0>;	/* DIGITAL INPUT */
+		qcom,pull = <5>;	/* No Pull */
+		qcom,vin-sel = <2>;
+		qcom,src-sel = <0>;
+		status = "okay";
+	};
+
+	gpio@c400 { /* GPIO 5 */
+		qcom,mode = <0>;	/* DIGITAL INPUT */
+		qcom,pull = <5>;	/* No Pull */
+		qcom,vin-sel = <2>;
+		qcom,src-sel = <0>;
+		status = "okay";
+	};
+};
+
+&pmi8994_mpps {	/* FLASH_STROBE */
+	mpp@a100 {
+		qcom,mode = <0>;        /* QPNP_PIN_MODE_DIG_IN */
+		qcom,pull = <2>;	/* QPNP_PIN_MPP_PULL_UP_10KOHM */
+		qcom,vin-sel = <2>;     /* QPNP_PIN_VIN2 */
+		qcom,src-sel = <0>;     /* QPNP_PIN_SEL_FUNC_CONSTANT */
+		qcom,master-en = <1>;   /* Enable */
+		status = "okay";
+	};
+};
+
+&spmi_bus {	/* FLASH_STROBE */
+	qcom,pmi8994@3 {
+		qcom,leds@d300 {
+			qcom,gpio-flash-strobe = <&tlmm 22 0x00>;
+		};
+	};
+};
+
 &pmi8994_flash0 {
 	qcom,duration = <600>;
 };
@@ -145,4 +209,15 @@
 
 &pmi8994_switch {
 	qcom,duration = <600>;
+};
+
+&pmi8994_gpios {
+	gpio@c900 { /* GPIO 10 - ERR_FG */
+		qcom,mode = <0>;
+		qcom,pull = <5>;
+		qcom,vin-sel = <2>;
+		qcom,src-sel = <2>;
+		qcom,master-en = <1>;
+		status = "okay";
+	};
 };
