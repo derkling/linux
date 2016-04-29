@@ -4915,13 +4915,27 @@ normalize_energy(int energy_diff)
 }
 
 static inline int
+inside_dead_zone(struct energy_env *eenv)
+{
+	int diff, margin;
+
+	margin = eenv->nrg.before * sysctl_sched_nrg_dead_zone / 100;
+	diff = eenv->nrg.after - eenv->nrg.before;
+
+	return abs(diff) <= margin;
+}
+
+static inline int
 energy_diff(struct energy_env *eenv)
 {
 	unsigned int boost;
 	int nrg_delta;
 
-	/* Conpute "absolute" energy diff */
+	/* Compute "absolute" energy diff */
 	__energy_diff(eenv);
+
+	if (inside_dead_zone(eenv))
+		return 0;
 
 	/* Return energy diff when boost margin is 0 */
 #ifdef CONFIG_CGROUP_SCHEDTUNE
@@ -4952,7 +4966,17 @@ energy_diff(struct energy_env *eenv)
 	return -eenv->payoff;
 }
 #else /* CONFIG_SCHED_TUNE */
-#define energy_diff(eenv) __energy_diff(eenv)
+static inline int
+energy_diff(struct energy_env *eenv)
+{
+	/* Compute "absolute" energy diff */
+	__energy_diff(eenv);
+
+	if (inside_dead_zone(eenv))
+		return 0;
+
+	return eenv->nrg.diff;
+}
 #endif
 
 /*
@@ -5489,7 +5513,7 @@ static inline int find_best_target(struct task_struct *p)
 	return target_cpu;
 }
 
-unsigned int sysctl_sched_cfs_max_nrgi __read_mostly = 0UL;
+unsigned int sysctl_sched_nrg_dead_zone __read_mostly = 5UL;
 
 static int energy_aware_wake_cpu(struct task_struct *p, int target, int sync)
 {
@@ -5590,7 +5614,7 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target, int sync)
 		if (cpu_overutilized(task_cpu(p)))
 			return target_cpu;
 
-		if (energy_diff(&eenv) >= sysctl_sched_cfs_max_nrgi)
+		if (energy_diff(&eenv) >= 0)
 			return task_cpu(p);
 	}
 

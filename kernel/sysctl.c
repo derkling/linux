@@ -343,9 +343,9 @@ static struct ctl_table kern_table[] = {
 		.extra2		= &max_wakeup_granularity_ns,
 	},
 	{
-		.procname	= "sched_cfs_max_nrgi",
-		.data		= &sysctl_sched_cfs_max_nrgi,
-		.maxlen		= sizeof(sysctl_sched_cfs_max_nrgi),
+		.procname	= "sched_nrg_dead_zone",
+		.data		= &sysctl_sched_nrg_dead_zone,
+		.maxlen		= sizeof(sysctl_sched_nrg_dead_zone),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
 	},
