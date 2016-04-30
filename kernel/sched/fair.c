@@ -35,6 +35,8 @@
 
 #include "sched.h"
 
+DEFINE_PER_CPU(unsigned int, test_flag) = 0;
+
 /*
  * Targeted preemption latency for CPU-bound tasks:
  * (default: 6ms * (1 + ilog(ncpus)), units: nanoseconds)
@@ -6706,8 +6708,10 @@ static bool update_sd_pick_busiest(struct lb_env *env,
 	if (sgs->group_type > busiest->group_type)
 		return true;
 
-	if (sgs->group_type < busiest->group_type)
+	if (sgs->group_type < busiest->group_type) {
+		per_cpu(test_flag, smp_processor_id()) = 1;
 		return false;
+	}
 
 	if (sgs->avg_load <= busiest->avg_load)
 		return false;
@@ -6988,6 +6992,27 @@ static inline void calculate_imbalance(struct lb_env *env, struct sd_lb_stats *s
 	 * factors in sg capacity and sgs with smaller group_type are
 	 * skipped when updating the busiest sg.
 	 */
+	if (busiest->avg_load <= sds->avg_load)
+		printk("%s dst_cpu=%d b=%*pbl l=%*pbl b=[%lu %lu %lu %lu %lu %lu] s=[%lu %lu %lu] test_flag=%u\n",
+		       env->sd->name, env->dst_cpu,
+		       cpumask_pr_args(sched_group_cpus(sds->busiest)),
+		       cpumask_pr_args(sched_group_cpus(sds->local)),
+		       busiest->avg_load, busiest->group_load, busiest->sum_weighted_load,
+		       busiest->load_per_task, busiest->group_capacity, busiest->group_util,
+		       sds->total_load, sds->total_capacity, sds->avg_load,
+		       per_cpu(test_flag, smp_processor_id()));
+	if (local->avg_load >= sds->avg_load)
+		printk("%s dst_cpu=%d b=%*pbl l=%*pbl l=[%lu %lu %lu %lu %lu %lu] s=[%lu %lu %lu] test_flag=%u\n",
+		       env->sd->name, env->dst_cpu,
+		       cpumask_pr_args(sched_group_cpus(sds->busiest)),
+		       cpumask_pr_args(sched_group_cpus(sds->local)),
+		       local->avg_load, local->group_load, local->sum_weighted_load,
+		       local->load_per_task, local->group_capacity, local->group_util,
+		       sds->total_load, sds->total_capacity, sds->avg_load,
+		       per_cpu(test_flag, smp_processor_id()));
+
+	per_cpu(test_flag, smp_processor_id()) = 0;
+
 	if (busiest->avg_load <= sds->avg_load ||
 	    local->avg_load >= sds->avg_load) {
 		env->imbalance = 0;
