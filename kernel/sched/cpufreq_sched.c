@@ -59,6 +59,8 @@ struct gov_data {
 	struct irq_work irq_work;
 	unsigned int requested_freq;
 	int max;
+	unsigned int nr_cap_states;
+	unsigned int *available_caps;
 };
 
 static void cpufreq_sched_try_driver_target(struct cpufreq_policy *policy,
@@ -163,7 +165,7 @@ static void cpufreq_sched_irq_work(struct irq_work *irq_work)
 
 static void update_fdomain_capacity_request(int cpu)
 {
-	unsigned int freq_new, index_new, cpu_tmp;
+	unsigned int freq_new, index_new, cpu_tmp, idx;
 	struct cpufreq_policy *policy;
 	struct gov_data *gd;
 	unsigned long capacity = 0;
@@ -192,6 +194,14 @@ static void update_fdomain_capacity_request(int cpu)
 
 		scr = &per_cpu(cpu_sched_capacity_reqs, cpu_tmp);
 		capacity = max(capacity, scr->total);
+	}
+
+	/* select and available cap state */
+	for (idx = 0; idx < gd->nr_cap_states; idx++) {
+		if (gd->available_caps[idx] >= capacity) {
+			capacity = gd->available_caps[idx];
+			break;
+		}
 	}
 
 	/* Convert the new maximum capacity request into a cpu frequency */
@@ -266,7 +276,9 @@ static inline void clear_sched_freq(void)
 static int cpufreq_sched_policy_init(struct cpufreq_policy *policy)
 {
 	struct gov_data *gd;
-	int cpu;
+	int cpu, idx;
+	struct sched_domain *sd = NULL;
+	const struct sched_group_energy const *sge = NULL;
 
 	for_each_cpu(cpu, policy->cpus)
 		memset(&per_cpu(cpu_sched_capacity_reqs, cpu), 0,
@@ -282,6 +294,30 @@ static int cpufreq_sched_policy_init(struct cpufreq_policy *policy)
 	gd->down_throttle_nsec = THROTTLE_DOWN_NSEC;
 	pr_debug("%s: throttle threshold = %u [ns]\n",
 		  __func__, gd->up_throttle_nsec);
+
+	rcu_read_lock();
+	for_each_domain(cpumask_first(policy->cpus), sd)
+		if (!sd->child) {
+			sge = sd->groups->sge;
+			break;
+		}
+	rcu_read_unlock();
+
+	if (!sge) {
+		pr_err("%s: failed to access energy model\n", __func__);
+		goto err;
+	}
+
+	gd->nr_cap_states = sge->nr_cap_states;
+	gd->available_caps = kcalloc(sge->nr_cap_states,
+				     sizeof(unsigned int),
+				     GFP_KERNEL);
+	for (idx = 0; idx < sge->nr_cap_states; idx++) {
+		gd->available_caps[idx] = sge->cap_states[idx].cap;
+		pr_info("%s: CPU%d capacity from energy model: %u\n",
+			__func__, cpumask_first(policy->cpus),
+			gd->available_caps[idx]);
+	}
 
 	policy->governor_data = gd;
 	gd->max = policy->max;
@@ -324,6 +360,7 @@ static int cpufreq_sched_policy_exit(struct cpufreq_policy *policy)
 
 	policy->governor_data = NULL;
 
+	kfree(gd->available_caps);
 	kfree(gd);
 	return 0;
 }
