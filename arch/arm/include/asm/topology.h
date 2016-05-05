@@ -3,6 +3,7 @@
 
 #ifdef CONFIG_ARM_CPU_TOPOLOGY
 
+#include <linux/cpufreq.h>
 #include <linux/cpumask.h>
 
 struct cputopo_arm {
@@ -40,7 +41,6 @@ extern void arch_get_cluster_cpus(struct cpumask *cpus, int cluster_id);
 extern int arch_better_capacity(unsigned int cpu);
 
 #ifdef CONFIG_CPU_FREQ
-#include <linux/cpufreq.h>
 #define arch_scale_freq_capacity cpufreq_scale_freq_capacity
 #endif
 #define arch_scale_cpu_capacity scale_cpu_capacity
