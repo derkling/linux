@@ -43,6 +43,7 @@
 #include <adf_os_time.h>
 #include "pktlog_ac.h"
 #include <linux/rtc.h>
+#include <linux/skbuff.h>
 #include <vos_diag_core_log.h>
 #include "limApi.h"
 #include "ol_txrx_api.h"
@@ -750,7 +751,6 @@ static int wlan_logging_thread(void *Arg)
 		}
 
 		if (gwlan_logging.exit) {
-			pr_err("%s: Exiting the thread\n", __func__);
 			break;
 		}
 
@@ -804,7 +804,6 @@ static int wlan_logging_thread(void *Arg)
 		}
 	}
 
-	pr_info("%s: Terminating\n", __func__);
 
 	complete_and_exit(&gwlan_logging.shutdown_comp, 0);
 
@@ -867,8 +866,6 @@ int wlan_logging_sock_activate_svc(int log_fe_to_console, int num_buf)
 	int i, j, pkt_stats_size;
 	unsigned long irq_flag;
 
-	pr_info("%s: Initalizing FEConsoleLog = %d NumBuff = %d\n",
-			__func__, log_fe_to_console, num_buf);
 
 	gapp_pid = INVALID_PID;
 
@@ -956,7 +953,6 @@ int wlan_logging_sock_activate_svc(int log_fe_to_console, int num_buf)
 
 	nl_srv_register(ANI_NL_MSG_LOG, wlan_logging_proc_sock_rx_msg);
 
-	pr_info("%s: Activated wlan_logging svc\n", __func__);
 	return 0;
 
 err3:
@@ -1019,7 +1015,6 @@ int wlan_logging_sock_deactivate_svc(void)
 
 	vfree(gpkt_stats_buffers);
 	gpkt_stats_buffers = NULL;
-	pr_info("%s: Deactivate wlan_logging svc\n", __func__);
 
 	return 0;
 }
@@ -1132,8 +1127,8 @@ static int wlan_get_pkt_stats_free_node(void)
 		ret = 1;
 	}
 
-	/* Reset the current node values */
-	gwlan_logging.pkt_stats_pcur_node->skb->len = 0;
+	/* Reset the skb values, essential if dequeued from filled list */
+	skb_trim(gwlan_logging.pkt_stats_pcur_node->skb, 0);
 	return ret;
 }
 
@@ -1294,7 +1289,7 @@ static void send_packetdump(adf_nbuf_t netbuf, uint8_t status,
 
 	pd_hdr.status = status;
 	pd_hdr.type = type;
-	pd_hdr.driver_ts = vos_timer_get_system_time();
+	pd_hdr.driver_ts = vos_get_monotonic_boottime();
 
 	if ((type == TX_MGMT_PKT) || (type == TX_DATA_PKT))
 		gtx_count++;

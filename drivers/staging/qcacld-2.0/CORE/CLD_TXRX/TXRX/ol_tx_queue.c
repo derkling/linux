@@ -43,6 +43,7 @@
 #include <ol_txrx.h>          /* ol_tx_desc_pool_size_hl */
 #include <adf_os_types.h>     /* a_bool_t */
 #include <ol_txrx_peer_find.h>
+#include "adf_trace.h"
 
 
 #if defined(CONFIG_HL_SUPPORT)
@@ -112,12 +113,14 @@ ol_tx_queue_vdev_flush(struct ol_txrx_pdev_t *pdev, struct ol_txrx_vdev_t *vdev)
     for (i = 0; i < OL_TX_VDEV_NUM_QUEUES; i++) {
         txq = &vdev->txqs[i];
        /*
-        * currently txq of MCAST_BCAST packet is using tid
-        * HTT_TX_EXT_TID_NON_QOS_MCAST_BCAST when instered into scheduler,
-        * so use same tid when flush
+        * currently txqs of MCAST_BCAST/DEFAULT_MGMT packet are using tid
+        * HTT_TX_EXT_TID_NON_QOS_MCAST_BCAST/HTT_TX_EXT_TID_MGMT when inserted
+        * into scheduler, so use same tid when we flush them
         */
-        if (i == 0)
+        if (i == OL_TX_VDEV_MCAST_BCAST)
             ol_tx_queue_free(pdev, txq, HTT_TX_EXT_TID_NON_QOS_MCAST_BCAST);
+        else if (i == OL_TX_VDEV_DEFAULT_MGMT)
+            ol_tx_queue_free(pdev, txq, HTT_TX_EXT_TID_MGMT);
         else
             ol_tx_queue_free(pdev, txq, (i + OL_TX_NUM_TIDS));
     }
@@ -1049,10 +1052,15 @@ ol_txrx_vdev_pause(ol_txrx_vdev_handle vdev, u_int32_t reason)
     } else {
         adf_os_spin_lock_bh(&vdev->ll_pause.mutex);
         vdev->ll_pause.paused_reason |= reason;
+        vdev->ll_pause.pause_timestamp =
+                        adf_os_gettimestamp();
         vdev->ll_pause.q_pause_cnt++;
         vdev->ll_pause.is_q_paused = TRUE;
         adf_os_spin_unlock_bh(&vdev->ll_pause.mutex);
     }
+
+    DPTRACE(adf_dp_trace(NULL, ADF_DP_TRACE_VDEV_PAUSE,
+                NULL, 0));
 
     TX_SCHED_DEBUG_PRINT("Leave %s\n", __func__);
 }
@@ -1109,6 +1117,10 @@ ol_txrx_vdev_unpause(ol_txrx_vdev_handle vdev, u_int32_t reason)
             adf_os_spin_unlock_bh(&vdev->ll_pause.mutex);
         }
     }
+
+    DPTRACE(adf_dp_trace(NULL, ADF_DP_TRACE_VDEV_UNPAUSE,
+               NULL, 0));
+
     TX_SCHED_DEBUG_PRINT("Leave %s\n", __func__);
 }
 

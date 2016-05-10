@@ -146,12 +146,26 @@
     };
 };
 
+&pmi8994_charger {
+        qcom,hvdcp-not-support;
+};
+
+&pmi8994_fg {
+        qcom,thermal-coefficients = [97 85 62 49 5A 35];
+};
+
 /{
         qcom,battery-data {
                 qcom,batt-id-range-pct = <15>;
                 #include "batterydata-m1s1-prototype-id1.dtsi"
                 #include "batterydata-m1s1-prototype-id2.dtsi"
         };
+};
+
+&soc {
+	qcom,ssc@1c00000 {
+		vdd_px-supply = <&pm8994_lvs1>;
+	};
 };
 
 &pmi8994_haptics {

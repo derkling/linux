@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -61,6 +61,7 @@
 #ifdef CONFIG_PCI_MSM
 #include <linux/msm_pcie.h>
 #endif
+#include "adf_trace.h"
 
 /* use credit flow control over HTC */
 unsigned int htc_credit_flow = 1;
@@ -75,7 +76,7 @@ OSDRV_CALLBACKS HIF_osDrvcallback;
 #define HIF_PCI_IPA_UC_ASSIGNED_CE  5
 #endif /* IPA_UC_OFFLOAD */
 
-#if defined(DEBUG)
+#if defined(WLAN_DEBUG)
 static ATH_DEBUG_MASK_DESCRIPTION g_HIFDebugDescription[] = {
     {HIF_PCI_DEBUG,"hif_pci"},
 };
@@ -371,6 +372,10 @@ HIFSend_head(HIF_DEVICE *hif_device,
         return A_ERROR;
     }
 
+    NBUF_UPDATE_TX_PKT_COUNT(nbuf, NBUF_TX_PKT_HIF);
+    DPTRACE(adf_dp_trace(nbuf, ADF_DP_TRACE_HIF_PACKET_PTR_RECORD,
+                (uint8_t *)(adf_nbuf_data(nbuf)),
+                sizeof(adf_nbuf_data(nbuf))));
     status = CE_sendlist_send(ce_hdl, nbuf, &sendlist, transfer_id);
     A_ASSERT(status == A_OK);
 

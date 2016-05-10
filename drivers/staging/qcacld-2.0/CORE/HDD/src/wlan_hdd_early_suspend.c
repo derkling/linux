@@ -40,6 +40,7 @@
 *   Include files
 * ----------------------------------------------------------------------------*/
 
+#include <net/addrconf.h>
 #include <linux/pm.h>
 #include <linux/wait.h>
 #include <linux/cpu.h>
@@ -69,7 +70,6 @@
 #include <linux/inetdevice.h>
 #include <wlan_hdd_cfg.h>
 #include <wlan_hdd_cfg80211.h>
-#include <net/addrconf.h>
 #ifdef IPA_OFFLOAD
 #include <wlan_hdd_ipa.h>
 #endif
@@ -344,8 +344,8 @@ VOS_STATUS hdd_enter_deep_sleep(hdd_context_t *pHddCtx, hdd_adapter_t *pAdapter)
 
    //Stop the Interface TX queue.
    hddLog(LOG1, FL("Disabling queues"));
-   netif_tx_disable(pAdapter->dev);
-   netif_carrier_off(pAdapter->dev);
+   wlan_hdd_netif_queue_control(pAdapter, WLAN_NETIF_TX_DISABLE_N_CARRIER,
+        WLAN_CONTROL_PATH);
 
    //Disable IMPS,BMPS as we do not want the device to enter any power
    //save mode on it own during suspend sequence
@@ -593,7 +593,8 @@ static int __wlan_hdd_ipv6_changed(struct notifier_block *nb,
 	if (WLAN_HDD_GET_CTX(adapter) != hdd_ctx) return NOTIFY_DONE;
 
 	if (adapter->device_mode == WLAN_HDD_INFRA_STATION ||
-		(adapter->device_mode == WLAN_HDD_P2P_CLIENT)) {
+	    adapter->device_mode == WLAN_HDD_P2P_CLIENT ||
+	    adapter->device_mode == WLAN_HDD_NDI) {
 		if (hdd_ctx->cfg_ini->nEnableSuspend ==
 			WLAN_MAP_SUSPEND_TO_MCAST_BCAST_FILTER &&
 			hdd_ctx->ns_offload_enable)
@@ -881,6 +882,7 @@ static void __hdd_ipv6_notifier_work_queue(struct work_struct *work)
              container_of(work, hdd_adapter_t, ipv6NotifierWorkQueue);
     hdd_context_t *pHddCtx;
     int status;
+    bool ndi_connected = false;
 
     ENTER();
 
@@ -896,9 +898,14 @@ static void __hdd_ipv6_notifier_work_queue(struct work_struct *work)
         pHddCtx->sus_res_mcastbcast_filter_valid = VOS_TRUE;
     }
 
+    /* check if the device is in NAN data mode */
+    if (WLAN_HDD_IS_NDI(pAdapter))
+        ndi_connected = WLAN_HDD_IS_NDI_CONNECTED(pAdapter);
+
     if ((eConnectionState_Associated ==
-                (WLAN_HDD_GET_STATION_CTX_PTR(pAdapter))->conn_info.connState)
-        && (pHddCtx->hdd_wlan_suspended))
+            (WLAN_HDD_GET_STATION_CTX_PTR(pAdapter))->conn_info.connState ||
+         ndi_connected) &&
+         pHddCtx->hdd_wlan_suspended)
     {
         /*
          * This invocation being part of the IPv6 registration callback,
@@ -1075,6 +1082,7 @@ static void __hdd_ipv4_notifier_work_queue(struct work_struct *work)
              container_of(work, hdd_adapter_t, ipv4NotifierWorkQueue);
     hdd_context_t *pHddCtx;
     int status;
+    bool ndi_connected = false;
 
     hddLog(LOG1, FL("Reconfiguring ARP Offload"));
     pHddCtx = WLAN_HDD_GET_CTX(pAdapter);
@@ -1082,20 +1090,25 @@ static void __hdd_ipv4_notifier_work_queue(struct work_struct *work)
     if (0 != status)
         return;
 
-    if ( VOS_FALSE == pHddCtx->sus_res_mcastbcast_filter_valid)
-    {
+    if (VOS_FALSE == pHddCtx->sus_res_mcastbcast_filter_valid) {
         pHddCtx->sus_res_mcastbcast_filter =
             pHddCtx->configuredMcastBcastFilter;
         pHddCtx->sus_res_mcastbcast_filter_valid = VOS_TRUE;
     }
 
+    /* check if the device is in NAN data mode */
+    if (WLAN_HDD_IS_NDI(pAdapter))
+        ndi_connected = WLAN_HDD_IS_NDI_CONNECTED(pAdapter);
+
     if ((eConnectionState_Associated ==
-                (WLAN_HDD_GET_STATION_CTX_PTR(pAdapter))->conn_info.connState)
-        && (pHddCtx->hdd_wlan_suspended))
-    {
-        // This invocation being part of the IPv4 registration callback,
-        // we are passing second parameter as 2 to avoid registration
-        // of IPv4 notifier again.
+            (WLAN_HDD_GET_STATION_CTX_PTR(pAdapter))->conn_info.connState ||
+         ndi_connected) &&
+         pHddCtx->hdd_wlan_suspended) {
+        /*
+         * This invocation being part of the IPv4 registration callback,
+         * we are passing second parameter as 2 to avoid registration
+         * of IPv4 notifier again.
+         */
         hdd_conf_arp_offload(pAdapter, 2);
     }
 }
@@ -1135,7 +1148,8 @@ static int __wlan_hdd_ipv4_changed(struct notifier_block *nb,
 	if (adapter->dev != ndev) return NOTIFY_DONE;
 	if (WLAN_HDD_GET_CTX(adapter) != hdd_ctx) return NOTIFY_DONE;
         if (!(adapter->device_mode == WLAN_HDD_INFRA_STATION ||
-                adapter->device_mode == WLAN_HDD_P2P_CLIENT))
+	      adapter->device_mode == WLAN_HDD_P2P_CLIENT ||
+	      adapter->device_mode == WLAN_HDD_NDI))
 		return NOTIFY_DONE;
 
 	if ((hdd_ctx->cfg_ini->nEnableSuspend !=
@@ -1561,8 +1575,9 @@ void hdd_suspend_wlan(void (*callback)(void *callbackContext, boolean suspended)
        {
           //stop the interface before putting the chip to standby
           hddLog(LOG1, FL("Disabling queues"));
-          netif_tx_disable(pAdapter->dev);
-          netif_carrier_off(pAdapter->dev);
+          wlan_hdd_netif_queue_control(pAdapter,
+            WLAN_NETIF_TX_DISABLE_N_CARRIER,
+            WLAN_CONTROL_PATH);
        }
        else if (pHddCtx->cfg_ini->nEnableSuspend ==
                WLAN_MAP_SUSPEND_TO_DEEP_SLEEP)
@@ -1575,7 +1590,8 @@ void hdd_suspend_wlan(void (*callback)(void *callbackContext, boolean suspended)
 send_suspend_ind:
        //stop all TX queues before suspend
        hddLog(LOG1, FL("Disabling queues"));
-       netif_tx_disable(pAdapter->dev);
+       wlan_hdd_netif_queue_control(pAdapter, WLAN_NETIF_TX_DISABLE,
+                  WLAN_CONTROL_PATH);
        WLANTL_PauseUnPauseQs(pVosContext, true);
 
       /* Keep this suspend indication at the end (before processing next adaptor)
@@ -1824,7 +1840,9 @@ send_resume_ind:
       hddLog(LOG1, FL("Enabling queues"));
       WLANTL_PauseUnPauseQs(pVosContext, false);
 
-      netif_tx_wake_all_queues(pAdapter->dev);
+      wlan_hdd_netif_queue_control(pAdapter,
+            WLAN_WAKE_ALL_NETIF_QUEUE,
+            WLAN_CONTROL_PATH);
 
       hdd_conf_resume_ind(pAdapter);
 
@@ -2345,6 +2363,7 @@ err_vosclose:
        pHddCtx->cfg_ini= NULL;
        wlan_hdd_deinit_tx_rx_histogram(pHddCtx);
        wiphy_unregister(pHddCtx->wiphy);
+       wlan_hdd_cfg80211_deinit(pHddCtx->wiphy);
        wiphy_free(pHddCtx->wiphy);
    }
    vos_preClose(&pVosContext);

@@ -260,6 +260,7 @@ enum mdss_intf_events {
 	MDSS_EVENT_DSI_RECONFIG_CMD,
 	MDSS_EVENT_DSI_RESET_WRITE_PTR,
 	MDSS_EVENT_PANEL_TIMING_SWITCH,
+	MDSS_EVENT_MAX,
 };
 
 struct lcd_panel_info {
@@ -606,6 +607,7 @@ struct mdss_panel_info {
 	bool ulps_suspend_enabled;
 	bool panel_ack_disabled;
 	bool esd_check_enabled;
+	bool allow_phy_power_off;
 	char dfps_update;
 	/* new requested fps before it is updated in hw */
 	int new_fps;

@@ -2684,11 +2684,11 @@ void remove_entity_load_avg(struct sched_entity *se)
 	if (se->avg.last_update_time == 0)
 		return;
 
-	last_update_time = cfs_rq_last_update_time(cfs_rq);
+        last_update_time = cfs_rq_last_update_time(cfs_rq);
 
-	__update_load_avg(last_update_time, cpu_of(rq_of(cfs_rq)), &se->avg, 0, 0, NULL);
-	atomic_long_add(se->avg.load_avg, &cfs_rq->removed_load_avg);
-	atomic_long_add(se->avg.util_avg, &cfs_rq->removed_util_avg);
+        __update_load_avg(last_update_time, cpu_of(rq_of(cfs_rq)), &se->avg, 0, 0, NULL);
+        atomic_long_add(se->avg.load_avg, &cfs_rq->removed_load_avg);
+        atomic_long_add(se->avg.util_avg, &cfs_rq->removed_util_avg);
 }
 
 /*
@@ -2855,15 +2855,21 @@ static void check_enqueue_throttle(struct cfs_rq *cfs_rq);
 static void
 enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 {
-	/*
-	 * Update the normalized vruntime before updating min_vruntime
-	 * through calling update_curr().
-	 */
-	if (!(flags & ENQUEUE_WAKEUP) || (flags & ENQUEUE_WAKING))
-		se->vruntime += cfs_rq->min_vruntime;
+	bool renorm = !(flags & ENQUEUE_WAKEUP) || (flags & ENQUEUE_WAKING);
+	bool curr = cfs_rq->curr == se;
 
 	/*
-	 * Update run-time statistics of the 'current'.
+	 * If we're the current task, we must renormalise before calling
+	 * update_curr().
+	 */
+	if (renorm && curr)
+		se->vruntime += cfs_rq->min_vruntime;
+
+	update_curr(cfs_rq);
+
+	/*
+	 * Otherwise, renormalise after, such that we're placed at the current
+	 * moment in time, instead of some random moment in the past.
 	 */
 	update_curr(cfs_rq);
 	enqueue_entity_load_avg(cfs_rq, se);
@@ -2877,7 +2883,7 @@ enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 
 	update_stats_enqueue(cfs_rq, se);
 	check_spread(cfs_rq, se);
-	if (se != cfs_rq->curr)
+	if (!curr)
 		__enqueue_entity(cfs_rq, se);
 	se->on_rq = 1;
 

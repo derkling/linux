@@ -70,6 +70,7 @@ dtb-$(CONFIG_ARCH_MSM8996_DISABLED) += msm8996-v2-pmi8994-cdp.dtb \
 	apq8096-v3-pmi8996-mtp.dtb \
 	apq8096-v3-liquid.dtb \
 	apq8096-v3-dragonboard.dtb \
+	apq8096-v3-mediabox.dtb \
 	apq8096-v3-sbc.dtb \
 	apq8096-v3-auto-dragonboard.dtb \
 	apq8096-v3-auto-cdp.dtb \
@@ -154,7 +155,8 @@ dtb-$(CONFIG_ARCH_MSM8940) += msm8940-pmi8937-cdp.dtb \
 	msm8940-pmi8950-mtp.dtb \
 	msm8940-pmi8937-rcm.dtb \
 	msm8940-pmi8950-rcm.dtb \
-	msm8940-pmi8950-qrd-sku6.dtb
+	msm8940-pmi8950-qrd-sku6.dtb \
+	msm8940-pmi8950-ext-codec-cdp.dtb
 
 dtb-$(CONFIG_ARCH_MSM8953) += msm8953-sim.dtb \
 	msm8953-rumi.dtb \

@@ -12,6 +12,7 @@
 
 #ifndef _IPA_COMMON_I_H_
 #define _IPA_COMMON_I_H_
+#include <linux/ipc_logging.h>
 
 #define __FILENAME__ \
 	(strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
@@ -96,6 +97,11 @@
 		ipa_dec_client_disable_clks(&log_info); \
 	} while (0)
 
+#define ipa_assert_on(condition)\
+do {\
+	if (unlikely(condition))\
+		ipa_assert();\
+} while (0)
 
 enum ipa_active_client_log_type {
 	EP,
@@ -114,6 +120,13 @@ struct ipa_active_client_logging_info {
 
 extern const char *ipa_clients_strings[];
 
+#define IPA_IPC_LOGGING(buf, fmt, args...) \
+	do { \
+		if (buf) \
+			ipc_log_string((buf), fmt, __func__, __LINE__, \
+				## args); \
+	} while (0)
+
 void ipa_inc_client_enable_clks(struct ipa_active_client_logging_info *id);
 void ipa_dec_client_disable_clks(struct ipa_active_client_logging_info *id);
 int ipa_inc_client_enable_clks_no_block(
@@ -123,6 +136,9 @@ int ipa_resume_resource(enum ipa_rm_resource_name name);
 int ipa_suspend_resource_sync(enum ipa_rm_resource_name resource);
 int ipa_set_required_perf_profile(enum ipa_voltage_level floor_voltage,
 	u32 bandwidth_mbps);
+void *ipa_get_ipc_logbuf(void);
+void *ipa_get_ipc_logbuf_low(void);
+void ipa_assert(void);
 
 
 #endif /* _IPA_COMMON_I_H_ */
