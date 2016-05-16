@@ -757,6 +757,7 @@ static int dwc3_msm_ep_queue(struct usb_ep *ep,
 	return 0;
 
 err:
+	list_del(&req_complete->list_item);
 	spin_unlock_irqrestore(&dwc->lock, flags);
 	kfree(req_complete);
 	return ret;
@@ -2479,6 +2480,8 @@ static int dwc3_msm_power_set_property_usb(struct power_supply *psy,
 			break;
 		default:
 			mdwc->chg_type = DWC3_INVALID_CHARGER;
+			/* set default power supply type as USB */
+			psy->type = POWER_SUPPLY_TYPE_USB;
 			break;
 		}
 
