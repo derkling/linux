@@ -451,7 +451,7 @@ static struct ctl_table kern_table[] = {
 		.data		= &sysctl_sched_cfs_boost,
 		.maxlen		= sizeof(sysctl_sched_cfs_boost),
 #ifdef CONFIG_CGROUP_SCHEDTUNE
-		.mode		= 0444,
+		.mode		= 0644,
 #else
 		.mode		= 0644,
 #endif
