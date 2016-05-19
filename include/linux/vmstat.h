@@ -55,6 +55,8 @@ extern void all_vm_events(unsigned long *);
 
 extern void vm_events_fold_cpu(int cpu);
 
+extern void dump_vm_events_counter(void);
+
 #else
 
 /* Disable counters */
@@ -76,7 +78,9 @@ static inline void all_vm_events(unsigned long *ret)
 static inline void vm_events_fold_cpu(int cpu)
 {
 }
-
+static inline void dump_vm_events_counter(void)
+{
+}
 #endif /* CONFIG_VM_EVENT_COUNTERS */
 
 #ifdef CONFIG_NUMA_BALANCING
@@ -160,6 +164,26 @@ static inline unsigned long zone_page_state_snapshot(struct zone *zone,
 	return x;
 }
 
+static inline unsigned long global_page_state_snapshot(enum zone_stat_item item)
+{
+	long x = atomic_long_read(&vm_stat[item]);
+
+#ifdef CONFIG_SMP
+	struct zone *zone;
+	int cpu;
+
+	for_each_online_cpu(cpu) {
+		for_each_populated_zone(zone)
+			x += per_cpu_ptr(zone->pageset,
+				cpu)->vm_stat_diff[item];
+	}
+
+	if (x < 0)
+		x = 0;
+#endif
+	return x;
+}
+
 #ifdef CONFIG_NUMA
 /*
  * Determine the per node value of a stat item. This function
@@ -211,6 +235,7 @@ extern void __inc_zone_state(struct zone *, enum zone_stat_item);
 extern void dec_zone_state(struct zone *, enum zone_stat_item);
 extern void __dec_zone_state(struct zone *, enum zone_stat_item);
 
+void quiet_vmstat(void);
 void cpu_vm_stats_fold(int cpu);
 void refresh_zone_stat_thresholds(void);
 
@@ -272,6 +297,7 @@ static inline void __dec_zone_page_state(struct page *page,
 static inline void refresh_cpu_vm_stats(int cpu) { }
 static inline void refresh_zone_stat_thresholds(void) { }
 static inline void cpu_vm_stats_fold(int cpu) { }
+static inline void quiet_vmstat(void) { }
 
 static inline void drain_zonestat(struct zone *zone,
 			struct per_cpu_pageset *pset) { }

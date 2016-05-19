@@ -331,6 +331,15 @@ struct cfs_bandwidth { };
 
 #endif	/* CONFIG_CGROUP_SCHED */
 
+#ifdef CONFIG_SCHED_WALT
+
+struct hmp_sched_stats {
+	int nr_big_tasks;
+	u64 cumulative_runnable_avg;
+};
+
+#endif
+
 /* CFS-related fields in a runqueue */
 struct cfs_rq {
 	struct load_weight load;
@@ -397,6 +406,10 @@ struct cfs_rq {
 	int on_list;
 	struct list_head leaf_cfs_rq_list;
 	struct task_group *tg;	/* group that "owns" this runqueue */
+
+#ifdef CONFIG_SCHED_WALT
+	struct hmp_sched_stats hmp_stats;
+#endif
 
 #ifdef CONFIG_CFS_BANDWIDTH
 	int runtime_enabled;
@@ -573,13 +586,6 @@ struct rq {
 #endif
 	int skip_clock_update;
 
-#ifdef CONFIG_CPU_QUIET
-	/* time-based average load */
-	u64 nr_last_stamp;
-	u64 nr_running_integral;
-	seqcount_t ave_seqcnt;
-#endif
-
 	/* capture load from *all* tasks on this cpu: */
 	struct load_weight load;
 	unsigned long nr_load_updates;
@@ -634,10 +640,46 @@ struct rq {
 	u64 age_stamp;
 	u64 idle_stamp;
 	u64 avg_idle;
+	int cstate, wakeup_latency, wakeup_energy;
 
 	/* This is used to determine avg_idle's max value */
 	u64 max_idle_balance_cost;
 #endif
+
+#ifdef CONFIG_SCHED_WALT
+	/*
+	 * max_freq = user or thermal defined maximum
+	 * max_possible_freq = maximum supported by hardware
+	 */
+	unsigned int cur_freq, max_freq, min_freq, max_possible_freq;
+	struct cpumask freq_domain_cpumask;
+
+	struct hmp_sched_stats hmp_stats;
+
+	int efficiency; /* Differentiate cpus with different IPC capability */
+	int load_scale_factor;
+	int capacity;
+	int max_possible_capacity;
+	u64 window_start;
+	unsigned long hmp_flags;
+
+	u64 cur_irqload;
+	u64 avg_irqload;
+	u64 irqload_ts;
+	unsigned int static_cpu_pwr_cost;
+	unsigned int static_cluster_pwr_cost;
+	struct task_struct *ed_task;
+
+#ifdef CONFIG_SCHED_WALT_FREQ_INPUT
+	unsigned int old_busy_time;
+	int notifier_sent;
+	u64 curr_runnable_sum;
+	u64 prev_runnable_sum;
+	u64 nt_curr_runnable_sum;
+	u64 nt_prev_runnable_sum;
+#endif /* CONFIG_SCHED_WALT_FREQ_INPUT */
+#endif /* CONFIG_SCHED_WALT */
+
 
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 	u64 prev_irq_time;
@@ -709,7 +751,7 @@ DECLARE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 
 static inline u64 __rq_clock_broken(struct rq *rq)
 {
-	return READ_ONCE(rq->clock);
+	return ACCESS_ONCE(rq->clock);
 }
 
 static inline u64 rq_clock(struct rq *rq)
@@ -1045,10 +1087,9 @@ static inline void finish_lock_switch(struct rq *rq, struct task_struct *prev)
 	 * After ->on_cpu is cleared, the task can be moved to a different CPU.
 	 * We must ensure this doesn't happen until the switch is completely
 	 * finished.
-	 *
-	 * Pairs with the control dependency and rmb in try_to_wake_up().
 	 */
-	smp_store_release(&prev->on_cpu, 0);
+	smp_wmb();
+	prev->on_cpu = 0;
 #endif
 #ifdef CONFIG_DEBUG_SPINLOCK
 	/* this is a valid case when another task releases the spinlock */
@@ -1199,6 +1240,14 @@ struct sched_class {
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	void (*task_move_group) (struct task_struct *p);
 #endif
+
+#ifdef CONFIG_SCHED_WALT
+	void (*inc_hmp_sched_stats)(struct rq *rq, struct task_struct *p);
+	void (*dec_hmp_sched_stats)(struct rq *rq, struct task_struct *p);
+	void (*fixup_hmp_sched_stats)(struct rq *rq, struct task_struct *p,
+				      u32 new_task_load);
+#endif
+
 };
 
 static inline void put_prev_task(struct rq *rq, struct task_struct *prev)
@@ -1302,7 +1351,7 @@ extern void init_entity_runnable_average(struct sched_entity *se);
 
 extern void init_max_cpu_capacity(struct max_cpu_capacity *mcc);
 
-static inline void __add_nr_running(struct rq *rq, unsigned count)
+static inline void add_nr_running(struct rq *rq, unsigned count)
 {
 	unsigned prev_nr = rq->nr_running;
 
@@ -1330,47 +1379,10 @@ static inline void __add_nr_running(struct rq *rq, unsigned count)
 	}
 }
 
-static inline void __sub_nr_running(struct rq *rq, unsigned count)
+static inline void sub_nr_running(struct rq *rq, unsigned count)
 {
 	rq->nr_running -= count;
 }
-
-#ifdef CONFIG_CPU_QUIET
-#define NR_AVE_SCALE(x)		((x) << FSHIFT)
-static inline u64 do_nr_running_integral(struct rq *rq)
-{
-	s64 nr, deltax;
-	u64 nr_running_integral = rq->nr_running_integral;
-
-	deltax = rq->clock_task - rq->nr_last_stamp;
-	nr = NR_AVE_SCALE(rq->nr_running);
-
-	nr_running_integral += nr * deltax;
-
-	return nr_running_integral;
-}
-
-static inline void add_nr_running(struct rq *rq, unsigned count)
-{
-	write_seqcount_begin(&rq->ave_seqcnt);
-	rq->nr_running_integral = do_nr_running_integral(rq);
-	rq->nr_last_stamp = rq->clock_task;
-	__add_nr_running(rq, count);
-	write_seqcount_end(&rq->ave_seqcnt);
-}
-
-static inline void sub_nr_running(struct rq *rq, unsigned count)
-{
-	write_seqcount_begin(&rq->ave_seqcnt);
-	rq->nr_running_integral = do_nr_running_integral(rq);
-	rq->nr_last_stamp = rq->clock_task;
-	__sub_nr_running(rq, count);
-	write_seqcount_end(&rq->ave_seqcnt);
-}
-#else
-#define add_nr_running __add_nr_running
-#define sub_nr_running __sub_nr_running
-#endif
 
 static inline void rq_last_tick_reset(struct rq *rq)
 {
@@ -1455,6 +1467,20 @@ static inline unsigned long capacity_orig_of(int cpu)
 	return cpu_rq(cpu)->cpu_capacity_orig;
 }
 
+extern int use_pelt_util_est;
+
+/* Force usage of PELT signal, i.e. util_avg */
+#define UTIL_AVG true
+/* Use estimated utilization when possible, i.e. UTIL_EST feature enabled */
+#define UTIL_EST false
+static inline bool use_util_est(void)
+{
+	return sched_feat(UTIL_EST);
+}
+
+extern unsigned int sysctl_sched_use_walt_cpu_util;
+extern unsigned int sched_ravg_window;
+
 /*
  * cpu_util returns the amount of capacity of a CPU that is used by CFS
  * tasks. The unit of the return value must be the one of capacity so we can
@@ -1481,10 +1507,23 @@ static inline unsigned long capacity_orig_of(int cpu)
  * capacity_orig) as it useful for predicting the capacity required after task
  * migrations (scheduler-driven DVFS).
  */
-static inline unsigned long __cpu_util(int cpu, int delta)
+static inline unsigned long __cpu_util(int cpu, int delta, bool use_pelt)
 {
 	unsigned long util = cpu_rq(cpu)->cfs.avg.util_avg;
 	unsigned long capacity = capacity_orig_of(cpu);
+
+#ifdef CONFIG_SCHED_WALT
+	if (sysctl_sched_use_walt_cpu_util)
+		util = (cpu_rq(cpu)->prev_runnable_sum << SCHED_LOAD_SHIFT) /
+			sched_ravg_window;
+#else
+       /*
+	* The CPU estimated utilization is:
+	* 	max(util_avg, util_est)
+        */
+	if (use_util_est() && !use_pelt)
+		util = max(util, cpu_rq(cpu)->cfs.avg.util_est);
+#endif
 
 	delta += util;
 	if (delta < 0)
@@ -1493,9 +1532,9 @@ static inline unsigned long __cpu_util(int cpu, int delta)
 	return (delta >= capacity) ? capacity : delta;
 }
 
-static inline unsigned long cpu_util(int cpu)
+static inline unsigned long cpu_util(int cpu, bool use_pelt)
 {
-	return __cpu_util(cpu, 0);
+	return __cpu_util(cpu, 0, use_pelt);
 }
 
 #endif

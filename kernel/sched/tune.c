@@ -3,24 +3,17 @@
 #include <linux/kernel.h>
 #include <linux/percpu.h>
 #include <linux/printk.h>
-#include <linux/reciprocal_div.h>
 #include <linux/rcupdate.h>
 #include <linux/slab.h>
 
 #include <trace/events/sched.h>
 
 #include "sched.h"
+#include "tune.h"
 
 unsigned int sysctl_sched_cfs_boost __read_mostly;
 
-/*
- * System energy normalization constants
- */
-static struct target_nrg {
-	unsigned long min_power;
-	unsigned long max_power;
-	struct reciprocal_value rdiv;
-} schedtune_target_nrg;
+extern struct target_nrg schedtune_target_nrg;
 
 /* Performance Boost region (B) threshold params */
 static int perf_boost_idx;
@@ -220,10 +213,10 @@ static struct schedtune *allocated_group[BOOSTGROUPS_COUNT] = {
  */
 struct boost_groups {
 	/* Maximum boost value for all RUNNABLE tasks on a CPU */
-	unsigned boost_max;
+	int boost_max;
 	struct {
 		/* The boost for tasks on that boost group */
-		unsigned boost;
+		int boost;
 		/* Count of RUNNABLE tasks on that boost group */
 		unsigned tasks;
 	} group[BOOSTGROUPS_COUNT];
@@ -236,7 +229,7 @@ static void
 schedtune_cpu_update(int cpu)
 {
 	struct boost_groups *bg;
-	unsigned boost_max;
+	int boost_max;
 	int idx;
 
 	bg = &per_cpu(cpu_boost_groups, cpu);
@@ -250,6 +243,18 @@ schedtune_cpu_update(int cpu)
 		 */
 		if (bg->group[idx].tasks == 0)
 			continue;
+
+		/* Ensures that boost_max is not zero when at least one of boost
+		 * values is negative.
+		 */
+		if (bg->group[idx].boost == 0 && boost_max != 0)
+			continue;
+
+		if (bg->group[idx].boost != 0 && boost_max == 0) {
+			boost_max = bg->group[idx].boost;
+			continue;
+		}
+
 		boost_max = max(boost_max, bg->group[idx].boost);
 	}
 
@@ -304,14 +309,27 @@ schedtune_tasks_update(struct task_struct *p, int cpu, int idx, int task_count)
 {
 	struct boost_groups *bg;
 	int tasks;
+	int tmpidx;
 
 	bg = &per_cpu(cpu_boost_groups, cpu);
 
-	/* Update boosted tasks count while avoiding to make it negative */
-	if (task_count < 0 && bg->group[idx].tasks <= -task_count)
+	/* Update boosted tasks count */
+	bg->group[idx].tasks += task_count;
+	if (unlikely(bg->group[idx].tasks < 0)) {
+		if (task_count < 0) {
+			/*
+			 * Probably a case of the task changing groups
+			 * while enqueued. Find another group to dequeue.
+			 */
+			for (tmpidx = 1; tmpidx < BOOSTGROUPS_COUNT; ++tmpidx) {
+				if (bg->group[tmpidx].tasks >= -task_count) {
+					bg->group[tmpidx].tasks += task_count;
+					break;
+				}
+			}
+		}
 		bg->group[idx].tasks = 0;
-	else
-		bg->group[idx].tasks += task_count;
+	}
 
 	/* Boost group activation or deactivation on that RQ */
 	tasks = bg->group[idx].tasks;
@@ -398,7 +416,7 @@ int schedtune_task_boost(struct task_struct *p)
 	return task_boost;
 }
 
-static u64
+static s64
 boost_read(struct cgroup_subsys_state *css, struct cftype *cft)
 {
 	struct schedtune *st = css_st(css);
@@ -408,11 +426,11 @@ boost_read(struct cgroup_subsys_state *css, struct cftype *cft)
 
 static int
 boost_write(struct cgroup_subsys_state *css, struct cftype *cft,
-	    u64 boost)
+	    s64 boost)
 {
 	struct schedtune *st = css_st(css);
 
-	if (boost < 0 || boost > 100)
+	if (boost < -100 || boost > 100)
 		return -EINVAL;
 
 	st->boost = boost;
@@ -434,8 +452,8 @@ boost_write(struct cgroup_subsys_state *css, struct cftype *cft,
 static struct cftype files[] = {
 	{
 		.name = "boost",
-		.read_u64 = boost_read,
-		.write_u64 = boost_write,
+		.read_s64 = boost_read,
+		.write_s64 = boost_write,
 	},
 	{ }	/* terminate */
 };
@@ -554,6 +572,7 @@ struct cgroup_subsys schedtune_cgrp_subsys = {
 	.css_alloc	= schedtune_css_alloc,
 	.css_free	= schedtune_css_free,
 	.exit		= schedtune_exit,
+	.allow_attach   = subsys_cgroup_allow_attach,
 	.legacy_cftypes	= files,
 	.early_init	= 1,
 };
@@ -601,37 +620,6 @@ sysctl_sched_cfs_boost_handler(struct ctl_table *table, int write,
 	perf_constrain_idx /= 10;
 
 	return 0;
-}
-
-/*
- * System energy normalization
- * Returns the normalized value, in the range [0..SCHED_LOAD_SCALE],
- * corresponding to the specified energy variation.
- */
-int
-schedtune_normalize_energy(int energy_diff)
-{
-	u32 normalized_nrg;
-	int max_delta;
-
-#ifdef CONFIG_SCHED_DEBUG
-	/* Check for boundaries */
-	max_delta  = schedtune_target_nrg.max_power;
-	max_delta -= schedtune_target_nrg.min_power;
-	WARN_ON(abs(energy_diff) >= max_delta);
-#endif
-
-	/* Do scaling using positive numbers to increase the range */
-	normalized_nrg = (energy_diff < 0) ? -energy_diff : energy_diff;
-
-	/* Scale by energy magnitude */
-	normalized_nrg <<= SCHED_LOAD_SHIFT;
-
-	/* Normalize on max energy for target platform */
-	normalized_nrg = reciprocal_divide(
-			normalized_nrg, schedtune_target_nrg.rdiv);
-
-	return (energy_diff < 0) ? -normalized_nrg : normalized_nrg;
 }
 
 #ifdef CONFIG_SCHED_DEBUG
