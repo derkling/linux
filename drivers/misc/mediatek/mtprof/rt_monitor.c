@@ -98,8 +98,6 @@ static void store_rt_mon_info(int cpu, u64 delta_exec, struct task_struct *p)
 	mtmon->prio = p->prio;
 	strncpy(mtmon->comm, p->comm, sizeof(mtmon->comm));
 	mtmon->cputime = delta_exec;
-	mtmon->isr_time = p->se.mtk_isr_time;
-	mtmon->isr_time_init = p->se.mtk_isr_time;
 	mtmon->cost_cputime = 0;
 	mtmon->cost_isrtime = 0;
 	list_add(&(mtmon->list), &(__raw_get_cpu_var(mt_rt_mon_head).list));
@@ -141,7 +139,6 @@ void stop_rt_mon_task(int cpu)
 		if (tsk && task_has_rt_policy(tsk)) {
 			tmp->prio = tsk->prio;
 			strncpy(tmp->comm, tsk->comm, sizeof(tmp->comm));
-			tmp->isr_time = tsk->se.mtk_isr_time;
 			tmp->cost_isrtime = tmp->isr_time - tmp->isr_time_init;
 		}
 
@@ -180,8 +177,6 @@ void reset_rt_mon_list(int cpu)
 			tmp->cputime_percen_6 = 0;
 			tmp->cost_isrtime = 0;
 			tmp->prio = tsk->prio;
-			tmp->isr_time_init = tsk->se.mtk_isr_time;
-			tmp->isr_time = tsk->se.mtk_isr_time;
 		} else {
 			per_cpu(rt_mon_count, cpu)--;
 			list_del(&(tmp->list));

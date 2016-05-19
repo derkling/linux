@@ -591,11 +591,6 @@ collect_proc_mem_info:
 			/* min_flt += t->min_flt; */
 			/* maj_flt += t->maj_flt; */
 
-			fm_flt += t->fm_flt;
-#ifdef CONFIG_SWAP
-			swap_in += t->swap_in;
-			swap_out += t->swap_out;
-#endif
 			t = next_thread(t);
 #ifdef MLOG_DEBUG
 #if defined(__LP64__) || defined(_LP64)

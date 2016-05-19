@@ -148,8 +148,8 @@ void __irq_wake_thread(struct irq_desc *desc, struct irqaction *action)
 static void save_isr_info(unsigned int irq, struct irqaction *action,
 			  unsigned long long start, unsigned long long end)
 {
-	unsigned long long dur = end - start;
 #ifdef CONFIG_MTPROF_CPUTIME
+	unsigned long long dur = end - start;
 	int isr_find = 0;
 	struct mtk_isr_info *mtk_isr_point = current->se.mtk_isr;
 	struct mtk_isr_info *mtk_isr_current = mtk_isr_point;
@@ -195,13 +195,6 @@ static void save_isr_info(unsigned int irq, struct irqaction *action,
 		return;
 	}
 #endif
-	/* only record dur in mtk_isr_time if:
-	 * CONFIG_MTPROF_CPUTIME defined but not enabled, or
-	 * CONFIG_MTPROF_CPUTIME not defined
-	 */
-	if ((current->policy == SCHED_FIFO || current->policy == SCHED_RR)
-	    && mt_rt_mon_enable(smp_processor_id()))
-		current->se.mtk_isr_time += dur;
 }
 #endif
 
