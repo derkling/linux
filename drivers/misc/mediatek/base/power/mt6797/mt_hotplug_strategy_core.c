@@ -122,9 +122,11 @@ static void hps_get_sysinfo(void)
 	/*Get heavy task information */
 	/*hps_ctxt.cur_nr_heavy_task = hps_cpu_get_nr_heavy_task(); */
 	for (idx = 0; idx < hps_sys.cluster_num; idx++) {
+#ifdef CONFIG_MTK_SCHED_RQAVG_US
 		if (hps_ctxt.heavy_task_enabled)
 			hps_sys.cluster_info[idx].hvyTsk_value = sched_get_nr_heavy_task2(idx);
 		else
+#endif
 			hps_sys.cluster_info[idx].hvyTsk_value = 0;
 	}
 
