@@ -367,6 +367,51 @@ void schedtune_enqueue_task(struct task_struct *p, int cpu)
 	schedtune_tasks_update(p, cpu, idx, 1);
 }
 
+void schedtune_attach(struct cgroup *cgrp, struct cgroup_taskset *tset)
+{
+	struct cgroup_subsys_state dst_css;
+	struct schedtune *std_st, src_st;
+	struct task_struct *task;
+	struct boost_groups *bg;
+
+	dst_css = &st->css;
+
+	cgroup_taskset_for_each(task, dst_css, tset) {
+
+		/*
+		 * Do nothing if the task is not RUNNABLE, at enqueue time we will
+		 * account for this task in the CPU's boost group
+		 */
+		if (task->state != TASK_RUNNING)
+			continue;
+
+		dst_st = css_st(dst_css);
+		src_st = task_schedtune(task);
+
+		/*
+		 * Current task is not changing boostgroup, which can
+		 * happen when the new hierarchy is in use.
+		 */
+		if (unlikely(src_st->idx == dst_st->idx))
+			continue;
+
+		/*
+		 * This is the case of a RUNNABLE task which is switching its
+		 * current boost group.
+		 */
+
+		/* Move task from src to dst boost group */
+		bg = &per_cpu(cpu_boost_groups, task_cpu(task));
+		bg->group[src_st->idx].tasks -= 1;
+		bg->group[dst_st->idx].tasks += 1;
+
+		/* Update CPU boost group */
+		if (bg->group[src_st].task == 1 || bg->group[dst_st].task == 1)
+			schedtune_cpu_update(cpu);
+
+	}
+}
+
 /*
  * NOTE: This function must be called while holding the lock on the CPU RQ
  */
@@ -573,6 +618,7 @@ struct cgroup_subsys schedtune_cgrp_subsys = {
 	.css_free	= schedtune_css_free,
 	.exit		= schedtune_exit,
 	.allow_attach   = subsys_cgroup_allow_attach,
+	.attach         = schedtune_attach,
 	.legacy_cftypes	= files,
 	.early_init	= 1,
 };
