@@ -310,27 +310,14 @@ schedtune_tasks_update(struct task_struct *p, int cpu, int idx, int task_count)
 {
 	struct boost_groups *bg;
 	int tasks;
-	int tmpidx;
 
 	bg = &per_cpu(cpu_boost_groups, cpu);
 
-	/* Update boosted tasks count */
-	bg->group[idx].tasks += task_count;
-	if (unlikely(bg->group[idx].tasks < 0)) {
-		if (task_count < 0) {
-			/*
-			 * Probably a case of the task changing groups
-			 * while enqueued. Find another group to dequeue.
-			 */
-			for (tmpidx = 1; tmpidx < BOOSTGROUPS_COUNT; ++tmpidx) {
-				if (bg->group[tmpidx].tasks >= -task_count) {
-					bg->group[tmpidx].tasks += task_count;
-					break;
-				}
-			}
-		}
+	/* Update boosted tasks count while avoiding to make it negative */
+	if (task_count < 0 && bg->group[idx].tasks <= -task_count)
 		bg->group[idx].tasks = 0;
-	}
+	else
+		bg->group[idx].tasks += task_count;
 
 	/* Boost group activation or deactivation on that RQ */
 	tasks = bg->group[idx].tasks;
