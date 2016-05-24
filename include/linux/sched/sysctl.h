@@ -47,6 +47,8 @@ extern unsigned int sysctl_sched_sync_hint_enable;
 extern unsigned int sysctl_sched_initial_task_util;
 extern unsigned int sysctl_sched_cfs_max_nrgi;
 extern unsigned int sysctl_sched_cstate_aware;
+extern unsigned int sysctl_sched_use_walt_cpu_util;
+extern unsigned int sysctl_sched_use_walt_task_util;
 
 enum sched_tunable_scaling {
 	SCHED_TUNABLESCALING_NONE,
