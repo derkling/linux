@@ -50,15 +50,26 @@
 #define HTC
 
 #ifdef HTC
+/* Release Version
+#define API_VERSION                      "1.1.19.1"
+        // 1. Upgrade to API 1.1.19
+        // 2. Implement USE_LONG_RANGING interface(disabled)
+        // 3. Improve enable time
+*/
+#define API_VERSION                      "1.1.19.2"
+        // 1. Mask out the delayed_work trigger in work_handler()
+        // 2. Change the delay_ms to 33ms
+        // 3. Change the time budget for Long Ranging mode to 26ms
+
 #define OFFSET_CALI_TARGET_DISTANCE	     100 // Target: 100 mm
 #define RANGE_MEASUREMENT_TIMES		     10
-#define RANGE_MEASUREMENT_RETRY_TIMES	     13
+#define RANGE_MEASUREMENT_RETRY_TIMES    13
 #define RANGE_MEASUREMENT_OVERFLOW	     8100
-#define VL53L0_MAGIC 			     'A'
-#define VL53L0_IOCTL_GET_DATA		     _IOR(VL53L0_MAGIC, 0x01, \
-        VL53L0_RangingMeasurementData_t)
-#define VL53L0_IOCTL_OFFSET_CALI	     _IOR(VL53L0_MAGIC, 0x02, int)
-#define VL53L0_IOCTL_XTALK_CALI		     _IOR(VL53L0_MAGIC, 0x03, int)
+#define VL53L0_MAGIC 			         'A'
+#define VL53L0_IOCTL_GET_DATA		         _IOR(VL53L0_MAGIC, 0x01, \
+                                            VL53L0_RangingMeasurementData_t)
+#define VL53L0_IOCTL_OFFSET_CALI	         _IOR(VL53L0_MAGIC, 0x02, int)
+#define VL53L0_IOCTL_XTALK_CALI		         _IOR(VL53L0_MAGIC, 0x03, int)
 #define VL53L0_IOCTL_SET_XTALK_CALI_DISTANCE _IOR(VL53L0_MAGIC, 0x04, int)
 #define VL53L0_IOCTL_REF_SPAD_CALI           _IOR(VL53L0_MAGIC, 0x05, int)
 
@@ -553,7 +564,7 @@ static void stmvl53l0_setupAPIFunctions(struct stmvl53l0_data *data)
 
     /* Read Revision ID */
     VL53L0_RdByte(vl53l0_dev, VL53L0_REG_IDENTIFICATION_REVISION_ID, &revision);
-    vl53l0_errmsg("read REVISION_ID: 0x%x\n", revision);
+    vl53l0_errmsg("read REVISION_ID: 0x%x\n API_VERSION: %s", revision, API_VERSION);
     revision = (revision & 0xF0) >> 4;
     if (revision == 1) {
         /*cut 1.1*/
@@ -850,7 +861,7 @@ static void stmvl53l0_work_handler(struct work_struct *work)
     struct stmvl53l0_data *data = container_of(work,
             struct stmvl53l0_data, dwork.work);
     VL53L0_DEV vl53l0_dev = data;
-    //	uint8_t val;
+    // uint8_t val;
     uint32_t interruptStatus = 0;
     VL53L0_Error Status = VL53L0_ERROR_NONE;
     if (data->enableDebug)
@@ -866,35 +877,50 @@ static void stmvl53l0_work_handler(struct work_struct *work)
             stmvl53l0_DebugTimeDuration(&start_tv, &stop_tv);
         }
 #endif
-        //		Status = VL53L0_RdByte(vl53l0_dev, VL53L0_REG_RESULT_RANGE_STATUS, &val);
-        //		timing_dbgmsg("RangeStatus: 0x%x ===============================\n", val);
+        // Status = VL53L0_RdByte(vl53l0_dev, VL53L0_REG_RESULT_RANGE_STATUS, &val);
+        // timing_dbgmsg("RangeStatus: 0x%x\n", val);
 
-        Status = VL53L0_GetInterruptMaskStatus(vl53l0_dev, &interruptStatus);
-        if (data->enableDebug)
-            timing_dbgmsg("interruptStatus:0x%x, interrupt_received:%d\n",
-                    interruptStatus, data->interrupt_received);
-        data->interrupt_received = 0;
-        //		if (Status == VL53L0_ERROR_NONE &&
-        //		    interruptStatus == data->gpio_function) {
-        Status = papi_func_tbl->ClearInterruptMask(vl53l0_dev, 0);
-        Status = papi_func_tbl->GetRangingMeasurementData(
-                vl53l0_dev, &(data->rangeData));
-        /* to push the measurement */
-        if (Status == VL53L0_ERROR_NONE)
-            stmvl53l0_ps_read_measurement(data);
+        if (data->interrupt_received )
+        {
+            Status = VL53L0_GetInterruptMaskStatus(vl53l0_dev, &interruptStatus);
+            if (Status != VL53L0_ERROR_NONE)
+                vl53l0_errmsg("VL53L0_GetInterruptMaskStatus failed with "
+                        "Status = %d\n", Status);
+            if (data->enableDebug)
+                timing_dbgmsg("interruptStatus:0x%x, interrupt_received:%d\n",
+                        interruptStatus, data->interrupt_received);
+
+            /* clear S/W interrupt flag */
+            data->interrupt_received = 0;
+
+            //if (Status == VL53L0_ERROR_NONE &&
+            //    interruptStatus == data->gpio_function) {
+
+            /* clear H/W interrupt flag */
+            Status = papi_func_tbl->ClearInterruptMask(vl53l0_dev, 0);
+            if (Status != VL53L0_ERROR_NONE)
+                vl53l0_errmsg("VL53L0_ClearInterruptMask failed with "
+                        "Status = %d\n", Status);
+
+            /* get ranging measurement data */
+            Status = papi_func_tbl->GetRangingMeasurementData(
+                    vl53l0_dev, &(data->rangeData));
+            /* to push the measurement */
+            if (Status == VL53L0_ERROR_NONE)
+                stmvl53l0_ps_read_measurement(data);
 #ifdef HTC
-        if (data->enableTimingDebug)
-            timing_dbgmsg("Measured range:%d\n", data->rangeData.RangeMilliMeter);
+            if (data->enableTimingDebug)
+                timing_dbgmsg("Measured range:%d\n", data->rangeData.RangeMilliMeter);
 #endif
-        //		}
+            //}
 #ifdef HTC
-        if (data->enableTimingDebug)
-            stmvl53l0_DebugTimeGet(&start_tv);
+            if (data->enableTimingDebug)
+                stmvl53l0_DebugTimeGet(&start_tv);
 #endif
-        if (data->deviceMode == VL53L0_DEVICEMODE_SINGLE_RANGING) {
-            Status = papi_func_tbl->StartMeasurement(vl53l0_dev);
+            if (data->deviceMode == VL53L0_DEVICEMODE_SINGLE_RANGING) {
+                Status = papi_func_tbl->StartMeasurement(vl53l0_dev);
+            }
         }
-
         /* enable work handler */
         /* if interrupt is trigger, the work-handler will kick out immediately*/
         stmvl53l0_schedule_handler(data);
@@ -1316,7 +1342,8 @@ static ssize_t laser_cali_status_show(struct device *dev,
         struct device_attribute *attr, char *buf)
 {
     struct stmvl53l0_data *data = dev_get_drvdata(dev);
-    return scnprintf(buf, PAGE_SIZE, "MFG calibration status = 0x%x\n",data->cali_status);
+    return scnprintf(buf, PAGE_SIZE, "MFG calibration status = 0x%x API version = %s\n",
+                                                        data->cali_status, API_VERSION);
 }
 #endif
 
@@ -1346,6 +1373,7 @@ static ssize_t stmvl53l0_store_enable_ps_sensor(struct device *dev,
         return count;
     }
     mutex_lock(&data->work_mutex);
+
     vl53l0_dbgmsg("Enter, enable_ps_sensor flag:%d\n",
             data->enable_ps_sensor);
     vl53l0_dbgmsg("enable ps senosr (%ld)\n", val);
@@ -1365,6 +1393,7 @@ static ssize_t stmvl53l0_store_enable_ps_sensor(struct device *dev,
         }
     }
     vl53l0_dbgmsg("End\n");
+
     mutex_unlock(&data->work_mutex);
 
     return count;
@@ -1987,9 +2016,11 @@ static long stmvl53l0_ioctl(struct file *file,
  */
 static int stmvl53l0_init_client(struct stmvl53l0_data *data)
 {
+#ifndef HTC
     uint8_t id = 0, revision = 0, module_id = 0;
-    VL53L0_Error Status = VL53L0_ERROR_NONE;
     VL53L0_DeviceInfo_t DeviceInfo;
+#endif // ifndef HTC
+    VL53L0_Error Status = VL53L0_ERROR_NONE;
     VL53L0_DEV vl53l0_dev = data;
     FixPoint1616_t	LimitValue;
     uint8_t LimitEnable;
@@ -2000,6 +2031,7 @@ static int stmvl53l0_init_client(struct stmvl53l0_data *data)
 
     vl53l0_dbgmsg("Enter\n");
 
+#ifndef HTC
     /* Read Model ID/ Read Model Version*/
     VL53L0_RdByte(vl53l0_dev, VL53L0_REG_IDENTIFICATION_MODEL_ID, &id);
     vl53l0_dbgmsg("read MODLE_ID: 0x%x\n", id);
@@ -2014,6 +2046,7 @@ static int stmvl53l0_init_client(struct stmvl53l0_data *data)
     VL53L0_RdByte(vl53l0_dev, 0xc3, &module_id);
     vl53l0_dbgmsg("STM VL53L0 Model type : %d. rev:%d. module:%d\n",
             id, revision, module_id);
+#endif
     vl53l0_dev->I2cDevAddr      =  0x52;
     vl53l0_dev->comms_type      =  1;
     vl53l0_dev->comms_speed_khz =  400;
@@ -2027,6 +2060,7 @@ static int stmvl53l0_init_client(struct stmvl53l0_data *data)
         Status = papi_func_tbl->DataInit(vl53l0_dev);
     }
 
+#ifndef HTC
     if (Status == VL53L0_ERROR_NONE) {
         vl53l0_dbgmsg("VL53L0_GetDeviceInfo:\n");
         Status = papi_func_tbl->GetDeviceInfo(vl53l0_dev, &DeviceInfo);
@@ -2041,6 +2075,7 @@ static int stmvl53l0_init_client(struct stmvl53l0_data *data)
                     DeviceInfo.ProductRevisionMinor);
         }
     }
+#endif // ifndef HTC
 
     /* StaticInit */
     if (Status == VL53L0_ERROR_NONE) {
@@ -2151,13 +2186,6 @@ static int stmvl53l0_init_client(struct stmvl53l0_data *data)
         data->reset = 0;
     }
 
-    if (Status == VL53L0_ERROR_NONE) {
-        /* Setup in single ranging mode */
-        vl53l0_dbgmsg("Call of VL53L0_SetDeviceMode\n");
-        Status = papi_func_tbl->SetDeviceMode(vl53l0_dev,
-                VL53L0_DEVICEMODE_SINGLE_RANGING);
-    }
-
 #ifdef USE_LONG_RANGING
     if(g_ranging_mode) {
         /* Long ranging */
@@ -2180,9 +2208,9 @@ static int stmvl53l0_init_client(struct stmvl53l0_data *data)
         }
         if (Status == VL53L0_ERROR_NONE) {
             Status = papi_func_tbl->SetMeasurementTimingBudgetMicroSeconds(
-                    vl53l0_dev, 33000);
+                    vl53l0_dev, 26000);
         }
-        vl53l0_dbgmsg("Set long ranging mode\n");
+        vl53l0_dbgmsg("Set long ranging mode pt.2\n");
     } else {
 #endif // USE_LONG_RANGING
         /* Normal ranging */
@@ -2208,7 +2236,7 @@ static int stmvl53l0_init_client(struct stmvl53l0_data *data)
             vl53l0_dbgmsg("Get LimitCheckValue SIGNAL_FINAL_RANGE as:%d"
                     "(Fix1616),Eanble:%d\n", (LimitValue), LimitEnable);
         }
-        vl53l0_dbgmsg("Set normal ranging mode pt.2\n");
+        vl53l0_dbgmsg("Set normal ranging mode\n");
 #ifdef USE_LONG_RANGING
     }
 #endif // USE_LONG_RANGING
@@ -2311,17 +2339,18 @@ static int stmvl53l0_start(struct stmvl53l0_data *data,
         vl53l0_dbgmsg("Xtalk calibration:%u\n", XTalkCompensationRateMegaCps);
         return rc;
     }
+
     /* set up device parameters */
-    data->gpio_polarity = VL53L0_INTERRUPTPOLARITY_LOW;
-    papi_func_tbl->SetGpioConfig(vl53l0_dev, 0, 0, data->gpio_function,
-            VL53L0_INTERRUPTPOLARITY_LOW);
-    papi_func_tbl->SetInterruptThresholds(vl53l0_dev, 0, data->low_threshold,
-            data->high_threshold);
-    papi_func_tbl->SetInterMeasurementPeriodMilliSeconds(vl53l0_dev,
-            data->interMeasurems);
-    vl53l0_dbgmsg("DeviceMode:0x%x, interMeasurems:%d==\n",
-            data->deviceMode, data->interMeasurems);
-    papi_func_tbl->SetDeviceMode(vl53l0_dev, data->deviceMode);
+    papi_func_tbl->SetGpioConfig(vl53l0_dev, 0,
+            data->deviceMode,     // VL53L0_DEVICEMODE_SINGLE_RANGING
+            data->gpio_function,  // VL53L0_GPIOFUNCTIONALITY_NEW_MEASURE_READY
+            data->gpio_polarity); // VL53L0_INTERRUPTPOLARITY_LOW
+    papi_func_tbl->SetInterMeasurementPeriodMilliSeconds(
+                            vl53l0_dev, data->interMeasurems);
+    papi_func_tbl->SetDeviceMode(
+                            vl53l0_dev, data->deviceMode);
+    vl53l0_dbgmsg("Set DeviceMode:0x%x, interMeasurems:%d\n",
+                            data->deviceMode, data->interMeasurems);
     papi_func_tbl->ClearInterruptMask(vl53l0_dev, 0);
 
     /* start the ranging */
@@ -2525,12 +2554,10 @@ int stmvl53l0_setup(struct stmvl53l0_data *data)
 #endif // HTC
     data->enable_ps_sensor = 0;
     data->reset = 1;
-    data->delay_ms = 30;	/* delay time to 30ms */
+    data->delay_ms = 33;	/* delay time to 33ms */
     data->enableDebug = 0;
     data->gpio_polarity = VL53L0_INTERRUPTPOLARITY_LOW;
     data->gpio_function = VL53L0_GPIOFUNCTIONALITY_NEW_MEASURE_READY;
-    data->low_threshold = 60;
-    data->high_threshold = 200;
     data->deviceMode = VL53L0_DEVICEMODE_SINGLE_RANGING;
     data->interMeasurems = 30;
 
