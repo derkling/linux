@@ -1119,6 +1119,8 @@ struct load_weight {
 	u32 inv_weight;
 };
 
+#define UTIL_HIST_SIZE 5
+
 /*
  * The load_avg/util_avg accumulates an infinite geometric series.
  * 1) load_avg factors frequency scaling into the amount of time that a
@@ -1137,6 +1139,7 @@ struct sched_avg {
 	u64 last_update_time, load_sum;
 	u32 util_sum, period_contrib;
 	unsigned long load_avg, util_avg, util_est;
+	unsigned long util_hist[UTIL_HIST_SIZE];
 };
 
 #ifdef CONFIG_SCHEDSTATS

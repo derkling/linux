@@ -697,6 +697,7 @@ void init_entity_runnable_average(struct sched_entity *se)
 		scale_load_down(SCHED_LOAD_SCALE);
 	sa->util_est = sa->util_avg;
 	sa->util_sum = sa->util_avg * LOAD_AVG_MAX;
+	sa->util_hist[0] = sa->util_avg;
 	/* when this task enqueue'ed, it will contribute to its cfs_rq's load_avg */
 }
 
@@ -2566,7 +2567,12 @@ static inline void update_load_avg(struct sched_entity *se, int update_tg)
 		trace_sched_load_avg_task(task_of(se), &se->avg);
 	trace_sched_load_avg_cpu(cpu, cfs_rq);
 
-	/* Update task estimated utilization */
+	/*
+	 * Update task estimated utilization. Since util_est is max(hist_avg,
+	 * last_sample) we can simply track util_avg if it happens to get
+	 * bigger than the current util_est. We will updated hist_avg when the
+	 * task is dequeued.
+	 * */
 	if (se->avg.util_est < se->avg.util_avg) {
 		cfs_rq->avg.util_est += (se->avg.util_avg - se->avg.util_est);
 		se->avg.util_est = se->avg.util_avg;
@@ -4098,6 +4104,32 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 static void set_next_buddy(struct sched_entity *se);
 
+static void update_util_history(struct task_struct *p)
+{
+	unsigned long *hist = &p->se.avg.util_hist[0];
+	unsigned long max = 0, avg;
+	int ridx = UTIL_HIST_SIZE - 1, lidx;
+	u64 sum = 0;
+
+	/* Shift the history right */
+	lidx = ridx - 1;
+	for(; lidx >= 0; --ridx, --lidx) {
+		hist[ridx] = hist[lidx];
+		sum += hist[ridx];
+		if (hist[ridx] > max)
+			max = hist[ridx];
+	}
+
+	hist[ridx] = p->se.avg.util_avg;
+	sum += hist[ridx];
+	if (hist[ridx] > max)
+		max = hist[ridx];
+
+	avg = div64_u64(sum, UTIL_HIST_SIZE);
+
+	p->se.avg.util_est = max(avg, hist[ridx]);
+}
+
 /*
  * The dequeue_task method is called before nr_running is
  * decreased. We remove the task from the rbtree and
@@ -4185,7 +4217,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 	/* Update estimated utilization */
 	if (task_sleep)
-		p->se.avg.util_est = p->se.avg.util_avg;
+		update_util_history(p);
 
 	hrtick_update(rq);
 }
