@@ -4133,7 +4133,7 @@ static void update_util_history(struct task_struct *p)
 			task_pid_nr(p), ridx, lidx, hist[ridx], sum,
 			max, avg);
 
-	p->se.avg.util_est = max(avg, hist[ridx]);
+	p->se.avg.util_est = max(max, hist[ridx]);
 }
 
 /*
