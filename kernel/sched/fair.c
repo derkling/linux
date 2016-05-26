@@ -4118,6 +4118,9 @@ static void update_util_history(struct task_struct *p)
 		sum += hist[ridx];
 		if (hist[ridx] > max)
 			max = hist[ridx];
+		trace_printk("tsk=%d ridx=%d lidx=%d hist[ridx]=%lu sum=%llu max=%lu",
+				task_pid_nr(p), ridx, lidx, hist[ridx], sum,
+				max);
 	}
 
 	hist[ridx] = p->se.avg.util_avg;
@@ -4126,6 +4129,9 @@ static void update_util_history(struct task_struct *p)
 		max = hist[ridx];
 
 	avg = div64_u64(sum, UTIL_HIST_SIZE);
+	trace_printk("tsk=%d ridx=%d lidx=%d hist[ridx]=%lu sum=%llu max=%lu avg=%lu",
+			task_pid_nr(p), ridx, lidx, hist[ridx], sum,
+			max, avg);
 
 	p->se.avg.util_est = max(avg, hist[ridx]);
 }
