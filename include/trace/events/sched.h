@@ -602,11 +602,12 @@ TRACE_EVENT(sched_contrib_scale_f,
 /*
  * Tracepoint for accounting sched averages for tasks.
  */
+extern unsigned int sched_ravg_window;
 TRACE_EVENT(sched_load_avg_task,
 
-	TP_PROTO(struct task_struct *tsk, struct sched_avg *avg),
+	TP_PROTO(struct task_struct *tsk, struct sched_avg *avg, struct ravg *ravg),
 
-	TP_ARGS(tsk, avg),
+	TP_ARGS(tsk, avg, ravg),
 
 	TP_STRUCT__entry(
 		__array( char,	comm,	TASK_COMM_LEN		)
@@ -624,7 +625,7 @@ TRACE_EVENT(sched_load_avg_task,
 		memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
 		__entry->pid			= tsk->pid;
 		__entry->cpu			= task_cpu(tsk);
-		__entry->load_avg		= avg->load_avg;
+		__entry->load_avg		= ravg->demand / ( sched_ravg_window >> 10 );
 		__entry->util_avg		= avg->util_avg;
 		__entry->util_est		= avg->util_est;
 		__entry->load_sum		= avg->load_sum;
@@ -663,7 +664,8 @@ TRACE_EVENT(sched_load_avg_cpu,
 
 	TP_fast_assign(
 		__entry->cpu			= cpu;
-		__entry->load_avg		= cfs_rq->avg.load_avg;
+		__entry->load_avg		= (cpu_rq(cpu)->prev_runnable_sum <<
+						   SCHED_LOAD_SHIFT) / sched_ravg_window;
 		__entry->util_avg		= cfs_rq->avg.util_avg;
 		__entry->util_est		= cfs_rq->avg.util_est;
 	),
