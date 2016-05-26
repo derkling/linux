@@ -2563,7 +2563,7 @@ static inline void update_load_avg(struct sched_entity *se, int update_tg)
 		update_tg_load_avg(cfs_rq, 0);
 
 	if (entity_is_task(se))
-		trace_sched_load_avg_task(task_of(se), &se->avg);
+		trace_sched_load_avg_task(task_of(se), &se->avg, &task_of(se)->ravg);
 	trace_sched_load_avg_cpu(cpu, cfs_rq);
 
 	/* Update task estimated utilization */
