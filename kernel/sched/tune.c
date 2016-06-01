@@ -308,19 +308,14 @@ schedtune_boostgroup_update(int idx, int boost)
 static inline void
 schedtune_tasks_update(struct task_struct *p, int cpu, int idx, int task_count)
 {
-	struct boost_groups *bg;
-	int tasks;
+	struct boost_groups *bg = &per_cpu(cpu_boost_groups, cpu);
+	int tasks = bg->group[idx].tasks + task_count;
 
-	bg = &per_cpu(cpu_boost_groups, cpu);
 
 	/* Update boosted tasks count while avoiding to make it negative */
-	if (task_count < 0 && bg->group[idx].tasks <= -task_count)
-		bg->group[idx].tasks = 0;
-	else
-		bg->group[idx].tasks += task_count;
+	bg->group[idx].tasks = max(0, tasks);
 
 	/* Boost group activation or deactivation on that RQ */
-	tasks = bg->group[idx].tasks;
 	if (tasks == 1 || tasks == 0)
 		schedtune_cpu_update(cpu);
 
@@ -346,13 +341,80 @@ void schedtune_enqueue_task(struct task_struct *p, int cpu)
 	if (p->flags & PF_EXITING)
 		return;
 
-	/* Get task boost group */
 	rcu_read_lock();
+
+	/* Get task boost group */
 	st = task_schedtune(p);
 	idx = st->idx;
-	rcu_read_unlock();
 
 	schedtune_tasks_update(p, cpu, idx, 1);
+
+	rcu_read_unlock();
+}
+
+int schedtune_allow_attach(struct cgroup_subsys_state *css,
+		struct cgroup_taskset *tset)
+{
+	/* We always allows tasks to be moved between existing CGroups */
+	return 0;
+}
+
+int schedtune_can_attach(struct cgroup_subsys_state *css,
+			  struct cgroup_taskset *tset)
+{
+	struct task_struct *task;
+	struct boost_groups *bg;
+	int sbg_idx; /* Source boost group index */
+	int dbg_idx; /* Destination boost group index */
+	int tasks;
+
+	cgroup_taskset_for_each(task, tset) {
+
+		if (!task->on_rq) {
+			continue;
+		}
+
+		dbg_idx = css_st(css)->idx;
+		sbg_idx = task_schedtune(task)->idx;
+
+		/*
+		 * Current task is not changing boostgroup, which can
+		 * happen when the new hierarchy is in use.
+		 */
+		if (unlikely(dbg_idx == sbg_idx)) {
+			continue;
+		}
+
+
+		/*
+		 * This is the case of a RUNNABLE task which is switching its
+		 * current boost group.
+		 */
+
+		/* Move task from src to dst boost group */
+		bg = &per_cpu(cpu_boost_groups, task_cpu(task));
+		tasks = bg->group[sbg_idx].tasks - 1;
+
+		bg->group[sbg_idx].tasks = max(0, tasks);
+		bg->group[dbg_idx].tasks += 1;
+
+		/* Update CPU boost group */
+		if (bg->group[sbg_idx].tasks == 0 || bg->group[dbg_idx].tasks == 1)
+			schedtune_cpu_update(task_cpu(task));
+
+	}
+
+	return 0;
+}
+
+void schedtune_cancel_attach(struct cgroup_subsys_state *css,
+			     struct cgroup_taskset *tset)
+{
+	/* This can happen only if SchedTune controller is mounted with
+	 * other hierarchies ane one of them fails. Since usually SchedTune is
+	 * mouted on its own hierarcy, for the time being we do not implement
+	 * a proper rollback mechanism */
+	WARN(1, "SchedTune cancel attach not implemented");
 }
 
 /*
@@ -368,18 +430,20 @@ void schedtune_dequeue_task(struct task_struct *p, int cpu)
 	 * dequeued and enqueued multiple times in the exit path.
 	 * Thus we avoid any further update, since we do not want to change
 	 * CPU boosting while the task is exiting.
-	 * The last dequeue will be done by cgroup exit() callback.
+	 * !!!! The last dequeue will be done by cgroup exit() callback. !!!!
 	 */
 	if (p->flags & PF_EXITING)
 		return;
 
-	/* Get task boost group */
 	rcu_read_lock();
+
+	/* Get task boost group */
 	st = task_schedtune(p);
 	idx = st->idx;
-	rcu_read_unlock();
 
 	schedtune_tasks_update(p, cpu, idx, -1);
+
+	rcu_read_unlock();
 }
 
 int schedtune_cpu_boost(int cpu)
@@ -560,7 +624,9 @@ struct cgroup_subsys schedtune_cgrp_subsys = {
 	.css_alloc	= schedtune_css_alloc,
 	.css_free	= schedtune_css_free,
 	.exit		= schedtune_exit,
-	.allow_attach   = subsys_cgroup_allow_attach,
+	.allow_attach   = schedtune_allow_attach,
+	.can_attach     = schedtune_can_attach,
+	.cancel_attach  = schedtune_cancel_attach,
 	.legacy_cftypes	= files,
 	.early_init	= 1,
 };

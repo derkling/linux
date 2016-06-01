@@ -5746,6 +5746,7 @@ static void migrate_task_rq_fair(struct task_struct *p, int next_cpu)
 static void task_dead_fair(struct task_struct *p)
 {
 	remove_entity_load_avg(&p->se);
+	schedtune_dequeue_task(p, task_cpu(p));
 }
 #endif /* CONFIG_SMP */
 
