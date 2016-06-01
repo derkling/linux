@@ -335,7 +335,7 @@ schedtune_tasks_update(struct task_struct *p, int cpu, int idx, int task_count)
 /*
  * NOTE: This function must be called while holding the lock on the CPU RQ
  */
-void schedtune_enqueue_task(struct task_struct *p, int cpu)
+void schedtune_enqueue_task(struct task_struct *p, int cpu, int flags)
 {
 	struct schedtune *st;
 	int idx;
@@ -504,7 +504,7 @@ void schedtune_cancel_attach(struct cgroup_subsys_state *css,
 /*
  * NOTE: This function must be called while holding the lock on the CPU RQ
  */
-void schedtune_dequeue_task(struct task_struct *p, int cpu)
+void schedtune_dequeue_task(struct task_struct *p, int cpu, int flags)
 {
 	struct schedtune *st;
 	int idx;

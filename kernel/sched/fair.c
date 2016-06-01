@@ -4081,7 +4081,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 			trace_sched_overutilized(true);
 		}
 
-		schedtune_enqueue_task(p, cpu_of(rq));
+		schedtune_enqueue_task(p, cpu_of(rq), flags);
 
 		/*
 		 * We want to potentially trigger a freq switch
@@ -4161,7 +4161,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	if (!se) {
 		sub_nr_running(rq, 1);
 		dec_rq_hmp_stats(rq, p, 1);
-		schedtune_dequeue_task(p, cpu_of(rq));
+		schedtune_dequeue_task(p, cpu_of(rq), flags);
 
 		/*
 		 * We want to potentially trigger a freq switch
@@ -5746,7 +5746,7 @@ static void migrate_task_rq_fair(struct task_struct *p, int next_cpu)
 static void task_dead_fair(struct task_struct *p)
 {
 	remove_entity_load_avg(&p->se);
-	schedtune_dequeue_task(p, task_cpu(p));
+	schedtune_dequeue_task(p, task_cpu(p), 0);
 }
 #endif /* CONFIG_SMP */
 
