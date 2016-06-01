@@ -347,6 +347,13 @@ void schedtune_enqueue_task(struct task_struct *p, int cpu)
 	if (p->flags & PF_EXITING)
 		return;
 
+	/* Check sentinels */
+	if (p->stune.enqueued)
+		trace_printk("WARN: reason=double_enqueue pid=%d prev_cpu=%d prev_bg=%d comm=%s",
+			     p->pid, p->stune.enqueue_cpu,
+			     p->stune.enqueue_bgidx,
+			     p->comm);
+
 	rcu_read_lock();
 
 	/* Get task boost group */
@@ -354,6 +361,11 @@ void schedtune_enqueue_task(struct task_struct *p, int cpu)
 	idx = st->idx;
 
 	schedtune_tasks_update(p, cpu, idx, 1);
+
+	/* Set enqueue sentinels */
+	p->stune.enqueued = true;
+	p->stune.enqueue_cpu = cpu;
+	p->stune.enqueue_bgidx = idx;
 
 	rcu_read_unlock();
 }
@@ -391,6 +403,13 @@ int schedtune_can_attach(struct cgroup_subsys_state *css,
 			raw_spin_unlock_irqrestore(&cpu_rq(cpu)->lock, flags);
 		}
 
+		/* Check enqueuing status sentinel */
+		if (!task->stune.enqueued)
+			trace_printk("WARN: reason=move_not_enqueued pid=%d prev_cpu=%d prev_bg=%d comm=%s",
+				     task->pid, task->stune.enqueue_cpu,
+				     task->stune.enqueue_bgidx,
+				     task->comm);
+
 		dbg_idx = css_st(css)->idx;
 		sbg_idx = task_schedtune(task)->idx;
 
@@ -404,6 +423,18 @@ int schedtune_can_attach(struct cgroup_subsys_state *css,
 		}
 
 
+		/* Check enqueue sentinels validity */
+		if (task_cpu(task) != task->stune.enqueue_cpu)
+			trace_printk("WARN: reason=mismatch_attach_cpu pid=%d comm=%s ccpu=%d pcpu=%d cidx=%d pidx=%d",
+					task->pid, task->comm,
+					task_cpu(task), task->stune.enqueue_cpu,
+					sbg_idx, task->stune.enqueue_bgidx);
+		if (sbg_idx != task->stune.enqueue_bgidx)
+			trace_printk("WARN: reason=mismatch_attach_bgidx pid=%d comm=%s ccpu=%d pcpu=%d cidx=%d pidx=%d",
+					task->pid, task->comm,
+					task_cpu(task), task->stune.enqueue_cpu,
+					sbg_idx, task->stune.enqueue_bgidx);
+
 		/*
 		 * This is the case of a RUNNABLE task which is switching its
 		 * current boost group.
@@ -415,6 +446,9 @@ int schedtune_can_attach(struct cgroup_subsys_state *css,
 
 		bg->group[sbg_idx].tasks = max(0, tasks);
 		bg->group[dbg_idx].tasks += 1;
+
+		/* DBG: update sentilen */
+		task->stune.enqueue_bgidx = dbg_idx;
 
 		/*
 		 * The update of boost groups accounting for a CPU is
@@ -465,13 +499,38 @@ void schedtune_dequeue_task(struct task_struct *p, int cpu)
 	if (p->flags & PF_EXITING)
 		return;
 
+	/* Check enqueue sentinels */
+	if (!p->stune.enqueued)
+		trace_printk("WARN: reason=not_enqueued pid=%d prev_cpu=%d prev_bg=%d comm=%s",
+			     p->pid, p->stune.enqueue_cpu,
+			     p->stune.enqueue_bgidx,
+			     p->comm);
 	rcu_read_lock();
 
 	/* Get task boost group */
 	st = task_schedtune(p);
 	idx = st->idx;
 
+	/* Check enqueue sentinels */
+	if (cpu != p->stune.enqueue_cpu)
+		trace_printk("WARN: reason=mismatch_dequeue_cpu pid=%d ccpu=%d pcpu=%d cidx=%d pidx=%d comm=%s",
+			   p->pid,
+			   cpu, p->stune.enqueue_cpu,
+			   idx, p->stune.enqueue_bgidx,
+			   p->comm);
+	if (idx != p->stune.enqueue_bgidx)
+		trace_printk("WARN: reason=mismatch_dequeue_bgidx pid=%d ccpu=%d pcpu=%d cidx=%d pidx=%d comm=%s",
+			   p->pid,
+			   cpu, p->stune.enqueue_cpu,
+			   idx, p->stune.enqueue_bgidx,
+			   p->comm);
+
 	schedtune_tasks_update(p, cpu, idx, -1);
+
+	/* Set enqueue sentinels */
+	p->stune.enqueued = false;
+	p->stune.enqueue_cpu = -1;
+	p->stune.enqueue_bgidx = -1;
 
 	rcu_read_unlock();
 }

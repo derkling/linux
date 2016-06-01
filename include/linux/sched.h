@@ -1772,6 +1772,14 @@ struct task_struct {
 	unsigned int	sequential_io;
 	unsigned int	sequential_io_avg;
 #endif
+
+	/* SchedTune debug markers */
+	struct _stune {
+		bool enqueued;
+		unsigned int enqueue_cpu;
+		unsigned int enqueue_bgidx;
+	} stune;
+
 };
 
 /* Future-safe accessor for struct task_struct's cpus_allowed. */

@@ -2122,6 +2122,10 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
 	INIT_LIST_HEAD(&p->numa_entry);
 	p->numa_group = NULL;
 #endif /* CONFIG_NUMA_BALANCING */
+
+	p->stune.enqueued = false;
+	p->stune.enqueue_cpu = -1;
+	p->stune.enqueue_bgidx = -1;
 }
 
 #ifdef CONFIG_NUMA_BALANCING
