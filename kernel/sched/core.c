@@ -866,6 +866,8 @@ void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	update_rq_clock(rq);
 	sched_info_queued(rq, p);
+	trace_printk("Core: evt=enqueue task_cpu=%d pid=%d comm=%s",
+			task_cpu(p), p->pid, p->comm);
 	p->sched_class->enqueue_task(rq, p, flags);
 }
 
@@ -873,6 +875,8 @@ void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	update_rq_clock(rq);
 	sched_info_dequeued(rq, p);
+	trace_printk("Core: evt=dequeue task_cpu=%d pid=%d comm=%s",
+			task_cpu(p), p->pid, p->comm);
 	p->sched_class->dequeue_task(rq, p, flags);
 }
 
