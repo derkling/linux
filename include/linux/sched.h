@@ -272,17 +272,6 @@ extern char ___assert_task_state[1 - 2*!!(
 /* Task command name length */
 #define TASK_COMM_LEN 16
 
-extern const char *sched_window_reset_reasons[];
-
-enum task_event {
-	PUT_PREV_TASK   = 0,
-	PICK_NEXT_TASK  = 1,
-	TASK_WAKE       = 2,
-	TASK_MIGRATE    = 3,
-	TASK_UPDATE     = 4,
-	IRQ_UPDATE	= 5,
-};
-
 #include <linux/spinlock.h>
 
 /*
@@ -1135,9 +1124,6 @@ struct sched_avg {
 	u64 last_update_time, load_sum;
 	u32 util_sum, period_contrib;
 	unsigned long load_avg, util_avg, util_est;
-	#ifdef CONFIG_SCHED_WALT
-	u32 runnable_avg_sum_scaled;
-	#endif
 };
 
 #ifdef CONFIG_SCHEDSTATS
@@ -1175,41 +1161,6 @@ struct sched_statistics {
 	u64			nr_wakeups_idle;
 };
 #endif
-
-#define RAVG_HIST_SIZE_MAX  5
-
-/* ravg represents frequency scaled cpu-demand of tasks */
-struct ravg {
-	/*
-	 * 'mark_start' marks the beginning of an event (task waking up, task
-	 * starting to execute, task being preempted) within a window
-	 *
-	 * 'sum' represents how runnable a task has been within current
-	 * window. It incorporates both running time and wait time and is
-	 * frequency scaled.
-	 *
-	 * 'sum_history' keeps track of history of 'sum' seen over previous
-	 * RAVG_HIST_SIZE windows. Windows where task was entirely sleeping are
-	 * ignored.
-	 *
-	 * 'demand' represents maximum sum seen over previous
-	 * sysctl_sched_ravg_hist_size windows. 'demand' could drive frequency
-	 * demand for tasks.
-	 *
-	 * 'curr_window' represents task's contribution to cpu busy time
-	 * statistics (rq->curr_runnable_sum) in current window
-	 *
-	 * 'prev_window' represents task's contribution to cpu busy time
-	 * statistics (rq->prev_runnable_sum) in previous window
-	 */
-	u64 mark_start;
-	u32 sum, demand;
-	u32 sum_history[RAVG_HIST_SIZE_MAX];
-#ifdef CONFIG_SCHED_WALT_FREQ_INPUT
-	u32 curr_window, prev_window;
-	u16 active_windows;
-#endif
-};
 
 struct sched_entity {
 	struct load_weight	load;		/* for load-balancing */
@@ -1349,18 +1300,6 @@ struct task_struct {
 	struct sched_rt_entity rt;
 	struct related_thread_group *grp;
 	struct list_head grp_list;
-
-#ifdef CONFIG_SCHED_WALT
-	struct ravg ravg;
-	/*
-	 * 'init_load_pct' represents the initial task load assigned to children
-	 * of this task
-	 */
-	u32 init_load_pct;
-	u64 last_wake_ts;
-	u64 last_switch_out_ts;
-#endif
-
 #ifdef CONFIG_CGROUP_SCHED
 	struct task_group *sched_task_group;
 #endif
@@ -2286,12 +2225,6 @@ extern void sched_clock_idle_wakeup_event(u64 delta_ns);
 extern void idle_task_exit(void);
 #else
 static inline void idle_task_exit(void) {}
-#endif
-
-#ifdef CONFIG_SCHED_WALT
-extern void sched_exit(struct task_struct *p);
-#else
-static inline void sched_exit(struct task_struct *p) { }
 #endif
 
 #if defined(CONFIG_NO_HZ_COMMON) && defined(CONFIG_SMP)

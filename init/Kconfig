@@ -392,24 +392,6 @@ config IRQ_TIME_ACCOUNTING
 
 endchoice
 
-config SCHED_WALT
-        bool "Support window based load tracking"
-        help
-        This feature will allow the scheduler to maintain a tunable window
-	based set of metrics for tasks and runqueues. These metrics can be
-	used to guide task placement as well as task frequency requirements
-	for cpufreq governors.
-
-config SCHED_WALT_FREQ_INPUT
-        bool "Scheduler inputs to cpufreq governor"
-        depends on SCHED_WALT
-        help
-          This option enables support for scheduler based CPU utilization
-          calculations which may then be used by any cpufreq governor. The
-          scheduler keeps track of "recent" cpu demand of tasks, which can
-          help determine need for changing frequency well in advance of what
-          a governor would have been able to detect on its own.
-
 config BSD_PROCESS_ACCT
 	bool "BSD Process Accounting"
 	help

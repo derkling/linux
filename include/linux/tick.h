@@ -78,7 +78,6 @@ struct tick_sched {
 extern void __init tick_init(void);
 extern int tick_is_oneshot_available(void);
 extern struct tick_device *tick_get_device(int cpu);
-extern u64 jiffy_to_ktime_ns(u64 *now, u64 *jiffy_ktime_ns);
 
 # ifdef CONFIG_HIGH_RES_TIMERS
 extern int tick_init_highres(void);
