@@ -333,6 +333,12 @@ void schedtune_enqueue_task(struct task_struct *p, int cpu)
 	int idx;
 
 	/*
+	 * The destination CPU's RQ lock is used to grant atomic access to the
+	 * boost groups accounting for that CPU.
+	 */
+	lockdep_assert_held(&cpu_rq(cpu)->lock);
+
+	/*
 	 * When a task is marked PF_EXITING by do_exit() it's going to be
 	 * dequeued and enqueued multiple times in the exit path.
 	 * Thus we avoid any further update, since we do not want to change
@@ -367,11 +373,22 @@ int schedtune_can_attach(struct cgroup_subsys_state *css,
 	int sbg_idx; /* Source boost group index */
 	int dbg_idx; /* Destination boost group index */
 	int tasks;
+	unsigned int cpu;
+	unsigned long flags;
 
 	cgroup_taskset_for_each(task, tset) {
 
 		if (!task->on_rq) {
 			continue;
+		}
+
+		/* Lock the CPU's RQ the task is enqueued */
+		while (true) {
+			cpu = task_cpu(task);
+			raw_spin_lock_irqsave(&cpu_rq(cpu)->lock, flags);
+			if (cpu == task_cpu(task))
+				break;
+			raw_spin_unlock_irqrestore(&cpu_rq(cpu)->lock, flags);
 		}
 
 		dbg_idx = css_st(css)->idx;
@@ -382,6 +399,7 @@ int schedtune_can_attach(struct cgroup_subsys_state *css,
 		 * happen when the new hierarchy is in use.
 		 */
 		if (unlikely(dbg_idx == sbg_idx)) {
+			raw_spin_unlock_irqrestore(&cpu_rq(cpu)->lock, flags);
 			continue;
 		}
 
@@ -397,6 +415,12 @@ int schedtune_can_attach(struct cgroup_subsys_state *css,
 
 		bg->group[sbg_idx].tasks = max(0, tasks);
 		bg->group[dbg_idx].tasks += 1;
+
+		/*
+		 * The update of boost groups accounting for a CPU is
+		 * protected by the CPU's RQ... let's get it!
+		 */
+		raw_spin_unlock_irqrestore(&cpu_rq(cpu)->lock, flags);
 
 		/* Update CPU boost group */
 		if (bg->group[sbg_idx].tasks == 0 || bg->group[dbg_idx].tasks == 1)
@@ -424,6 +448,12 @@ void schedtune_dequeue_task(struct task_struct *p, int cpu)
 {
 	struct schedtune *st;
 	int idx;
+
+	/*
+	 * The destination CPU's RQ lock is used to grant atomic access to the
+	 * boost groups accounting for that CPU.
+	 */
+	lockdep_assert_held(&cpu_rq(cpu)->lock);
 
 	/*
 	 * When a task is marked PF_EXITING by do_exit() it's going to be
@@ -615,9 +645,20 @@ schedtune_exit(struct cgroup_subsys_state *css,
 		struct task_struct *tsk)
 {
 	struct schedtune *old_st = css_st(old_css);
-	int cpu = task_cpu(tsk);
+	unsigned long flags;
+	int cpu;
 
+	/* Lock the CPU's RQ the task is enqueued */
+	while (true) {
+		cpu = task_cpu(tsk);
+		raw_spin_lock_irqsave(&cpu_rq(cpu)->lock, flags);
+		if (cpu == task_cpu(tsk))
+			break;
+		raw_spin_unlock_irqrestore(&cpu_rq(cpu)->lock, flags);
+	}
 	schedtune_tasks_update(tsk, cpu, old_st->idx, -1);
+
+	raw_spin_unlock_irqrestore(&cpu_rq(task_cpu(tsk))->lock, flags);
 }
 
 struct cgroup_subsys schedtune_cgrp_subsys = {
