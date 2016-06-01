@@ -311,6 +311,14 @@ schedtune_tasks_update(struct task_struct *p, int cpu, int idx, int task_count)
 	struct boost_groups *bg = &per_cpu(cpu_boost_groups, cpu);
 	int tasks = bg->group[idx].tasks + task_count;
 
+	if (task_count < 0 && tasks < 0)
+		trace_printk("WARN: reason=negative_capping pid=%d comm=%s",
+			     p->pid, p->comm);
+
+	trace_printk("SchedTune: event=%s pid=%d cpu=%d idx=%d bg_pre=%d count=%d bg_pst=%d comm=%s",
+		     task_count < 0 ? "dequeue" : "enqueue",
+		     p->pid, cpu, idx, bg->group[idx].tasks,
+		     task_count, max(0, tasks), p->comm);
 
 	/* Update boosted tasks count while avoiding to make it negative */
 	bg->group[idx].tasks = max(0, tasks);
@@ -391,6 +399,8 @@ int schedtune_can_attach(struct cgroup_subsys_state *css,
 	cgroup_taskset_for_each(task, tset) {
 
 		if (!task->on_rq) {
+			trace_printk("WARN: reason=not_on_rq pid=%d comm=%s",
+					task->pid, task->comm);
 			continue;
 		}
 
@@ -412,6 +422,9 @@ int schedtune_can_attach(struct cgroup_subsys_state *css,
 
 		dbg_idx = css_st(css)->idx;
 		sbg_idx = task_schedtune(task)->idx;
+
+		trace_printk("SchedTune: can_attach: pid=%d comm=%s state=%lx sbg=%d dbg=%d",
+			     task->pid, task->comm, task->state, sbg_idx, dbg_idx);
 
 		/*
 		 * Current task is not changing boostgroup, which can
@@ -443,6 +456,18 @@ int schedtune_can_attach(struct cgroup_subsys_state *css,
 		/* Move task from src to dst boost group */
 		bg = &per_cpu(cpu_boost_groups, task_cpu(task));
 		tasks = bg->group[sbg_idx].tasks - 1;
+		if (tasks < 0)
+			trace_printk("WARN: reason=negative_capping pid=%d comm=%s",
+				     task->pid, task->comm);
+
+		trace_printk("SchedTune: event=detach pid=%d comm=%s cpu=%d idx=%d bg_pre=%d count=%d bg_pst=%d",
+				task->pid, task->comm, task_cpu(task),
+				sbg_idx, bg->group[sbg_idx].tasks,
+				-1, max(0, tasks));
+		trace_printk("SchedTune: event=attach pid=%d comm=%s cpu=%d idx=%d bg_pre=%d count=%d bg_pst=%d",
+				task->pid, task->comm, task_cpu(task),
+				dbg_idx, bg->group[dbg_idx].tasks,
+				1, bg->group[dbg_idx].tasks+1);
 
 		bg->group[sbg_idx].tasks = max(0, tasks);
 		bg->group[dbg_idx].tasks += 1;
@@ -473,6 +498,7 @@ void schedtune_cancel_attach(struct cgroup_subsys_state *css,
 	 * mouted on its own hierarcy, for the time being we do not implement
 	 * a proper rollback mechanism */
 	WARN(1, "SchedTune cancel attach not implemented");
+	trace_printk("WARN: reason=cancel_attach");
 }
 
 /*
@@ -707,6 +733,18 @@ schedtune_exit(struct cgroup_subsys_state *css,
 	unsigned long flags;
 	int cpu;
 
+	/*
+	 * When a task is marked PF_EXITING by do_exit() it's going to be
+	 * dequeued and enqueued multiple times in the exit path.
+	 * Thus we avoid any further update, since we do not want to change
+	 * CPU boosting while the task is exiting.
+	 */
+	if (unlikely(!(tsk->flags & PF_EXITING))) {
+		trace_printk("WARN: reason=not_exiting pid=%d cpu=%d bg=%d comm=%s",
+				tsk->pid, tsk->stune.enqueue_cpu,
+				tsk->stune.enqueue_bgidx, tsk->comm);
+	}
+
 	/* Lock the CPU's RQ the task is enqueued */
 	while (true) {
 		cpu = task_cpu(tsk);
@@ -716,6 +754,10 @@ schedtune_exit(struct cgroup_subsys_state *css,
 		raw_spin_unlock_irqrestore(&cpu_rq(cpu)->lock, flags);
 	}
 	schedtune_tasks_update(tsk, cpu, old_st->idx, -1);
+
+	trace_printk("SchedTune: event=exit pid=%d cpu=%d comm=%s",
+		     tsk->pid, tsk->stune.enqueue_cpu,
+		     tsk->comm);
 
 	raw_spin_unlock_irqrestore(&cpu_rq(task_cpu(tsk))->lock, flags);
 }
