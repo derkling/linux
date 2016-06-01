@@ -2002,6 +2002,8 @@ static void cgroup_task_migrate(struct cgroup *old_cgrp,
 	lockdep_assert_held(&cgroup_mutex);
 	lockdep_assert_held(&css_set_rwsem);
 
+	trace_printk("cgroup_task_migrate: pid=%d cmd=%s", tsk->pid, tsk->comm);
+
 	/*
 	 * We are synchronized through threadgroup_lock() against PF_EXITING
 	 * setting such that we can't race against cgroup_exit() changing the
@@ -2192,6 +2194,9 @@ static int cgroup_migrate(struct cgroup *cgrp, struct task_struct *leader,
 	struct task_struct *task, *tmp_task;
 	int i, ret;
 
+	trace_printk("cgroup_migrate: leader_pid=%d leader_cmd=%s",
+			leader->pid, leader->comm);
+
 	/*
 	 * Prevent freeing of tasks while we take a snapshot. Tasks that are
 	 * already PF_EXITING could be freed from underneath us unless we
@@ -2238,6 +2243,7 @@ static int cgroup_migrate(struct cgroup *cgrp, struct task_struct *leader,
 	for_each_e_css(css, i, cgrp) {
 		if (css->ss->can_attach) {
 			ret = css->ss->can_attach(css, &tset);
+			trace_printk("cgroup_migrate: can_attach=%d", ret);
 			if (ret) {
 				failed_css = css;
 				goto out_cancel_attach;
@@ -2266,8 +2272,10 @@ static int cgroup_migrate(struct cgroup *cgrp, struct task_struct *leader,
 	tset.csets = &tset.dst_csets;
 
 	for_each_e_css(css, i, cgrp)
-		if (css->ss->attach)
+		if (css->ss->attach) {
 			css->ss->attach(css, &tset);
+			trace_printk("cgroup_migrate: attach");
+		}
 
 	ret = 0;
 	goto out_release_tset;
