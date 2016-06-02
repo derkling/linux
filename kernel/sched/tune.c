@@ -11,6 +11,8 @@
 #include "sched.h"
 #include "tune.h"
 
+static bool schedtune_initialized = false;
+
 unsigned int sysctl_sched_cfs_boost __read_mostly;
 
 extern struct target_nrg schedtune_target_nrg;
@@ -340,6 +342,9 @@ void schedtune_enqueue_task(struct task_struct *p, int cpu, int flags)
 	struct schedtune *st;
 	int idx;
 
+	if (!unlikely(schedtune_initialized))
+		return;
+
 	/*
 	 * The destination CPU's RQ lock is used to grant atomic access to the
 	 * boost groups accounting for that CPU.
@@ -395,6 +400,9 @@ int schedtune_can_attach(struct cgroup_subsys_state *css,
 	int tasks;
 	unsigned int cpu;
 	unsigned long flags;
+
+	if (!unlikely(schedtune_initialized))
+		return 0;
 
 	cgroup_taskset_for_each(task, tset) {
 
@@ -508,6 +516,9 @@ void schedtune_dequeue_task(struct task_struct *p, int cpu, int flags)
 {
 	struct schedtune *st;
 	int idx;
+
+	if (!unlikely(schedtune_initialized))
+		return;
 
 	/*
 	 * The destination CPU's RQ lock is used to grant atomic access to the
@@ -658,8 +669,12 @@ schedtune_init(void)
 
 	pr_info("  schedtune configured to support %d boost groups\n",
 		BOOSTGROUPS_COUNT);
+
+	schedtune_initialized = true;
+
 	return 0;
 }
+late_initcall(schedtune_init);
 
 static struct cgroup_subsys_state *
 schedtune_css_alloc(struct cgroup_subsys_state *parent_css)
@@ -668,7 +683,6 @@ schedtune_css_alloc(struct cgroup_subsys_state *parent_css)
 	int idx;
 
 	if (!parent_css) {
-		schedtune_init();
 		return &root_schedtune.css;
 	}
 
@@ -732,6 +746,9 @@ schedtune_exit(struct cgroup_subsys_state *css,
 	struct schedtune *old_st = css_st(old_css);
 	unsigned long flags;
 	int cpu;
+
+	if (!unlikely(schedtune_initialized))
+		return;
 
 	/*
 	 * When a task is marked PF_EXITING by do_exit() it's going to be
