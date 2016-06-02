@@ -5567,7 +5567,7 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target, int sync)
 			 * so prev_cpu will receive a negative bias due to the double
 			 * accounting. However, the blocked utilization may be zero.
 			 */
-			new_util = cpu_util(i, UTIL_EST) + task_util_boosted;
+			new_util = cpu_util(i, UTIL_EST_ONLY) + task_util_boosted;
 
 			/*
 			 * Ensure minimum capacity to grant the required boost.

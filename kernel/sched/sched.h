@@ -1481,9 +1481,13 @@ static inline unsigned long capacity_orig_of(int cpu)
 }
 
 /* Force usage of PELT signal, i.e. util_avg */
-#define UTIL_AVG true
-/* Use estimated utilization when possible, i.e. UTIL_EST feature enabled */
-#define UTIL_EST false
+#define UTIL_AVG 1
+/* Use max of estimated utilization and pelt signal when UTIL_EST feature enabled */
+#define UTIL_EST 0
+/* use only estimated utilization, unless UTIL_EST feature is disabled - then use pelt */
+#define UTIL_EST_ONLY 2
+
+
 static inline bool use_util_est(void)
 {
 	return sched_feat(UTIL_EST);
@@ -1519,14 +1523,24 @@ extern unsigned int walt_disabled;
  * capacity_orig) as it useful for predicting the capacity required after task
  * migrations (scheduler-driven DVFS).
  */
-static inline unsigned long __cpu_util(int cpu, int delta, bool use_pelt)
+static inline unsigned long __cpu_util(int cpu, int delta, int policy)
 {
 	unsigned long util = cpu_rq(cpu)->cfs.avg.util_avg;
 	unsigned long capacity = capacity_orig_of(cpu);
 
-	if (use_util_est() && !use_pelt)
-		util = max(util, cpu_rq(cpu)->cfs.avg.util_est);
+	/* available policies:
+	 * UTIL_AVG - Use pelt utilization signal, even if UTIL_EST is enabled
+	 * UTIL_EST - Use max of estimated utilization and pelt signal when UTIL_EST feature enabled
+	 * UTIL_EST_ONLY - use only estimated utilization, unless UTIL_EST feature is disabled in which case use pelt
+	 */
 
+	if (use_util_est())
+	{
+		if (policy==UTIL_EST)
+			util = max(util, cpu_rq(cpu)->cfs.avg.util_est);
+		else if (policy==UTIL_EST_ONLY)
+			util = cpu_rq(cpu)->cfs.avg.util_est;
+	}
 #ifdef CONFIG_SCHED_WALT
 	if (!walt_disabled && sysctl_sched_use_walt_cpu_util)
 		util = (cpu_rq(cpu)->prev_runnable_sum << SCHED_LOAD_SHIFT) /
@@ -1539,9 +1553,9 @@ static inline unsigned long __cpu_util(int cpu, int delta, bool use_pelt)
 	return (delta >= capacity) ? capacity : delta;
 }
 
-static inline unsigned long cpu_util(int cpu, bool use_pelt)
+static inline unsigned long cpu_util(int cpu, int policy)
 {
-	return __cpu_util(cpu, 0, use_pelt);
+	return __cpu_util(cpu, 0, policy);
 }
 
 #endif
