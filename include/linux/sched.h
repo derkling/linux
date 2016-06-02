@@ -1779,6 +1779,7 @@ struct task_struct {
 		unsigned int enqueue_cpu;
 		unsigned int enqueue_bgidx;
 	} stune;
+	struct list_head stune_entry;
 
 };
 

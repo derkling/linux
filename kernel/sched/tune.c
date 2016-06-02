@@ -222,6 +222,8 @@ struct boost_groups {
 		int boost;
 		/* Count of RUNNABLE tasks on that boost group */
 		unsigned tasks;
+		/* List of RUNNABLE tasks */
+		struct list_head runnables;
 	} group[BOOSTGROUPS_COUNT];
 };
 
@@ -308,6 +310,21 @@ schedtune_boostgroup_update(int idx, int boost)
 }
 
 static inline void
+schedtune_trace_runnables(int cpu, int idx)
+{
+	struct boost_groups *bg = &per_cpu(cpu_boost_groups, cpu);
+	struct task_struct *task;
+	struct list_head *entry;
+
+	/* list_for_each */
+	list_for_each(entry, &bg->group[idx].runnables) {
+		task = container_of(entry, struct task_struct, stune_entry);
+		trace_printk("WARN: reason=runnable cpu=%d idx=%d pid=%d comm=%s",
+				cpu, idx, task->pid, task->comm);
+	}
+}
+
+static inline void
 schedtune_tasks_update(struct task_struct *p, int cpu, int idx, int task_count)
 {
 	struct boost_groups *bg = &per_cpu(cpu_boost_groups, cpu);
@@ -321,6 +338,16 @@ schedtune_tasks_update(struct task_struct *p, int cpu, int idx, int task_count)
 		     task_count < 0 ? "dequeue" : "enqueue",
 		     p->pid, cpu, idx, bg->group[idx].tasks,
 		     task_count, max(0, tasks), p->comm);
+
+	if (task_count > 0) {
+		/* Enqueue: add ask to list of runnables */
+		list_add_tail(&p->stune_entry, &bg->group[idx].runnables);
+		schedtune_trace_runnables(cpu, idx);
+	} else {
+		/* Dequeue: remove task from list of runnables */
+		list_del(&p->stune_entry);
+		schedtune_trace_runnables(cpu, idx);
+	}
 
 	/* Update boosted tasks count while avoiding to make it negative */
 	bg->group[idx].tasks = max(0, tasks);
@@ -483,6 +510,12 @@ int schedtune_can_attach(struct cgroup_subsys_state *css,
 		/* DBG: update sentilen */
 		task->stune.enqueue_bgidx = dbg_idx;
 
+		/* Dequeue from sbg and enqueue into dbg */
+		list_del(&task->stune_entry);
+		list_add_tail(&task->stune_entry, &bg->group[dbg_idx].runnables);
+		schedtune_trace_runnables(cpu, sbg_idx);
+		schedtune_trace_runnables(cpu, dbg_idx);
+
 		/*
 		 * The update of boost groups accounting for a CPU is
 		 * protected by the CPU's RQ... let's get it!
@@ -572,6 +605,46 @@ void schedtune_dequeue_task(struct task_struct *p, int cpu, int flags)
 	rcu_read_unlock();
 }
 
+void schedtune_idle(int cpu)
+{
+	struct boost_groups *bg = &per_cpu(cpu_boost_groups, cpu);
+	struct task_struct *task;
+	struct list_head *entry;
+	bool empty_groups = true;
+	int idx;
+
+	/* Check all "allocated" boost groups */
+	for (idx = 1; idx < BOOSTGROUPS_COUNT; ++idx) {
+		/* Boostgroup not "allocated"... */
+		if (!allocated_group[idx])
+			continue;
+
+		/* Boostgroup empty */
+		if (list_empty(&bg->group[idx].runnables)) {
+			/* Check counter */
+			if (&bg->group[idx].tasks)
+				trace_printk("WARN: reason=non_zero cpu=%d idx=%d",
+						cpu, idx);
+			continue;
+		}
+
+		empty_groups = false;
+
+		/* The current boostgroup has still enqueued runnable tasks */
+		trace_printk("WARN: reason=idle_not_empty cpu=%d idx=%d", cpu, idx);
+
+		/* list_for_each */
+		list_for_each(entry, &bg->group[idx].runnables) {
+			task = container_of(entry, struct task_struct, stune_entry);
+			trace_printk("WARN: reason=not_dequeued cpu=%d idx=%d pid=%d comm=%s",
+					cpu, idx, task->pid, task->comm);
+		}
+	}
+
+	if (empty_groups)
+		trace_printk("SchedTune: reason=idle_empty cpu=%d", cpu);
+}
+
 int schedtune_cpu_boost(int cpu)
 {
 	struct boost_groups *bg;
@@ -650,6 +723,7 @@ schedtune_boostgroup_init(struct schedtune *st)
 		bg = &per_cpu(cpu_boost_groups, cpu);
 		bg->group[st->idx].boost = 0;
 		bg->group[st->idx].tasks = 0;
+		INIT_LIST_HEAD(&bg->group[st->idx].runnables);
 	}
 
 	return 0;
@@ -665,6 +739,7 @@ schedtune_init(void)
 	for_each_possible_cpu(cpu) {
 		bg = &per_cpu(cpu_boost_groups, cpu);
 		memset(bg, 0, sizeof(struct boost_groups));
+		INIT_LIST_HEAD(&bg->group[0].runnables);
 	}
 
 	pr_info("  schedtune configured to support %d boost groups\n",

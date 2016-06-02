@@ -19,6 +19,7 @@ int schedtune_task_boost(struct task_struct *tsk);
 
 void schedtune_enqueue_task(struct task_struct *p, int cpu, int flags);
 void schedtune_dequeue_task(struct task_struct *p, int cpu, int flags);
+void schedtune_idle(int cpu);
 
 int schedtune_accept_deltas(int nrg_delta, int cap_delta,
 			    struct task_struct *task);
@@ -27,6 +28,7 @@ int schedtune_accept_deltas(int nrg_delta, int cap_delta,
 
 #define schedtune_enqueue_task(task, cpu, flags) do { } while (0)
 #define schedtune_dequeue_task(task, cpu, flags) do { } while (0)
+#define schedtune_idle(cpu) do { } while(0)
 
 #endif /* CONFIG_CGROUP_SCHEDTUNE */
 
@@ -34,6 +36,7 @@ int schedtune_accept_deltas(int nrg_delta, int cap_delta,
 
 #define schedtune_enqueue_task(task, cpu, flags) do { } while (0)
 #define schedtune_dequeue_task(task, cpu, flags) do { } while (0)
+#define schedtune_idle(cpu) do { } while(0)
 
 #define schedtune_accept_deltas(nrg_delta, cap_delta, task) nrg_delta
 

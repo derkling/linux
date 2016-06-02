@@ -2130,6 +2130,7 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
 	p->stune.enqueued = false;
 	p->stune.enqueue_cpu = -1;
 	p->stune.enqueue_bgidx = -1;
+	INIT_LIST_HEAD(&p->stune_entry);
 }
 
 #ifdef CONFIG_NUMA_BALANCING
@@ -3013,6 +3014,8 @@ static inline void schedule_debug(struct task_struct *prev)
 	schedstat_inc(this_rq(), sched_count);
 }
 
+extern void schedtune_idle(int cpu);
+
 /*
  * Pick up the highest-prio task:
  */
@@ -3033,8 +3036,11 @@ pick_next_task(struct rq *rq, struct task_struct *prev)
 			goto again;
 
 		/* assumes fair_sched_class->next == idle_sched_class */
-		if (unlikely(!p))
+		if (unlikely(!p)) {
 			p = idle_sched_class.pick_next_task(rq, prev);
+			/* We are going to idle */
+			schedtune_idle(cpu_of(rq));
+		}
 
 		return p;
 	}
@@ -3045,6 +3051,10 @@ again:
 		if (p) {
 			if (unlikely(p == RETRY_TASK))
 				goto again;
+			if (class == &idle_sched_class) {
+				/* We are going to idle */
+				schedtune_idle(cpu_of(rq));
+			}
 			return p;
 		}
 	}
