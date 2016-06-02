@@ -491,14 +491,15 @@ int schedtune_can_attach(struct cgroup_subsys_state *css,
 		/* Move task from src to dst boost group */
 		bg = &per_cpu(cpu_boost_groups, task_cpu(task));
 		tasks = bg->group[sbg_idx].tasks - 1;
-		if (tasks < 0)
-			trace_printk("WARN: reason=negative_capping pid=%d comm=%s",
-				     task->pid, task->comm);
 
 		trace_printk("SchedTune: event=detach pid=%d comm=%s cpu=%d idx=%d bg_pre=%d count=%d bg_pst=%d",
 				task->pid, task->comm, task_cpu(task),
 				sbg_idx, bg->group[sbg_idx].tasks,
 				-1, max(0, tasks));
+		if (tasks < 0)
+			trace_printk("WARN: reason=negative_capping pid=%d comm=%s",
+				     task->pid, task->comm);
+
 		trace_printk("SchedTune: event=attach pid=%d comm=%s cpu=%d idx=%d bg_pre=%d count=%d bg_pst=%d",
 				task->pid, task->comm, task_cpu(task),
 				dbg_idx, bg->group[dbg_idx].tasks,
