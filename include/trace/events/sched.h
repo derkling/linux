@@ -961,6 +961,7 @@ TRACE_EVENT(walt_update_task_ravg,
 		__field(	u64,	irqtime			)
 		__field(        int,    evt			)
 		__field(unsigned int,	demand			)
+		__field(unsigned int,	walt_avg		)
 		__field(unsigned int,	sum			)
 		__field(	 int,	cpu			)
 		__field(	u64,	cs			)
@@ -985,6 +986,7 @@ TRACE_EVENT(walt_update_task_ravg,
 		__entry->mark_start     = p->ravg.mark_start;
 		__entry->delta_m        = (wallclock - p->ravg.mark_start);
 		__entry->demand         = p->ravg.demand;
+		__entry->walt_avg 	= (p->ravg.demand << 10) / walt_ravg_window,
 		__entry->sum            = p->ravg.sum;
 		__entry->irqtime        = irqtime;
 		__entry->cs             = rq->curr_runnable_sum;
@@ -996,13 +998,13 @@ TRACE_EVENT(walt_update_task_ravg,
 		__entry->active_windows	= p->ravg.active_windows;
 	),
 
-	TP_printk("wc %llu ws %llu delta %llu event %d cpu %d cur_freq %u cur_pid %d task %d (%s) ms %llu delta %llu demand %u sum %u irqtime %llu"
-		" cs %llu ps %llu cur_window %u prev_window %u nt_cs %llu nt_ps %llu active_wins %u"
+	TP_printk("wc=%llu ws=%llu delta=%llu event=%d cpu=%d cur_freq=%u cur_pid=%d pid=%d comm=%s ms=%llu delta=%llu demand=%u walt_avg=%u sum=%u irqtime=%llu"
+		" cs=%llu ps=%llu cur_window=%u prev_window=%u nt_cs=%llu nt_ps=%llu active_wins=%u"
 		, __entry->wallclock, __entry->win_start, __entry->delta,
 		__entry->evt, __entry->cpu,
 		__entry->cur_freq, __entry->cur_pid,
 		__entry->pid, __entry->comm, __entry->mark_start,
-		__entry->delta_m, __entry->demand,
+		__entry->delta_m, __entry->demand, __entry->walt_avg,
 		__entry->sum, __entry->irqtime,
 		__entry->cs, __entry->ps,
 		__entry->curr_window, __entry->prev_window,
@@ -1045,8 +1047,8 @@ TRACE_EVENT(walt_update_history,
 		__entry->cpu            = rq->cpu;
 	),
 
-	TP_printk("%d (%s): runtime %u samples %d event %d demand %llu"
-		" walt %u pelt %u (hist: %u %u %u %u %u) cpu %d",
+	TP_printk("pid=%d comm=%s runtime=%u samples=%d event=%d demand=%llu"
+		" walt=%u pelt=%u hist0=%u hist1=%u hist2=%u hist3=%u hist4=%u cpu=%d",
 		__entry->pid, __entry->comm,
 		__entry->runtime, __entry->samples, __entry->evt,
 		__entry->demand,
@@ -1081,7 +1083,7 @@ TRACE_EVENT(walt_migration_update_sum,
 		__entry->pid		= p->pid;
 	),
 
-	TP_printk("cpu %d: cs %llu ps %llu nt_cs %lld nt_ps %lld pid %d",
+	TP_printk("cpu=%d cs=%llu ps=%llu nt_cs=%lld nt_ps=%lld pid=%d",
 		  __entry->cpu, __entry->cs, __entry->ps,
 		  __entry->nt_cs, __entry->nt_ps, __entry->pid)
 );
