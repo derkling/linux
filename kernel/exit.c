@@ -664,12 +664,16 @@ static void check_stack_usage(void)
 static inline void check_stack_usage(void) {}
 #endif
 
+
+extern void schedtune_dequeue_task(struct task_struct *p, int cpu, int flags);
+
 void do_exit(long code)
 {
 	struct task_struct *tsk = current;
 	int group_dead;
 	TASKS_RCU(int tasks_rcu_i);
 
+	schedtune_dequeue_task(tsk, task_cpu(tsk), 0);
 	profile_task_exit(tsk);
 
 	WARN_ON(blk_needs_flush_plug(tsk));
