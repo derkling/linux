@@ -332,9 +332,11 @@ schedtune_tasks_update(struct task_struct *p, int cpu, int idx, int task_count)
 	struct boost_groups *bg = &per_cpu(cpu_boost_groups, cpu);
 	int tasks = bg->group[idx].tasks + task_count;
 
-	trace_printk("SchedTune: event=%s pid=%d cpu=%d idx=%d bg_pre=%d count=%d bg_pst=%d comm=%s",
+	trace_printk("SchedTune: event=%s pid=%d cpu=%d idx=%d state=%ld flags=%x bg_pre=%d count=%d bg_pst=%d comm=%s",
 		     task_count < 0 ? "dequeue" : "enqueue",
-		     p->pid, cpu, idx, bg->group[idx].tasks,
+		     p->pid, cpu, idx,
+		     p->state, p->flags,
+		     bg->group[idx].tasks,
 		     task_count, max(0, tasks), p->comm);
 
 	if (task_count < 0 && tasks < 0)
