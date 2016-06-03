@@ -11,6 +11,8 @@
 #include "sched.h"
 #include "tune.h"
 
+#undef SCHEDTUNE_DEBUG_LIST
+
 static bool schedtune_initialized = false;
 
 unsigned int sysctl_sched_cfs_boost __read_mostly;
@@ -330,15 +332,16 @@ schedtune_tasks_update(struct task_struct *p, int cpu, int idx, int task_count)
 	struct boost_groups *bg = &per_cpu(cpu_boost_groups, cpu);
 	int tasks = bg->group[idx].tasks + task_count;
 
-	if (task_count < 0 && tasks < 0)
-		trace_printk("WARN: reason=negative_capping pid=%d comm=%s",
-			     p->pid, p->comm);
-
 	trace_printk("SchedTune: event=%s pid=%d cpu=%d idx=%d bg_pre=%d count=%d bg_pst=%d comm=%s",
 		     task_count < 0 ? "dequeue" : "enqueue",
 		     p->pid, cpu, idx, bg->group[idx].tasks,
 		     task_count, max(0, tasks), p->comm);
 
+	if (task_count < 0 && tasks < 0)
+		trace_printk("WARN: reason=negative_capping pid=%d comm=%s",
+			     p->pid, p->comm);
+
+#ifdef SCHEDTUNE_DEBUG_LIST
 	if (task_count > 0) {
 		/* Enqueue: add ask to list of runnables */
 		list_add_tail(&p->stune_entry, &bg->group[idx].runnables);
@@ -348,6 +351,7 @@ schedtune_tasks_update(struct task_struct *p, int cpu, int idx, int task_count)
 		list_del(&p->stune_entry);
 		schedtune_trace_runnables(cpu, idx);
 	}
+#endif
 
 	/* Update boosted tasks count while avoiding to make it negative */
 	bg->group[idx].tasks = max(0, tasks);
@@ -384,8 +388,11 @@ void schedtune_enqueue_task(struct task_struct *p, int cpu, int flags)
 	 * Thus we avoid any further update, since we do not want to change
 	 * CPU boosting while the task is exiting.
 	 */
-	if (p->flags & PF_EXITING)
+	if (p->flags & PF_EXITING && !p->on_rq == TASK_ON_RQ_MIGRATING) {
+		trace_printk("WARN: reason=enqueue_sleeping pid=%d comm=%s",
+				p->pid, p->comm);
 		return;
+	}
 
 	/* Check sentinels */
 	if (p->stune.enqueued)
@@ -511,11 +518,13 @@ int schedtune_can_attach(struct cgroup_subsys_state *css,
 		/* DBG: update sentilen */
 		task->stune.enqueue_bgidx = dbg_idx;
 
+#ifdef SCHEDTUNE_DEBUG_LIST
 		/* Dequeue from sbg and enqueue into dbg */
 		list_del(&task->stune_entry);
 		list_add_tail(&task->stune_entry, &bg->group[dbg_idx].runnables);
 		schedtune_trace_runnables(cpu, sbg_idx);
 		schedtune_trace_runnables(cpu, dbg_idx);
+#endif
 
 		/*
 		 * The update of boost groups accounting for a CPU is
@@ -567,8 +576,11 @@ void schedtune_dequeue_task(struct task_struct *p, int cpu, int flags)
 	 * CPU boosting while the task is exiting.
 	 * !!!! The last dequeue will be done by cgroup exit() callback. !!!!
 	 */
-	if (p->flags & PF_EXITING)
+	if (p->flags & PF_EXITING && !p->on_rq == TASK_ON_RQ_MIGRATING) {
+		trace_printk("WARN: reason=dequeue_sleeping pid=%d comm=%s",
+				p->pid, p->comm);
 		return;
+	}
 
 	/* Check enqueue sentinels */
 	if (!p->stune.enqueued)
@@ -608,6 +620,7 @@ void schedtune_dequeue_task(struct task_struct *p, int cpu, int flags)
 
 void schedtune_idle(int cpu)
 {
+#ifdef SCHEDTUNE_DEBUG_LIST
 	struct boost_groups *bg = &per_cpu(cpu_boost_groups, cpu);
 	struct task_struct *task;
 	struct list_head *entry;
@@ -644,6 +657,7 @@ void schedtune_idle(int cpu)
 
 	if (empty_groups)
 		trace_printk("SchedTune: reason=idle_empty cpu=%d", cpu);
+#endif
 }
 
 int schedtune_cpu_boost(int cpu)
@@ -826,6 +840,10 @@ schedtune_exit(struct cgroup_subsys_state *css,
 	if (!unlikely(schedtune_initialized))
 		return;
 
+	trace_printk("SchedTune: event=exit pid=%d cpu=%d comm=%s",
+		     tsk->pid, tsk->stune.enqueue_cpu,
+		     tsk->comm);
+
 	/*
 	 * When a task is marked PF_EXITING by do_exit() it's going to be
 	 * dequeued and enqueued multiple times in the exit path.
@@ -847,10 +865,6 @@ schedtune_exit(struct cgroup_subsys_state *css,
 		raw_spin_unlock_irqrestore(&cpu_rq(cpu)->lock, flags);
 	}
 	schedtune_tasks_update(tsk, cpu, old_st->idx, -1);
-
-	trace_printk("SchedTune: event=exit pid=%d cpu=%d comm=%s",
-		     tsk->pid, tsk->stune.enqueue_cpu,
-		     tsk->comm);
 
 	raw_spin_unlock_irqrestore(&cpu_rq(task_cpu(tsk))->lock, flags);
 }
