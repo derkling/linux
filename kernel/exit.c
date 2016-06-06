@@ -55,6 +55,8 @@
 #include <linux/shm.h>
 #include <linux/kcov.h>
 
+#include "sched/tune.h"
+
 #include <asm/uaccess.h>
 #include <asm/unistd.h>
 #include <asm/pgtable.h>
@@ -681,6 +683,7 @@ void do_exit(long code)
 	int group_dead;
 	TASKS_RCU(int tasks_rcu_i);
 
+	schedtune_exit(tsk);
 	profile_task_exit(tsk);
 	kcov_task_exit(tsk);
 

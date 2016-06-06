@@ -17,6 +17,8 @@ struct target_nrg {
 int schedtune_cpu_boost(int cpu);
 int schedtune_task_boost(struct task_struct *tsk);
 
+void schedtune_exit(struct task_struct *tsk);
+
 void schedtune_enqueue_task(struct task_struct *p, int cpu);
 void schedtune_dequeue_task(struct task_struct *p, int cpu);
 
@@ -25,12 +27,16 @@ int schedtune_accept_deltas(int nrg_delta, int cap_delta,
 
 #else /* CONFIG_CGROUP_SCHEDTUNE */
 
+#define schedtune_exit(task) do { } while (0)
+
 #define schedtune_enqueue_task(task, cpu) do { } while (0)
 #define schedtune_dequeue_task(task, cpu) do { } while (0)
 
 #endif /* CONFIG_CGROUP_SCHEDTUNE */
 
 #else /* CONFIG_SCHED_TUNE */
+
+#define schedtune_exit(task) do { } while (0)
 
 #define schedtune_enqueue_task(task, cpu) do { } while (0)
 #define schedtune_dequeue_task(task, cpu) do { } while (0)
