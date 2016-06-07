@@ -683,7 +683,6 @@ void do_exit(long code)
 	int group_dead;
 	TASKS_RCU(int tasks_rcu_i);
 
-	schedtune_exit(tsk);
 	profile_task_exit(tsk);
 	kcov_task_exit(tsk);
 
@@ -732,6 +731,8 @@ void do_exit(long code)
 	}
 
 	exit_signals(tsk);  /* sets PF_EXITING */
+
+	schedtune_exit(tsk);
 
 	sched_exit(tsk);
 	/*

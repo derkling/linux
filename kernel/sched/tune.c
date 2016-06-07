@@ -373,6 +373,7 @@ int schedtune_can_attach(struct cgroup_subsys_state *css,
 	struct boost_groups *bg;
 	unsigned long irq_flags;
 	unsigned int cpu;
+	struct rq *rq;
 	int src_bg; /* Source boost group index */
 	int dst_bg; /* Destination boost group index */
 	int tasks;
@@ -382,26 +383,23 @@ int schedtune_can_attach(struct cgroup_subsys_state *css,
 
 	cgroup_taskset_for_each(task, tset) {
 
-		if (!task->on_rq)
-			continue;
-
 		/*
 		 * Lock the CPU's RQ the task is enqueued to avoid race
 		 * conditions with migration code while the task is being
 		 * accounted
 		 */
-		while (true) {
-			cpu = task_cpu(task);
-			raw_spin_lock_irqsave(&cpu_rq(cpu)->lock, irq_flags);
-			if (cpu == task_cpu(task))
-				break;
-			raw_spin_unlock_irqrestore(&cpu_rq(cpu)->lock, irq_flags);
+		rq = lock_rq_of(task, &irq_flags);
+
+		if (!task->on_rq) {
+			unlock_rq_of(rq, task, &irq_flags);
+			continue;
 		}
 
 		/*
 		 * Boost group accouting is protected by a per-cpu lock and requires
 		 * interrupt to be disabled to avoid race conditions on...
 		 */
+		cpu = cpu_of(rq);
 		bg = &per_cpu(cpu_boost_groups, cpu);
 		raw_spin_lock(&bg->lock);
 
@@ -414,7 +412,7 @@ int schedtune_can_attach(struct cgroup_subsys_state *css,
 		 */
 		if (unlikely(dst_bg == src_bg)) {
 			raw_spin_unlock(&bg->lock);
-			raw_spin_unlock_irqrestore(&cpu_rq(cpu)->lock, irq_flags);
+			unlock_rq_of(rq, task, &irq_flags);
 			continue;
 		}
 
@@ -429,7 +427,7 @@ int schedtune_can_attach(struct cgroup_subsys_state *css,
 		bg->group[dst_bg].tasks += 1;
 
 		raw_spin_unlock(&bg->lock);
-		raw_spin_unlock_irqrestore(&cpu_rq(cpu)->lock, irq_flags);
+		unlock_rq_of(rq, task, &irq_flags);
 
 		/* Update CPU boost group */
 		if (bg->group[src_bg].tasks == 0 || bg->group[dst_bg].tasks == 1)
@@ -456,8 +454,8 @@ void schedtune_cancel_attach(struct cgroup_subsys_state *css,
 void schedtune_dequeue_task(struct task_struct *p, int cpu)
 {
 	struct boost_groups *bg = &per_cpu(cpu_boost_groups, cpu);
-	struct schedtune *st;
 	unsigned long irq_flags;
+	struct schedtune *st;
 	int idx;
 
 	if (!unlikely(schedtune_initialized))
@@ -483,9 +481,25 @@ void schedtune_dequeue_task(struct task_struct *p, int cpu)
 
 void schedtune_exit(struct task_struct *tsk)
 {
-	int cpu = task_cpu(tsk);
+	struct schedtune *st;
+	unsigned long irq_flags;
+	unsigned int cpu;
+	struct rq *rq;
+	int idx;
 
-	schedtune_dequeue_task(tsk, cpu);
+	if (!unlikely(schedtune_initialized))
+		return;
+
+	rq = lock_rq_of(tsk, &irq_flags);
+	rcu_read_lock();
+
+	cpu = cpu_of(rq);
+	st = task_schedtune(tsk);
+	idx = st->idx;
+	schedtune_tasks_update(tsk, cpu, idx, -1);
+
+	rcu_read_unlock();
+	unlock_rq_of(rq, tsk, &irq_flags);
 }
 
 int schedtune_cpu_boost(int cpu)
