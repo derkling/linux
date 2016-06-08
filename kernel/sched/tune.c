@@ -11,6 +11,10 @@
 #include "sched.h"
 #include "tune.h"
 
+#ifdef CONFIG_CGROUP_SCHEDTUNE
+static bool schedtune_initialized = false;
+#endif
+
 unsigned int sysctl_sched_cfs_boost __read_mostly;
 
 extern struct target_nrg schedtune_target_nrg;
@@ -325,6 +329,9 @@ void schedtune_enqueue_task(struct task_struct *p, int cpu)
 	struct schedtune *st;
 	int idx;
 
+	if (!unlikely(schedtune_initialized))
+		return;
+
 	/*
 	 * When a task is marked PF_EXITING by do_exit() it's going to be
 	 * dequeued and enqueued multiple times in the exit path.
@@ -362,6 +369,9 @@ int schedtune_can_attach(struct cgroup_taskset *tset)
 	int src_bg; /* Source boost group index */
 	int dst_bg; /* Destination boost group index */
 	int tasks;
+
+	if (!unlikely(schedtune_initialized))
+		return 0;
 
 	cgroup_taskset_for_each(task, dst_css, tset) {
 
@@ -439,6 +449,9 @@ void schedtune_dequeue_task(struct task_struct *p, int cpu)
 	struct schedtune *st;
 	int idx;
 
+	if (!unlikely(schedtune_initialized))
+		return;
+
 	/*
 	 * When a task is marked PF_EXITING by do_exit() it's going to be
 	 * dequeued and enqueued multiple times in the exit path.
@@ -473,6 +486,9 @@ void schedtune_exit_task(struct task_struct *tsk)
 	unsigned int cpu;
 	struct rq *rq;
 	int idx;
+
+	if (!unlikely(schedtune_initialized))
+		return;
 
 	rq = lock_rq_of(tsk, &irq_flags);
 	rcu_read_lock();
@@ -649,6 +665,8 @@ schedtune_init_cgroups(void)
 
 	pr_info("schedtune: configured to support %d boost groups\n",
 		BOOSTGROUPS_COUNT);
+
+	schedtune_initialized = true;
 }
 
 #else /* CONFIG_CGROUP_SCHEDTUNE */
