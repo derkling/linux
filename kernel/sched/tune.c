@@ -351,16 +351,9 @@ void schedtune_enqueue_task(struct task_struct *p, int cpu)
 	raw_spin_unlock_irqrestore(&bg->lock, irq_flags);
 }
 
-int schedtune_allow_attach(struct cgroup_subsys_state *css,
-		struct cgroup_taskset *tset)
+int schedtune_can_attach(struct cgroup_taskset *tset)
 {
-	/* We always allows tasks to be moved between existing CGroups */
-	return 0;
-}
-
-int schedtune_can_attach(struct cgroup_subsys_state *css,
-			  struct cgroup_taskset *tset)
-{
+	struct cgroup_subsys_state *dst_css;
 	struct task_struct *task;
 	struct boost_groups *bg;
 	unsigned long irq_flags;
@@ -370,7 +363,7 @@ int schedtune_can_attach(struct cgroup_subsys_state *css,
 	int dst_bg; /* Destination boost group index */
 	int tasks;
 
-	cgroup_taskset_for_each(task, tset) {
+	cgroup_taskset_for_each(task, dst_css, tset) {
 
 		/*
 		 * Lock the CPU's RQ the task is enqueued to avoid race
@@ -392,7 +385,7 @@ int schedtune_can_attach(struct cgroup_subsys_state *css,
 		bg = &per_cpu(cpu_boost_groups, cpu);
 		raw_spin_lock(&bg->lock);
 
-		dst_bg = css_st(css)->idx;
+		dst_bg = css_st(dst_css)->idx;
 		src_bg = task_schedtune(task)->idx;
 
 		/*
@@ -427,8 +420,7 @@ int schedtune_can_attach(struct cgroup_subsys_state *css,
 	return 0;
 }
 
-void schedtune_cancel_attach(struct cgroup_subsys_state *css,
-			     struct cgroup_taskset *tset)
+void schedtune_cancel_attach(struct cgroup_taskset *tset)
 {
 	/* This can happen only if SchedTune controller is mounted with
 	 * other hierarchies ane one of them fails. Since usually SchedTune is
@@ -452,7 +444,8 @@ void schedtune_dequeue_task(struct task_struct *p, int cpu)
 	 * dequeued and enqueued multiple times in the exit path.
 	 * Thus we avoid any further update, since we do not want to change
 	 * CPU boosting while the task is exiting.
-	 * The last dequeue will be done by cgroup exit() callback.
+	 * The last dequeue is already enforce by the do_exit() code path
+	 * via schedtune_exit_task().
 	 */
 	if (p->flags & PF_EXITING)
 		return;
@@ -471,6 +464,26 @@ void schedtune_dequeue_task(struct task_struct *p, int cpu)
 
 	rcu_read_unlock();
 	raw_spin_unlock_irqrestore(&bg->lock, irq_flags);
+}
+
+void schedtune_exit_task(struct task_struct *tsk)
+{
+	struct schedtune *st;
+	unsigned long irq_flags;
+	unsigned int cpu;
+	struct rq *rq;
+	int idx;
+
+	rq = lock_rq_of(tsk, &irq_flags);
+	rcu_read_lock();
+
+	cpu = cpu_of(rq);
+	st = task_schedtune(tsk);
+	idx = st->idx;
+	schedtune_tasks_update(tsk, cpu, idx, DEQUEUE_TASK);
+
+	rcu_read_unlock();
+	unlock_rq_of(rq, tsk, &irq_flags);
 }
 
 int schedtune_cpu_boost(int cpu)
@@ -616,7 +629,6 @@ schedtune_css_free(struct cgroup_subsys_state *css)
 struct cgroup_subsys schedtune_cgrp_subsys = {
 	.css_alloc	= schedtune_css_alloc,
 	.css_free	= schedtune_css_free,
-	.allow_attach   = schedtune_allow_attach,
 	.can_attach     = schedtune_can_attach,
 	.cancel_attach  = schedtune_cancel_attach,
 	.legacy_cftypes	= files,
