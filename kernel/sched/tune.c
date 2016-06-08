@@ -449,7 +449,8 @@ void schedtune_dequeue_task(struct task_struct *p, int cpu)
 	 * dequeued and enqueued multiple times in the exit path.
 	 * Thus we avoid any further update, since we do not want to change
 	 * CPU boosting while the task is exiting.
-	 * The last dequeue will be done by cgroup exit() callback.
+	 * The last dequeue is already enforce by the do_exit() code path
+	 * via schedtune_exit_task().
 	 */
 	if (p->flags & PF_EXITING)
 		return;
@@ -467,6 +468,26 @@ void schedtune_dequeue_task(struct task_struct *p, int cpu)
 
 	rcu_read_unlock();
 	raw_spin_unlock_irqrestore(&bg->lock, irq_flags);
+}
+
+void schedtune_exit_task(struct task_struct *tsk)
+{
+	struct schedtune *st;
+	unsigned long irq_flags;
+	unsigned int cpu;
+	struct rq *rq;
+	int idx;
+
+	rq = lock_rq_of(tsk, &irq_flags);
+	rcu_read_lock();
+
+	cpu = cpu_of(rq);
+	st = task_schedtune(tsk);
+	idx = st->idx;
+	schedtune_tasks_update(tsk, cpu, idx, -1);
+
+	rcu_read_unlock();
+	unlock_rq_of(rq, tsk, &irq_flags);
 }
 
 int schedtune_cpu_boost(int cpu)
@@ -613,24 +634,12 @@ schedtune_css_free(struct cgroup_subsys_state *css)
 	kfree(st);
 }
 
-static void
-schedtune_exit(struct cgroup_subsys_state *css,
-		struct cgroup_subsys_state *old_css,
-		struct task_struct *tsk)
-{
-	struct schedtune *old_st = css_st(old_css);
-	int cpu = task_cpu(tsk);
-
-	schedtune_tasks_update(tsk, cpu, old_st->idx, -1);
-}
-
 struct cgroup_subsys schedtune_cgrp_subsys = {
 	.css_alloc	= schedtune_css_alloc,
 	.css_free	= schedtune_css_free,
 	.allow_attach   = schedtune_allow_attach,
 	.can_attach     = schedtune_can_attach,
 	.cancel_attach  = schedtune_cancel_attach,
-	.exit		= schedtune_exit,
 	.legacy_cftypes	= files,
 	.early_init	= 1,
 };
