@@ -1640,6 +1640,12 @@ static inline struct rq *task_rq_lock(struct task_struct *p, unsigned long *flag
 	}
 }
 
+static inline struct rq *
+lock_rq_of(struct task_struct *p, unsigned long *flags)
+{
+	return task_rq_lock(p, flags);
+}
+
 static inline void __task_rq_unlock(struct rq *rq)
 	__releases(rq->lock)
 {
@@ -1655,6 +1661,12 @@ task_rq_unlock(struct rq *rq, struct task_struct *p, unsigned long *flags)
 	lockdep_unpin_lock(&rq->lock);
 	raw_spin_unlock(&rq->lock);
 	raw_spin_unlock_irqrestore(&p->pi_lock, *flags);
+}
+
+static inline void
+unlock_rq_of(struct rq *rq, struct task_struct *p, unsigned long *flags)
+{
+	task_rq_unlock(rq, p, flags);
 }
 
 #ifdef CONFIG_SMP
