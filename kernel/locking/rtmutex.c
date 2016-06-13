@@ -265,17 +265,15 @@ struct task_struct *rt_mutex_get_top_task(struct task_struct *task)
 }
 
 /*
- * Called by sched_setscheduler() to get the priority which will be
- * effective after the change.
+ * Called by sched_setscheduler() to check whether the priority change
+ * is overruled by a possible priority boosting.
  */
-int rt_mutex_get_effective_prio(struct task_struct *task, int newprio)
+int rt_mutex_check_prio(struct task_struct *task, int newprio)
 {
 	if (!task_has_pi_waiters(task))
-		return newprio;
+		return 0;
 
-	if (task_top_pi_waiter(task)->task->prio <= newprio)
-		return task_top_pi_waiter(task)->task->prio;
-	return newprio;
+	return task_top_pi_waiter(task)->task->prio <= newprio;
 }
 
 /*
@@ -1195,8 +1193,7 @@ rt_mutex_slowlock(struct rt_mutex *lock, int state,
 	set_current_state(TASK_RUNNING);
 
 	if (unlikely(ret)) {
-		if (rt_mutex_has_waiters(lock))
-			remove_waiter(lock, &waiter);
+		remove_waiter(lock, &waiter);
 		rt_mutex_handle_deadlock(ret, chwalk, &waiter);
 	}
 
