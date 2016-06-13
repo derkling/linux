@@ -6397,6 +6397,9 @@ sd_init(struct sched_domain_topology_level *tl, int cpu)
 	 * Convert topological properties into behaviour.
 	 */
 
+	if (sd->flags & SD_ASYM_CPUCAPACITY)
+		sd->flags |= SD_BALANCE_WAKE;
+
 	if (sd->flags & SD_SHARE_CPUCAPACITY) {
 		sd->flags |= SD_PREFER_SIBLING;
 		sd->imbalance_pct = 110;
