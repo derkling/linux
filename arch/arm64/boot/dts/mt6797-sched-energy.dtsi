@@ -1,0 +1,183 @@
+/*
+ * MTK X20 (MT6797) specific energy cost model data. There are no unit
+ * requirements for the data. Data can be normalized to any reference point,
+ * but the normalization must be consistent. That is, one bogo-joule/watt must
+ * be the same quantity for all data, but we don't care what it is.
+ */
+
+energy-costs {
+	CPU_COST_A53_LL: core-cost0 {
+		busy-cost-data = <
+			 53   18	/*  221MHz */
+			 82   26	/*  338MHz */
+			116   39	/*  481MHz */
+			151   55	/*  624MHz */
+			173   67	/*  715MHz */
+			196   79	/*  806MHz */
+			218   93	/*  897MHz */
+			246  112	/* 1014MHz */
+			272  129	/* 1118MHz */
+			297  148	/* 1222MHZ */
+			310  163	/* 1274MHz */
+			325  173	/* 1339MHz */
+			338  182	/* 1391MHz */
+			351  195	/* 1443MHz */
+			364  209	/* 1495MHz */
+			376  219	/* 1547MHz */
+		>;
+		idle-cost-data = <
+			  0		/* dpidle - deep idle */
+			  0		/* SODI3 */
+			  0		/* SODI */
+		          0		/* MCDI */
+			  0		/* slidle - slow idle */
+		          0		/* rgidle - WFI */
+		          0		/* active idle */
+		>;
+	};
+	CPU_COST_A53_L: core-cost1 {
+		busy-cost-data = <
+			 79   40	/*  335MHz */
+			113   54	/*  468MHz */
+			158   76	/*  650MHz */
+			202  102	/*  832MHz */
+			234  125	/*  962MHz */
+			262  145	/* 1079MHz */
+			294  169	/* 1209MHz */
+			329  201	/* 1352MHz */
+			364  231	/* 1495MHz */
+			395  262	/* 1625MHz */
+			414  288	/* 1703MHz */
+			427  301	/* 1755MHz */
+			443  316	/* 1820MHz */
+			458  337	/* 1885MHz */
+			474  359	/* 1950MHz */
+			487  374	/* 2002MHz */
+		>;
+		idle-cost-data = <
+			  0		/* dpidle - deep idle */
+			  0		/* SODI3 */
+			  0		/* SODI */
+		          0		/* MCDI */
+			  0		/* slidle - slow idle */
+		          0		/* rgidle - WFI */
+		          0		/* active idle */
+		>;
+	};
+	CPU_COST_A72: core-cost2 {
+		busy-cost-data = <
+			140  153	/*  338MHz */
+			281  266	/*  676MHz */
+			353  335	/*  845MHz */
+			418  398	/* 1001MHz */
+			472  470	/* 1131MHz */
+			574  613	/* 1378MHz */
+			625  683	/* 1495MHz */
+			698  816	/* 1677MHz */
+			790  973	/* 1885MHz */
+			870 1125	/* 2093MHz */
+			901 1200	/* 2158MHz */
+			927 1253	/* 2223MHz */
+			943 1296	/* 2262MHz */
+			971 1352	/* 2327MHz */
+			997 1409	/* 2392MHz */
+		       1024 1467	/* 2457MHz */
+		>;
+		idle-cost-data = <
+			  0		/* dpidle - deep idle */
+			  0		/* SODI3 */
+			  0		/* SODI */
+		          0		/* MCDI */
+			  0		/* slidle - slow idle */
+		          0		/* rgidle - WFI */
+		          0		/* active idle */
+		>;
+	};
+	CLUSTER_COST_A53_LL: cluster-cost0 {
+		busy-cost-data = <
+			 53   16	/*  221MHz */
+			 82   18	/*  338MHz */
+			116   22	/*  481MHz */
+			151   27	/*  624MHz */
+			173   31	/*  715MHz */
+			196   35	/*  806MHz */
+			218   38	/*  897MHz */
+			246   44	/* 1014MHz */
+			272   48	/* 1118MHz */
+			297   53	/* 1222MHZ */
+			310   58	/* 1274MHz */
+			325   60	/* 1339MHz */
+			338   61	/* 1391MHz */
+			351   65	/* 1443MHz */
+			364   69	/* 1495MHz */
+			376   71	/* 1547MHz */
+		>;
+		idle-cost-data = <
+			  0		/* dpidle - deep idle */
+			  0		/* SODI3 */
+			  0		/* SODI */
+		          0		/* MCDI */
+			  0		/* slidle - slow idle */
+		          0		/* rgidle - WFI */
+		          0		/* active idle */
+		>;
+	};
+	CLUSTER_COST_A53_L: cluster-cost1 {
+		busy-cost-data = <
+			 79   26	/*  335MHz */
+			113   29	/*  468MHz */
+			158   36	/*  650MHz */
+			202   44	/*  832MHz */
+			234   51	/*  962MHz */
+			262   57	/* 1079MHz */
+			294   63	/* 1209MHz */
+			329   71	/* 1352MHz */
+			364   79	/* 1495MHz */
+			395   86	/* 1625MHz */
+			414   94	/* 1703MHz */
+			427   97	/* 1755MHz */
+			443  100	/* 1820MHz */
+			458  106	/* 1885MHz */
+			474  111	/* 1950MHz */
+			487  115	/* 2002MHz */
+		>;
+		idle-cost-data = <
+			  0		/* dpidle - deep idle */
+			  0		/* SODI3 */
+			  0		/* SODI */
+		          0		/* MCDI */
+			  0		/* slidle - slow idle */
+		          0		/* rgidle - WFI */
+		          0		/* active idle */
+		>;
+	};
+	CLUSTER_COST_A72: cluster-cost2 {
+		busy-cost-data = <
+			140   59	/*  338MHz */
+			281   74	/*  676MHz */
+			353   85	/*  845MHz */
+			418   93	/* 1001MHz */
+			472  104	/* 1131MHz */
+			574  124	/* 1378MHz */
+			625  134	/* 1495MHz */
+			698  153	/* 1677MHz */
+			790  174	/* 1885MHz */
+			870  192	/* 2093MHz */
+			901  203	/* 2158MHz */
+			927  210	/* 2223MHz */
+			943  216	/* 2262MHz */
+			971  223	/* 2327MHz */
+			997  230	/* 2392MHz */
+		       1024  237	/* 2457MHz */
+		>;
+		idle-cost-data = <
+			  0		/* dpidle - deep idle */
+			  0		/* SODI3 */
+			  0		/* SODI */
+		          0		/* MCDI */
+			  0		/* slidle - slow idle */
+		          0		/* rgidle - WFI */
+		          0		/* active idle */
+		>;
+	};
+};
