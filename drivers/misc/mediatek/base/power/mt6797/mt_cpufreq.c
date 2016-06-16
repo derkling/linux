@@ -198,7 +198,8 @@ ktime_t max[NR_SET_V_F];
 #define PLL_SETTLE_TIME         (20)
 
 /* 750Mhz */
-#define DEFAULT_B_FREQ_IDX 13
+//#define DEFAULT_B_FREQ_IDX 13
+#define DEFAULT_B_FREQ_IDX 15
 #define BOOST_B_FREQ_IDX 0
 
 /* for DVFS OPP table LL/FY */
@@ -3968,7 +3969,7 @@ static int _mt_cpufreq_setup_freqs_table(struct cpufreq_policy *policy,
 static unsigned int _calc_new_opp_idx(struct mt_cpu_dvfs *p, int new_opp_idx)
 {
 	/* unsigned int online_cpus; */
-	struct mt_cpu_dvfs *p_ll;
+//	struct mt_cpu_dvfs *p_ll;
 
 	FUNC_ENTER(FUNC_LV_HELP);
 
@@ -3986,6 +3987,8 @@ static unsigned int _calc_new_opp_idx(struct mt_cpu_dvfs *p, int new_opp_idx)
 	}
 #endif
 
+	// Commented out by me!
+#if 0
 	p_ll = id_to_cpu_dvfs(MT_CPU_DVFS_LL);
 	if (cpu_dvfs_is(p, MT_CPU_DVFS_L)) {
 		if (p_ll->armpll_is_available && (new_opp_idx > p_ll->idx_opp_tbl))
@@ -4000,6 +4003,7 @@ static unsigned int _calc_new_opp_idx(struct mt_cpu_dvfs *p, int new_opp_idx)
 
 	if ((p->idx_opp_ppm_base == p->idx_opp_ppm_limit) && p->idx_opp_ppm_base != -1)
 		new_opp_idx = p->idx_opp_ppm_base;
+#endif
 
 #ifdef OPP_DEFECT
 	if (!release_dvfs) {
@@ -4086,6 +4090,9 @@ static void ppm_limit_callback(struct ppm_client_req req)
 	int ignore_ppm[NR_MT_CPU_DVFS] = {0};
 	unsigned int i;
 
+	// Added by me to not do any of the below!
+	return;
+
 	cpufreq_ver("get feedback from PPM module\n");
 
 	cpufreq_lock(flags);
@@ -4141,9 +4148,10 @@ static void ppm_limit_callback(struct ppm_client_req req)
 
 	cpufreq_unlock(flags);
 
-	for_each_cpu_dvfs_only(i, p)
-		if (!ignore_ppm[i])
-			_mt_cpufreq_set(p->mt_policy, i, -1);
+// Commented out by me
+//	for_each_cpu_dvfs_only(i, p)
+//		if (!ignore_ppm[i])
+//			_mt_cpufreq_set(p->mt_policy, i, -1);
 
 }
 #endif
@@ -4192,6 +4200,10 @@ static int _mt_cpufreq_target(struct cpufreq_policy *policy, unsigned int target
 		|| (id_to_cpu_dvfs(id) && id_to_cpu_dvfs(id)->dvfs_disable_by_suspend)
 	    )
 		return -EINVAL;
+
+	printk("%s: mt_cpu_dvfs_id=%u, target_freq=%u, new_opp_idx=%u, tbl_freq=%u\n",
+		   __func__, id, target_freq, new_opp_idx,
+		   id_to_cpu_dvfs(id)->freq_tbl_for_cpufreq[new_opp_idx].frequency);
 
 	_mt_cpufreq_set(policy, id, new_opp_idx);
 
@@ -4276,8 +4288,11 @@ static int _mt_cpufreq_init(struct cpufreq_policy *policy)
 		policy->min = cpu_dvfs_get_min_freq(id_to_cpu_dvfs(id));
 
 		if (_mt_cpufreq_sync_opp_tbl_idx(p) >= 0)
-			if (p->idx_normal_max_opp == -1)
-				p->idx_normal_max_opp = p->idx_opp_tbl;
+			if (p->idx_normal_max_opp == -1) {
+//				p->idx_normal_max_opp = p->idx_opp_tbl;
+				// Changed by me
+				p->idx_normal_max_opp = 0;
+			}
 
 		aee_record_cpufreq_cb(9);
 		opp_tbl_m_info = &opp_tbls_m[id][CPU_LV_TO_OPP_IDX(lv)];
