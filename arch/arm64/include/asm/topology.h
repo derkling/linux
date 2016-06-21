@@ -32,6 +32,8 @@ const struct cpumask *cpu_coregroup_mask(int cpu);
 struct sched_domain;
 #define arch_scale_freq_capacity arch_scale_freq_capacity
 extern unsigned long arch_scale_freq_capacity(struct sched_domain *sd, int cpu);
+#define arch_scale_cpu_capacity arch_scale_cpu_capacity
+extern unsigned long arch_scale_cpu_capacity(struct sched_domain *sd, int cpu);
 
 /* Extras of CPU & Cluster functions */
 extern int arch_cpu_is_big(unsigned int cpu);
