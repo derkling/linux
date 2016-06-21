@@ -45,6 +45,11 @@ static DEFINE_PER_CPU(unsigned long, cpu_scale);
 
 unsigned long arch_scale_cpu_capacity(struct sched_domain *sd, int cpu)
 {
+	char *sd_name = sd ? sd->name : NULL;
+
+	trace_printk("arch_scale_cpu_capacity: cpu=%d sd=%s cap=%lu\n",
+		     cpu, sd_name, per_cpu(cpu_scale, cpu));
+
 	return per_cpu(cpu_scale, cpu);
 }
 
@@ -353,21 +358,31 @@ void arch_scale_set_curr_freq(int cpu, unsigned long freq)
 
 	curr = (freq * SCHED_CAPACITY_SCALE) / max;
 
+	trace_printk("arch_scale_set_curr_freq: cpu=%d freq=%lu max=%lu cpu_freq_capacity=%lu\n",
+		     cpu, freq, max, curr);
+
 	atomic_long_set(&per_cpu(cpu_freq_capacity, cpu), curr);
 }
 
 /* cpufreq callback function setting max cpu frequency */
 void arch_scale_set_max_freq(int cpu, unsigned long freq)
 {
+	trace_printk("arch_scale_set_max_freq: cpu=%d cpu_max_freq=%lu\n", cpu,
+		     freq);
+
 	atomic_long_set(&per_cpu(cpu_max_freq, cpu), freq);
 }
 
 unsigned long arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
 {
 	unsigned long curr = atomic_long_read(&per_cpu(cpu_freq_capacity, cpu));
+	char *sd_name = sd ? sd->name : NULL;
 
 	if (!curr)
-		return SCHED_CAPACITY_SCALE;
+		curr = SCHED_CAPACITY_SCALE;
+
+	trace_printk("arch_scale_freq_capacity: cpu=%d sd=%s cpu_max_freq=%lu cpu_freq_capacity=%lu\n",
+		     cpu, sd_name, atomic_long_read(&per_cpu(cpu_max_freq, cpu)), curr);
 
 	return curr;
 }
@@ -383,6 +398,9 @@ unsigned long arch_get_cur_cpu_capacity(int cpu)
 
 	if (!scale_freq)
 		scale_freq = SCHED_CAPACITY_SCALE;
+
+	trace_printk("arch_get_cur_cpu_capacity: cpu=%d cur_cpu_capacity=%lu\n",
+		     cpu, per_cpu(cpu_scale, cpu) * scale_freq / SCHED_CAPACITY_SCALE);
 
 	return (per_cpu(cpu_scale, cpu) * scale_freq / SCHED_CAPACITY_SCALE);
 }
