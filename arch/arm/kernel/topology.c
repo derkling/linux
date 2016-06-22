@@ -21,6 +21,7 @@
 #include <linux/of.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
+#include <linux/cpuset.h>
 
 #include <asm/cputype.h>
 #include <asm/topology.h>
@@ -43,6 +44,8 @@
 static DEFINE_PER_CPU(unsigned long, cpu_scale) = SCHED_CAPACITY_SCALE;
 
 static DEFINE_MUTEX(capacity_mutex);
+static bool asym_cpucap;
+static bool update_flags;
 
 unsigned long scale_cpu_capacity(struct sched_domain *sd, int cpu)
 {
@@ -52,6 +55,14 @@ unsigned long scale_cpu_capacity(struct sched_domain *sd, int cpu)
 static void set_capacity_scale(unsigned int cpu, unsigned long capacity)
 {
 	per_cpu(cpu_scale, cpu) = capacity;
+}
+
+static void update_sched_flags(void)
+{
+	update_flags = true;
+	rebuild_sched_domains();
+	update_flags = false;
+	pr_debug("cpu_capacity: Rebuilt sched_domain hierarchy.\n");
 }
 
 #ifdef CONFIG_PROC_SYSCTL
@@ -83,6 +94,7 @@ static ssize_t store_cpu_capacity(struct device *dev,
 
 	if (count) {
 		char *p = (char *) buf;
+		bool asym = false;
 
 		ret = kstrtoul(p, 0, &new_capacity);
 		if (ret)
@@ -93,6 +105,17 @@ static ssize_t store_cpu_capacity(struct device *dev,
 		mutex_lock(&capacity_mutex);
 		for_each_cpu(i, &cpu_topology[this_cpu].core_sibling)
 			set_capacity_scale(i, new_capacity);
+
+		for_each_possible_cpu(i) {
+			if (per_cpu(cpu_scale, i) != new_capacity)
+				asym = true;
+		}
+
+		if (asym != asym_cpucap) {
+			asym_cpucap = asym;
+			update_sched_flags();
+		}
+
 		mutex_unlock(&capacity_mutex);
 	}
 
@@ -154,7 +177,6 @@ static bool cap_from_dt = true;
 static u32 *raw_capacity;
 static bool cap_parsing_failed;
 static u32 capacity_scale;
-static bool asym_cpucap;
 
 static int __init parse_cpu_capacity(struct device_node *cpu_node, int cpu)
 {
@@ -197,6 +219,7 @@ static void normalize_cpu_capacity(void)
 {
 	u64 capacity;
 	int cpu;
+	bool asym = false;
 
 	if (WARN_ON(!raw_capacity) || cap_parsing_failed)
 		return;
@@ -211,7 +234,12 @@ static void normalize_cpu_capacity(void)
 		pr_debug("cpu_capacity: CPU%d cpu_capacity=%lu\n",
 			cpu, arch_scale_cpu_capacity(NULL, cpu));
 		if (capacity < capacity_scale)
-			asym_cpucap = true;
+			asym = true;
+	}
+
+	if (asym != asym_cpucap) {
+		asym_cpucap = asym;
+		update_sched_flags();
 	}
 
 	mutex_unlock(&capacity_mutex);
@@ -443,6 +471,11 @@ static void update_siblings_masks(unsigned int cpuid)
 			cpumask_set_cpu(cpu, &cpuid_topo->thread_sibling);
 	}
 	smp_wmb();
+}
+
+int arch_update_cpu_topology(void)
+{
+	return update_flags ? 1 : 0;
 }
 
 /*
