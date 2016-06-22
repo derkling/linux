@@ -3369,6 +3369,71 @@ int default_wake_function(wait_queue_t *curr, unsigned mode, int wake_flags,
 }
 EXPORT_SYMBOL(default_wake_function);
 
+/* I have tried to follow the logic which __sched_setscheduler follows.
+ *
+ * The only difference being the while changing the class from rt to fair,
+ * I am not dequeing the task from the rq explicitly, but IMO that's
+ * already done by the rt throttling code.
+ *
+ * Similarly, when I am changing the task class from fair to rt, I am not
+ * enquing it back onto rt queue.
+ */
+void __setprio(struct rq *rq, struct task_struct *p, int prio)
+{
+	int oldprio, on_rq, running;
+	const struct sched_class *prev_class;
+
+	oldprio = p->prio;
+	prev_class = p->sched_class;
+	on_rq = p->on_rq;
+
+	running = task_current(rq, p);
+	on_rq = p->on_rq;
+	p->sched_class = &fair_sched_class;
+
+	p->policy = SCHED_NORMAL;
+	p->static_prio = NICE_TO_PRIO(0);
+	p->rt_priority = 0;
+	p->normal_prio = normal_prio(p);
+	p->prio = rt_mutex_getprio(p);
+
+	set_load_weight(p);
+	//pr_err("In set prio running:%d on_queue:%d", running, on_rq);
+	//set_load_weight(p);
+	if (running)
+		p->sched_class->set_curr_task(rq);
+	if (on_rq)
+		enqueue_task(rq, p, oldprio < prio ? ENQUEUE_HEAD : 0);
+	check_class_changed(rq, p, prev_class, oldprio);
+}
+EXPORT_SYMBOL(__setprio);
+
+void __setprio1(struct rq *rq, struct task_struct *p, int prio)
+{
+	int oldprio, on_rq, running;
+	const struct sched_class *prev_class;
+
+	oldprio = p->prio;
+	prev_class = p->sched_class;
+	on_rq = p->on_rq;
+
+	running = task_current(rq, p);
+	on_rq = p->on_rq;
+	if (running)
+		p->sched_class->put_prev_task(rq, p);
+	if (on_rq)
+		dequeue_task(rq, p, 0);
+
+	p->sched_class = &rt_sched_class;
+	p->policy = SCHED_FIFO;
+	p->rt_priority = prio;
+	p->normal_prio = normal_prio(p);
+	p->prio = rt_mutex_getprio(p);
+	set_load_weight(p);
+	check_class_changed(rq, p, prev_class, oldprio);
+}
+EXPORT_SYMBOL(__setprio1);
+
 #ifdef CONFIG_RT_MUTEXES
 
 /*

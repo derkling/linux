@@ -10,6 +10,11 @@
 #include "walt.h"
 
 int sched_rr_timeslice = RR_TIMESLICE;
+extern void __setprio(struct rq *rq, struct task_struct *p, int prio);
+extern void __setprio1(struct rq *rq, struct task_struct *p, int prio);
+
+static void cfs_throttled_rt_tasks(struct rt_rq *rt_rq, bool enqueue);
+
 
 static int do_sched_rt_period_timer(struct rt_bandwidth *rt_b, int overrun);
 
@@ -850,8 +855,10 @@ static int do_sched_rt_period_timer(struct rt_bandwidth *rt_b, int overrun)
 		if (rt_rq->rt_throttled)
 			throttled = 1;
 
-		if (enqueue)
+		if (enqueue) {
+			cfs_throttled_rt_tasks(rt_rq, false);
 			sched_rt_rq_enqueue(rt_rq);
+		}
 		raw_spin_unlock(&rq->lock);
 	}
 
@@ -871,6 +878,44 @@ static inline int rt_se_prio(struct sched_rt_entity *rt_se)
 #endif
 
 	return rt_task_of(rt_se)->prio;
+}
+
+/* Goes through all the tasks on the rt_rq
+ * Logic for going through all the tasks has been taken from
+ * dump_throttled_rt_tasks
+ */
+static void cfs_throttled_rt_tasks(struct rt_rq *rt_rq, bool enqueue)
+{
+	struct rt_prio_array *array = &rt_rq->active;
+	struct sched_rt_entity *rt_se;
+	struct rq *rq = rq_of_rt_rq(rt_rq);
+	int idx;
+
+	if (bitmap_empty(array->bitmap, MAX_RT_PRIO))
+		return;
+
+	idx = sched_find_first_bit(array->bitmap);
+	while (idx < MAX_RT_PRIO) {
+		list_for_each_entry(rt_se, array->queue + idx, run_list) {
+			struct task_struct *p;
+
+			if (!rt_entity_is_task(rt_se))
+				continue;
+
+			p = rt_task_of(rt_se);
+			if (enqueue && rt_task(p)) {
+				pr_err("TEMP_FIFO throttling tasks %d\n", p->pid);
+				// Changes the class of the task to fair scheduler
+				__setprio(rq, p, 0);
+			}
+			else if (!enqueue && !rt_task(p)){
+				// Changes the class of the task back to rt
+				pr_err("TEMP_FIFO Enqueing %d *******\n", p->pid);
+				__setprio1(rq, p, 1);
+			}
+		}
+		idx = find_next_bit(array->bitmap, MAX_RT_PRIO, idx + 1);
+	}
 }
 
 static void dump_throttled_rt_tasks(struct rt_rq *rt_rq)
@@ -960,6 +1005,7 @@ static int sched_rt_runtime_exceeded(struct rt_rq *rt_rq)
 
 		if (rt_rq_throttled(rt_rq)) {
 			sched_rt_rq_dequeue(rt_rq);
+			cfs_throttled_rt_tasks(rt_rq, true);
 			return 1;
 		}
 	}
