@@ -42,6 +42,8 @@
  */
 static DEFINE_PER_CPU(unsigned long, cpu_scale) = SCHED_CAPACITY_SCALE;
 
+static DEFINE_MUTEX(capacity_mutex);
+
 unsigned long scale_cpu_capacity(struct sched_domain *sd, int cpu)
 {
 	return per_cpu(cpu_scale, cpu);
@@ -88,8 +90,10 @@ static ssize_t store_cpu_capacity(struct device *dev,
 		if (new_capacity > SCHED_CAPACITY_SCALE)
 			return -EINVAL;
 
+		mutex_lock(&capacity_mutex);
 		for_each_cpu(i, &cpu_topology[this_cpu].core_sibling)
 			set_capacity_scale(i, new_capacity);
+		mutex_unlock(&capacity_mutex);
 	}
 
 	return count;
@@ -197,6 +201,8 @@ static void normalize_cpu_capacity(void)
 	if (WARN_ON(!raw_capacity) || cap_parsing_failed)
 		return;
 
+	mutex_lock(&capacity_mutex);
+
 	pr_debug("cpu_capacity: capacity_scale=%u\n", capacity_scale);
 	for_each_possible_cpu(cpu) {
 		capacity = (raw_capacity[cpu] << SCHED_CAPACITY_SHIFT)
@@ -207,6 +213,8 @@ static void normalize_cpu_capacity(void)
 		if (capacity < capacity_scale)
 			asym_cpucap = true;
 	}
+
+	mutex_unlock(&capacity_mutex);
 }
 
 #ifdef CONFIG_CPU_FREQ
