@@ -1125,6 +1125,7 @@ struct load_weight {
  * 2) for entity, support any load.weight always runnable
  */
 struct sched_avg {
+	u64 last_migrate_time;
 	u64 last_update_time, load_sum;
 	u32 util_sum, period_contrib;
 	unsigned long load_avg, util_avg;

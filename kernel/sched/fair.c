@@ -673,6 +673,7 @@ void init_entity_runnable_average(struct sched_entity *se)
 {
 	struct sched_avg *sa = &se->avg;
 
+	sa->last_migrate_time = 0;
 	sa->last_update_time = 0;
 	/*
 	 * sched_avg's period_contrib should be strictly less then 1024, so
@@ -2574,6 +2575,7 @@ static void attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 
 skip_aging:
 	se->avg.last_update_time = cfs_rq->avg.last_update_time;
+	se->avg.last_migrate_time = cfs_rq->avg.last_update_time;
 	cfs_rq->avg.load_avg += se->avg.load_avg;
 	cfs_rq->avg.load_sum += se->avg.load_sum;
 	cfs_rq->avg.util_avg += se->avg.util_avg;
@@ -5012,6 +5014,11 @@ static inline unsigned long task_util(struct task_struct *p)
 	return p->se.avg.util_avg;
 }
 
+static inline unsigned long task_load(struct task_struct *p)
+{
+	return p->se.avg.load_avg;
+}
+
 unsigned int capacity_margin = 1280; /* ~20% margin */
 
 static inline unsigned long boosted_task_util(struct task_struct *task);
@@ -5143,7 +5150,34 @@ static inline unsigned long
 boosted_task_util(struct task_struct *task)
 {
 	unsigned long util = task_util(task);
+	unsigned long load = task_load(task);
 	unsigned long margin = schedtune_task_margin(task);
+
+	int cpu = task_cpu(task);
+	struct sched_entity *se = &task->se;
+	u64 delta;
+
+	/*
+	 * change to use load metrics if can meet two conditions:
+	 * - load is 20% higher than util, so that means task have extra
+	 *   20% time for runnable state and waiting to run; Or the task has
+	 *   higher prioirty than nice 0; then consider to use load signal
+	 *   rather than util signal;
+	 * - load reach CPU "over-utilized" criteria.
+	 */
+	if ((load * capacity_margin > capacity_of(cpu) * 1024) &&
+	    (load * 1024 > util * capacity_margin))
+		util = load;
+	else {
+		/*
+		 * Avoid ping-pong issue, so make sure the task can run at
+		 * least once in higher capacity CPU
+		 */
+		delta = se->avg.last_update_time - se->avg.last_migrate_time;
+		if (delta < sysctl_sched_latency &&
+		    capacity_of(cpu) == cpu_rq(cpu)->rd->max_cpu_capacity.val)
+			util = load;
+	}
 
 	trace_sched_boost_task(task, util, margin);
 
@@ -8819,6 +8853,7 @@ static void task_move_group_fair(struct task_struct *p)
 #ifdef CONFIG_SMP
 	/* Tell se's cfs_rq has been changed -- migrated */
 	p->se.avg.last_update_time = 0;
+	p->se.avg.last_migrate_time = 0;
 #endif
 	attach_task_cfs_rq(p);
 }
