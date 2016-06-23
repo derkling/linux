@@ -7289,6 +7289,9 @@ void fix_small_imbalance(struct lb_env *env, struct sd_lb_stats *sds)
 		local->load_per_task = cpu_avg_load_per_task(env->dst_cpu);
 	else if (busiest->load_per_task > local->load_per_task)
 		imbn = 1;
+	else if (busiest->sum_nr_running >= busiest->group_weight &&
+		 local->sum_nr_running < local->group_weight)
+		imbn = 1;
 
 	scaled_busy_load_per_task =
 		(busiest->load_per_task * SCHED_CAPACITY_SCALE) /
