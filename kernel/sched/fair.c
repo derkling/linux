@@ -5391,7 +5391,7 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 
 		if (new_util < capacity_curr_of(i)) {
 			target_cpu = i;
-			if (cpu_rq(i)->nr_running)
+			if (!cpu_rq(i)->nr_running)
 				break;
 		}
 
