@@ -5407,6 +5407,18 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 	if (target_cpu == -1)
 	       target_cpu = task_cpu(p);
 
+	/*
+	 * Destination CPU has higher capacity than previous CPU, so from
+	 * previous path that means pervious CPU has no enough capacity to meet
+	 * the waken up task. Therefore directly return back and select
+	 * destination CPU.
+	 */
+	if (capacity_of(target_cpu) != capacity_of(task_cpu(p))) {
+		if (capacity_of(target_cpu) ==
+			cpu_rq(target_cpu)->rd->max_cpu_capacity.val)
+		return target_cpu;
+	}
+
 	if (target_cpu != task_cpu(p)) {
 		struct energy_env eenv = {
 			.util_delta	= task_util(p),
