@@ -5343,7 +5343,7 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 	struct sched_domain *sd;
 	struct sched_group *sg, *sg_target;
 	int target_max_cap = INT_MAX;
-	int target_cpu = task_cpu(p);
+	int target_cpu = -1;
 	int i;
 
 	sd = rcu_dereference(per_cpu(sd_ea, task_cpu(p)));
@@ -5386,7 +5386,7 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 		 */
 		int new_util = cpu_util(i) + boosted_task_util(p);
 
-		if (new_util > capacity_orig_of(i))
+		if (new_util > capacity_orig_of(i) && target_cpu != -1)
 			continue;
 
 		if (new_util < capacity_curr_of(i)) {
@@ -5395,10 +5395,17 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 				break;
 		}
 
-		/* cpu has capacity at higher OPP, keep it as fallback */
-		if (target_cpu == task_cpu(p))
+		/*
+		 * cpu has capacity at higher OPP, keep it as fallback;
+		 * give the previous cpu more chance to run
+		 */
+		if (task_cpu(p) == i || target_cpu == -1)
 			target_cpu = i;
 	}
+
+	/* If have not select any CPU, then to use previous CPU */
+	if (target_cpu == -1)
+	       target_cpu = task_cpu(p);
 
 	if (target_cpu != task_cpu(p)) {
 		struct energy_env eenv = {
