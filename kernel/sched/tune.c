@@ -699,17 +699,25 @@ sysctl_sched_cfs_boost_handler(struct ctl_table *table, int write,
 			       loff_t *ppos)
 {
 	int ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+	unsigned threshold_idx;
+	int boost_pct;
 
 	if (ret || !write)
 		return ret;
 
-	/* Performance Boost (B) region threshold params */
-	perf_boost_idx  = sysctl_sched_cfs_boost;
-	perf_boost_idx /= 10;
+	if (sysctl_sched_cfs_boost < -100 || sysctl_sched_cfs_boost > 100)
+		return -EINVAL;
+	boost_pct = sysctl_sched_cfs_boost;
 
-	/* Performance Constraint (C) region threshold params */
-	perf_constrain_idx  = 100 - sysctl_sched_cfs_boost;
-	perf_constrain_idx /= 10;
+	/*
+	 * Update threshold params for Performance Boost (B)
+	 * and Performance Constraint (C) regions.
+	 * The current implementatio uses the same cuts for both
+	 * B and C regions.
+	 */
+	threshold_idx = clamp(boost_pct, 0, 99) / 10;
+	perf_boost_idx = threshold_idx;
+	perf_constrain_idx = threshold_idx;
 
 	return 0;
 }
