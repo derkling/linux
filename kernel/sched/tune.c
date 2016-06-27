@@ -537,13 +537,29 @@ boost_write(struct cgroup_subsys_state *css, struct cftype *cft,
 	    u64 boost)
 {
 	struct schedtune *st = css_st(css);
+	unsigned threshold_idx;
+	int boost_pct;
 
 	if (boost < 0 || boost > 100)
 		return -EINVAL;
+	boost_pct = boost;
 
-	st->boost = boost;
-	if (css == &root_schedtune.css)
-		sysctl_sched_cfs_boost = boost;
+	/*
+	 * Update threshold params for Performance Boost (B)
+	 * and Performance Constraint (C) regions.
+	 * The current implementatio uses the same cuts for both
+	 * B and C regions.
+	 */
+	threshold_idx = clamp(boost_pct, 0, 99) / 10;
+	st->perf_boost_idx = threshold_idx;
+	st->perf_constrain_idx = threshold_idx;
+
+ 	st->boost = boost;
+	if (css == &root_schedtune.css) {
+ 		sysctl_sched_cfs_boost = boost;
+		perf_boost_idx  = threshold_idx;
+		perf_constrain_idx  = threshold_idx;
+	}
 
 	/* Update CPU boost */
 	schedtune_boostgroup_update(st->idx, st->boost);
