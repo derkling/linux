@@ -124,7 +124,7 @@ static int get_idr(struct idr *idr, int *id)
 	int ret;
 
 	mutex_lock(&cooling_cpufreq_lock);
-	ret = idr_alloc(idr, NULL, 0, 0, GFP_KERNEL);
+	ret = idr_alloc(idr, NULL, 0, 0, GFP_ATOMIC);
 	mutex_unlock(&cooling_cpufreq_lock);
 	if (unlikely(ret < 0))
 		return ret;
@@ -288,7 +288,7 @@ static int build_dyn_power_table(struct cpufreq_cooling_device *cpufreq_device,
 		goto unlock;
 	}
 
-	power_table = kcalloc(num_opps, sizeof(*power_table), GFP_KERNEL);
+	power_table = kcalloc(num_opps, sizeof(*power_table), GFP_ATOMIC);
 	if (!power_table) {
 		ret = -ENOMEM;
 		goto unlock;
@@ -576,7 +576,7 @@ static int cpufreq_get_requested_power(struct thermal_cooling_device *cdev,
 		u32 ncpus = cpumask_weight(&cpufreq_device->allowed_cpus);
 
 		load_cpu = devm_kcalloc(&cdev->device, ncpus, sizeof(*load_cpu),
-					GFP_KERNEL);
+					GFP_ATOMIC);
 	}
 
 	for_each_cpu(cpu, &cpufreq_device->allowed_cpus) {
@@ -784,14 +784,14 @@ __cpufreq_cooling_register(struct device_node *np,
 		return ERR_PTR(-EPROBE_DEFER);
 	}
 
-	cpufreq_dev = kzalloc(sizeof(*cpufreq_dev), GFP_KERNEL);
+	cpufreq_dev = kzalloc(sizeof(*cpufreq_dev), GFP_ATOMIC);
 	if (!cpufreq_dev)
 		return ERR_PTR(-ENOMEM);
 
 	num_cpus = cpumask_weight(clip_cpus);
 	cpufreq_dev->time_in_idle = kcalloc(num_cpus,
 					    sizeof(*cpufreq_dev->time_in_idle),
-					    GFP_KERNEL);
+					    GFP_ATOMIC);
 	if (!cpufreq_dev->time_in_idle) {
 		cool_dev = ERR_PTR(-ENOMEM);
 		goto free_cdev;
@@ -799,7 +799,7 @@ __cpufreq_cooling_register(struct device_node *np,
 
 	cpufreq_dev->time_in_idle_timestamp =
 		kcalloc(num_cpus, sizeof(*cpufreq_dev->time_in_idle_timestamp),
-			GFP_KERNEL);
+			GFP_ATOMIC);
 	if (!cpufreq_dev->time_in_idle_timestamp) {
 		cool_dev = ERR_PTR(-ENOMEM);
 		goto free_time_in_idle;
@@ -810,7 +810,7 @@ __cpufreq_cooling_register(struct device_node *np,
 		cpufreq_dev->max_level++;
 
 	cpufreq_dev->freq_table = kmalloc(sizeof(*cpufreq_dev->freq_table) *
-					  cpufreq_dev->max_level, GFP_KERNEL);
+					  cpufreq_dev->max_level, GFP_ATOMIC);
 	if (!cpufreq_dev->freq_table) {
 		cool_dev = ERR_PTR(-ENOMEM);
 		goto free_time_in_idle_timestamp;

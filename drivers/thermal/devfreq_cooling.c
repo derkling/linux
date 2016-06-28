@@ -41,7 +41,7 @@ static int get_idr(struct idr *idr, int *id)
 	int ret;
 
 	mutex_lock(&devfreq_lock);
-	ret = idr_alloc(idr, NULL, 0, 0, GFP_KERNEL);
+	ret = idr_alloc(idr, NULL, 0, 0, GFP_ATOMIC);
 	mutex_unlock(&devfreq_lock);
 	if (unlikely(ret < 0))
 		return ret;
@@ -320,7 +320,7 @@ static int devfreq_cooling_gen_power_table(struct devfreq_cooling_device *dfc)
 		return -ERANGE;
 	}
 
-	table = devm_kcalloc(dev, num_opps, sizeof(*table), GFP_KERNEL);
+	table = devm_kcalloc(dev, num_opps, sizeof(*table), GFP_ATOMIC);
 	if (!table) {
 		rcu_read_unlock();
 		return -ENOMEM;
@@ -376,7 +376,7 @@ of_devfreq_cooling_register_power(struct device_node *np, struct devfreq *df,
 	if (!df->profile->max_state || !df->profile->freq_table)
 		return ERR_PTR(-EINVAL);
 
-	dfc = devm_kzalloc(dev, sizeof(*dfc), GFP_KERNEL);
+	dfc = devm_kzalloc(dev, sizeof(*dfc), GFP_ATOMIC);
 	if (!dfc)
 		return ERR_PTR(-ENOMEM);
 
