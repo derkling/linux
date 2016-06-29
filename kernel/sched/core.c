@@ -2865,7 +2865,7 @@ static void sched_freq_tick_walt(int cpu)
 
 static void sched_freq_tick(int cpu)
 {
-	unsigned long capacity_orig, capacity_curr;
+	unsigned long capacity_orig, capacity_curr, capacity_sum;
 
 	if (!sched_freq())
 		return;
@@ -2876,6 +2876,18 @@ static void sched_freq_tick(int cpu)
 		return;
 
 	_sched_freq_tick(cpu);
+	/*
+	 * To make free room for a task that is building up its "real"
+	 * utilization and to harm its performance the least, request
+	 * a jump to a higher OPP as soon as the margin of free capacity
+	 * is impacted (specified by capacity_margin).
+	 */
+
+	scr = &per_cpu(cpu_sched_capacity_reqs, cpu);
+	capacity_sum = sum_capacity_reqs(cpu_util(cpu), scr);
+	if (capacity_curr < capacity_sum) {
+		set_cfs_cpu_capacity(cpu, true, capacity_sum);
+	}
 }
 #else
 static inline void sched_freq_tick(int cpu) { }
