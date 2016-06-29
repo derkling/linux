@@ -12,7 +12,9 @@ static inline int rt_prio(int prio)
 
 static inline int rt_task(struct task_struct *p)
 {
-	return rt_prio(p->prio);
+	return rt_prio(p->prio) ||
+	       p->policy == SCHED_FIFO ||
+	       p->policy == SCHED_RR;
 }
 
 #ifdef CONFIG_RT_MUTEXES

@@ -3338,48 +3338,10 @@ int default_wake_function(wait_queue_t *curr, unsigned mode, int wake_flags,
 }
 EXPORT_SYMBOL(default_wake_function);
 
-#ifdef CONFIG_RT_MUTEXES
-
-/*
- * rt_mutex_setprio - set the current priority of a task
- * @p: task
- * @prio: prio value (kernel-internal form)
- *
- * This function changes the 'effective' priority of a task. It does
- * not touch ->normal_prio like __setscheduler().
- *
- * Used by the rt_mutex code to implement priority inheritance
- * logic. Call site only calls if the priority of the task changed.
- */
-void rt_mutex_setprio(struct task_struct *p, int prio)
-{
+void __setprio(struct rq *rq, struct task_struct *p, int prio) {
 	int oldprio, queued, running, enqueue_flag = 0;
-	struct rq *rq;
 	const struct sched_class *prev_class;
 
-	BUG_ON(prio > MAX_PRIO);
-
-	rq = __task_rq_lock(p);
-
-	/*
-	 * Idle task boosting is a nono in general. There is one
-	 * exception, when PREEMPT_RT and NOHZ is active:
-	 *
-	 * The idle task calls get_next_timer_interrupt() and holds
-	 * the timer wheel base->lock on the CPU and another CPU wants
-	 * to access the timer (probably to cancel it). We can safely
-	 * ignore the boosting request, as the idle CPU runs this code
-	 * with interrupts disabled and will complete the lock
-	 * protected section without being interrupted. So there is no
-	 * real need to boost.
-	 */
-	if (unlikely(p == rq->idle)) {
-		WARN_ON(p != rq->curr);
-		WARN_ON(p->pi_blocked_on);
-		goto out_unlock;
-	}
-
-	trace_sched_pi_setprio(p, prio);
 	oldprio = p->prio;
 	prev_class = p->sched_class;
 	queued = task_on_rq_queued(p);
@@ -3430,6 +3392,49 @@ void rt_mutex_setprio(struct task_struct *p, int prio)
 		enqueue_task(rq, p, enqueue_flag);
 
 	check_class_changed(rq, p, prev_class, oldprio);
+}
+
+#ifdef CONFIG_RT_MUTEXES
+
+/*
+ * rt_mutex_setprio - set the current priority of a task
+ * @p: task
+ * @prio: prio value (kernel-internal form)
+ *
+ * This function changes the 'effective' priority of a task. It does
+ * not touch ->normal_prio like __setscheduler().
+ *
+ * Used by the rt_mutex code to implement priority inheritance
+ * logic. Call site only calls if the priority of the task changed.
+ */
+void rt_mutex_setprio(struct task_struct *p, int prio)
+{
+	struct rq *rq;
+
+	BUG_ON(prio > MAX_PRIO);
+
+	rq = __task_rq_lock(p);
+
+	/*
+	 * Idle task boosting is a nono in general. There is one
+	 * exception, when PREEMPT_RT and NOHZ is active:
+	 *
+	 * The idle task calls get_next_timer_interrupt() and holds
+	 * the timer wheel base->lock on the CPU and another CPU wants
+	 * to access the timer (probably to cancel it). We can safely
+	 * ignore the boosting request, as the idle CPU runs this code
+	 * with interrupts disabled and will complete the lock
+	 * protected section without being interrupted. So there is no
+	 * real need to boost.
+	 */
+	if (unlikely(p == rq->idle)) {
+		WARN_ON(p != rq->curr);
+		WARN_ON(p->pi_blocked_on);
+		goto out_unlock;
+	}
+
+	trace_sched_pi_setprio(p, prio);
+	__setprio(rq, p, prio);
 out_unlock:
 	__task_rq_unlock(rq);
 }
