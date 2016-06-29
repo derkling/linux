@@ -464,6 +464,40 @@ static inline struct rt_rq *group_rt_rq(struct sched_rt_entity *rt_se)
 static void enqueue_rt_entity(struct sched_rt_entity *rt_se, bool head);
 static void dequeue_rt_entity(struct sched_rt_entity *rt_se);
 
+/*
+ * Iterates through all the tasks on @rt_rq and, depending on @enqueue, moves
+ * them between FIFO and OTHER.
+ */
+static void cfs_throttled_rt_tasks(struct rt_rq *rt_rq, bool enqueue)
+{
+	struct rt_prio_array *array = &rt_rq->active;
+	struct sched_rt_entity *rt_se;
+	int idx;
+
+	if (bitmap_empty(array->bitmap, MAX_RT_PRIO))
+		return;
+
+	idx = sched_find_first_bit(array->bitmap);
+	while (idx < MAX_RT_PRIO) {
+		list_for_each_entry(rt_se, array->queue + idx, run_list) {
+			struct task_struct *p;
+
+			if (!rt_entity_is_task(rt_se))
+				continue;
+
+			p = rt_task_of(rt_se);
+			if (enqueue) {
+				trace_printk("%s: task=%d --> SCHED_OTHER",
+						__func__, task_pid_nr(p));
+			} else {
+				trace_printk("%s: task=%d --> SCHED_FIFO",
+						__func__, task_pid_nr(p));
+			}
+		}
+		idx = find_next_bit(array->bitmap, MAX_RT_PRIO, idx + 1);
+	}
+}
+
 static void sched_rt_rq_enqueue(struct rt_rq *rt_rq)
 {
 	struct task_struct *curr = rq_of_rt_rq(rt_rq)->curr;
@@ -479,8 +513,10 @@ static void sched_rt_rq_enqueue(struct rt_rq *rt_rq)
 	if (rt_rq->rt_nr_running) {
 		if (!rt_se)
 			enqueue_top_rt_rq(rt_rq);
-		else if (!on_rt_rq(rt_se))
+		else if (!on_rt_rq(rt_se)) {
+			cfs_throttled_rt_tasks(rt_rq, false);
 			enqueue_rt_entity(rt_se, false);
+		}
 
 		if (rt_rq->highest_prio.curr < curr->prio)
 			resched_curr(rq);
@@ -498,8 +534,10 @@ static void sched_rt_rq_dequeue(struct rt_rq *rt_rq)
 
 	if (!rt_se)
 		dequeue_top_rt_rq(rt_rq);
-	else if (on_rt_rq(rt_se))
+	else if (on_rt_rq(rt_se)) {
 		dequeue_rt_entity(rt_se);
+		cfs_throttled_rt_tasks(rt_rq, true);
+	}
 }
 
 static inline int rt_rq_throttled(struct rt_rq *rt_rq)
