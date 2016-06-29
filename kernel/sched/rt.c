@@ -23,6 +23,8 @@ static enum hrtimer_restart sched_rt_period_timer(struct hrtimer *timer)
 	int overrun;
 	int idle = 0;
 
+	trace_printk("%s: rt_period_timer",
+			__func__);
 	for (;;) {
 		now = hrtimer_cb_get_time(timer);
 		overrun = hrtimer_forward(timer, now, rt_b->rt_period);
@@ -472,6 +474,8 @@ static void sched_rt_rq_enqueue(struct rt_rq *rt_rq)
 
 	rt_se = rt_rq->tg->rt_se[cpu];
 
+	trace_printk("%s: rt_rq=%p cpu=%d rt_se=%p rt_nr_running=%d",
+			__func__, rt_rq, cpu, rt_se, rt_rq->rt_nr_running);
 	if (rt_rq->rt_nr_running) {
 		if (!rt_se)
 			enqueue_top_rt_rq(rt_rq);
@@ -489,6 +493,8 @@ static void sched_rt_rq_dequeue(struct rt_rq *rt_rq)
 	int cpu = cpu_of(rq_of_rt_rq(rt_rq));
 
 	rt_se = rt_rq->tg->rt_se[cpu];
+	trace_printk("%s: rt_rq=%p cpu=%d rt_se=%p rt_nr_running=%d",
+			__func__, rt_rq, cpu, rt_se, rt_rq->rt_nr_running);
 
 	if (!rt_se)
 		dequeue_top_rt_rq(rt_rq);
@@ -819,6 +825,8 @@ static int do_sched_rt_period_timer(struct rt_bandwidth *rt_b, int overrun)
 		struct rt_rq *rt_rq = sched_rt_period_rt_rq(rt_b, i);
 		struct rq *rq = rq_of_rt_rq(rt_rq);
 
+		trace_printk("%s: cpu=%d rq=%p rt_rq=%p",
+				__func__, i, rq, rt_rq);
 		raw_spin_lock(&rq->lock);
 		if (rt_rq->rt_time) {
 			u64 runtime;
@@ -831,6 +839,8 @@ static int do_sched_rt_period_timer(struct rt_bandwidth *rt_b, int overrun)
 			if (rt_rq->rt_throttled && rt_rq->rt_time < runtime) {
 				rt_rq->rt_throttled = 0;
 				enqueue = 1;
+				trace_printk("%s: unthrottling rt_rq=%p",
+						__func__, rt_rq);
 
 				/*
 				 * Force a clock update if the CPU was idle,
@@ -935,6 +945,7 @@ static int sched_rt_runtime_exceeded(struct rt_rq *rt_rq)
 			static bool once = false;
 
 			rt_rq->rt_throttled = 1;
+			trace_printk("%s: throttling rt_rq=%p", __func__, rt_rq);
 
 			if (!once) {
 				once = true;
@@ -989,9 +1000,13 @@ static void update_curr_rt(struct rq *rq)
 	if (!rt_bandwidth_enabled())
 		return;
 
+	trace_printk("%s: rq=%p task=%d rt_se=%p",
+			__func__, rq, task_pid_nr(curr), rt_se);
 	for_each_sched_rt_entity(rt_se) {
 		struct rt_rq *rt_rq = rt_rq_of_se(rt_se);
 
+		trace_printk("%s: fesre rt_se=%p rt_rq=%p",
+				__func__, rt_se, rt_rq);
 		if (sched_rt_runtime(rt_rq) != RUNTIME_INF) {
 			raw_spin_lock(&rt_rq->rt_runtime_lock);
 			rt_rq->rt_time += delta_exec;
@@ -1208,6 +1223,9 @@ static void __enqueue_rt_entity(struct sched_rt_entity *rt_se, bool head)
 	if (group_rq && (rt_rq_throttled(group_rq) || !group_rq->rt_nr_running))
 		return;
 
+	trace_printk("%s: rt_rq=%p rt_se=%p is_task=%d",
+			__func__, rt_rq, rt_se, rt_entity_is_task(rt_se));
+
 	if (head)
 		list_add(&rt_se->run_list, queue);
 	else
@@ -1222,6 +1240,8 @@ static void __dequeue_rt_entity(struct sched_rt_entity *rt_se)
 	struct rt_rq *rt_rq = rt_rq_of_se(rt_se);
 	struct rt_prio_array *array = &rt_rq->active;
 
+	trace_printk("%s: rt_rq=%p rt_se=%p is_task=%d",
+			__func__, rt_rq, rt_se, rt_entity_is_task(rt_se));
 	list_del_init(&rt_se->run_list);
 	if (list_empty(array->queue + rt_se_prio(rt_se)))
 		__clear_bit(rt_se_prio(rt_se), array->bitmap);
@@ -1238,6 +1258,8 @@ static void dequeue_rt_stack(struct sched_rt_entity *rt_se)
 	struct sched_rt_entity *back = NULL;
 
 	for_each_sched_rt_entity(rt_se) {
+		trace_printk("%s: fesre rt_se=%p is_task=%d",
+				__func__, rt_se, rt_entity_is_task(rt_se));
 		rt_se->back = back;
 		back = rt_se;
 	}
@@ -1255,8 +1277,11 @@ static void enqueue_rt_entity(struct sched_rt_entity *rt_se, bool head)
 	struct rq *rq = rq_of_rt_se(rt_se);
 
 	dequeue_rt_stack(rt_se);
-	for_each_sched_rt_entity(rt_se)
+	for_each_sched_rt_entity(rt_se) {
+		trace_printk("%s: fesre rt_se=%p is_task=%d",
+				__func__, rt_se, rt_entity_is_task(rt_se));
 		__enqueue_rt_entity(rt_se, head);
+	}
 	enqueue_top_rt_rq(&rq->rt);
 }
 
@@ -1269,8 +1294,11 @@ static void dequeue_rt_entity(struct sched_rt_entity *rt_se)
 	for_each_sched_rt_entity(rt_se) {
 		struct rt_rq *rt_rq = group_rt_rq(rt_se);
 
-		if (rt_rq && rt_rq->rt_nr_running)
+		if (rt_rq && rt_rq->rt_nr_running) {
+			trace_printk("%s: rt_rq=%p rt_nr_running=%d",
+					__func__, rt_rq, rt_rq->rt_nr_running);
 			__enqueue_rt_entity(rt_se, false);
+		}
 	}
 	enqueue_top_rt_rq(&rq->rt);
 }
@@ -1286,6 +1314,8 @@ enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 	if (flags & ENQUEUE_WAKEUP)
 		rt_se->timeout = 0;
 
+	trace_printk("%s: task=%d rt_se=%p flags=%d rq=%p",
+			__func__, task_pid_nr(p), rt_se, flags, rq);
 	enqueue_rt_entity(rt_se, flags & ENQUEUE_HEAD);
 	walt_inc_cumulative_runnable_avg(rq, p);
 
@@ -1297,6 +1327,8 @@ static void dequeue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct sched_rt_entity *rt_se = &p->rt;
 
+	trace_printk("%s: task=%d rt_se=%p flags=%d rq=%p",
+			__func__, task_pid_nr(p), rt_se, flags, rq);
 	update_curr_rt(rq);
 	dequeue_rt_entity(rt_se);
 	walt_dec_cumulative_runnable_avg(rq, p);
@@ -1504,13 +1536,20 @@ static struct task_struct *_pick_next_task_rt(struct rq *rq)
 	struct task_struct *p;
 	struct rt_rq *rt_rq  = &rq->rt;
 
+	trace_printk("%s: rq=%p rt_rq=%p",
+			__func__, rq, rt_rq);
 	do {
 		rt_se = pick_next_rt_entity(rq, rt_rq);
 		BUG_ON(!rt_se);
 		rt_rq = group_rt_rq(rt_se);
+		trace_printk("%s: rt_se=%p is_task=%d rt_rq=%p",
+				__func__, rt_se, rt_entity_is_task(rt_se),
+				rt_rq);
 	} while (rt_rq);
 
 	p = rt_task_of(rt_se);
+	trace_printk("%s: picked task=%d",
+			__func__, task_pid_nr(p));
 	p->se.exec_start = rq_clock_task(rq);
 
 	return p;
