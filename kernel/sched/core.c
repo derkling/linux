@@ -3338,6 +3338,85 @@ int default_wake_function(wait_queue_t *curr, unsigned mode, int wake_flags,
 }
 EXPORT_SYMBOL(default_wake_function);
 
+void __setprio_other(struct rq *rq, struct task_struct *p) {
+	int oldprio, queued, running;
+	const struct sched_class *prev_class;
+
+	lockdep_assert_held(&p->pi_lock);
+	lockdep_assert_held(&rq->lock);
+
+	oldprio = p->prio;
+	prev_class = p->sched_class;
+	queued = task_on_rq_queued(p);
+	running = task_current(rq, p);
+	trace_printk("%s: task=%d queued=%d running=%d prev_class=%p next_class=%p",
+			__func__, task_pid_nr(p), queued, running, prev_class,
+			&fair_sched_class);
+
+	if (queued)
+		dequeue_task(rq, p, 0);
+	if (running)
+		put_prev_task(rq, p);
+
+	p->sched_class = &fair_sched_class;
+	p->prio = DEFAULT_PRIO;
+
+	if (running)
+		p->sched_class->set_curr_task(rq);
+	if (queued)
+		enqueue_task(rq, p, 0);
+
+	check_class_changed(rq, p, prev_class, oldprio);
+}
+
+void __setprio_fifo(struct rq *rq, struct task_struct *p) {
+	int oldprio, queued, running, cpu;
+	const struct sched_class *prev_class;
+
+	lockdep_assert_held(&p->pi_lock);
+	lockdep_assert_held(&rq->lock);
+
+	/*
+	 * p might have migrated while hanging out in OTHER. We will need its
+	 * current rq lock for dequeue_task/put_prev_task.
+	 */
+again:
+	cpu = task_cpu(p);
+	if (cpu != cpu_of(rq)) {
+		double_lock_balance(rq, cpu_rq(cpu));
+		if (cpu != task_cpu(p)) {
+			double_unlock_balance(rq, cpu_rq(cpu));
+			goto again;
+		}
+	}
+
+	oldprio = p->prio;
+	prev_class = p->sched_class;
+	queued = task_on_rq_queued(p);
+	running = task_current(cpu_rq(cpu), p);
+	trace_printk("%s: task=%d task_cpu=%d queued=%d running=%d cpu=%d prev_class=%p next_class=%p",
+			__func__, task_pid_nr(p), task_cpu(p), task_on_rq_queued(p), task_current(rq, p),
+			cpu_of(rq), prev_class, &rt_sched_class);
+
+	if (queued)
+		dequeue_task(cpu_rq(cpu), p, 0);
+	if (running)
+		put_prev_task(cpu_rq(cpu), p);
+
+	p->sched_class = &rt_sched_class;
+	p->prio = p->rt_priority;
+
+	if (running)
+		p->sched_class->set_curr_task(rq);
+	if (queued)
+		enqueue_task(rq, p, 0);
+
+	check_class_changed(cpu_rq(cpu), p, prev_class, oldprio);
+	
+	if (cpu != cpu_of(rq))
+		double_unlock_balance(rq, cpu_rq(cpu));
+}
+
 void __setprio(struct rq *rq, struct task_struct *p, int prio) {
 	int oldprio, queued, running, enqueue_flag = 0;
 	const struct sched_class *prev_class;

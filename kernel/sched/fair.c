@@ -4040,6 +4040,11 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	int task_new = flags & ENQUEUE_WAKEUP_NEW;
 	int task_wakeup = flags & ENQUEUE_WAKEUP;
 
+	if (rt_prio(p->rt_priority))
+		trace_printk("%s: task=%d cpu=%d",
+				__func__, task_pid_nr(p),
+				task_cpu(p));
+
 	for_each_sched_entity(se) {
 		if (se->on_rq)
 			break;
@@ -4118,9 +4123,6 @@ static void update_util_history(struct task_struct *p)
 		sum += hist[ridx];
 		if (hist[ridx] > max)
 			max = hist[ridx];
-		trace_printk("tsk=%d ridx=%d lidx=%d hist[ridx]=%lu sum=%llu max=%lu",
-				task_pid_nr(p), ridx, lidx, hist[ridx], sum,
-				max);
 	}
 
 	hist[ridx] = p->se.avg.util_avg;
@@ -4129,9 +4131,6 @@ static void update_util_history(struct task_struct *p)
 		max = hist[ridx];
 
 	avg = div64_u64(sum, UTIL_HIST_SIZE);
-	trace_printk("tsk=%d ridx=%d lidx=%d hist[ridx]=%lu sum=%llu max=%lu avg=%lu",
-			task_pid_nr(p), ridx, lidx, hist[ridx], sum,
-			max, avg);
 
 	p->se.avg.util_est = max(max, hist[ridx]);
 }
@@ -4146,6 +4145,11 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &p->se;
 	int task_sleep = flags & DEQUEUE_SLEEP;
+
+	if (rt_prio(p->rt_priority))
+		trace_printk("%s: task=%d cpu=%d",
+				__func__, task_pid_nr(p),
+				task_cpu(p));
 
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
@@ -6079,6 +6083,11 @@ static void put_prev_task_fair(struct rq *rq, struct task_struct *prev)
 {
 	struct sched_entity *se = &prev->se;
 	struct cfs_rq *cfs_rq;
+
+	if (rt_prio(prev->rt_priority))
+		trace_printk("%s: task=%d cpu=%d",
+				__func__, task_pid_nr(prev),
+				task_cpu(prev));
 
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
@@ -9012,6 +9021,10 @@ static void set_curr_task_fair(struct rq *rq)
 {
 	struct sched_entity *se = &rq->curr->se;
 
+	if (rt_prio(rq->curr->rt_priority))
+		trace_printk("%s: task=%d cpu=%d",
+				__func__, task_pid_nr(rq->curr),
+				task_cpu(rq->curr));
 	for_each_sched_entity(se) {
 		struct cfs_rq *cfs_rq = cfs_rq_of(se);
 
