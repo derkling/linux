@@ -13,7 +13,7 @@
 #define __LINUX_RT_MUTEX_H
 
 #include <linux/linkage.h>
-#include <linux/plist.h>
+#include <linux/rbtree.h>
 #include <linux/spinlock_types.h>
 
 extern int max_lock_depth; /* for sysctl */
@@ -27,7 +27,8 @@ extern int max_lock_depth; /* for sysctl */
  */
 struct rt_mutex {
 	raw_spinlock_t		wait_lock;
-	struct plist_head	wait_list;
+	struct rb_root          waiters;
+	struct rb_node          *waiters_leftmost;
 	struct task_struct	*owner;
 #ifdef CONFIG_DEBUG_RT_MUTEXES
 	int			save_state;
@@ -97,13 +98,5 @@ extern int rt_mutex_timed_lock(struct rt_mutex *lock,
 extern int rt_mutex_trylock(struct rt_mutex *lock);
 
 extern void rt_mutex_unlock(struct rt_mutex *lock);
-
-#ifdef CONFIG_RT_MUTEXES
-# define INIT_RT_MUTEXES(tsk)						\
-	.pi_waiters	= PLIST_HEAD_INIT(tsk.pi_waiters, tsk.pi_lock),	\
-	INIT_RT_MUTEX_DEBUG(tsk)
-#else
-# define INIT_RT_MUTEXES(tsk)
-#endif
 
 #endif
