@@ -8837,6 +8837,11 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &curr->se;
 
+	if (entity_is_task(se) && rt_prio(curr->rt_priority))
+		trace_printk("%s: task=%d cpu=%d",
+				__func__, task_pid_nr(curr),
+				task_cpu(curr));
+
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
 		entity_tick(cfs_rq, se, queued);

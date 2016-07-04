@@ -3348,9 +3348,9 @@ void __setprio_other(struct rq *rq, struct task_struct *p) {
 	prev_class = p->sched_class;
 	queued = task_on_rq_queued(p);
 	running = task_current(rq, p);
-	trace_printk("%s: task=%d queued=%d running=%d prev_class=%p next_class=%p",
-			__func__, task_pid_nr(p), queued, running, prev_class,
-			&fair_sched_class);
+	trace_printk("%s: task=%d queued=%d running=%d throttled=%d prev_class=%p next_class=%p",
+			__func__, task_pid_nr(p), queued, running,
+			p->rt.throttled, prev_class, &fair_sched_class);
 	BUG_ON(!p->rt.throttled);
 
 	if (queued)
@@ -3393,9 +3393,9 @@ again:
 	prev_class = p->sched_class;
 	queued = task_on_rq_queued(p);
 	running = task_current(cpu_rq(cpu), p);
-	trace_printk("%s: task=%d task_cpu=%d queued=%d running=%d cpu=%d prev_class=%p next_class=%p",
+	trace_printk("%s: task=%d task_cpu=%d queued=%d running=%d throttled=%d cpu=%d prev_class=%p next_class=%p",
 			__func__, task_pid_nr(p), task_cpu(p), task_on_rq_queued(p), task_current(rq, p),
-			cpu_of(rq), prev_class, &rt_sched_class);
+			p->rt.throttled, cpu_of(rq), prev_class, &rt_sched_class);
 	BUG_ON(p->rt.throttled);
 
 	if (queued)
