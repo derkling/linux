@@ -201,7 +201,7 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 
 		init_rt_rq(rt_rq, cpu_rq(i));
 		INIT_LIST_HEAD(&rt_rq->cfs_throttled_tasks);
-		rt_rq->nr_rt_cfs_throttled = 0;
+		rt_rq->rt_nr_cfs_throttled = 0;
 		rt_rq->rt_runtime = tg->rt_bandwidth.rt_runtime;
 		init_tg_rt_entry(tg, rt_rq, rt_se, i, parent->rt_se[i]);
 	}
@@ -475,7 +475,6 @@ static void dequeue_rt_entity(struct sched_rt_entity *rt_se);
 static void cfs_throttle_rt_tasks(struct rt_rq *rt_rq)
 {
 	struct rt_prio_array *array = &rt_rq->active;
-	struct sched_rt_entity *rt_se;
 	struct rq *rq = rq_of_rt_rq(rt_rq);
 	int idx;
 
@@ -484,20 +483,21 @@ static void cfs_throttle_rt_tasks(struct rt_rq *rt_rq)
 
 	idx = sched_find_first_bit(array->bitmap);
 	while (idx < MAX_RT_PRIO) {
-		list_for_each_entry(rt_se, array->queue + idx, run_list) {
+		while (!list_empty(array->queue + idx)) {
+			struct sched_rt_entity *rt_se;
 			struct task_struct *p;
 
+			rt_se = list_first_entry(array->queue + idx,
+						 struct sched_rt_entity,
+						 run_list);
 			if (!rt_entity_is_task(rt_se))
 				continue;
 
 			p = rt_task_of(rt_se);
-			trace_printk("%s: task=%d cpu=%d --> SCHED_OTHER (%p)",
-					__func__, task_pid_nr(p),
-					task_cpu(p),
-					&fair_sched_class);
 			rt_se->throttled = 1;
 			list_add(&rt_se->cfs_throttled_task,
 				 &rt_rq->cfs_throttled_tasks);
+			rt_rq->rt_nr_cfs_throttled++;
 			__setprio_other(rq, p);
 		}
 		idx = find_next_bit(array->bitmap, MAX_RT_PRIO, idx + 1);
@@ -523,12 +523,13 @@ static void cfs_unthrottle_rt_tasks(struct rt_rq *rt_rq)
 				task_cpu(p),
 				&rt_sched_class);
 		list_del_init(&rt_se->cfs_throttled_task);
+		rt_rq->rt_nr_cfs_throttled--;
 		rt_se->throttled = 0;
 		__setprio_fifo(rq, p);
 	}
 }
 
-static void sched_rt_rq_cfs_unthrottle(struct rt_rq *rt_rq)
+static void sched_rt_rq_enqueue(struct rt_rq *rt_rq)
 {
 	struct task_struct *curr = rq_of_rt_rq(rt_rq)->curr;
 	struct rq *rq = rq_of_rt_rq(rt_rq);
@@ -543,20 +544,7 @@ static void sched_rt_rq_cfs_unthrottle(struct rt_rq *rt_rq)
 			rt_rq->rt_nr_cfs_throttled);
 	if (rt_rq->rt_nr_cfs_throttled)
 		cfs_unthrottle_rt_tasks(rt_rq);
-}
 
-static void sched_rt_rq_enqueue(struct rt_rq *rt_rq)
-{
-	struct task_struct *curr = rq_of_rt_rq(rt_rq)->curr;
-	struct rq *rq = rq_of_rt_rq(rt_rq);
-	struct sched_rt_entity *rt_se;
-
-	int cpu = cpu_of(rq);
-
-	rt_se = rt_rq->tg->rt_se[cpu];
-
-	trace_printk("%s: rt_rq=%p cpu=%d rt_se=%p rt_nr_running=%d",
-			__func__, rt_rq, cpu, rt_se, rt_rq->rt_nr_running);
 	if (rt_rq->rt_nr_running) {
 		if (!rt_se)
 			enqueue_top_rt_rq(rt_rq);
@@ -947,9 +935,6 @@ static int do_sched_rt_period_timer(struct rt_bandwidth *rt_b, int overrun)
 		if (enqueue)
 			sched_rt_rq_enqueue(rt_rq);
 		raw_spin_unlock(&rq->lock);
-
-		if (enqueue)
-			sched_rt_rq_cfs_unthrottle(rt_rq);
 	}
 
 	if (!throttled && (!rt_bandwidth_enabled() || rt_b->rt_runtime == RUNTIME_INF))
@@ -1367,11 +1352,9 @@ static void enqueue_rt_entity(struct sched_rt_entity *rt_se, bool head)
 	struct rq *rq = rq_of_rt_se(rt_se);
 
 	dequeue_rt_stack(rt_se);
-	for_each_sched_rt_entity(rt_se) {
-		trace_printk("%s: fesre rt_se=%p is_task=%d",
-				__func__, rt_se, rt_entity_is_task(rt_se));
+	for_each_sched_rt_entity(rt_se)
 		__enqueue_rt_entity(rt_se, head);
-	}
+
 	enqueue_top_rt_rq(&rq->rt);
 }
 
@@ -1384,11 +1367,8 @@ static void dequeue_rt_entity(struct sched_rt_entity *rt_se)
 	for_each_sched_rt_entity(rt_se) {
 		struct rt_rq *rt_rq = group_rt_rq(rt_se);
 
-		if (rt_rq && rt_rq->rt_nr_running) {
-			trace_printk("%s: rt_rq=%p rt_nr_running=%d",
-					__func__, rt_rq, rt_rq->rt_nr_running);
+		if (rt_rq && rt_rq->rt_nr_running)
 			__enqueue_rt_entity(rt_se, false);
-		}
 	}
 	enqueue_top_rt_rq(&rq->rt);
 }

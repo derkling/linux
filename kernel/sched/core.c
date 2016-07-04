@@ -3342,7 +3342,6 @@ void __setprio_other(struct rq *rq, struct task_struct *p) {
 	int oldprio, queued, running;
 	const struct sched_class *prev_class;
 
-	lockdep_assert_held(&p->pi_lock);
 	lockdep_assert_held(&rq->lock);
 
 	oldprio = p->prio;
@@ -3352,6 +3351,7 @@ void __setprio_other(struct rq *rq, struct task_struct *p) {
 	trace_printk("%s: task=%d queued=%d running=%d prev_class=%p next_class=%p",
 			__func__, task_pid_nr(p), queued, running, prev_class,
 			&fair_sched_class);
+	BUG_ON(!p->rt.throttled);
 
 	if (queued)
 		dequeue_task(rq, p, 0);
@@ -3373,7 +3373,6 @@ void __setprio_fifo(struct rq *rq, struct task_struct *p) {
 	int oldprio, queued, running, cpu;
 	const struct sched_class *prev_class;
 
-	lockdep_assert_held(&p->pi_lock);
 	lockdep_assert_held(&rq->lock);
 
 	/*
@@ -3397,6 +3396,7 @@ again:
 	trace_printk("%s: task=%d task_cpu=%d queued=%d running=%d cpu=%d prev_class=%p next_class=%p",
 			__func__, task_pid_nr(p), task_cpu(p), task_on_rq_queued(p), task_current(rq, p),
 			cpu_of(rq), prev_class, &rt_sched_class);
+	BUG_ON(p->rt.throttled);
 
 	if (queued)
 		dequeue_task(cpu_rq(cpu), p, 0);
