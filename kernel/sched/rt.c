@@ -2171,6 +2171,14 @@ static void switched_from_rt(struct rq *rq, struct task_struct *p)
 	if (!task_on_rq_queued(p) || rq->rt.rt_nr_running)
 		return;
 
+	/*
+	 * This is a fake switch_from, as we will be back to RT when the
+	 * replenishment timer fires. And p will continue running on this CPU,
+	 * so no need to pull someone else.
+	 */
+	if (p->rt.throttled)
+		return;
+
 	if (pull_rt_task(rq))
 		resched_curr(rq);
 }
