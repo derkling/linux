@@ -3404,7 +3404,7 @@ again:
 		put_prev_task(cpu_rq(cpu), p);
 
 	p->sched_class = &rt_sched_class;
-	p->prio = p->rt_priority;
+	p->prio = (MAX_RT_PRIO - 1) - p->rt_priority;
 
 	if (running)
 		p->sched_class->set_curr_task(rq);
