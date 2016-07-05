@@ -3348,9 +3348,11 @@ void __setprio_other(struct rq *rq, struct task_struct *p) {
 	prev_class = p->sched_class;
 	queued = task_on_rq_queued(p);
 	running = task_current(rq, p);
-	trace_printk("%s: task=%d queued=%d running=%d throttled=%d prev_class=%p next_class=%p",
+	trace_printk("%s: t=%d queued=%d running=%d throttled=%d prio=%d static_prio=%d normal_prio=%d rt_priority=%u prev_class=%p next_class=%p",
 			__func__, task_pid_nr(p), queued, running,
-			p->rt.throttled, prev_class, &fair_sched_class);
+			p->rt.throttled, p->prio, p->static_prio,
+			p->normal_prio, p->rt_priority,
+			prev_class, &fair_sched_class);
 	BUG_ON(!p->rt.throttled);
 
 	if (queued)
@@ -3367,6 +3369,11 @@ void __setprio_other(struct rq *rq, struct task_struct *p) {
 		enqueue_task(rq, p, 0);
 
 	check_class_changed(rq, p, prev_class, oldprio);
+	trace_printk("%s: t=%d queued=%d running=%d throttled=%d prio=%d static_prio=%d normal_prio=%d rt_priority=%u class=%p",
+			__func__, task_pid_nr(p), queued, running,
+			p->rt.throttled, p->prio, p->static_prio,
+			p->normal_prio, p->rt_priority,
+			p->sched_class);
 }
 
 void __setprio_fifo(struct rq *rq, struct task_struct *p) {
@@ -3393,9 +3400,11 @@ again:
 	prev_class = p->sched_class;
 	queued = task_on_rq_queued(p);
 	running = task_current(cpu_rq(cpu), p);
-	trace_printk("%s: task=%d task_cpu=%d queued=%d running=%d throttled=%d cpu=%d prev_class=%p next_class=%p",
-			__func__, task_pid_nr(p), task_cpu(p), task_on_rq_queued(p), task_current(rq, p),
-			p->rt.throttled, cpu_of(rq), prev_class, &rt_sched_class);
+	trace_printk("%s: t=%d queued=%d running=%d throttled=%d prio=%d static_prio=%d normal_prio=%d rt_priority=%u prev_class=%p next_class=%p",
+			__func__, task_pid_nr(p), queued, running,
+			p->rt.throttled, p->prio, p->static_prio,
+			p->normal_prio, p->rt_priority,
+			prev_class, &rt_sched_class);
 	BUG_ON(p->rt.throttled);
 
 	if (queued)
@@ -3415,6 +3424,11 @@ again:
 	
 	if (cpu != cpu_of(rq))
 		double_unlock_balance(rq, cpu_rq(cpu));
+	trace_printk("%s: t=%d queued=%d running=%d throttled=%d prio=%d static_prio=%d normal_prio=%d rt_priority=%u class=%p",
+			__func__, task_pid_nr(p), queued, running,
+			p->rt.throttled, p->prio, p->static_prio,
+			p->normal_prio, p->rt_priority,
+			p->sched_class);
 }
 
 void __setprio(struct rq *rq, struct task_struct *p, int prio) {

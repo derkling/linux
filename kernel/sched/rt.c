@@ -1043,6 +1043,9 @@ static int sched_rt_runtime_exceeded(struct rt_rq *rt_rq)
 			rt_rq->rt_time = 0;
 		}
 
+		trace_printk("%s: rt_rq=%p cpu=%d rt_throttled=%d rt_nr_boosted=%lu",
+				__func__, rt_rq, cpu_of(rq_of_rt_rq(rt_rq)),
+				rt_rq->rt_throttled, rt_rq->rt_nr_boosted);
 		if (rt_rq_throttled(rt_rq)) {
 			sched_rt_rq_dequeue(rt_rq);
 			return 1;
@@ -1307,6 +1310,10 @@ static void __enqueue_rt_entity(struct sched_rt_entity *rt_se, bool head)
 	struct rt_rq *group_rq = group_rt_rq(rt_se);
 	struct list_head *queue = array->queue + rt_se_prio(rt_se);
 
+	trace_printk("%s: rt_se=%p rt_rq=%p is_task=%d group_rq=%p",
+			__func__, rt_se, rt_rq, rt_entity_is_task(rt_se),
+			group_rq);
+
 	/*
 	 * Don't enqueue the group if its throttled, or when empty.
 	 * The latter is a consequence of the former when a child group
@@ -1315,9 +1322,6 @@ static void __enqueue_rt_entity(struct sched_rt_entity *rt_se, bool head)
 	 */
 	if (group_rq && (rt_rq_throttled(group_rq) || !group_rq->rt_nr_running))
 		return;
-
-	trace_printk("%s: rt_rq=%p rt_se=%p is_task=%d",
-			__func__, rt_rq, rt_se, rt_entity_is_task(rt_se));
 
 	if (head)
 		list_add(&rt_se->run_list, queue);
