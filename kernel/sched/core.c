@@ -1980,6 +1980,7 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 #endif /* CONFIG_SMP */
 
 	ttwu_queue(p, cpu);
+	trace_sched_wakeup_tracking(current, p, irq_count());
 stat:
 	ttwu_stat(p, cpu, wake_flags);
 out:
@@ -2024,6 +2025,7 @@ static void try_to_wake_up_local(struct task_struct *p)
 	}
 
 	ttwu_do_wakeup(rq, p, 0);
+	trace_sched_wakeup_tracking(current, p, irq_count());
 	ttwu_stat(p, smp_processor_id(), 0);
 out:
 	raw_spin_unlock(&p->pi_lock);
