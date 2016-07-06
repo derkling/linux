@@ -91,6 +91,54 @@ DEFINE_EVENT(sched_wakeup_template, sched_wakeup_new,
 	     TP_PROTO(struct task_struct *p, int success),
 	     TP_ARGS(p, success));
 
+/*
+ * Tracepoint for waking up dependency tracking:
+ */
+TRACE_EVENT(sched_wakeup_tracking,
+
+	TP_PROTO(struct task_struct *curr,
+		 struct task_struct *woken,
+		 unsigned int irq_count),
+
+	TP_ARGS(curr, woken, irq_count),
+
+	TP_STRUCT__entry(
+		__array(	char,	curr_comm,	TASK_COMM_LEN	)
+		__field(	pid_t,	curr_pid			)
+		__field(	int,	curr_prio			)
+		__field(	long,	curr_state			)
+		__array(	char,	woken_comm,	TASK_COMM_LEN	)
+		__field(	pid_t,	woken_pid			)
+		__field(	int,	woken_prio			)
+		__field( unsigned int,	woken_cpu			)
+		__field( unsigned int,	irq_count			)
+	),
+
+	TP_fast_assign(
+		memcpy(__entry->woken_comm, woken->comm, TASK_COMM_LEN);
+		__entry->curr_pid	= curr->pid;
+		__entry->curr_prio	= curr->prio;
+		__entry->curr_state	= __trace_sched_switch_state(curr);
+		memcpy(__entry->curr_comm, curr->comm, TASK_COMM_LEN);
+		__entry->woken_pid	= woken->pid;
+		__entry->woken_prio	= woken->prio;
+		__entry->woken_cpu	= task_cpu(woken);
+		__entry->irq_count	= irq_count;
+	),
+
+	TP_printk("curr_comm=%s curr_pid=%d curr_prio=%d curr_state=%s%s irq_count=%u woken_comm=%s woken_pid=%d woken_prio=%d woken_cpu=%d",
+		__entry->curr_comm, __entry->curr_pid, __entry->curr_prio,
+		__entry->curr_state & (TASK_STATE_MAX-1) ?
+		  __print_flags(__entry->curr_state & (TASK_STATE_MAX-1), "|",
+				{ 1, "S"} , { 2, "D" }, { 4, "T" }, { 8, "t" },
+				{ 16, "Z" }, { 32, "X" }, { 64, "x" },
+				{ 128, "K" }, { 256, "W" }, { 512, "P" }) : "R",
+		__entry->curr_state & TASK_STATE_MAX ? "+" : "",
+		__entry->irq_count,
+		__entry->woken_comm, __entry->woken_pid,
+		__entry->woken_prio, __entry->woken_cpu)
+);
+
 #ifdef CREATE_TRACE_POINTS
 static inline long __trace_sched_switch_state(struct task_struct *p)
 {
