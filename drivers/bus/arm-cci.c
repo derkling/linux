@@ -144,7 +144,6 @@ struct cci_pmu {
 	int num_cntrs;
 	atomic_t active_events;
 	struct mutex reserve_mutex;
-	struct notifier_block cpu_nb;
 	cpumask_t cpus;
 };
 
@@ -1503,31 +1502,22 @@ static int cci_pmu_init(struct cci_pmu *cci_pmu, struct platform_device *pdev)
 	return perf_pmu_register(&cci_pmu->pmu, name, -1);
 }
 
-static int cci_pmu_cpu_notifier(struct notifier_block *self,
-				unsigned long action, void *hcpu)
+static struct cci_pmu *cpuhp_cci_pmu;
+static int cci_pmu_offline_cpu(unsigned int cpu)
 {
-	struct cci_pmu *cci_pmu = container_of(self,
-					struct cci_pmu, cpu_nb);
-	unsigned int cpu = (long)hcpu;
 	unsigned int target;
 
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_DOWN_PREPARE:
-		if (!cpumask_test_and_clear_cpu(cpu, &cci_pmu->cpus))
-			break;
-		target = cpumask_any_but(cpu_online_mask, cpu);
-		if (target >= nr_cpu_ids) // UP, last CPU
-			break;
-		/*
-		 * TODO: migrate context once core races on event->ctx have
-		 * been fixed.
-		 */
-		cpumask_set_cpu(target, &cci_pmu->cpus);
-	default:
-		break;
-	}
-
-	return NOTIFY_OK;
+	if (!cpumask_test_and_clear_cpu(cpu, &cpuhp_cci_pmu->cpus))
+		return 0;
+	target = cpumask_any_but(cpu_online_mask, cpu);
+	if (target >= nr_cpu_ids) // UP, last CPU
+		return 0;
+	/*
+	 * TODO: migrate context once core races on event->ctx have
+	 * been fixed.
+	 */
+	cpumask_set_cpu(target, &cpuhp_cci_pmu->cpus);
+	return 0;
 }
 
 static struct cci_pmu_model cci_pmu_models[] = {
@@ -1765,23 +1755,17 @@ static int cci_pmu_probe(struct platform_device *pdev)
 	mutex_init(&cci_pmu->reserve_mutex);
 	atomic_set(&cci_pmu->active_events, 0);
 	cpumask_set_cpu(smp_processor_id(), &cci_pmu->cpus);
-
-	cci_pmu->cpu_nb = (struct notifier_block) {
-		.notifier_call	= cci_pmu_cpu_notifier,
-		/*
-		 * to migrate uncore events, our notifier should be executed
-		 * before perf core's notifier.
-		 */
-		.priority	= CPU_PRI_PERF + 1,
-	};
-
-	ret = register_cpu_notifier(&cci_pmu->cpu_nb);
+	cpuhp_cci_pmu = cci_pmu;
+	ret = cpuhp_setup_state(CPUHP_AP_PERF_ARM_CCI_ONLINE,
+				"AP_PERF_ARM_CCI_ONLINE", NULL,
+				cci_pmu_offline_cpu);
 	if (ret)
 		return ret;
 
 	ret = cci_pmu_init(cci_pmu, pdev);
 	if (ret) {
-		unregister_cpu_notifier(&cci_pmu->cpu_nb);
+		cpuhp_remove_state_nocalls(CPUHP_AP_PERF_ARM_CCI_ONLINE);
+		cpuhp_cci_pmu = NULL;
 		return ret;
 	}
 
