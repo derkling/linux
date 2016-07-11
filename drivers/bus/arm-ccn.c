@@ -167,7 +167,6 @@ struct arm_ccn_dt {
 	struct hrtimer hrtimer;
 
 	cpumask_t cpu;
-	struct notifier_block cpu_nb;
 
 	struct pmu pmu;
 };
@@ -1171,30 +1170,23 @@ static enum hrtimer_restart arm_ccn_pmu_timer_handler(struct hrtimer *hrtimer)
 }
 
 
-static int arm_ccn_pmu_cpu_notifier(struct notifier_block *nb,
-		unsigned long action, void *hcpu)
+static struct arm_ccn_dt *cpuhp_armccn_dt;
+static int arm_ccn_pmu_offline_cpu(unsigned int cpu)
 {
-	struct arm_ccn_dt *dt = container_of(nb, struct arm_ccn_dt, cpu_nb);
+	struct arm_ccn_dt *dt = cpuhp_armccn_dt;
 	struct arm_ccn *ccn = container_of(dt, struct arm_ccn, dt);
-	unsigned int cpu = (long)hcpu; /* for (long) see kernel/cpu.c */
 	unsigned int target;
 
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_DOWN_PREPARE:
-		if (!cpumask_test_and_clear_cpu(cpu, &dt->cpu))
-			break;
-		target = cpumask_any_but(cpu_online_mask, cpu);
-		if (target >= nr_cpu_ids)
-			break;
-		perf_pmu_migrate_context(&dt->pmu, cpu, target);
-		cpumask_set_cpu(target, &dt->cpu);
-		if (ccn->irq)
-			WARN_ON(irq_set_affinity_hint(ccn->irq, &dt->cpu) != 0);
-	default:
-		break;
-	}
-
-	return NOTIFY_OK;
+	if (!cpumask_test_and_clear_cpu(cpu, &dt->cpu))
+		return 0;
+	target = cpumask_any_but(cpu_online_mask, cpu);
+	if (target >= nr_cpu_ids)
+		return 0;
+	perf_pmu_migrate_context(&dt->pmu, cpu, target);
+	cpumask_set_cpu(target, &dt->cpu);
+	if (ccn->irq)
+		WARN_ON(irq_set_affinity_hint(ccn->irq, &dt->cpu) != 0);
+	return 0;
 }
 
 
@@ -1270,9 +1262,10 @@ static int arm_ccn_pmu_init(struct arm_ccn *ccn)
 	 * ... and change the selection when it goes offline. Priority is
 	 * picked to have a chance to migrate events before perf is notified.
 	 */
-	ccn->dt.cpu_nb.notifier_call = arm_ccn_pmu_cpu_notifier;
-	ccn->dt.cpu_nb.priority = CPU_PRI_PERF + 1,
-	err = register_cpu_notifier(&ccn->dt.cpu_nb);
+	cpuhp_armccn_dt = &ccn->dt;
+	err = cpuhp_setup_state(CPUHP_AP_PERF_ARM_CCN_ONLINE,
+				"AP_PERF_ARM_CCN_ONLINE", NULL,
+				arm_ccn_pmu_offline_cpu);
 	if (err)
 		goto error_cpu_notifier;
 
@@ -1293,7 +1286,8 @@ static int arm_ccn_pmu_init(struct arm_ccn *ccn)
 
 error_pmu_register:
 error_set_affinity:
-	unregister_cpu_notifier(&ccn->dt.cpu_nb);
+	cpuhp_remove_state_nocalls(CPUHP_AP_PERF_ARM_CCN_ONLINE);
+	cpuhp_armccn_dt = NULL;
 error_cpu_notifier:
 	ida_simple_remove(&arm_ccn_pmu_ida, ccn->dt.id);
 	for (i = 0; i < ccn->num_xps; i++)
@@ -1308,7 +1302,8 @@ static void arm_ccn_pmu_cleanup(struct arm_ccn *ccn)
 
 	if (ccn->irq)
 		irq_set_affinity_hint(ccn->irq, NULL);
-	unregister_cpu_notifier(&ccn->dt.cpu_nb);
+	cpuhp_remove_state_nocalls(CPUHP_AP_PERF_ARM_CCN_ONLINE);
+	cpuhp_armccn_dt = NULL;
 	for (i = 0; i < ccn->num_xps; i++)
 		writel(0, ccn->xp[i].base + CCN_XP_DT_CONTROL);
 	writel(0, ccn->dt.base + CCN_DT_PMCR);
