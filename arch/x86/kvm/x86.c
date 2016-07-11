@@ -5667,10 +5667,10 @@ static int kvmclock_cpu_notifier(struct notifier_block *nfb,
 	switch (action) {
 		case CPU_ONLINE:
 		case CPU_DOWN_FAILED:
-			smp_call_function_single(cpu, tsc_khz_changed, NULL, 1);
+			tsc_khz_changed(NULL);
 			break;
 		case CPU_DOWN_PREPARE:
-			smp_call_function_single(cpu, tsc_bad, NULL, 1);
+			tsc_bad(NULL);
 			break;
 	}
 	return NOTIFY_OK;
