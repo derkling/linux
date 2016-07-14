@@ -4858,6 +4858,8 @@ find_min_capacity(struct energy_env *eenv)
 
 	/* Find minimum capacity to satify the task boost value */
 	min_util = boosted_task_util(eenv->task);
+	trace_printk("    task util: %lu, boosted util: %lu",
+			task_util(eenv->task), min_util);
 	for (min_cap_idx = 0; min_cap_idx < (sge->nr_cap_states-1); min_cap_idx++) {
 		if (sge->cap_states[min_cap_idx].cap >= min_util)
 			break;
@@ -4871,6 +4873,7 @@ find_min_capacity(struct energy_env *eenv)
 	 * Compute the minumum CPU capacity required to support task boosting
 	 * within this SG.
 	 */
+	trace_printk("    sg_cap=%lu min_cap=%lu", cur_capacity, min_capacity);
 	cur_capacity = max(min_capacity, cur_capacity);
 	cap_idx = max(eenv->cap_idx, min_cap_idx);
 
@@ -4947,6 +4950,7 @@ static int sched_group_energy(struct energy_env *eenv)
 	int cpu, total_energy = 0;
 	struct cpumask visit_cpus;
 	struct sched_group *sg;
+	char buff[64];
 
 	WARN_ON(!eenv->sg_top->sge);
 
@@ -5004,6 +5008,14 @@ static int sched_group_energy(struct energy_env *eenv)
 
 				total_energy += sg_busy_energy + sg_idle_energy;
 
+				snprintf(buff, 64, "%s g=%*pbl",
+						eenv->util_delta ? "after " : "before",
+						cpumask_pr_args(to_cpumask(sg->cpumask)));
+				trace_printk("%s cap_idx=%d idle_idx=%d group_util=%lu busy_nrg=%d idle_nrg=%d total=%d",
+						buff, cap_idx, idle_idx,
+						group_util, sg_busy_energy,
+						sg_idle_energy, total_energy);
+
 				if (!sd->child)
 					cpumask_xor(&visit_cpus, &visit_cpus, sched_group_cpus(sg));
 
@@ -5051,6 +5063,8 @@ __energy_diff(struct energy_env *eenv)
 
 	if (eenv->src_cpu == eenv->dst_cpu)
 		return 0;
+
+	trace_printk("Original");
 
 	sd_cpu = (eenv->src_cpu != -1) ? eenv->src_cpu : eenv->dst_cpu;
 	sd = rcu_dereference(per_cpu(sd_ea, sd_cpu));
@@ -5104,6 +5118,9 @@ __energy_diff_capacity_domain(struct energy_env *eenv, struct sched_domain *sd)
 	bool nrg_after;
 	int idle_idx;
 
+	char buff[64];
+	unsigned int nrg_before;
+
 	/*
 	 * Compute energy of each sub-group which is a descendant
 	 * of the first group of an EA top SG
@@ -5151,9 +5168,16 @@ next_sg:
 		eenv->nrg.diff -= sg_nrg;
 		eenv->util_delta = util_delta;
 
+		/* Cached data for tracing */
+		nrg_before = sg_nrg;
+
 		nrg_after = true;
 
 	}
+
+	snprintf(buff, 64, "%*pbl", cpumask_pr_args(to_cpumask(sg->cpumask)));
+	trace_printk("      sg=%10s: + %3u (nrg_after) - %3u (nrg_before) = %4d (nrg_diff)",
+			buff, sg_nrg, nrg_before, eenv->nrg.diff);
 
 	/* Other SGs of the top SD are covered by the caller */
 	if (sd == eenv->top_sd)
@@ -5174,10 +5198,13 @@ __energy_diff_new(struct energy_env *eenv)
 	struct sched_group *ea_sg, *sg;
 	bool affected_sg;
 	int cpu;
+	char buff[64];
 
 	/* This should never happen, better use a WARN ON?!? */
 	if (eenv->src_cpu == eenv->dst_cpu)
 		return 0;
+
+	trace_printk("New");
 
 	/* Lock reads of SD data structures */
 	rcu_read_lock();
@@ -5189,6 +5216,8 @@ __energy_diff_new(struct energy_env *eenv)
 		return 0;
 	}
 	ea_sg = ea_sd->groups;
+
+	trace_printk("    Highest SD with EM data: %s", ea_sd->name);
 
 	/*
 	 * External loop on top-level EA SGs.
@@ -5238,6 +5267,10 @@ next_sg:
 			eenv->sg_cap = eenv->sg = sg;
 			find_new_capacity(eenv);
 
+			snprintf(buff, 64, "%*pbl", cpumask_pr_args(to_cpumask(sg->cpumask)));
+			trace_printk("    Min capacity for %s: %d:%lu",
+					buff, eenv->cap_idx, sg->sge->cap_states[eenv->cap_idx].cap);
+
 		}
 
 		__energy_diff_capacity_domain(eenv, sd);
@@ -5259,6 +5292,31 @@ next_sg:
 			eenv->nrg.delta, eenv->payoff);
 
 	return eenv->nrg.diff;
+}
+
+void
+test_eawake_code(void)
+{
+	struct energy_env eenv = {
+		.util_delta = 100,
+		.task = current,
+	};
+
+	printk(KERN_WARNING ".:: In-Cluster migration (0->5) test:\n");
+	eenv.src_cpu = 0;
+	eenv.dst_cpu = 5;
+	__energy_diff2(&eenv);
+
+	printk(KERN_WARNING ".:: Down-migration (2->3) test:\n");
+	eenv.src_cpu = 2;
+	eenv.dst_cpu = 3;
+	__energy_diff2(&eenv);
+
+	printk(KERN_WARNING ".:: Up-migration (5->1) test:\n");
+	eenv.src_cpu = 5;
+	eenv.dst_cpu = 1;
+	__energy_diff2(&eenv);
+
 }
 
 #ifdef CONFIG_SCHED_TUNE
