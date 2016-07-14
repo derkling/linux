@@ -532,6 +532,37 @@ boost_read(struct cgroup_subsys_state *css, struct cftype *cft)
 	return st->boost;
 }
 
+static void
+debug_domains_code(void)
+{
+	int cpu = smp_processor_id();
+	struct sched_domain *sd;
+	struct sched_group *sg;
+
+	printk(KERN_WARNING "CPU: %d\n", cpu);
+	for_each_domain(cpu, sd) {
+		printk(KERN_WARNING " %d:%8s, cpus: %d",
+		       sd->level, sd->name, sd->span_weight);
+
+		sg = sd->groups;
+		do {
+			printk(KERN_WARNING "   %u: %*pbl\n",
+					sg->group_weight,
+					cpumask_pr_args(to_cpumask(sg->cpumask)));
+			sg = sg->next;
+		} while (sg != sd->groups);
+	}
+
+	sd = rcu_dereference(per_cpu(sd_scs, cpu));
+	printk(KERN_WARNING " SCS: %*pbl\n",
+				cpumask_pr_args(to_cpumask(sd->groups->cpumask)));
+
+	sd = rcu_dereference(per_cpu(sd_ea, cpu));
+	printk(KERN_WARNING "  EA: %*pbl\n",
+				cpumask_pr_args(to_cpumask(sd->groups->cpumask)));
+
+}
+
 extern void test_eawake_code(void);
 
 static int
@@ -568,6 +599,7 @@ boost_write(struct cgroup_subsys_state *css, struct cftype *cft,
 
 	trace_sched_tune_config(st->boost);
 
+	debug_domains_code();
 	test_eawake_code();
 
 	return 0;
