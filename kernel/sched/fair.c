@@ -4136,7 +4136,6 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 	if (!se) {
 		sub_nr_running(rq, 1);
-		schedtune_dequeue_task(p, cpu_of(rq));
 
 		/*
 		 * We want to potentially trigger a freq switch
@@ -4153,6 +4152,9 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 				set_cfs_cpu_capacity(cpu_of(rq), false, 0);
 		}
 	}
+	/* Update SchedTune accouting */
+	schedtune_dequeue_task(p, cpu_of(rq));
+
 	hrtick_update(rq);
 }
 
@@ -4894,18 +4896,13 @@ normalize_energy(int energy_diff)
 static inline int
 energy_diff(struct energy_env *eenv)
 {
-	unsigned int boost;
+	int boost = schedtune_task_boost(eenv->task);
 	int nrg_delta;
 
 	/* Conpute "absolute" energy diff */
 	__energy_diff(eenv);
 
 	/* Return energy diff when boost margin is 0 */
-#ifdef CONFIG_CGROUP_SCHEDTUNE
-	boost = schedtune_task_boost(eenv->task);
-#else
-	boost = get_sysctl_sched_cfs_boost();
-#endif
 	if (boost == 0)
 		return eenv->nrg.diff;
 
@@ -5067,22 +5064,25 @@ static bool cpu_overutilized(int cpu)
 
 #ifdef CONFIG_SCHED_TUNE
 
-static unsigned long
-schedtune_margin(unsigned long signal, unsigned long boost)
+static long
+schedtune_margin(unsigned long signal, long boost)
 {
-	unsigned long long margin = 0;
+	long long margin = 0;
 
 	/*
 	 * Signal proportional compensation (SPC)
 	 *
 	 * The Boost (B) value is used to compute a Margin (M) which is
 	 * proportional to the complement of the original Signal (S):
-	 *   M = B * (SCHED_LOAD_SCALE - S)
+	 *   M = B * (SCHED_LOAD_SCALE - S), if B is positive
+	 *   M = B * S, if B is negative
 	 * The obtained M could be used by the caller to "boost" S.
 	 */
-	margin  = SCHED_LOAD_SCALE - signal;
-	margin *= boost;
-
+	if (boost >= 0) {
+		margin  = SCHED_LOAD_SCALE - signal;
+		margin *= boost;
+	} else
+		margin = -signal * boost;
 	/*
 	 * Fast integer division by constant:
 	 *  Constant   :                 (C) = 100
@@ -5098,37 +5098,29 @@ schedtune_margin(unsigned long signal, unsigned long boost)
 	margin  *= 1311;
 	margin >>= 17;
 
+	if (boost < 0)
+		margin *= -1;
 	return margin;
 }
 
-static inline unsigned int
+static inline int
 schedtune_cpu_margin(unsigned long util, int cpu)
 {
-	unsigned int boost;
+	int boost = schedtune_cpu_boost(cpu);
 
-#ifdef CONFIG_CGROUP_SCHEDTUNE
-	boost = schedtune_cpu_boost(cpu);
-#else
-	boost = get_sysctl_sched_cfs_boost();
-#endif
 	if (boost == 0)
 		return 0;
 
 	return schedtune_margin(util, boost);
 }
 
-static inline unsigned long
+static inline long
 schedtune_task_margin(struct task_struct *task)
 {
-	unsigned int boost;
+	int boost = schedtune_task_boost(task);
 	unsigned long util;
-	unsigned long margin;
+	long margin;
 
-#ifdef CONFIG_CGROUP_SCHEDTUNE
-	boost = schedtune_task_boost(task);
-#else
-	boost = get_sysctl_sched_cfs_boost();
-#endif
 	if (boost == 0)
 		return 0;
 
@@ -5140,13 +5132,13 @@ schedtune_task_margin(struct task_struct *task)
 
 #else /* CONFIG_SCHED_TUNE */
 
-static inline unsigned int
+static inline int
 schedtune_cpu_margin(unsigned long util, int cpu)
 {
 	return 0;
 }
 
-static inline unsigned int
+static inline int
 schedtune_task_margin(struct task_struct *task)
 {
 	return 0;
@@ -5158,7 +5150,7 @@ static inline unsigned long
 boosted_cpu_util(int cpu)
 {
 	unsigned long util = cpu_util(cpu);
-	unsigned long margin = schedtune_cpu_margin(util, cpu);
+	long margin = schedtune_cpu_margin(util, cpu);
 
 	trace_sched_boost_cpu(cpu, util, margin);
 
@@ -5169,7 +5161,7 @@ static inline unsigned long
 boosted_task_util(struct task_struct *task)
 {
 	unsigned long util = task_util(task);
-	unsigned long margin = schedtune_task_margin(task);
+	long margin = schedtune_task_margin(task);
 
 	trace_sched_boost_task(task, util, margin);
 
@@ -5392,28 +5384,30 @@ done:
 	return target;
 }
 
-static inline int find_best_target(struct task_struct *p)
+static inline int find_best_target(struct task_struct *p, bool boosted)
 {
-	int i, boosted;
+	int iter_cpu;
 	int target_cpu = -1;
 	int target_capacity = 0;
 	int backup_capacity = 0;
-	int idle_cpu = -1;
+	int best_idle_cpu = -1;
 	int best_idle_cstate = INT_MAX;
 	int backup_cpu = -1;
 	unsigned long task_util_boosted, new_util;
 
-	/*
-	 * Favor 1) busy cpu with most capacity at current OPP
-	 *       2) idle_cpu with capacity at current OPP
-	 *       3) busy cpu with capacity at higher OPP
-	 */
-	boosted = schedtune_task_boost(p);
 	task_util_boosted = boosted_task_util(p);
-	for_each_cpu(i, tsk_cpus_allowed(p)) {
-		int cur_capacity = capacity_curr_of(i);
-		struct rq *rq = cpu_rq(i);
-		int idle_idx = idle_get_state_idx(rq);
+	for (iter_cpu = 0; iter_cpu < NR_CPUS; iter_cpu++) {
+		int cur_capacity;
+		struct rq *rq;
+		int idle_idx;
+
+		/*
+		 * favor higher cpus for boosted tasks
+		 */
+		int i = boosted ? NR_CPUS-iter_cpu-1 : iter_cpu;
+
+		if (!cpu_online(i) || !cpumask_test_cpu(i, tsk_cpus_allowed(p)))
+			continue;
 
 		/*
 		 * p's blocked utilization is still accounted for on prev_cpu
@@ -5427,7 +5421,6 @@ static inline int find_best_target(struct task_struct *p)
 		 * The target CPU can be already at a capacity level higher
 		 * than the one required to boost the task.
 		 */
-
 		if (new_util > capacity_orig_of(i))
 			continue;
 
@@ -5435,46 +5428,43 @@ static inline int find_best_target(struct task_struct *p)
 		 * For boosted tasks we favor idle cpus unconditionally to
 		 * improve latency.
 		 */
-		if (idle_idx >= 0 && boosted) {
-			if (idle_cpu < 0 ||
-				(sysctl_sched_cstate_aware &&
-				 best_idle_cstate > idle_idx)) {
-				best_idle_cstate = idle_idx;
-				idle_cpu = i;
-			}
+		if (idle_cpu(i) && boosted) {
+			if (best_idle_cpu < 0)
+				best_idle_cpu = i;
 			continue;
 		}
+
+		cur_capacity = capacity_curr_of(i);
+		rq = cpu_rq(i);
+		idle_idx = idle_get_state_idx(rq);
 
 		if (new_util < cur_capacity) {
 			if (cpu_rq(i)->nr_running) {
 				if (target_capacity == 0 ||
 					target_capacity > cur_capacity) {
-					/* busy CPU with most capacity at current OPP */
 					target_cpu = i;
 					target_capacity = cur_capacity;
 				}
 			} else if (!boosted) {
-				if (idle_cpu < 0 ||
+				if (best_idle_cpu < 0 ||
 					(sysctl_sched_cstate_aware &&
 						best_idle_cstate > idle_idx)) {
 					best_idle_cstate = idle_idx;
-					idle_cpu = i;
+					best_idle_cpu = i;
 				}
 			}
 		} else if (backup_capacity == 0 ||
 				backup_capacity > cur_capacity) {
-			/* first busy CPU with capacity at higher OPP */
 			backup_capacity = cur_capacity;
 			backup_cpu = i;
 		}
 	}
 
-	if (!boosted && target_cpu < 0) {
-		target_cpu = idle_cpu >= 0 ? idle_cpu : backup_cpu;
-	}
+	if (boosted && best_idle_cpu >= 0)
+		target_cpu = best_idle_cpu;
+	else if (target_cpu < 0)
+		target_cpu = best_idle_cpu >= 0 ? best_idle_cpu : backup_cpu;
 
-	if (boosted && idle_cpu >= 0)
-		target_cpu = idle_cpu;
 	return target_cpu;
 }
 
@@ -5484,8 +5474,7 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target, int sync)
 	struct sched_group *sg, *sg_target;
 	int target_max_cap = INT_MAX;
 	int target_cpu = task_cpu(p);
-	unsigned long min_util;
-	unsigned long new_util;
+	unsigned long task_util_boosted, new_util;
 	int i;
 
 	if (sysctl_sched_sync_hint_enable && sync) {
@@ -5529,23 +5518,21 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target, int sync)
 			}
 		} while (sg = sg->next, sg != sd->groups);
 
+		task_util_boosted = boosted_task_util(p);
 		/* Find cpu with sufficient capacity */
-		min_util = boosted_task_util(p);
 		for_each_cpu_and(i, tsk_cpus_allowed(p), sched_group_cpus(sg_target)) {
 			/*
 			 * p's blocked utilization is still accounted for on prev_cpu
 			 * so prev_cpu will receive a negative bias due to the double
 			 * accounting. However, the blocked utilization may be zero.
 			 */
-			new_util = cpu_util(i) + task_util(p);
+			new_util = cpu_util(i) + task_util_boosted;
 
 			/*
 			 * Ensure minimum capacity to grant the required boost.
 			 * The target CPU can be already at a capacity level higher
 			 * than the one required to boost the task.
 			 */
-			new_util = max(min_util, new_util);
-
 			if (new_util > capacity_orig_of(i))
 				continue;
 
@@ -5563,9 +5550,12 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target, int sync)
 		/*
 		 * Find a cpu with sufficient capacity
 		 */
-		int tmp_target = find_best_target(p);
+		bool boosted = schedtune_task_boost(p) > 0;
+		int tmp_target = find_best_target(p, boosted);
 		if (tmp_target >= 0)
 			target_cpu = tmp_target;
+			if (boosted && idle_cpu(target_cpu))
+				return target_cpu;
 	}
 
 	if (target_cpu != task_cpu(p)) {
