@@ -4722,10 +4722,15 @@ static inline bool energy_aware(void)
 struct energy_env {
 	struct sched_group	*sg_top;
 	struct sched_group	*sg_cap;
+
+	struct sched_domain 	*top_sd;
+	struct sched_group 	*sg;
+
 	int			cap_idx;
 	int			util_delta;
 	int			src_cpu;
 	int			dst_cpu;
+
 	int			energy;
 	int			payoff;
 	struct task_struct	*task;
@@ -4815,21 +4820,102 @@ long group_norm_util(struct energy_env *eenv, struct sched_group *sg)
 	return util_sum;
 }
 
-static int find_new_capacity(struct energy_env *eenv,
-	const struct sched_group_energy const *sge)
+#ifdef CONFIG_SCHED_TUNE
+
+static inline unsigned long boosted_task_util(struct task_struct *task);
+static inline unsigned long task_util(struct task_struct *p);
+
+static int
+find_min_capacity(struct energy_env *eenv)
 {
-	int idx;
+	const struct sched_group_energy const *sge = eenv->sg->sge;
+	unsigned long min_capacity, cur_capacity;
+	struct sched_group *sg = eenv->sg;
+	int min_cap_idx, cap_idx;
+	unsigned long min_util;
+
+	/*
+	 * Single CPUs capacity is defined by the outer group.
+	 * Thus we can just trust the cap_idx defined by the
+	 * energy_env and return this value.
+	 */
+	if (sg->group_weight == 1)
+		return eenv->cap_idx;
+
+	/* Non boosted tasks do not affect the minimum capacity */
+	if (!schedtune_task_boost(eenv->task))
+		return eenv->cap_idx;
+
+	/*
+	 * Boosted tasks do not affect capacity of SGs which do
+	 * not include either the src or dst CPUs.
+	 * In that case again we can just trust the cap_idx defined by the
+	 * energy_env and return this value.
+	 */
+	if (!cpumask_test_cpu(eenv->src_cpu, sched_group_cpus(eenv->sg_cap)) &&
+	    !cpumask_test_cpu(eenv->dst_cpu, sched_group_cpus(eenv->sg_cap)))
+		return eenv->cap_idx;
+
+	/* Find minimum capacity to satify the task boost value */
+	min_util = boosted_task_util(eenv->task);
+	for (min_cap_idx = 0; min_cap_idx < (sge->nr_cap_states-1); min_cap_idx++) {
+		if (sge->cap_states[min_cap_idx].cap >= min_util)
+			break;
+	}
+	min_capacity = sge->cap_states[min_cap_idx].cap;
+
+	/* The current capacity is the one computed by the caller */
+	cur_capacity = sge->cap_states[eenv->cap_idx].cap;
+
+	/*
+	 * Compute the minumum CPU capacity required to support task boosting
+	 * within this SG.
+	 */
+	cur_capacity = max(min_capacity, cur_capacity);
+	cap_idx = max(eenv->cap_idx, min_cap_idx);
+
+	/*
+	 * Keep track of capacity on src and dst CPU
+	 * This is required to compute the SpeedUp component of the
+	 * SchedTune's Performance Index.
+	 */
+	if (cpumask_test_cpu(eenv->src_cpu, sched_group_cpus(sg)))
+		eenv->cap.before = cur_capacity;
+	if (cpumask_test_cpu(eenv->dst_cpu, sched_group_cpus(sg)))
+		eenv->cap.after = cur_capacity;
+
+	return cap_idx;
+}
+#else
+#define find_min_capacity(eenv) eenv->cap_idx
+#endif /* CONFIG_SCHED_TUNE */
+
+static int find_new_capacity(struct energy_env *eenv)
+{
+	const struct sched_group_energy const *sge = eenv->sg->sge;
 	unsigned long util = group_max_util(eenv);
+	unsigned long sg_capacity, min_capacity;
+	int idx;
 
 	for (idx = 0; idx < sge->nr_cap_states; idx++) {
 		if (sge->cap_states[idx].cap >= util)
 			break;
 	}
 
+	/* Keep track of SGs capacity and its index */
+	sg_capacity = sge->cap_states[idx].cap;
 	eenv->cap_idx = idx;
 
-	return idx;
+	/* Update SG's capacity based on boost value of the current task */
+	idx = find_min_capacity(eenv);
+
+	/* Keep track of minimum SG's capacity and its index */
+	min_capacity = sge->cap_states[idx].cap;
+	eenv->cap_idx = idx;
+
+	return eenv->cap_idx;
 }
+
 
 static int group_idle_state(struct sched_group *sg)
 {
@@ -4905,22 +4991,8 @@ static int sched_group_energy(struct energy_env *eenv)
 				else
 					eenv->sg_cap = sg;
 
-				cap_idx = find_new_capacity(eenv, sg->sge);
-
-				if (sg->group_weight == 1) {
-					/* Remove capacity of src CPU (before task move) */
-					if (eenv->util_delta == 0 &&
-					    cpumask_test_cpu(eenv->src_cpu, sched_group_cpus(sg))) {
-						eenv->cap.before = sg->sge->cap_states[cap_idx].cap;
-						eenv->cap.delta -= eenv->cap.before;
-					}
-					/* Add capacity of dst CPU  (after task move) */
-					if (eenv->util_delta != 0 &&
-					    cpumask_test_cpu(eenv->dst_cpu, sched_group_cpus(sg))) {
-						eenv->cap.after = sg->sge->cap_states[cap_idx].cap;
-						eenv->cap.delta += eenv->cap.after;
-					}
-				}
+				eenv->sg = sg;
+				cap_idx = find_new_capacity(eenv);
 
 				idle_idx = group_idle_state(sg);
 				group_util = group_norm_util(eenv, sg);
@@ -4960,13 +5032,15 @@ static inline bool cpu_in_sg(struct sched_group *sg, int cpu)
  * utilization is removed from or added to the system (e.g. task wake-up). If
  * both are specified, the utilization is migrated.
  */
-static inline int __energy_diff(struct energy_env *eenv)
+static inline int
+__energy_diff(struct energy_env *eenv)
 {
 	struct sched_domain *sd;
 	struct sched_group *sg;
 	int sd_cpu = -1, energy_before = 0, energy_after = 0;
 
 	struct energy_env eenv_before = {
+		.task		= eenv->task,
 		.util_delta	= 0,
 		.src_cpu	= eenv->src_cpu,
 		.dst_cpu	= eenv->dst_cpu,
@@ -5008,6 +5082,175 @@ static inline int __energy_diff(struct energy_env *eenv)
 	eenv->nrg.diff = eenv->nrg.after - eenv->nrg.before;
 	eenv->payoff = 0;
 
+	trace_sched_energy_diff(eenv->task,
+			eenv->src_cpu, eenv->dst_cpu, eenv->util_delta,
+			eenv->nrg.before, eenv->nrg.after, eenv->nrg.diff,
+			eenv->cap.before, eenv->cap.after, eenv->cap.delta,
+			eenv->nrg.delta, eenv->payoff);
+
+	return eenv->nrg.diff;
+}
+
+
+static inline void
+__energy_diff_capacity_domain(struct energy_env *eenv, struct sched_domain *sd)
+{
+	unsigned long util_delta = eenv->util_delta;
+	unsigned int sg_busy_nrg, sg_idle_nrg;
+	struct sched_group *sg = sd->groups;
+	unsigned long sg_busy, sg_idle;
+	unsigned int sg_nrg;
+	bool nrg_after;
+	int idle_idx;
+
+	/*
+	 * Compute energy of each sub-group which is a descendant
+	 * of the first group of an EA top SG
+	 */
+next_sg:
+
+	/*
+	 * Compute IDLE index for this group, it is
+	 * assumed to be the same before and after
+	 * moving the utilization
+	 */
+	idle_idx = group_idle_state(sg);
+
+	/*
+	 * Compute energy for this group:
+	 *   before moving the utilization, i.e.
+	 *     util_delta == 0
+	 *   after moving the utilization, i.e.
+	 *     util_delta != 0
+	 */
+	eenv->util_delta = 0;
+	nrg_after = false;
+	while (true) {
+		sg_busy = group_norm_util(eenv, sg);
+		sg_idle = SCHED_LOAD_SCALE - sg_busy;
+
+		/* Busy energy */
+		sg_busy_nrg   = sg_busy * sg->sge->cap_states[eenv->cap_idx].power;
+		sg_busy_nrg >>= SCHED_CAPACITY_SHIFT;
+
+		/* Idle energy */
+		sg_idle_nrg   = sg_idle * sg->sge->idle_states[idle_idx].power;
+		sg_idle_nrg >>= SCHED_CAPACITY_SHIFT;
+
+		/* Overall energy for this SG */
+		sg_nrg = sg_busy_nrg + sg_idle_nrg;
+
+		/* Adding "energy after" contrib */
+		if (nrg_after) {
+			eenv->nrg.diff += sg_nrg;
+			break;
+		}
+
+		/* Removing "energy before" contrib */
+		eenv->nrg.diff -= sg_nrg;
+		eenv->util_delta = util_delta;
+
+		nrg_after = true;
+
+	}
+
+	/* Other SGs of the top SD are covered by the caller */
+	if (sd == eenv->top_sd)
+		return;
+
+	/* Account energy for next subgroup */
+	sg = sg->next;
+	if (sg != sd->groups)
+		goto next_sg;
+
+}
+
+
+static inline int
+__energy_diff_new(struct energy_env *eenv)
+{
+	struct sched_domain *ea_sd, *sd;
+	struct sched_group *ea_sg, *sg;
+	bool affected_sg;
+	int cpu;
+
+	/* This should never happen, better use a WARN ON?!? */
+	if (eenv->src_cpu == eenv->dst_cpu)
+		return 0;
+
+	/* Lock reads of SD data structures */
+	rcu_read_lock();
+
+	/* Evaluate each SG which has EM data associated */
+	ea_sd = rcu_dereference(per_cpu(sd_ea, eenv->src_cpu));
+	if (!ea_sd) {
+		/* Race with hotplug, we just bail out with an error */
+		return 0;
+	}
+	ea_sg = ea_sd->groups;
+
+	/*
+	 * External loop on top-level EA SGs.
+	 * For each top level SG which has energy data associated
+	 * (e.g. DIE's SGs on a Juno board) we compute the energy of:
+	 * 1) this top EA group
+	 *    if it includes either src_cpu or dst_cpu
+	 * 2) all its subgroups
+	 *    if the top AE group (previous point) has been considered
+	 */
+
+	eenv->nrg.diff = 0;
+
+next_sg:
+
+	/*
+	 * We keep track of top SD to evaluate only first SG at this
+	 * level. The other SGs at that level are already coveder
+	 * by the external loop
+	 */
+	cpu = cpumask_first(to_cpumask(ea_sg->cpumask));
+	sd = rcu_dereference(per_cpu(sd_ea, cpu));
+	if (!sd) {
+		/* Race with hotplug, we just bail out with an error */
+		return 0;
+	}
+
+	eenv->top_sd = sd;
+
+	/*
+	 * Top-Down evaluation of SDs
+	 * for each top-level energy aware SG
+	 */
+	for_each_lower_domain(sd) {
+		sg = sd->groups;
+
+		/* Identify groups of CPUs sharing the capacity */
+		if (sd->child && (sd->child->flags & SD_SHARE_CAP_STATES)) {
+
+			/* Skip groups not affected by task placement */
+			affected_sg  = cpumask_test_cpu(eenv->src_cpu, sched_group_cpus(sg));
+			affected_sg |= cpumask_test_cpu(eenv->dst_cpu, sched_group_cpus(sg));
+			if (!affected_sg)
+				break;
+
+			/* Update the minimum capacity for this group */
+			eenv->sg_cap = eenv->sg = sg;
+			find_new_capacity(eenv);
+
+		}
+
+		__energy_diff_capacity_domain(eenv, sd);
+	}
+
+	/* Account for next top-level EA SGs */
+	ea_sg = ea_sg->next;
+	if (ea_sg != ea_sd->groups)
+		goto next_sg;
+
+	/* Release SD's data structures */
+	rcu_read_unlock();
+
+	eenv->payoff = 0;
 	trace_sched_energy_diff(eenv->task,
 			eenv->src_cpu, eenv->dst_cpu, eenv->util_delta,
 			eenv->nrg.before, eenv->nrg.after, eenv->nrg.diff,
@@ -5060,6 +5303,7 @@ energy_diff(struct energy_env *eenv)
 
 	/* Conpute "absolute" energy diff */
 	__energy_diff(eenv);
+	__energy_diff_new(eenv);
 
 	/* Return energy diff when boost margin is 0 */
 	if (boost == 0)
@@ -5185,8 +5429,6 @@ static inline unsigned long task_util(struct task_struct *p)
 }
 
 unsigned int capacity_margin = 1280; /* ~20% margin */
-
-static inline unsigned long boosted_task_util(struct task_struct *task);
 
 static inline bool __task_fits(struct task_struct *p, int cpu, int util)
 {
