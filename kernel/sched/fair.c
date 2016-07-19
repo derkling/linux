@@ -4727,6 +4727,8 @@ struct energy_env {
 	struct sched_group 	*sg;
 
 	int			cap_idx;
+	int 			cap_idx_before;
+	int 			cap_idx_after;
 	int			util_delta;
 	int			src_cpu;
 	int			dst_cpu;
@@ -4745,6 +4747,21 @@ struct energy_env {
 		int after;
 		int delta;
 	} cap;
+
+
+	/* Data used by the new energy_diff */
+
+	int energy_delta;
+	int perf_delta;
+	struct {
+		int energy;
+		int capacity;
+		int utilization;
+
+		int speedup_idx;
+		int delay_idx;
+		int perf_idx;
+	} before, after;
 };
 
 /*
@@ -4873,16 +4890,6 @@ find_min_capacity(struct energy_env *eenv)
 	 */
 	cur_capacity = max(min_capacity, cur_capacity);
 	cap_idx = max(eenv->cap_idx, min_cap_idx);
-
-	/*
-	 * Keep track of capacity on src and dst CPU
-	 * This is required to compute the SpeedUp component of the
-	 * SchedTune's Performance Index.
-	 */
-	if (cpumask_test_cpu(eenv->src_cpu, sched_group_cpus(sg)))
-		eenv->cap.before = cur_capacity;
-	if (cpumask_test_cpu(eenv->dst_cpu, sched_group_cpus(sg)))
-		eenv->cap.after = cur_capacity;
 
 	return cap_idx;
 }
@@ -5093,7 +5100,7 @@ __energy_diff(struct energy_env *eenv)
 
 
 static inline void
-__energy_diff_capacity_domain(struct energy_env *eenv, struct sched_domain *sd)
+__update_capacity_domain_energy(struct energy_env *eenv, struct sched_domain *sd)
 {
 	unsigned long util_delta = eenv->util_delta;
 	unsigned int sg_busy_nrg, sg_idle_nrg;
@@ -5124,6 +5131,7 @@ next_sg:
 	 *     util_delta != 0
 	 */
 	eenv->util_delta = 0;
+	eenv->cap_idx = eenv->cap_idx_before;
 	nrg_after = false;
 	while (true) {
 		sg_busy = group_norm_util(eenv, sg);
@@ -5140,15 +5148,24 @@ next_sg:
 		/* Overall energy for this SG */
 		sg_nrg = sg_busy_nrg + sg_idle_nrg;
 
+		/* Keep track of utilization in src and dst CPUs */
+		if (nrg_after == false &&
+		    cpumask_test_cpu(eenv->src_cpu, sched_group_cpus(sg)))
+			eenv->before.utilization = sg_busy;
+		if (nrg_after == true &&
+		    cpumask_test_cpu(eenv->dst_cpu, sched_group_cpus(sg)))
+			eenv->after.utilization = sg_busy;
+
 		/* Adding "energy after" contrib */
 		if (nrg_after) {
-			eenv->nrg.diff += sg_nrg;
+			eenv->after.energy += sg_nrg;
 			break;
 		}
 
 		/* Removing "energy before" contrib */
-		eenv->nrg.diff -= sg_nrg;
+		eenv->before.energy += sg_nrg;
 		eenv->util_delta = util_delta;
+		eenv->cap_idx = eenv->cap_idx_after;
 
 		nrg_after = true;
 
@@ -5165,7 +5182,119 @@ next_sg:
 
 }
 
+static inline void
+__update_group_capacity(struct energy_env *eenv)
+{
+	const struct sched_group_energy const *sge = eenv->sg->sge;
+	unsigned long util_delta = eenv->util_delta;
+	struct sched_group *sg = eenv->sg;
 
+	/*
+	 * Capacity of this group before moving the
+	 * utilization, i.e. util_delta == 0
+	 */
+	eenv->util_delta = 0;
+	find_new_capacity(eenv);
+	eenv->cap_idx_before = eenv->cap_idx;
+
+	if (cpumask_test_cpu(eenv->src_cpu, sched_group_cpus(sg)))
+		eenv->before.capacity = sge->cap_states[eenv->cap_idx].cap;
+
+	/*
+	 * Capacity of this group after moving the
+	 * utilization, i.e. util_delta != 0
+	 */
+	eenv->util_delta = util_delta;
+	find_new_capacity(eenv);
+	eenv->cap_idx_after = eenv->cap_idx;
+
+	if (cpumask_test_cpu(eenv->dst_cpu, sched_group_cpus(sg)))
+		eenv->after.capacity = sge->cap_states[eenv->cap_idx].cap;
+
+}
+
+static inline int normalize_energy(int energy_diff);
+#define eenv_before(__X) eenv->before.__X
+#define eenv_after(__X)  eenv->after.__X
+#define eenv_delta(__X)  eenv->after.__X - eenv->before.__X
+
+static inline void
+__update_perf_energy_deltas(struct energy_env *eenv)
+{
+	unsigned long util = task_util(eenv->task);
+
+	/* SpeedUp Indexes */
+	eenv_before(speedup_idx)  = SCHED_LOAD_SCALE * util;
+	eenv_before(speedup_idx) /= eenv_before(capacity);
+	eenv_before(speedup_idx)  =  1024 - eenv_before(speedup_idx);
+	eenv_after(speedup_idx)  = SCHED_LOAD_SCALE * util;
+	eenv_after(speedup_idx) /= eenv_after(capacity);
+	eenv_after(speedup_idx)  =  1024 - eenv_after(speedup_idx);
+
+	/* Delay Indexes */
+	eenv_before(delay_idx)  = SCHED_LOAD_SCALE * eenv_before(utilization);
+	eenv_before(delay_idx) /= (util + eenv_before(utilization));
+	eenv_after(delay_idx)  = SCHED_LOAD_SCALE * eenv_after(utilization);
+	eenv_after(delay_idx) /= (util + eenv_after(utilization));
+
+	/* Performance Variation */
+	eenv->perf_delta = eenv_delta(speedup_idx) - eenv_delta(delay_idx);
+
+	/* Energy Variation */
+	eenv->energy_delta = normalize_energy(eenv_delta(energy));
+
+}
+
+/*
+ * Use the Energy Model (EM) to estimate the impact on CPUs energy to move a
+ * task from a eenv->src_cpu to a eenv->dst_cpu.
+ *
+ * The idea is to account the energy consumptions by looking at which
+ * Scheduling Groups (SG) are affected by the task placement.
+ * Since energy data are associated only to certain Scheduling Domains
+ * (SD), this function operate in this way:
+ * 1) identify the top level SD which has energy data, this is marked by
+ *    the sd_ea SD's cache pointer
+ * 2) for each SG's of this domain we evaluate energy impact with a
+ *    top-down visit of the SD's related to the fist cpu in the SG
+ * 3) keep track of the SG's capacity, each time we visit a SG which contains
+ *    CPUs sharing the same capacity
+ * 4) compute both the before and after energy consumption for each SG
+ *
+ * Example
+ * -------
+ * On a JUNO board the schuler running on CPU0 wants to evaluate the energy
+ * impact for moving a task from the LITTLE CPU 0 to the big CPU 2.
+ * These are the SDs/SGs as seen from CPU 0:
+ *
+ *     +---+sd_ea
+ *     |
+ *  +--v--+    +---------+              +-------+
+ *  | DIE +----+ 0,3,4,5 +--------------+  1,2  |
+ *  +--+--+    +-+-------+              +-+-----+
+ *     |         |                        :
+ *     |         |                        :
+ *  +--+--+    +-+-+ +---+ +---+ +---+  +-+-+ +---+
+ *  | MC  +----+ 0 | | 3 | | 4 | | 5 |  | 1 | | 2 |
+ *  +-----+    +---+ +---+ +---+ +---+  +---+ +---+
+ *
+ * NOTE: the SGs under (1,2) are linked by a dotted line, this is becase this
+ *       link is not actually tracked by the SDs data structure.
+ *
+ * The alghorim implemented by the following function will loop across the
+ * two top level SG, and for each of it does a top-down visit of the SD's
+ * groups. Thus, we will end up with this flow:
+ *
+ *   energy diff for:    0,3-5
+ *     energy diff for:      0
+ *     energy diff for:      3
+ *     energy diff for:      4
+ *     energy diff for:      5
+ *   energy diff for:      1,2
+ *     energy diff for:      1
+ *     energy diff for:      2
+ *
+ */
 static inline int
 __energy_diff_new(struct energy_env *eenv)
 {
@@ -5199,7 +5328,8 @@ __energy_diff_new(struct energy_env *eenv)
 	 *    if the top AE group (previous point) has been considered
 	 */
 
-	eenv->nrg.diff = 0;
+	eenv->before.energy = 0;
+	eenv->after.energy = 0;
 
 next_sg:
 
@@ -5235,11 +5365,11 @@ next_sg:
 
 			/* Update the minimum capacity for this group */
 			eenv->sg_cap = eenv->sg = sg;
-			find_new_capacity(eenv);
+			__update_group_capacity(eenv);
 
 		}
 
-		__energy_diff_capacity_domain(eenv, sd);
+		__update_capacity_domain_energy(eenv, sd);
 	}
 
 	/* Account for next top-level EA SGs */
@@ -5250,14 +5380,16 @@ next_sg:
 	/* Release SD's data structures */
 	rcu_read_unlock();
 
+	__update_perf_energy_deltas(eenv);
+
 	eenv->payoff = 0;
 	trace_sched_energy_diff(eenv->task,
 			eenv->src_cpu, eenv->dst_cpu, eenv->util_delta,
-			eenv->nrg.before, eenv->nrg.after, eenv->nrg.diff,
-			eenv->cap.before, eenv->cap.after, eenv->cap.delta,
-			eenv->nrg.delta, eenv->payoff);
+			eenv->before.energy, eenv->after.energy, eenv->energy_delta,
+			eenv->before.capacity, eenv->after.capacity, eenv->perf_delta,
+			0, 0);
 
-	return eenv->nrg.diff;
+	return eenv->energy_delta;
 }
 
 #ifdef CONFIG_SCHED_TUNE
