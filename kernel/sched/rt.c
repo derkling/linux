@@ -491,6 +491,78 @@ static inline struct rt_rq *group_rt_rq(struct sched_rt_entity *rt_se)
 static void enqueue_rt_entity(struct sched_rt_entity *rt_se, bool head);
 static void dequeue_rt_entity(struct sched_rt_entity *rt_se);
 
+/*
+ * Iterates through all the tasks on @rt_rq and, depending on @enqueue, moves
+ * them between FIFO and OTHER.
+ */
+static void cfs_throttle_rt_tasks(struct rt_rq *rt_rq)
+{
+	struct rt_prio_array *array = &rt_rq->active;
+	struct rq *rq = rq_of_rt_rq(rt_rq);
+	int idx;
+	struct sched_rt_entity *sleep_se = NULL;
+
+	if (bitmap_empty(array->bitmap, MAX_RT_PRIO))
+		return;
+
+	idx = sched_find_first_bit(array->bitmap);
+	while (idx < MAX_RT_PRIO) {
+		while (!list_empty(array->queue + idx)) {
+			struct sched_rt_entity *rt_se;
+			struct task_struct *p;
+
+			rt_se = list_first_entry(array->queue + idx,
+						 struct sched_rt_entity,
+						 run_list);
+			BUG_ON(!rt_entity_is_task(rt_se));
+
+			if (sleep_se == rt_se)
+				break;
+
+			p = rt_task_of(rt_se);
+			/*
+			 * Don't enqueue in fair if the task is going
+			 * to sleep. We'll handle the transition at
+			 * wakeup time eventually.
+			 */
+			if (p->state != TASK_RUNNING) {
+				/* Only one curr */
+				BUG_ON(sleep_se);
+				sleep_se = rt_se;
+				continue;
+			}
+
+			rt_se->throttled = 1;
+			list_add(&rt_se->cfs_throttled_task,
+				 &rt_rq->cfs_throttled_tasks);
+			rt_rq->rt_nr_cfs_throttled++;
+			__setprio_other(rq, p);
+		}
+		idx = find_next_bit(array->bitmap, MAX_RT_PRIO, idx + 1);
+	}
+}
+
+static void cfs_unthrottle_rt_tasks(struct rt_rq *rt_rq)
+{
+	struct rq *rq = rq_of_rt_rq(rt_rq);
+
+	while (!list_empty(&rt_rq->cfs_throttled_tasks)) {
+		struct sched_rt_entity *rt_se;
+		struct task_struct *p;
+
+		rt_se = list_first_entry(&rt_rq->cfs_throttled_tasks,
+					 struct sched_rt_entity,
+					 cfs_throttled_task);
+		BUG_ON(!rt_entity_is_task(rt_se));
+
+		p = rt_task_of(rt_se);
+		list_del_init(&rt_se->cfs_throttled_task);
+		rt_rq->rt_nr_cfs_throttled--;
+		rt_se->throttled = 0;
+		__setprio_fifo(rq, p);
+	}
+}
+
 static void sched_rt_rq_enqueue(struct rt_rq *rt_rq)
 {
 	struct task_struct *curr = rq_of_rt_rq(rt_rq)->curr;
@@ -500,6 +572,9 @@ static void sched_rt_rq_enqueue(struct rt_rq *rt_rq)
 	int cpu = cpu_of(rq);
 
 	rt_se = rt_rq->tg->rt_se[cpu];
+
+	if (rt_rq->rt_nr_cfs_throttled)
+		cfs_unthrottle_rt_tasks(rt_rq);
 
 	if (rt_rq->rt_nr_running) {
 		if (!rt_se)
@@ -521,8 +596,10 @@ static void sched_rt_rq_dequeue(struct rt_rq *rt_rq)
 
 	if (!rt_se)
 		dequeue_top_rt_rq(rt_rq);
-	else if (on_rt_rq(rt_se))
+	else if (on_rt_rq(rt_se)) {
 		dequeue_rt_entity(rt_se);
+		cfs_throttle_rt_tasks(rt_rq);
+	}
 }
 
 static inline int rt_rq_throttled(struct rt_rq *rt_rq)
@@ -966,7 +1043,8 @@ static void update_curr_rt(struct rq *rq)
 
 	sched_rt_avg_update(rq, delta_exec);
 
-	if (!rt_bandwidth_enabled())
+	if (!rt_bandwidth_enabled() ||
+	    (rt_entity_is_task(rt_se) && rt_rq_throttled(rt_rq_of_se(rt_se))))
 		return;
 
 	for_each_sched_rt_entity(rt_se) {
@@ -1188,6 +1266,39 @@ static void __enqueue_rt_entity(struct sched_rt_entity *rt_se, bool head)
 	if (group_rq && (rt_rq_throttled(group_rq) || !group_rq->rt_nr_running))
 		return;
 
+	/*
+	 * rt_se's group was throttled while this task was
+	 * sleeping/blocked/migrated.
+	 *
+	 * Do the transition towards OTHER now.
+	 */
+	if (rt_rq->rt_throttled && !rt_se->throttled) {
+		struct task_struct *p;
+		struct rq *rq;
+
+		BUG_ON(!rt_entity_is_task(rt_se));
+		BUG_ON(on_rt_rq(rt_se));
+
+		p = rt_task_of(rt_se);
+		rq = rq_of_rt_rq(rt_rq);
+		lockdep_assert_held(&rq->lock);
+
+		rt_se->throttled = 1;
+		list_add(&rt_se->cfs_throttled_task,
+			 &rt_rq->cfs_throttled_tasks);
+		rt_rq->rt_nr_cfs_throttled++;
+
+		p->sched_class = &fair_sched_class;
+		p->prio = DEFAULT_PRIO;
+
+		p->sched_class->enqueue_task(rq, p,
+				ENQUEUE_WAKEUP |
+				ENQUEUE_WAKING);
+		p->sched_class->switched_to(rq, p);
+
+		return;
+	}
+
 	if (head)
 		list_add(&rt_se->run_list, queue);
 	else
@@ -1267,9 +1378,14 @@ enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 		rt_se->timeout = 0;
 
 	enqueue_rt_entity(rt_se, flags & ENQUEUE_HEAD);
+	if (p->sched_class != &rt_sched_class) {
+		return;
+	}
+
 	walt_inc_cumulative_runnable_avg(rq, p);
 
-	if (!task_current(rq, p) && p->nr_cpus_allowed > 1)
+	if (!task_current(rq, p) && p->nr_cpus_allowed > 1 &&
+			!rt_se->throttled)
 		enqueue_pushable_task(rq, p);
 }
 
@@ -1278,9 +1394,14 @@ static void dequeue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 	struct sched_rt_entity *rt_se = &p->rt;
 
 	update_curr_rt(rq);
+	if (p->sched_class != &rt_sched_class) {
+		goto out;
+	}
+
 	dequeue_rt_entity(rt_se);
 	walt_dec_cumulative_runnable_avg(rq, p);
 
+out:
 	dequeue_pushable_task(rq, p);
 }
 
@@ -1831,13 +1952,20 @@ retry:
 		goto retry;
 	}
 
+	if (next_task->sched_class != &rt_sched_class) {
+		goto skip;
+	}
 	deactivate_task(rq, next_task, 0);
+	if (next_task->sched_class != &rt_sched_class) {
+		goto skip;
+	}
 	set_task_cpu(next_task, lowest_rq->cpu);
 	activate_task(lowest_rq, next_task, 0);
 	ret = 1;
 
 	resched_curr(lowest_rq);
 
+skip:
 	double_unlock_balance(rq, lowest_rq);
 
 out:
@@ -2064,6 +2192,9 @@ static void pull_rt_task(struct rq *this_rq)
 		 */
 		p = pick_highest_pushable_task(src_rq, this_cpu);
 
+		if (p->sched_class != &rt_sched_class)
+			goto skip;
+
 		/*
 		 * Do we have an RT task that preempts
 		 * the to-be-scheduled task?
@@ -2086,6 +2217,9 @@ static void pull_rt_task(struct rq *this_rq)
 			resched = true;
 
 			deactivate_task(src_rq, p, 0);
+			if (p->sched_class != &rt_sched_class) {
+				goto skip;
+			}
 			set_task_cpu(p, this_cpu);
 			activate_task(this_rq, p, 0);
 			/*
@@ -2154,6 +2288,14 @@ static void switched_from_rt(struct rq *rq, struct task_struct *p)
 	 * now.
 	 */
 	if (!task_on_rq_queued(p) || rq->rt.rt_nr_running)
+		return;
+
+	/*
+	 * This is a fake switch_from, as we will be back to RT when the
+	 * replenishment timer fires. And p will continue running on this CPU,
+	 * so no need to pull someone else.
+	 */
+	if (p->rt.throttled)
 		return;
 
 	queue_pull_task(rq);

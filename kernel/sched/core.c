@@ -3516,6 +3516,79 @@ int default_wake_function(wait_queue_t *curr, unsigned mode, int wake_flags,
 }
 EXPORT_SYMBOL(default_wake_function);
 
+void __setprio_other(struct rq *rq, struct task_struct *p) {
+	int oldprio, queued, running;
+	const struct sched_class *prev_class;
+
+	lockdep_assert_held(&rq->lock);
+
+	oldprio = p->prio;
+	prev_class = p->sched_class;
+	queued = task_on_rq_queued(p);
+	running = task_current(rq, p);
+	BUG_ON(!p->rt.throttled);
+
+	if (queued)
+		dequeue_task(rq, p, 0);
+	if (running)
+		put_prev_task(rq, p);
+
+	p->sched_class = &fair_sched_class;
+	p->prio = DEFAULT_PRIO;
+
+	if (running)
+		p->sched_class->set_curr_task(rq);
+	if (queued)
+		enqueue_task(rq, p, 0);
+}
+
+void __setprio_fifo(struct rq *rq, struct task_struct *p) {
+	int oldprio, queued, running, cpu;
+	const struct sched_class *prev_class;
+
+	lockdep_assert_held(&rq->lock);
+
+	/*
+	 * p might have migrated while hanging out in OTHER. We will need its
+	 * current rq lock for dequeue_task/put_prev_task.
+	 */
+again:
+	cpu = task_cpu(p);
+	if (cpu != cpu_of(rq)) {
+		double_lock_balance(rq, cpu_rq(cpu));
+		if (cpu != task_cpu(p)) {
+			double_unlock_balance(rq, cpu_rq(cpu));
+			goto again;
+		}
+	}
+
+	if (p->sched_class == &rt_sched_class)
+		goto out;
+
+	oldprio = p->prio;
+	prev_class = p->sched_class;
+	queued = task_on_rq_queued(p);
+	running = task_current(cpu_rq(cpu), p);
+	BUG_ON(p->rt.throttled);
+
+	if (queued)
+		dequeue_task(cpu_rq(cpu), p, 0);
+	if (running)
+		put_prev_task(cpu_rq(cpu), p);
+
+	p->sched_class = &rt_sched_class;
+	p->prio = (MAX_RT_PRIO - 1) - p->rt_priority;
+
+	if (running)
+		p->sched_class->set_curr_task(rq);
+	if (queued)
+		enqueue_task(rq, p, 0);
+
+out:
+	if (cpu != cpu_of(rq))
+		double_unlock_balance(rq, cpu_rq(cpu));
+}
+
 #ifdef CONFIG_RT_MUTEXES
 
 /*
