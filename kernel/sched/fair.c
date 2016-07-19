@@ -504,6 +504,17 @@ static void __enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	struct sched_entity *entry;
 	int leftmost = 1;
 
+	if (entity_is_task(se))
+		trace_printk("tsk=%d cpu=%d cfs_rq=%p",
+				task_pid_nr(task_of(se)),
+				cpu_of(rq_of(cfs_rq)),
+				cfs_rq);
+	else
+		trace_printk("grp=%p cpu=%d cfs_rq=%p",
+				se,
+				cpu_of(rq_of(cfs_rq)),
+				cfs_rq);
+
 	/*
 	 * Find the right place in the rbtree:
 	 */
@@ -515,8 +526,12 @@ static void __enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 		 * the same key stay together.
 		 */
 		if (entity_before(se, entry)) {
+			trace_printk("entry=%p se=%p left",
+					entry, se);
 			link = &parent->rb_left;
 		} else {
+			trace_printk("entry=%p se=%p right",
+					entry, se);
 			link = &parent->rb_right;
 			leftmost = 0;
 		}
@@ -526,8 +541,19 @@ static void __enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	 * Maintain a cache of leftmost tree entries (it is frequently
 	 * used):
 	 */
-	if (leftmost)
+	if (leftmost) {
 		cfs_rq->rb_leftmost = &se->run_node;
+		if (entity_is_task(se))
+			trace_printk("tsk=%d cpu=%d cfs_rq=%p leftmost",
+					task_pid_nr(task_of(se)),
+					cpu_of(rq_of(cfs_rq)),
+					cfs_rq);
+		else
+			trace_printk("grp=%p cpu=%d cfs_rq=%p leftmost",
+					se,
+					cpu_of(rq_of(cfs_rq)),
+					cfs_rq);
+	}
 
 	rb_link_node(&se->run_node, parent, link);
 	rb_insert_color(&se->run_node, &cfs_rq->tasks_timeline);
@@ -535,6 +561,15 @@ static void __enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 
 static void __dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
+	if (entity_is_task(se))
+		trace_printk("tsk=%d cpu=%d",
+				task_pid_nr(task_of(se)),
+				cpu_of(rq_of(cfs_rq)));
+	else
+		trace_printk("grp=%p cpu=%d",
+				se,
+				cpu_of(rq_of(cfs_rq)));
+
 	if (cfs_rq->rb_leftmost == &se->run_node) {
 		struct rb_node *next_node;
 
@@ -3264,6 +3299,11 @@ pick_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	struct sched_entity *left = __pick_first_entity(cfs_rq);
 	struct sched_entity *se;
 
+	trace_printk("[1] cpu=%d left=%d curr=%d se=%d",
+			cpu_of(rq_of(cfs_rq)),
+			left ? task_pid_nr(task_of(left)) : -1,
+			curr ? task_pid_nr(task_of(curr)) : -1, -1);
+
 	/*
 	 * If curr is set we have to see if its left of the leftmost entity
 	 * still in the tree, provided there was anything in the tree at all.
@@ -3272,6 +3312,11 @@ pick_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 		left = curr;
 
 	se = left; /* ideally we run the leftmost entity */
+	trace_printk("[2] cpu=%d left=%d curr=%d se=%d",
+			cpu_of(rq_of(cfs_rq)),
+			left ? task_pid_nr(task_of(left)) : -1,
+			curr ? task_pid_nr(task_of(curr)) : -1,
+			se   ? task_pid_nr(task_of(se))   : -1);
 
 	/*
 	 * Avoid running the skip buddy, if running something else can
@@ -3288,23 +3333,45 @@ pick_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 				second = curr;
 		}
 
-		if (second && wakeup_preempt_entity(second, left) < 1)
+		if (second && wakeup_preempt_entity(second, left) < 1) {
 			se = second;
+			trace_printk("[3] cpu=%d left=%d curr=%d se=%d",
+					cpu_of(rq_of(cfs_rq)),
+					left ? task_pid_nr(task_of(left)) : -1,
+					curr ? task_pid_nr(task_of(curr)) : -1,
+					se   ? task_pid_nr(task_of(se))   : -1);
+		}
 	}
 
 	/*
 	 * Prefer last buddy, try to return the CPU to a preempted task.
 	 */
-	if (cfs_rq->last && wakeup_preempt_entity(cfs_rq->last, left) < 1)
+	if (cfs_rq->last && wakeup_preempt_entity(cfs_rq->last, left) < 1) {
 		se = cfs_rq->last;
+		trace_printk("[4] cpu=%d left=%d curr=%d se=%d",
+				cpu_of(rq_of(cfs_rq)),
+				left ? task_pid_nr(task_of(left)) : -1,
+				curr ? task_pid_nr(task_of(curr)) : -1,
+				se   ? task_pid_nr(task_of(se))   : -1);
+	}
 
 	/*
 	 * Someone really wants this to run. If it's not unfair, run it.
 	 */
-	if (cfs_rq->next && wakeup_preempt_entity(cfs_rq->next, left) < 1)
+	if (cfs_rq->next && wakeup_preempt_entity(cfs_rq->next, left) < 1) {
 		se = cfs_rq->next;
+		trace_printk("[5] cpu=%d left=%d curr=%d se=%d",
+				cpu_of(rq_of(cfs_rq)),
+				left ? task_pid_nr(task_of(left)) : -1,
+				curr ? task_pid_nr(task_of(curr)) : -1,
+				se   ? task_pid_nr(task_of(se))   : -1);
+	}
 
 	clear_buddies(cfs_rq, se);
+
+	trace_printk("[return] cpu=%d %s",
+			cpu_of(rq_of(cfs_rq)),
+			se   ? "OK" : "BUGBUGBUG");
 
 	return se;
 }
@@ -4218,6 +4285,12 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	int task_wakeup = flags & ENQUEUE_WAKEUP;
 #endif
 
+	trace_printk("[1] tsk=%d se=%p cpu=%d nr=%d cfs_nr=%d cfs_h_nr=%d rt_nr=%d f=%d",
+			task_pid_nr(p), &p->se,
+			task_cpu(p), rq->nr_running,
+			rq->cfs.nr_running, rq->cfs.h_nr_running, rq->rt.rt_nr_running,
+			flags);
+
 	for_each_sched_entity(se) {
 		if (se->on_rq)
 			break;
@@ -4279,6 +4352,12 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 #endif /* CONFIG_SMP */
 	hrtick_update(rq);
+
+	trace_printk("[2] tsk=%d se=%p cpu=%d nr=%d cfs_nr=%d cfs_h_nr=%d rt_nr=%d f=%d",
+			task_pid_nr(p), &p->se,
+			task_cpu(p), rq->nr_running,
+			rq->cfs.nr_running, rq->cfs.h_nr_running, rq->rt.rt_nr_running,
+			flags);
 }
 
 static void set_next_buddy(struct sched_entity *se);
@@ -4293,6 +4372,12 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &p->se;
 	int task_sleep = flags & DEQUEUE_SLEEP;
+
+	trace_printk("[1] tsk=%d se=%p cpu=%d nr=%d cfs_nr=%d cfs_h_nr=%d rt_nr=%d f=%d",
+			task_pid_nr(p), &p->se,
+			task_cpu(p), rq->nr_running,
+			rq->cfs.nr_running, rq->cfs.h_nr_running, rq->rt.rt_nr_running,
+			flags);
 
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
@@ -4367,6 +4452,12 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 #endif /* CONFIG_SMP */
 
 	hrtick_update(rq);
+
+	trace_printk("[2] tsk=%d se=%p cpu=%d nr=%d cfs_nr=%d cfs_h_nr=%d rt_nr=%d f=%d",
+			task_pid_nr(p), &p->se,
+			task_cpu(p), rq->nr_running,
+			rq->cfs.nr_running, rq->cfs.h_nr_running, rq->rt.rt_nr_running,
+			flags);
 }
 
 #ifdef CONFIG_SMP
@@ -6128,6 +6219,10 @@ pick_next_task_fair(struct rq *rq, struct task_struct *prev)
 	int new_tasks;
 
 again:
+	trace_printk("[again] cpu=%d prev=%d nr=%d cfs_nr=%d cfs_h_nr=%d rt_nr=%d",
+			cpu_of(rq), task_pid_nr(prev), rq->nr_running,
+			rq->cfs.nr_running, rq->cfs.h_nr_running,
+			rq->rt.rt_nr_running);
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	if (!cfs_rq->nr_running)
 		goto idle;
@@ -6208,6 +6303,10 @@ again:
 	return p;
 simple:
 	cfs_rq = &rq->cfs;
+	trace_printk("[simple] cpu=%d prev=%d on_rq=%d cfs_rq=%p cfs_nr=%d",
+			cpu_of(rq), task_pid_nr(prev),
+			prev->se.on_rq, cfs_rq,
+			cfs_rq->nr_running);
 #endif
 
 	if (!cfs_rq->nr_running)
@@ -6231,6 +6330,7 @@ simple:
 	return p;
 
 idle:
+	trace_printk("[idle] cpu=%d prev=%d on_rq=%d", cpu_of(rq), task_pid_nr(prev), prev->se.on_rq);
 	rq->misfit_task = 0;
 	/*
 	 * This is OK, because current is on_cpu, which avoids it being picked
@@ -6262,6 +6362,11 @@ static void put_prev_task_fair(struct rq *rq, struct task_struct *prev)
 {
 	struct sched_entity *se = &prev->se;
 	struct cfs_rq *cfs_rq;
+
+	trace_printk("tsk=%d cpu=%d nr_running=%d",
+			task_pid_nr(prev),
+			task_cpu(prev),
+			cpu_rq(task_cpu(prev))->nr_running);
 
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
@@ -6660,6 +6765,9 @@ static void detach_task(struct task_struct *p, struct lb_env *env)
 {
 	lockdep_assert_held(&env->src_rq->lock);
 
+	trace_printk("tsk=%d src_cpu=%d",
+			task_pid_nr(p), cpu_of(env->src_rq));
+
 	deactivate_task(env->src_rq, p, 0);
 	p->on_rq = TASK_ON_RQ_MIGRATING;
 	double_lock_balance(env->src_rq, env->dst_rq);
@@ -6795,6 +6903,8 @@ static void attach_task(struct rq *rq, struct task_struct *p)
 {
 	lockdep_assert_held(&rq->lock);
 
+	trace_printk("tsk=%d dst_cpu=%d",
+			task_pid_nr(p), cpu_of(rq));
 	BUG_ON(task_rq(p) != rq);
 	p->on_rq = TASK_ON_RQ_QUEUED;
 	activate_task(rq, p, 0);
@@ -8402,6 +8512,8 @@ static int idle_balance(struct rq *this_rq)
 			pulled_task = load_balance(this_cpu, this_rq,
 						   sd, CPU_NEWLY_IDLE,
 						   &continue_balancing);
+			trace_printk("[new_idle] cpu=%d pulled_task=%d sd=%s",
+					cpu_of(this_rq), pulled_task, sd->name);
 
 			domain_cost = sched_clock_cpu(this_cpu) - t0;
 			if (domain_cost > sd->max_newidle_lb_cost)
@@ -8416,8 +8528,15 @@ static int idle_balance(struct rq *this_rq)
 		 * Stop searching for tasks to pull if there are
 		 * now runnable tasks on this rq.
 		 */
-		if (pulled_task || this_rq->nr_running > 0)
+		if (pulled_task || this_rq->nr_running > 0) {
+			trace_printk("[stop] pulled_task=%d cpu=%d nr_running=%d cfs_nr_running=%d cfs_h_nr_running=%d rt_nr_running=%d",
+					pulled_task, cpu_of(this_rq),
+					this_rq->nr_running,
+					this_rq->cfs.nr_running,
+					this_rq->cfs.h_nr_running,
+					this_rq->rt.rt_nr_running);
 			break;
+		}
 	}
 	rcu_read_unlock();
 
@@ -8431,8 +8550,15 @@ static int idle_balance(struct rq *this_rq)
 	 * have been enqueued in the meantime. Since we're not going idle,
 	 * pretend we pulled a task.
 	 */
-	if (this_rq->cfs.h_nr_running && !pulled_task)
+	if (this_rq->cfs.h_nr_running && !pulled_task) {
 		pulled_task = 1;
+		trace_printk("[pretend] pulled_task=%d cpu=%d nr_running=%d cfs_nr_running=%d cfs_h_nr_running=%d rt_nr_running=%d",
+				pulled_task, cpu_of(this_rq),
+				this_rq->nr_running,
+				this_rq->cfs.nr_running,
+				this_rq->cfs.h_nr_running,
+				this_rq->rt.rt_nr_running);
+	}
 
 out:
 	/* Move the next balance forward */
@@ -8440,8 +8566,15 @@ out:
 		this_rq->next_balance = next_balance;
 
 	/* Is there a task of a high priority class? */
-	if (this_rq->nr_running != this_rq->cfs.h_nr_running)
+	if (this_rq->nr_running != this_rq->cfs.h_nr_running) {
 		pulled_task = -1;
+		trace_printk("[high] pulled_task=%d cpu=%d nr_running=%d cfs_nr_running=%d cfs_h_nr_running=%d rt_nr_running=%d",
+				pulled_task, cpu_of(this_rq),
+				this_rq->nr_running,
+				this_rq->cfs.nr_running,
+				this_rq->cfs.h_nr_running,
+				this_rq->rt.rt_nr_running);
+	}
 
 	if (pulled_task) {
 		idle_exit_fair(this_rq);
@@ -9002,6 +9135,12 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &curr->se;
 
+	if (entity_is_task(se))
+		trace_printk("rq=%p tsk=%d cpu=%d se=%p nr_running=%d cfs_nr_running=%d rt_nr_running=%d",
+				rq, task_pid_nr(curr), task_cpu(curr),
+				se, rq->nr_running,
+				rq->cfs.nr_running, rq->rt.rt_nr_running);
+
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
 		entity_tick(cfs_rq, se, queued);
@@ -9165,6 +9304,8 @@ static void switched_from_fair(struct rq *rq, struct task_struct *p)
 
 static void switched_to_fair(struct rq *rq, struct task_struct *p)
 {
+	trace_printk("tsk=%d cpu=%d",
+			task_pid_nr(p), cpu_of(rq));
 	attach_task_cfs_rq(p);
 
 	if (task_on_rq_queued(p)) {
@@ -9188,6 +9329,10 @@ static void switched_to_fair(struct rq *rq, struct task_struct *p)
 static void set_curr_task_fair(struct rq *rq)
 {
 	struct sched_entity *se = &rq->curr->se;
+
+	trace_printk("tsk=%d cpu=%d nr_running=%d",
+			task_pid_nr(rq->curr),
+			task_cpu(rq->curr), rq->nr_running);
 
 	for_each_sched_entity(se) {
 		struct cfs_rq *cfs_rq = cfs_rq_of(se);

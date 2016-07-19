@@ -3526,6 +3526,10 @@ void __setprio_other(struct rq *rq, struct task_struct *p) {
 	prev_class = p->sched_class;
 	queued = task_on_rq_queued(p);
 	running = task_current(rq, p);
+	trace_printk("tsk=%d que=%d run=%d thr=%d pr=%d st_pr=%d no_pr=%d rt_pr=%u",
+			task_pid_nr(p), queued, running,
+			p->rt.throttled, p->prio, p->static_prio,
+			p->normal_prio, p->rt_priority);
 	BUG_ON(!p->rt.throttled);
 
 	if (queued)
@@ -3540,6 +3544,12 @@ void __setprio_other(struct rq *rq, struct task_struct *p) {
 		p->sched_class->set_curr_task(rq);
 	if (queued)
 		enqueue_task(rq, p, 0);
+
+	trace_printk("tsk=%d que=%d run=%d thr=%d pr=%d st_pr=%d no_pr=%d rt_pr=%u class=%p",
+			task_pid_nr(p), queued, running,
+			p->rt.throttled, p->prio, p->static_prio,
+			p->normal_prio, p->rt_priority,
+			p->sched_class);
 }
 
 void __setprio_fifo(struct rq *rq, struct task_struct *p) {
@@ -3569,6 +3579,10 @@ again:
 	prev_class = p->sched_class;
 	queued = task_on_rq_queued(p);
 	running = task_current(cpu_rq(cpu), p);
+	trace_printk("tsk=%d que=%d run=%d thr=%d pr=%d st_pr=%d no_pr=%d rt_pr=%u",
+			task_pid_nr(p), queued, running,
+			p->rt.throttled, p->prio, p->static_prio,
+			p->normal_prio, p->rt_priority);
 	BUG_ON(p->rt.throttled);
 
 	if (queued)
@@ -3584,6 +3598,11 @@ again:
 	if (queued)
 		enqueue_task(cpu_rq(cpu), p, ENQUEUE_REPLENISH);
 
+	trace_printk("tsk=%d que=%d run=%d thr=%d pr=%d st_pr=%d no_pr=%d rt_pr=%u class=%p",
+			task_pid_nr(p), queued, running,
+			p->rt.throttled, p->prio, p->static_prio,
+			p->normal_prio, p->rt_priority,
+			p->sched_class);
 out:
 	if (cpu != cpu_of(rq))
 		double_unlock_balance(rq, cpu_rq(cpu));
