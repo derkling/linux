@@ -89,6 +89,7 @@ struct gic_chip_data {
 #ifdef CONFIG_GIC_NON_BANKED
 	void __iomem *(*get_base)(union gic_base *);
 #endif
+       bool probe_gem5_extensions;
        bool gem5_extensions;
 };
 
@@ -1153,6 +1154,17 @@ static int gic_init_bases(struct gic_chip_data *gic, int irq_start,
 	}
 
 	gic->gem5_extensions = false;
+	if (gic->probe_gem5_extensions) {
+#ifndef CONFIG_BL_SWITCHER
+		if (readl_relaxed(dist_base + GIC_DIST_CTR) & 0x100) {
+			pr_info("GIC: Detected gem5 extensions\n");
+			writel_relaxed(0x200, dist_base + GIC_DIST_CTR);
+			gic->gem5_extensions = true;
+		}
+#else
+		WARN(1, "gem5 GIC extensions aren't supported when using the bL switcher.\n");
+#endif
+	}
 
 	/*
 	 * Find out how many interrupts are supported.
@@ -1415,16 +1427,11 @@ static void __init gic_of_setup_kvm_info(struct device_node *node)
 int __init
 gic_of_init(struct device_node *node, struct device_node *parent)
 {
-<<<<<<< HEAD
-	struct gic_chip_data *gic;
-	int irq, ret;
-=======
 	struct gic_chip_data *gic = &gic_data[gic_cnt];
 	void __iomem *cpu_base;
 	void __iomem *dist_base;
 	u32 percpu_offset;
-	int irq;
->>>>>>> gem5: Add support for gem5's extended GIC mode
+	int irq, ret;
 
 	if (WARN_ON(!node))
 		return -ENODEV;
@@ -1451,6 +1458,11 @@ gic_of_init(struct device_node *node, struct device_node *parent)
 		return ret;
 	}
 
+	gic->probe_gem5_extensions =
+		node && of_device_is_compatible(node, "gem5,gic");
+
+	__gic_init_bases(gic_cnt, -1, dist_base, cpu_base, percpu_offset,
+			 &node->fwnode);
 	if (!gic_cnt) {
 		gic_init_physaddr(node);
 		gic_of_setup_kvm_info(node);
@@ -1463,20 +1475,6 @@ gic_of_init(struct device_node *node, struct device_node *parent)
 
 	if (IS_ENABLED(CONFIG_ARM_GIC_V2M))
 		gicv2m_init(&node->fwnode, gic_data[gic_cnt].domain);
-
-	if (node && of_device_is_compatible(node, "gem5,gic")) {
-#ifndef CONFIG_BL_SWITCHER
-		gic->gem5_extensions = !!(
-			readl_relaxed(dist_base + GIC_DIST_CTR) & 0x100);
-#else
-		WARN(1, "gem5 GIC extensions aren't supported when using the bL switcher.\n");
-#endif
-	}
-
-	if (gic->gem5_extensions) {
-		pr_info("GIC: Detected gem5 extensions\n");
-		writel_relaxed(0x200, gic_data_dist_base(gic) + GIC_DIST_CTR);
-	}
 
 	gic_cnt++;
 	return 0;
