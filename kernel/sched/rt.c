@@ -488,7 +488,7 @@ static inline struct rt_rq *group_rt_rq(struct sched_rt_entity *rt_se)
 	return rt_se->my_q;
 }
 
-static void enqueue_rt_entity(struct sched_rt_entity *rt_se, bool head);
+static void enqueue_rt_entity(struct sched_rt_entity *rt_se, int flags);
 static void dequeue_rt_entity(struct sched_rt_entity *rt_se);
 
 /*
@@ -1250,12 +1250,13 @@ void dec_rt_tasks(struct sched_rt_entity *rt_se, struct rt_rq *rt_rq)
 	dec_rt_group(rt_se, rt_rq);
 }
 
-static void __enqueue_rt_entity(struct sched_rt_entity *rt_se, bool head)
+static void __enqueue_rt_entity(struct sched_rt_entity *rt_se, int flags)
 {
 	struct rt_rq *rt_rq = rt_rq_of_se(rt_se);
 	struct rt_prio_array *array = &rt_rq->active;
 	struct rt_rq *group_rq = group_rt_rq(rt_se);
 	struct list_head *queue = array->queue + rt_se_prio(rt_se);
+	bool head = flags & ENQUEUE_HEAD;
 
 	/*
 	 * Don't enqueue the group if its throttled, or when empty.
@@ -1272,7 +1273,9 @@ static void __enqueue_rt_entity(struct sched_rt_entity *rt_se, bool head)
 	 *
 	 * Do the transition towards OTHER now.
 	 */
-	if (rt_rq->rt_throttled && !rt_se->throttled) {
+	if (rt_rq->rt_throttled &&
+	    !rt_se->throttled   &&
+	    flags != ENQUEUE_REPLENISH) {
 		struct task_struct *p;
 		struct rq *rq;
 
@@ -1291,9 +1294,7 @@ static void __enqueue_rt_entity(struct sched_rt_entity *rt_se, bool head)
 		p->sched_class = &fair_sched_class;
 		p->prio = DEFAULT_PRIO;
 
-		p->sched_class->enqueue_task(rq, p,
-				ENQUEUE_WAKEUP |
-				ENQUEUE_WAKING);
+		p->sched_class->enqueue_task(rq, p, flags);
 		p->sched_class->switched_to(rq, p);
 
 		return;
@@ -1341,13 +1342,13 @@ static void dequeue_rt_stack(struct sched_rt_entity *rt_se)
 	}
 }
 
-static void enqueue_rt_entity(struct sched_rt_entity *rt_se, bool head)
+static void enqueue_rt_entity(struct sched_rt_entity *rt_se, int flags)
 {
 	struct rq *rq = rq_of_rt_se(rt_se);
 
 	dequeue_rt_stack(rt_se);
 	for_each_sched_rt_entity(rt_se)
-		__enqueue_rt_entity(rt_se, head);
+		__enqueue_rt_entity(rt_se, flags);
 	enqueue_top_rt_rq(&rq->rt);
 }
 
@@ -1377,7 +1378,7 @@ enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 	if (flags & ENQUEUE_WAKEUP)
 		rt_se->timeout = 0;
 
-	enqueue_rt_entity(rt_se, flags & ENQUEUE_HEAD);
+	enqueue_rt_entity(rt_se, flags);
 	if (p->sched_class != &rt_sched_class) {
 		return;
 	}

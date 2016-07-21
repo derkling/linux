@@ -3580,9 +3580,9 @@ again:
 	p->prio = (MAX_RT_PRIO - 1) - p->rt_priority;
 
 	if (running)
-		p->sched_class->set_curr_task(rq);
+		p->sched_class->set_curr_task(cpu_rq(cpu));
 	if (queued)
-		enqueue_task(rq, p, 0);
+		enqueue_task(cpu_rq(cpu), p, ENQUEUE_REPLENISH);
 
 out:
 	if (cpu != cpu_of(rq))
