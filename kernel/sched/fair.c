@@ -4145,8 +4145,12 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		update_cfs_shares(cfs_rq);
 	}
 
-	if (!se) {
+	if (!se)
 		sub_nr_running(rq, 1);
+
+#ifdef CONFIG_SMP
+
+	if (!se) {
 		walt_dec_cumulative_runnable_avg(rq, p);
 
 		/*
@@ -4166,6 +4170,8 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	}
 	/* Update SchedTune accouting */
 	schedtune_dequeue_task(p, cpu_of(rq));
+
+#endif /* CONFIG_SMP */
 
 	hrtick_update(rq);
 }
