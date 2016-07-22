@@ -4116,8 +4116,12 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		update_cfs_shares(cfs_rq);
 	}
 
-	if (!se) {
+	if (!se)
 		sub_nr_running(rq, 1);
+
+#ifdef CONFIG_SMP
+
+	if (!se) {
 		schedtune_dequeue_task(p, cpu_of(rq));
 
 		/*
@@ -4135,6 +4139,9 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 				set_cfs_cpu_capacity(cpu_of(rq), false, 0);
 		}
 	}
+
+#endif /* CONFIG_SMP */
+
 	hrtick_update(rq);
 }
 
