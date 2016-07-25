@@ -3539,6 +3539,12 @@ void __setprio_other(struct rq *rq, struct task_struct *p) {
 
 	p->sched_class = &fair_sched_class;
 	p->prio = DEFAULT_PRIO;
+	/*
+	 * As in attach_task_cfs_rq, since the real-depth could have been
+	 * changed (only FAIR class maintain depth value), reset depth
+	 * properly.
+	 */
+	p->se.depth = p->se.parent ? p->se.parent->depth + 1 : 0;
 
 	if (running)
 		p->sched_class->set_curr_task(rq);
