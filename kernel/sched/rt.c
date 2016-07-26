@@ -1059,7 +1059,7 @@ static void update_curr_rt(struct rq *rq)
 
 	sched_rt_avg_update(rq, delta_exec);
 
-	trace_printk("tsk=%d cpu=%d rt_se=%p thr=%d nr_run=%d cfs_nr_run=%d cfs_h_nr_run=%d rt_nr_run=%d",
+	trace_printk("FIFO tsk=%d cpu=%d rt_se=%p thr=%d nr_run=%d cfs_nr_run=%d cfs_h_nr_run=%d rt_nr_run=%d",
 			task_pid_nr(curr), task_cpu(curr),
 			rt_se, rt_se->throttled, rq->nr_running,
 			rq->cfs.nr_running, rq->cfs.h_nr_running, rq->rt.rt_nr_running);

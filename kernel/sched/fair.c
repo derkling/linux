@@ -9136,7 +9136,7 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 	struct sched_entity *se = &curr->se;
 
 	if (entity_is_task(se))
-		trace_printk("rq=%p tsk=%d cpu=%d se=%p nr_running=%d cfs_nr_running=%d rt_nr_running=%d",
+		trace_printk("OTHER rq=%p tsk=%d cpu=%d se=%p nr_running=%d cfs_nr_running=%d rt_nr_running=%d",
 				rq, task_pid_nr(curr), task_cpu(curr),
 				se, rq->nr_running,
 				rq->cfs.nr_running, rq->rt.rt_nr_running);
