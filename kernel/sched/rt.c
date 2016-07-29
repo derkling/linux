@@ -949,7 +949,8 @@ static int do_sched_rt_period_timer(struct rt_bandwidth *rt_b, int overrun)
 				if (rt_rq->rt_nr_running && rq->curr == rq->idle)
 					rq_clock_skip_update(rq, false);
 			}
-			if (rt_rq->rt_time || rt_rq->rt_nr_running)
+			if (rt_rq->rt_time || rt_rq->rt_nr_running ||
+				rt_rq->rt_nr_cfs_throttled)
 				idle = 0;
 			raw_spin_unlock(&rt_rq->rt_runtime_lock);
 		} else if (rt_rq->rt_nr_running) {
