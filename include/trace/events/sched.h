@@ -799,13 +799,9 @@ TRACE_EVENT(sched_boost_task,
  */
 TRACE_EVENT(sched_energy_diff,
 
-	TP_PROTO(struct task_struct *tsk, int scpu, int dcpu, int udelta,
-		int nrgb, int nrga, int nrgd, int capb, int capa, int capd,
-		int nrgn, int nrgp),
+	TP_PROTO(struct energy_env *eenv),
 
-	TP_ARGS(tsk, scpu, dcpu, udelta,
-		nrgb, nrga, nrgd, capb, capa, capd,
-		nrgn, nrgp),
+	TP_ARGS(eenv),
 
 	TP_STRUCT__entry(
 		__array( char,	comm,	TASK_COMM_LEN	)
@@ -824,23 +820,23 @@ TRACE_EVENT(sched_energy_diff,
 	),
 
 	TP_fast_assign(
-		memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
-		__entry->pid		= tsk->pid;
-		__entry->scpu 		= scpu;
-		__entry->dcpu 		= dcpu;
-		__entry->udelta 	= udelta;
-		__entry->nrgb 		= nrgb;
-		__entry->nrga 		= nrga;
-		__entry->nrgd 		= nrgd;
-		__entry->capb 		= capb;
-		__entry->capa 		= capa;
-		__entry->capd 		= capd;
-		__entry->nrgn 		= nrgn;
-		__entry->nrgp 		= nrgp;
+		memcpy(__entry->comm, eenv->task->comm, TASK_COMM_LEN);
+		__entry->pid		= eenv->task->pid;
+		__entry->scpu 		= eenv->src_cpu;
+		__entry->dcpu 		= eenv->dst_cpu;
+		__entry->udelta 	= eenv->util_delta;
+		__entry->nrgb 		= eenv->nrg.before;
+		__entry->nrga 		= eenv->nrg.after;
+		__entry->nrgd 		= eenv->nrg.diff;
+		__entry->capb 		= eenv->cap.before;
+		__entry->capa 		= eenv->cap.after;
+		__entry->capd 		= eenv->cap.delta;
+		__entry->nrgn 		= eenv->nrg.delta;
+		__entry->nrgp 		= eenv->payoff;
 	),
 
 	TP_printk("pid=%d comm=%s "
-			"src_cpu=%d dst_cpu=%d usage_delta=%d "
+			"src_cpu=%d dst_cpu=%d util_delta=%d "
 			"nrg_before=%d nrg_after=%d nrg_diff=%d "
 			"cap_before=%d cap_after=%d cap_delta=%d "
 			"nrg_delta=%d nrg_payoff=%d",
