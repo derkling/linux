@@ -4719,51 +4719,6 @@ static inline bool energy_aware(void)
 	return sched_feat(ENERGY_AWARE);
 }
 
-struct energy_env {
-	struct sched_group	*sg_top;
-	struct sched_group	*sg_cap;
-
-	struct sched_domain 	*top_sd;
-	struct sched_group 	*sg;
-
-	int			cap_idx;
-	int 			cap_idx_before;
-	int 			cap_idx_after;
-	int			util_delta;
-	int			src_cpu;
-	int			dst_cpu;
-
-	int			energy;
-	int			payoff;
-	struct task_struct	*task;
-	struct {
-		int before;
-		int after;
-		int delta;
-		int diff;
-	} nrg;
-	struct {
-		int before;
-		int after;
-		int delta;
-	} cap;
-
-
-	/* Data used by the new energy_diff */
-
-	int energy_delta;
-	int perf_delta;
-	struct {
-		int energy;
-		int capacity;
-		int utilization;
-
-		int speedup_idx;
-		int delay_idx;
-		int perf_idx;
-	} before, after;
-};
-
 /*
  * __cpu_norm_util() returns the cpu util relative to a specific capacity,
  * i.e. it's busy ratio, in the range [0..SCHED_LOAD_SCALE] which is useful for
@@ -5122,11 +5077,12 @@ __update_capacity_domain_energy(struct energy_env *eenv, struct sched_domain *sd
 	struct sched_group *sg = sd->groups;
 	unsigned long sg_busy, sg_idle;
 	unsigned int sg_nrg;
-	bool nrg_after;
+	bool after;
 	int idle_idx;
 
+	unsigned int nrg_before, nrg_after;
+	int nrg_diff;
 	char buff[64];
-	unsigned int nrg_before;
 
 	/*
 	 * Compute energy of each sub-group which is a descendant
@@ -5150,7 +5106,7 @@ next_sg:
 	 */
 	eenv->util_delta = 0;
 	eenv->cap_idx = eenv->cap_idx_before;
-	nrg_after = false;
+	after = false;
 	while (true) {
 		sg_busy = group_norm_util(eenv, sg);
 		sg_idle = SCHED_LOAD_SCALE - sg_busy;
@@ -5167,34 +5123,35 @@ next_sg:
 		sg_nrg = sg_busy_nrg + sg_idle_nrg;
 
 		/* Keep track of utilization in src and dst CPUs */
-		if (nrg_after == false &&
+		if (after == false &&
 		    cpumask_test_cpu(eenv->src_cpu, sched_group_cpus(sg)))
 			eenv->before.utilization = sg_busy;
-		if (nrg_after == true &&
+		if (after == true &&
 		    cpumask_test_cpu(eenv->dst_cpu, sched_group_cpus(sg)))
 			eenv->after.utilization = sg_busy;
 
-		/* Adding "energy after" contrib */
-		if (nrg_after) {
+		/* Account "energy after" contrib */
+		if (after) {
 			eenv->after.energy += sg_nrg;
+			nrg_after = sg_nrg;
 			break;
 		}
 
-		/* Removing "energy before" contrib */
+		/* Account "energy before" contrib */
 		eenv->before.energy += sg_nrg;
-		eenv->util_delta = util_delta;
-		eenv->cap_idx = eenv->cap_idx_after;
-
-		/* Cached data for tracing */
 		nrg_before = sg_nrg;
 
-		nrg_after = true;
+		/* Setup eenv for "after" case */
+		eenv->util_delta = util_delta;
+		eenv->cap_idx = eenv->cap_idx_after;
+		after = true;
 
 	}
 
+	nrg_diff = (int)eenv->after.energy - eenv->before.energy;
 	snprintf(buff, 64, "%*pbl", cpumask_pr_args(to_cpumask(sg->cpumask)));
 	trace_printk("      sg=%10s: + %3u (nrg_after) - %3u (nrg_before) = %4d (nrg_diff)",
-			buff, sg_nrg, nrg_before, eenv->nrg.diff);
+			buff, nrg_after, nrg_before, nrg_diff);
 
 	/* Other SGs of the top SD are covered by the caller */
 	if (sd == eenv->top_sd)
@@ -5246,9 +5203,26 @@ static inline int normalize_energy(int energy_diff);
 static inline void
 __update_perf_energy_deltas(struct energy_env *eenv)
 {
-	unsigned long util = task_util(eenv->task);
+	unsigned long task_util = eenv->util_delta;
 
-	/* SpeedUp Indexes */
+
+/* #define OLD_INDEX */
+#ifdef OLD_INDEX
+
+	/*
+	 * SpeedUp Index
+	 *
+	 *   SPI := 1024 - ((1024 * task_util) / cpu_capacity)
+	 *
+	 * which represents how faster we complete a task activation by
+	 * running at a CPU capacity (i.e. OPP) higher than the minimum
+	 * capacity required to satisfy the task utilization.
+	 *
+	 * Example:
+	 * a) cpu_capacity ==  1 * task_util => SPI =   0
+	 * b) cpu_capacity ==  2 * task_util => SPI = 512
+	 * c) cpu_capacity == 10 * task_util => SPI = 922
+	 */
 	eenv_before(speedup_idx)  = SCHED_LOAD_SCALE * util;
 	eenv_before(speedup_idx) /= eenv_before(capacity);
 	eenv_before(speedup_idx)  =  1024 - eenv_before(speedup_idx);
@@ -5256,17 +5230,63 @@ __update_perf_energy_deltas(struct energy_env *eenv)
 	eenv_after(speedup_idx) /= eenv_after(capacity);
 	eenv_after(speedup_idx)  =  1024 - eenv_after(speedup_idx);
 
-	/* Delay Indexes */
-	eenv_before(delay_idx)  = SCHED_LOAD_SCALE * eenv_before(utilization);
-	eenv_before(delay_idx) /= (util + eenv_before(utilization));
-	eenv_after(delay_idx)  = SCHED_LOAD_SCALE * eenv_after(utilization);
-	eenv_after(delay_idx) /= (util + eenv_after(utilization));
+#else
+
+	/*
+	 * SpeedUp Index
+	 *
+	 *   SPI := 1024 * ((cpu_capacity - task_util) / (1024 - task_util))
+	 *
+	 * which represents the relative speedup for the completion of a
+	 * task's activation, assuming it's running alone. That metric is a
+	 * linear value ranging from:
+	 *    0 (i.e. min) if the task is running at cpu_capacity == task_util
+	 * 1024 (i.e. max) if the task is running at cpu_capacity == 1024
+	 *
+	 * NOTE: this metric is the dual of the SPC boosting strategy, the
+	 * value returned indeed is the boost value which the task is getting.
+	 *
+	 * Example (task_util = 100):
+	 * a) cpu_capacity ==  1 * task_util => SPI =   0
+	 * b) cpu_capacity ==  2 * task_util => SPI = 110
+	 * c) cpu_capacity == 10 * task_util => SPI = 997
+	 *
+	 * Example (task_util = 500):
+	 * a) cpu_capacity ==  1 * task_util => SPI =   0
+	 * b) cpu_capacity ==  2 * task_util => SPI = 997
+	 */
+	eenv_before(speedup_idx)  = SCHED_LOAD_SCALE;
+	eenv_before(speedup_idx) *= (eenv_before(capacity) - task_util);
+	eenv_before(speedup_idx) /= (1024 - task_util);
+	eenv_after(speedup_idx)   = SCHED_LOAD_SCALE;
+	eenv_after(speedup_idx)  *= (eenv_after(capacity) - task_util);
+	eenv_after(speedup_idx)  /= (1024 - task_util);
+
+#endif /* OLD_INDEX */
+
+	/*
+	 * Delay Index
+	 *
+	 *   DLI := 1024 * (cpu_util - task_util) / cpu_util
+	 *
+	 * which represents the "fraction" of CPU bandwidth consumed by other
+	 * tasks in the worst case, i.e. assuming all other tasks runs before.
+	 *
+	 * NOTE: in the above formula we assume that "cpu_util" includes
+	 *       already the task utilization.
+	 */
+	eenv_before(delay_idx)  =  SCHED_LOAD_SCALE;
+	eenv_before(delay_idx) *= (eenv_before(utilization) - task_util);
+	eenv_before(delay_idx) /=  eenv_before(utilization);
+	eenv_after(delay_idx)   =  SCHED_LOAD_SCALE;
+	eenv_after(delay_idx)  *= (eenv_after(utilization) - task_util);
+	eenv_after(delay_idx)  /=  eenv_after(utilization);
 
 	/* Performance Variation */
-	eenv->perf_delta = eenv_delta(speedup_idx) - eenv_delta(delay_idx);
+	eenv->prf_delta = eenv_delta(speedup_idx) - eenv_delta(delay_idx);
 
 	/* Energy Variation */
-	eenv->energy_delta = normalize_energy(eenv_delta(energy));
+	eenv->nrg_delta = normalize_energy(eenv_delta(energy));
 
 }
 
@@ -5399,8 +5419,10 @@ next_sg:
 			__update_group_capacity(eenv);
 
 			snprintf(buff, 64, "%*pbl", cpumask_pr_args(to_cpumask(sg->cpumask)));
-			trace_printk("    Min capacity for %s: %d:%lu",
-					buff, eenv->cap_idx, sg->sge->cap_states[eenv->cap_idx].cap);
+			trace_printk("    Min capacity[%s]: before=%d:%lu after=%d:%lu",
+					buff,
+					eenv->cap_idx_before, sg->sge->cap_states[eenv->cap_idx_before].cap,
+					eenv->cap_idx_after,  sg->sge->cap_states[eenv->cap_idx_after].cap);
 
 		}
 
@@ -5418,13 +5440,10 @@ next_sg:
 	__update_perf_energy_deltas(eenv);
 
 	eenv->payoff = 0;
-	trace_sched_energy_diff(eenv->task,
-			eenv->src_cpu, eenv->dst_cpu, eenv->util_delta,
-			eenv->before.energy, eenv->after.energy, eenv->energy_delta,
-			eenv->before.capacity, eenv->after.capacity, eenv->perf_delta,
-			0, 0);
+	trace_sched_energy_diff_new(eenv);
+	trace_sched_energy_perf_deltas(eenv);
 
-	return eenv->energy_delta;
+	return eenv->nrg_delta;
 }
 
 void
@@ -5438,17 +5457,17 @@ test_eawake_code(void)
 	printk(KERN_WARNING ".:: In-Cluster migration (0->5) test:\n");
 	eenv.src_cpu = 0;
 	eenv.dst_cpu = 5;
-	__energy_diff2(&eenv);
+	__energy_diff_new(&eenv);
 
 	printk(KERN_WARNING ".:: Down-migration (2->3) test:\n");
 	eenv.src_cpu = 2;
 	eenv.dst_cpu = 3;
-	__energy_diff2(&eenv);
+	__energy_diff_new(&eenv);
 
 	printk(KERN_WARNING ".:: Up-migration (5->1) test:\n");
 	eenv.src_cpu = 5;
 	eenv.dst_cpu = 1;
-	__energy_diff2(&eenv);
+	__energy_diff_new(&eenv);
 
 }
 
