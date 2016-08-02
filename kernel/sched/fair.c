@@ -5015,7 +5015,7 @@ static inline bool cpu_in_sg(struct sched_group *sg, int cpu)
  * utilization is removed from or added to the system (e.g. task wake-up). If
  * both are specified, the utilization is migrated.
  */
-static inline int
+noinline int
 __energy_diff(struct energy_env *eenv)
 {
 	struct sched_domain *sd;
@@ -5313,7 +5313,7 @@ __update_perf_energy_deltas(struct energy_env *eenv)
  *     energy diff for:      2
  *
  */
-static inline int
+noinline int
 __energy_diff_new(struct energy_env *eenv)
 {
 	struct sched_domain *ea_sd, *sd;
@@ -5458,6 +5458,7 @@ energy_diff(struct energy_env *eenv)
 	int nrg_delta;
 
 	/* Conpute "absolute" energy diff */
+	__energy_diff_new(eenv);
 	__energy_diff(eenv);
 
 	/* Return energy diff when boost margin is 0 */
