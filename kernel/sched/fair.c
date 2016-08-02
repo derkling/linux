@@ -5034,6 +5034,8 @@ __energy_diff(struct energy_env *eenv)
 	if (eenv->src_cpu == eenv->dst_cpu)
 		return 0;
 
+	trace_printk("Original");
+
 	sd_cpu = (eenv->src_cpu != -1) ? eenv->src_cpu : eenv->dst_cpu;
 	sd = rcu_dereference(per_cpu(sd_ea, sd_cpu));
 
