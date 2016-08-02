@@ -5408,6 +5408,10 @@ next_sg:
 
 	__update_perf_energy_deltas(eenv);
 
+	eenv->payoff = 0;
+	trace_sched_energy_diff_new(eenv);
+	trace_sched_energy_perf_deltas(eenv);
+
 	return eenv->nrg_delta;
 }
 
