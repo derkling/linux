@@ -1154,9 +1154,12 @@ struct energy_env {
 	struct sched_group	*sg_top;
 	struct sched_group	*sg_cap;
 
+	struct sched_domain 	*top_sd;
 	struct sched_group 	*sg;
 
 	int			cap_idx;
+	int 			cap_idx_before;
+	int 			cap_idx_after;
 	int			util_delta;
 	int			src_cpu;
 	int			dst_cpu;
@@ -1174,6 +1177,14 @@ struct energy_env {
 		int after;
 		int delta;
 	} cap;
+
+	/* Data used by the new energy_diff */
+
+	int nrg_delta;
+	struct {
+		unsigned int energy;
+		unsigned int capacity;
+	} before, after;
 };
 
 #define SDTL_OVERLAP	0x01
