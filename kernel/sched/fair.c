@@ -5416,6 +5416,31 @@ next_sg:
 	return eenv->nrg_delta;
 }
 
+void
+test_eawake_code(void)
+{
+	struct energy_env eenv = {
+		.util_delta = 100,
+		.task = current,
+	};
+
+	printk(KERN_WARNING ".:: In-Cluster migration (0->5) test:\n");
+	eenv.src_cpu = 0;
+	eenv.dst_cpu = 5;
+	__energy_diff_new(&eenv);
+
+	printk(KERN_WARNING ".:: Down-migration (2->3) test:\n");
+	eenv.src_cpu = 2;
+	eenv.dst_cpu = 3;
+	__energy_diff_new(&eenv);
+
+	printk(KERN_WARNING ".:: Up-migration (5->1) test:\n");
+	eenv.src_cpu = 5;
+	eenv.dst_cpu = 1;
+	__energy_diff_new(&eenv);
+
+}
+
 #ifdef CONFIG_SCHED_TUNE
 
 struct target_nrg schedtune_target_nrg;
