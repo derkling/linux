@@ -532,6 +532,8 @@ boost_read(struct cgroup_subsys_state *css, struct cftype *cft)
 	return st->boost;
 }
 
+extern void test_eawake_code(void);
+
 static int
 boost_write(struct cgroup_subsys_state *css, struct cftype *cft,
 	    u64 boost)
@@ -565,6 +567,8 @@ boost_write(struct cgroup_subsys_state *css, struct cftype *cft,
 	schedtune_boostgroup_update(st->idx, st->boost);
 
 	trace_sched_tune_config(st->boost);
+
+	test_eawake_code();
 
 	return 0;
 }
