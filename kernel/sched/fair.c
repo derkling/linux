@@ -5429,6 +5429,11 @@ __update_capacity_domain_energy(struct energy_env *eenv, struct sched_domain *sd
 	unsigned int sg_nrg;
 	bool after;
 	int idle_idx;
+
+	unsigned int nrg_before, nrg_after;
+	int nrg_diff;
+	char buff[64];
+
 	/*
 	 * Compute energy of each sub-group which is a descendant
 	 * of the first group of an EA top SG
@@ -5471,11 +5476,13 @@ next_sg:
 		/* Account "energy after" contrib */
 		if (after) {
 			eenv->after.energy += sg_nrg;
+			nrg_after = sg_nrg;
 			break;
 		}
 
 		/* Account "energy before" contrib */
 		eenv->before.energy += sg_nrg;
+		nrg_before = sg_nrg;
 
 		/* Setup eenv for "after" case */
 		eenv->util_delta = util_delta;
@@ -5483,6 +5490,11 @@ next_sg:
 		after = true;
 
 	}
+
+	nrg_diff = (int)eenv->after.energy - eenv->before.energy;
+	snprintf(buff, 64, "%*pbl", cpumask_pr_args(to_cpumask(sg->cpumask)));
+	trace_printk("      sg=%10s: + %3u (nrg_after) - %3u (nrg_before) = %4d (nrg_diff)",
+			buff, nrg_after, nrg_before, nrg_diff);
 
 	/* Other SGs of the top SD are covered by the caller */
 	if (sd == eenv->top_sd)
@@ -5574,10 +5586,13 @@ energy_diff_new(struct energy_env *eenv)
 	struct sched_group *ea_sg, *sg;
 	bool affected_sg;
 	int cpu;
+	char buff[64];
 
 	/* This should never happen, better use a WARN ON?!? */
 	if (eenv->src_cpu == eenv->dst_cpu)
 		return 0;
+
+	trace_printk("New");
 
 	/* Lock reads of SD data structures */
 	rcu_read_lock();
@@ -5589,6 +5604,8 @@ energy_diff_new(struct energy_env *eenv)
 		return 0;
 	}
 	ea_sg = ea_sd->groups;
+
+	trace_printk("    Highest SD with EM data: %s", ea_sd->name);
 
 	/*
 	 * External loop on top-level EA SGs.
@@ -5639,6 +5656,12 @@ next_sg:
 			/* Update the minimum capacity for this group */
 			eenv->sg_cap = eenv->sg = sg;
 			__update_group_capacity(eenv);
+
+			snprintf(buff, 64, "%*pbl", cpumask_pr_args(to_cpumask(sg->cpumask)));
+			trace_printk("    Min capacity[%s]: before=%d:%lu after=%d:%lu",
+					buff,
+					eenv->cap_idx_before, sg->sge->cap_states[eenv->cap_idx_before].cap,
+					eenv->cap_idx_after,  sg->sge->cap_states[eenv->cap_idx_after].cap);
 
 		}
 
