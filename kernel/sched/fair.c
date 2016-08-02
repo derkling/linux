@@ -5015,7 +5015,8 @@ static inline bool cpu_in_sg(struct sched_group *sg, int cpu)
  * utilization is removed from or added to the system (e.g. task wake-up). If
  * both are specified, the utilization is migrated.
  */
-static inline int __energy_diff(struct energy_env *eenv)
+static inline int
+__energy_diff(struct energy_env *eenv)
 {
 	struct sched_domain *sd;
 	struct sched_group *sg;
