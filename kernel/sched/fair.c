@@ -5328,6 +5328,8 @@ __energy_diff_new(struct energy_env *eenv)
 	if (eenv->src_cpu == eenv->dst_cpu)
 		return 0;
 
+	trace_printk("New");
+
 	/* Lock reads of SD data structures */
 	rcu_read_lock();
 
