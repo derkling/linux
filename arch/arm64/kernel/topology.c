@@ -467,6 +467,72 @@ out:
 struct cpu_topology cpu_topology[NR_CPUS];
 EXPORT_SYMBOL_GPL(cpu_topology);
 
+/*
+ * Hi6220 specific energy cost model data. There are no unit requirements for
+ * the data. Data can be normalized to any reference point, but the
+ * normalization must be consistent. That is, one bogo-joule/watt must be the
+ * same quantity for all data, but we don't care what it is.
+ */
+
+static struct idle_state idle_states_cluster_a53[] = {
+	{ .power = 107 }, /* arch_cpu_idle() (active idle) = WFI */
+	{ .power = 107 }, /* WFI */
+	{ .power =  47 }, /* cpu-sleep */
+	{ .power =   0 }, /* cluster-sleep */
+};
+
+static struct capacity_state cap_states_cluster_a53[] = {
+        /* Power per cluster */
+	{ .cap =  178, .power =  16, }, /*  208 MHz */
+	{ .cap =  369, .power =  29, }, /*  432 MHz */
+	{ .cap =  622, .power =  47, }, /*  729 MHz */
+	{ .cap =  819, .power =  75, }, /*  960 MHz */
+	{ .cap = 1024, .power = 112, }, /* 1200 MHz */
+};
+
+static struct sched_group_energy energy_cluster_a53 = {
+	.nr_idle_states = ARRAY_SIZE(idle_states_cluster_a53),
+	.idle_states    = idle_states_cluster_a53,
+	.nr_cap_states  = ARRAY_SIZE(cap_states_cluster_a53),
+	.cap_states     = cap_states_cluster_a53,
+};
+
+static struct idle_state idle_states_core_a53[] = {
+	{ .power = 15 }, /* arch_cpu_idle() (active idle) = WFI */
+	{ .power = 15 }, /* WFI */
+	{ .power =  0 }, /* cpu-sleep */
+	{ .power =  0 }, /* cluster-sleep */
+};
+
+static struct capacity_state cap_states_core_a53[] = {
+        /* Power per cpu */
+	{ .cap =  178, .power =  69, }, /*  208 MHz */
+	{ .cap =  369, .power = 125, }, /*  432 MHz */
+	{ .cap =  622, .power = 224, }, /*  729 MHz */
+	{ .cap =  819, .power = 367, }, /*  960 MHz */
+	{ .cap = 1024, .power = 670, }, /* 1200 MHz */
+};
+
+static struct sched_group_energy energy_core_a53 = {
+	.nr_idle_states = ARRAY_SIZE(idle_states_core_a53),
+	.idle_states    = idle_states_core_a53,
+	.nr_cap_states  = ARRAY_SIZE(cap_states_core_a53),
+	.cap_states     = cap_states_core_a53,
+};
+
+/* sd energy functions */
+static inline
+const struct sched_group_energy * const cpu_cluster_energy(int cpu)
+{
+	return &energy_cluster_a53;
+}
+
+static inline
+const struct sched_group_energy * const cpu_core_energy(int cpu)
+{
+	return &energy_core_a53;
+}
+
 const struct cpumask *cpu_coregroup_mask(int cpu)
 {
 	return &cpu_topology[cpu].core_sibling;
@@ -578,9 +644,9 @@ static void __init reset_cpu_topology(void)
 
 static struct sched_domain_topology_level arm64_topology[] = {
 #ifdef CONFIG_SCHED_MC
-	{ cpu_coregroup_mask, cpu_coregroup_flags, SD_INIT_NAME(MC) },
+	{ cpu_coregroup_mask, cpu_coregroup_flags, cpu_core_energy, SD_INIT_NAME(MC) },
 #endif
-	{ cpu_cpu_mask, cpu_cpu_flags, SD_INIT_NAME(DIE) },
+	{ cpu_cpu_mask, cpu_cpu_flags, cpu_cluster_energy, SD_INIT_NAME(DIE) },
 	{ NULL, }
 };
 
