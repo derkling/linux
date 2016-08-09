@@ -5138,31 +5138,6 @@ static inline bool energy_aware(void)
 	return sched_feat(ENERGY_AWARE);
 }
 
-struct energy_env {
-	struct sched_group	*sg_top;
-	struct sched_group	*sg_cap;
-	struct sched_group	*sg;
-	int			cap_idx;
-	int			util_delta;
-	int			src_cpu;
-	int			dst_cpu;
-	int			energy;
-	/* Members used only by energy_diff_new()
-	 * NOTE: If the proposed new version is accepcted this command can be
-	 * removed and the following data are going to replace some of the
-	 * previous fields, which are not more used by the new version
-	 */
-	struct sched_domain	*top_sd;
-	int			cap_idx_before;
-	int			cap_idx_after;
-
-	int nrg_delta;
-	struct {
-		unsigned int energy;
-		unsigned int capacity;
-	} before, after;
-};
-
 /*
  * __cpu_norm_util() returns the cpu util relative to a specific capacity,
  * i.e. it's busy ratio, in the range [0..SCHED_CAPACITY_SCALE] which is useful
@@ -5375,6 +5350,7 @@ noinline int energy_diff(struct energy_env *eenv)
 	int diff, margin;
 
 	struct energy_env eenv_before = {
+		.task		= eenv->task,
 		.util_delta	= 0,
 		.src_cpu	= eenv->src_cpu,
 		.dst_cpu	= eenv->dst_cpu,
@@ -5413,8 +5389,14 @@ noinline int energy_diff(struct energy_env *eenv)
 
 	diff = energy_after-energy_before;
 
+	eenv->nrg.before = energy_before;
+	eenv->nrg.after = energy_after;
+	eenv->nrg.delta = diff;
+	trace_sched_energy_diff(eenv);
+
 	if (abs(diff) < margin)
 		return 0;
+
 
 	return diff;
 }
@@ -5661,6 +5643,9 @@ next_sg:
 	rcu_read_unlock();
 
 	eenv->nrg_delta = eenv->after.energy - eenv->before.energy;
+
+	trace_sched_energy_diff_new(eenv);
+
 	return eenv->nrg_delta;
 }
 
@@ -6086,6 +6071,7 @@ static int select_energy_cpu_brute(struct task_struct *p, int prev_cpu)
 		unsigned long spare;
 
 		struct energy_env eenv = {
+			.task		= p,
 			.util_delta	= task_util(p),
 			.src_cpu	= prev_cpu,
 			.dst_cpu	= i,

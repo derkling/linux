@@ -1180,6 +1180,39 @@ typedef int (*sched_domain_flags_f)(void);
 typedef
 const struct sched_group_energy * const(*sched_domain_energy_f)(int cpu);
 
+struct energy_env {
+	struct sched_group	*sg_top;
+	struct sched_group	*sg_cap;
+	struct sched_group	*sg;
+	int			cap_idx;
+	int			util_delta;
+	int			src_cpu;
+	int			dst_cpu;
+	int			energy;
+
+	struct task_struct	*task;
+	struct {
+		int before;
+		int after;
+		int delta;
+	} nrg;
+
+	/* Members used only by energy_diff_new()
+	 * NOTE: If the proposed new version is accepcted this command can be
+	 * removed and the following data are going to replace some of the
+	 * previous fields, which are not more used by the new version
+	 */
+	struct sched_domain	*top_sd;
+	int			cap_idx_before;
+	int			cap_idx_after;
+
+	int nrg_delta;
+	struct {
+		unsigned int energy;
+		unsigned int capacity;
+	} before, after;
+};
+
 #define SDTL_OVERLAP	0x01
 
 struct sd_data {
