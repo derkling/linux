@@ -5258,6 +5258,7 @@ static int sched_group_energy(struct energy_env *eenv)
 	int cpu, total_energy = 0;
 	struct cpumask visit_cpus;
 	struct sched_group *sg;
+	char buff[64];
 
 	WARN_ON(!eenv->sg_top->sge);
 
@@ -5314,6 +5315,14 @@ static int sched_group_energy(struct energy_env *eenv)
 
 				total_energy += sg_busy_energy + sg_idle_energy;
 
+				snprintf(buff, 64, "%s g=%*pbl",
+						eenv->util_delta ? "after " : "before",
+						cpumask_pr_args(to_cpumask(sg->cpumask)));
+				trace_printk("%s cap_idx=%d idle_idx=%d group_util=%lu busy_nrg=%d idle_nrg=%d total=%d",
+						buff, cap_idx, idle_idx,
+						group_util, sg_busy_energy,
+						sg_idle_energy, total_energy);
+
 				if (!sd->child)
 					cpumask_xor(&visit_cpus, &visit_cpus, sched_group_cpus(sg));
 
@@ -5358,6 +5367,8 @@ noinline int energy_diff(struct energy_env *eenv)
 
 	if (eenv->src_cpu == eenv->dst_cpu)
 		return 0;
+
+	trace_printk("Original");
 
 	sd_cpu = (eenv->src_cpu != -1) ? eenv->src_cpu : eenv->dst_cpu;
 	sd = rcu_dereference(per_cpu(sd_ea, sd_cpu));
