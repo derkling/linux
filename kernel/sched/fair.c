@@ -5362,7 +5362,7 @@ static inline bool cpu_in_sg(struct sched_group *sg, int cpu)
  * utilization is removed from or added to the system (e.g. task wake-up). If
  * both are specified, the utilization is migrated.
  */
-static int energy_diff(struct energy_env *eenv)
+noinline int energy_diff(struct energy_env *eenv)
 {
 	struct sched_domain *sd;
 	struct sched_group *sg;
@@ -5569,7 +5569,7 @@ __update_group_capacity(struct energy_env *eenv)
  *     energy diff for:      2
  *
  */
-static inline int
+noinline int
 energy_diff_new(struct energy_env *eenv)
 {
 	struct sched_domain *ea_sd, *sd;
@@ -6099,6 +6099,14 @@ static int select_energy_cpu_brute(struct task_struct *p, int prev_cpu)
 		if (spare * 1024 < capacity_margin * task_util(p))
 			continue;
 
+		/*
+		 * Let's call before the energy_diff_new just to exclude
+		 * benefits from cached data if executed after the original
+		 * version.
+		 * NOTE: this double call is here just for testing and
+		 * comparison between original and new version.
+		 */
+		diff = energy_diff_new(&eenv);
 		diff = energy_diff(&eenv);
 
 		if (diff < min_diff) {
