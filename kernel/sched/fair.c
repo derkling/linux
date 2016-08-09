@@ -5275,13 +5275,15 @@ static int sched_group_energy(struct energy_env *eenv)
 		 */
 		sd = rcu_dereference(per_cpu(sd_scs, cpu));
 
-		if (!sd)
+		if (!sd) {
 			/*
 			 * We most probably raced with hotplug; returning a
 			 * wrong energy estimation is better than entering an
 			 * infinite loop.
 			 */
+			trace_printk("sched_group_energy: sd_scs is NULL");
 			return -EINVAL;
+		}
 
 		if (sd->parent)
 			sg_shared_cap = sd->parent->groups;
@@ -5373,8 +5375,10 @@ noinline int energy_diff(struct energy_env *eenv)
 	sd_cpu = (eenv->src_cpu != -1) ? eenv->src_cpu : eenv->dst_cpu;
 	sd = rcu_dereference(per_cpu(sd_ea, sd_cpu));
 
-	if (!sd)
+	if (!sd) {
+		trace_printk("Abort");
 		return 0; /* Error */
+	}
 
 	sg = sd->groups;
 
@@ -5382,12 +5386,16 @@ noinline int energy_diff(struct energy_env *eenv)
 		if (cpu_in_sg(sg, eenv->src_cpu) || cpu_in_sg(sg, eenv->dst_cpu)) {
 			eenv_before.sg_top = eenv->sg_top = sg;
 
-			if (sched_group_energy(&eenv_before))
+			if (sched_group_energy(&eenv_before)) {
+				trace_printk("Abort from sched_group_energy(&eenv_before)");
 				return 0; /* Invalid result abort */
+			}
 			energy_before += eenv_before.energy;
 
-			if (sched_group_energy(eenv))
+			if (sched_group_energy(eenv)) {
+				trace_printk("Abort from sched_group_energy(&eenv)");
 				return 0; /* Invalid result abort */
+			}
 			energy_after += eenv->energy;
 		}
 	} while (sg = sg->next, sg != sd->groups);
