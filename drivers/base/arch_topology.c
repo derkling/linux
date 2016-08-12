@@ -28,6 +28,7 @@ static DEFINE_PER_CPU(unsigned long, cpu_scale) = SCHED_CAPACITY_SCALE;
 
 static bool update_flags;
 static bool asym_cpucap;
+static bool sd_mc_share_cap, sd_die_share_cap;
 
 static void update_sched_flags(void)
 {
@@ -77,12 +78,25 @@ void atd_set_capacity_scale(unsigned int cpu, unsigned long capacity)
 	check_asym_cpucap();
 }
 
+int atd_get_mc_sd_flags(void)
+{
+	int mc_flags = SD_SHARE_PKG_RESOURCES | SD_SHARE_POWERDOMAIN;
+
+	if (sd_mc_share_cap)
+		mc_flags |= SD_SHARE_CAP_STATES;
+
+	return mc_flags;
+}
+
 int atd_get_die_sd_flags(void)
 {
 	int die_flags = 0;
 
 	if (asym_cpucap)
 		die_flags |= SD_ASYM_CPUCAPACITY;
+
+	if (sd_die_share_cap)
+		die_flags |= SD_SHARE_CAP_STATES;
 
 	return die_flags;
 }
@@ -239,6 +253,13 @@ init_cpu_capacity_callback(struct notifier_block *nb,
 
 	switch (val) {
 	case CPUFREQ_NOTIFY:
+		cpu = cpumask_first(policy->related_cpus);
+
+		if (cpumask_subset(topology_core_cpumask(cpu), policy->related_cpus))
+			sd_mc_share_cap = true;
+		else if (cpumask_subset(cpu_cpu_mask(cpu), policy->related_cpus))
+			sd_die_share_cap = true;
+
 		pr_debug("cpu_capacity: init cpu capacity for CPUs [%*pbl] (to_visit=%*pbl)\n",
 				cpumask_pr_args(policy->related_cpus),
 				cpumask_pr_args(cpus_to_visit));
@@ -253,7 +274,8 @@ init_cpu_capacity_callback(struct notifier_block *nb,
 		if (cpumask_empty(cpus_to_visit)) {
 			asym = asym_cpucap;
 			atd_normalize_cpu_capacity();
-			if (asym != asym_cpucap)
+			if (asym != asym_cpucap ||
+			    sd_mc_share_cap || sd_die_share_cap)
 				update_sched_flags();
 			kfree(raw_capacity);
 			pr_debug("cpu_capacity: parsing done\n");
