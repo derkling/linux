@@ -692,6 +692,7 @@ void init_entity_runnable_average(struct sched_entity *se)
 	 * At this point, util_avg won't be used in select_task_rq_fair anyway
 	 */
 	sa->util_avg = 0;
+	sa->util_peak = 0;
 	sa->util_sum = 0;
 	/* when this task enqueue'ed, it will contribute to its cfs_rq's load_avg */
 }
@@ -743,6 +744,7 @@ void post_init_entity_util_avg(struct sched_entity *se)
 		} else {
 			sa->util_avg = cap;
 		}
+		sa->util_peak = sa->util_avg;
 		sa->util_sum = sa->util_avg * LOAD_AVG_MAX;
 	}
 
@@ -2803,6 +2805,9 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		}
 		sa->util_avg = sa->util_sum / LOAD_AVG_MAX;
 	}
+
+	if (running || sa->util_avg > sa->util_peak)
+		sa->util_peak = sa->util_avg;
 
 	return decayed;
 }
@@ -5184,7 +5189,7 @@ static int wake_affine(struct sched_domain *sd, struct task_struct *p,
 	return 1;
 }
 
-static inline int task_util(struct task_struct *p);
+static inline int task_util_peak(struct task_struct *p);
 static int cpu_util_wake(int cpu, struct task_struct *p);
 
 static unsigned long capacity_spare_wake(int cpu, struct task_struct *p)
@@ -5267,14 +5272,14 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 	/*
 	 * The cross-over point between using spare capacity or least load
 	 * is too conservative for high utilization tasks on partially
-	 * utilized systems if we require spare_capacity > task_util(p),
+	 * utilized systems if we require spare_capacity > task_util_peak(p),
 	 * so we allow for some task stuffing by using
-	 * spare_capacity > task_util(p)/2.
+	 * spare_capacity > task_util_peak(p)/2.
 	 */
-	if (this_spare > task_util(p) / 2 &&
+	if (this_spare > task_util_peak(p) / 2 &&
 	    imbalance*this_spare > 100*most_spare)
 		return NULL;
-	else if (most_spare > task_util(p) / 2)
+	else if (most_spare > task_util_peak(p) / 2)
 		return most_spare_sg;
 
 	if (!idlest || 100*this_load < imbalance*min_load)
@@ -5432,9 +5437,9 @@ static int cpu_util(int cpu)
 	return (util >= capacity) ? capacity : util;
 }
 
-static inline int task_util(struct task_struct *p)
+static inline int task_util_peak(struct task_struct *p)
 {
-	return p->se.avg.util_avg;
+	return p->se.avg.util_peak;
 }
 
 /*
@@ -5450,7 +5455,7 @@ static int cpu_util_wake(int cpu, struct task_struct *p)
 		return cpu_util(cpu);
 
 	capacity = capacity_orig_of(cpu);
-	util = max_t(long, cpu_rq(cpu)->cfs.avg.util_avg - task_util(p), 0);
+	util = max_t(long, cpu_rq(cpu)->cfs.avg.util_avg - task_util_peak(p), 0);
 
 	return (util >= capacity) ? capacity : util;
 }
@@ -5476,7 +5481,7 @@ static int wake_cap(struct task_struct *p, int cpu, int prev_cpu)
 	/* Bring task utilization in sync with prev_cpu */
 	sync_entity_load_avg(&p->se);
 
-	return min_cap * 1024 < task_util(p) * capacity_margin;
+	return min_cap * 1024 < task_util_peak(p) * capacity_margin;
 }
 
 /*
