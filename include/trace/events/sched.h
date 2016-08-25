@@ -161,6 +161,20 @@ TRACE_EVENT(sched_switch,
 		__entry->next_comm, __entry->next_pid, __entry->next_prio)
 );
 
+#define migration_cause_symbolic(cause) \
+	__print_symbolic(cause, \
+		{ TMC_SIS_IDLE,       "select_idle_sibling:idle_cpu" }, \
+		{ TMC_SIS_CA,         "select_idle_sibling:cache_affine" }, \
+		{ TMC_SIS_DFLT,       "select_idle_sibling:default" }, \
+		{ TMC_STRF_FIGC,      "select_task_rq_fair:find_idlest_group/cpu" }, \
+		{ TMC_STRF_DFLT,      "select_task_rq_fair:default" }, \
+		{ TMC_ALB_IDLE,       "active-load-balance:idle" }, \
+		{ TMC_ALB_NOT_IDLE,   "active-load-balance:not-idle" }, \
+		{ TMC_ALB_NEWLY_IDLE, "active-load-balance:newly-idle" }, \
+		{ TMC_PLB_IDLE,       "periodic-load-balance:idle" }, \
+		{ TMC_PLB_NOT_IDLE,   "periodic-load-balance:not-idle" }, \
+		{ TMC_PLB_NEWLY_IDLE, "periodic-load-balance:newly-idle" })
+
 /*
  * Tracepoint for a task being migrated:
  */
@@ -176,6 +190,7 @@ TRACE_EVENT(sched_migrate_task,
 		__field(	int,	prio			)
 		__field(	int,	orig_cpu		)
 		__field(	int,	dest_cpu		)
+		__field(	int,	cause			)
 	),
 
 	TP_fast_assign(
@@ -184,11 +199,14 @@ TRACE_EVENT(sched_migrate_task,
 		__entry->prio		= p->prio;
 		__entry->orig_cpu	= task_cpu(p);
 		__entry->dest_cpu	= dest_cpu;
+		__entry->cause		= p->migration_cause;
 	),
 
-	TP_printk("comm=%s pid=%d prio=%d orig_cpu=%d dest_cpu=%d",
+	TP_printk("comm=%s pid=%d prio=%d orig_cpu=%d dest_cpu=%d cause=%s",
 		  __entry->comm, __entry->pid, __entry->prio,
-		  __entry->orig_cpu, __entry->dest_cpu)
+		  __entry->orig_cpu, __entry->dest_cpu,
+		  migration_cause_symbolic(__entry->cause))
+
 );
 
 DECLARE_EVENT_CLASS(sched_process_template,

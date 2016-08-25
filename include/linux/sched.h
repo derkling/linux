@@ -1456,6 +1456,26 @@ struct tlbflush_unmap_batch {
 	bool writable;
 };
 
+#define TMC_NONE		0
+/* SIS ... [s]elect_[i]dle_[s]ibling */
+#define TMC_SIS_IDLE		1
+#define TMC_SIS_CA		2
+#define TMC_SIS_DFLT		3
+/* STRF ... [s]elect_[t]ask_[r]q_[f]air */
+#define TMC_STRF_FIGC		4
+#define TMC_STRF_DFLT		5
+/* ALB ... [a]ctive [l]oad [b]alance */
+#define TMC_ALB_BASE		6
+#define TMC_ALB_IDLE		TMC_ALB_BASE
+#define TMC_ALB_NOT_IDLE	7
+#define TMC_ALB_NEWLY_IDLE	8
+/* PLB ... [p]eriodic [l]oad [b]alance */
+#define TMC_PLB_BASE		9
+#define TMC_PLB_IDLE		TMC_PLB_BASE
+#define TMC_PLB_NOT_IDLE	10
+#define TMC_PLB_NEWLY_IDLE	11
+#define TMC_MAX			12
+
 struct task_struct {
 	volatile long state;	/* -1 unrunnable, 0 runnable, >0 stopped */
 	void *stack;
@@ -1919,6 +1939,7 @@ struct task_struct {
 #ifdef CONFIG_MMU
 	struct task_struct *oom_reaper_list;
 #endif
+	unsigned int migration_cause;
 /* CPU-specific state of this task */
 	struct thread_struct thread;
 /*
@@ -3391,4 +3412,16 @@ void cpufreq_add_update_util_hook(int cpu, struct update_util_data *data,
 void cpufreq_remove_update_util_hook(int cpu);
 #endif /* CONFIG_CPU_FREQ */
 
+static inline
+void set_task_migration_cause(struct task_struct *p, unsigned int cause)
+{
+	BUG_ON(!(TMC_NONE < cause && cause < TMC_MAX));
+	if (p->migration_cause == TMC_NONE)
+		p->migration_cause = cause;
+}
+
+static inline void reset_task_migration_cause(struct task_struct *p)
+{
+	p->migration_cause = TMC_NONE;
+}
 #endif

@@ -5273,14 +5273,18 @@ static int select_idle_sibling(struct task_struct *p, int target)
 	struct sched_group *sg;
 	int i = task_cpu(p);
 
-	if (idle_cpu(target))
+	if (idle_cpu(target)) {
+		set_task_migration_cause(p, TMC_SIS_IDLE);
 		return target;
+	}
 
 	/*
 	 * If the prevous cpu is cache affine and idle, don't be stupid.
 	 */
-	if (i != target && cpus_share_cache(i, target) && idle_cpu(i))
+	if (i != target && cpus_share_cache(i, target) && idle_cpu(i)) {
+		set_task_migration_cause(p, TMC_SIS_CA);
 		return i;
+	}
 
 	/*
 	 * Otherwise, iterate the domains and find an eligible idle cpu.
@@ -5323,6 +5327,7 @@ next:
 		} while (sg != sd->groups);
 	}
 done:
+	set_task_migration_cause(p, TMC_SIS_DFLT);
 	return target;
 }
 
@@ -5450,8 +5455,12 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 				sd = tmp;
 		}
 		/* while loop will break here if sd == NULL */
+
+		set_task_migration_cause(p, TMC_STRF_FIGC);
 	}
 	rcu_read_unlock();
+
+	set_task_migration_cause(p, TMC_STRF_DFLT);
 
 	return new_cpu;
 }
@@ -6219,6 +6228,8 @@ static struct task_struct *detach_one_task(struct lb_env *env)
 		if (!can_migrate_task(p, env))
 			continue;
 
+		set_task_migration_cause(p, TMC_ALB_BASE + env->idle);
+
 		detach_task(p, env);
 
 		/*
@@ -6285,6 +6296,8 @@ static int detach_tasks(struct lb_env *env)
 
 		if ((load / 2) > env->imbalance)
 			goto next;
+
+		set_task_migration_cause(p, TMC_PLB_BASE + env->idle);
 
 		detach_task(p, env);
 		list_add(&p->se.group_node, &env->tasks);
