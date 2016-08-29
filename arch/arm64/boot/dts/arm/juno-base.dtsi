@@ -622,7 +622,8 @@
 			 <2 0 0 0x18000000 0x04000000>,
 			 <3 0 0 0x1c000000 0x04000000>,
 			 <4 0 0 0x0c000000 0x04000000>,
-			 <5 0 0 0x10000000 0x04000000>;
+			 <5 0 0 0x10000000 0x04000000>,
+			 <6 0 0 0x6F000000 0x04000000>;
 
 		#interrupt-cells = <1>;
 		interrupt-map-mask = <0 0 15>;
@@ -641,6 +642,12 @@
 				<0 0 12 &gic 0 0 0 169 IRQ_TYPE_LEVEL_HIGH>;
 
 		/include/ "juno-motherboard.dtsi"
+
+		mve@6,00030000 {
+			compatible = "arm,mali-mve";
+			reg = <6 0x30000 0x10000>;
+			interrupts = <11>;
+		};
 	};
 
 	site2: tlx@60000000 {
@@ -652,3 +659,4 @@
 		interrupt-map-mask = <0 0>;
 		interrupt-map = <0 0 &gic 0 0 0 168 IRQ_TYPE_LEVEL_HIGH>;
 	};
+
