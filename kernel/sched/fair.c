@@ -757,7 +757,7 @@ void init_entity_runnable_average(struct sched_entity *se)
 	sa->util_sum = 0;
 	/* when this task enqueue'ed, it will contribute to its cfs_rq's load_avg */
 
-	sa->util_est = sa->util_avg;
+	ewma_util_init(&sa->util_ewma);
 }
 
 static inline u64 cfs_rq_clock_task(struct cfs_rq *cfs_rq);
@@ -3311,7 +3311,8 @@ update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq, bool update_freq)
 	return decayed || removed_load;
 }
 
-static int task_util_est(struct task_struct *p);
+static int task_util(struct task_struct *p);
+static int task_util_last(struct task_struct *p);
 
 /*
  * Optional action to be done while updating the load average
@@ -3325,6 +3326,7 @@ static inline void update_load_avg(struct sched_entity *se, int flags)
 	struct cfs_rq *cfs_rq = cfs_rq_of(se);
 	u64 now = cfs_rq_clock_task(cfs_rq);
 	struct rq *rq = rq_of(cfs_rq);
+	struct task_struct *tsk;
 	int cpu = cpu_of(rq);
 	int decayed;
 
@@ -3348,10 +3350,11 @@ static inline void update_load_avg(struct sched_entity *se, int flags)
 		return;
 
 	/* Update (top level CFS) RQ's and Task's estimated utilization */
-	cfs_rq = &(task_rq(task_of(se))->cfs);
-	if (se->avg.util_est < se->avg.util_avg) {
-		cfs_rq->avg.util_est += (se->avg.util_avg - se->avg.util_est);
-		se->avg.util_est = se->avg.util_avg;
+	tsk = task_of(se);
+	cfs_rq = &(task_rq(tsk)->cfs);
+	if (unlikely(task_util_last(tsk) < task_util(tsk))) {
+		cfs_rq->avg.util_est.last += (task_util(tsk) - task_util_last(tsk));
+		se->avg.util_est.last = task_util(tsk);
 	}
 
 }
@@ -4851,7 +4854,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 	/* Update (top level CFS) RQ estimated utilization */
 	cfs_rq = &(task_rq(p)->cfs);
-	cfs_rq->avg.util_est += task_util_est(p);
+	cfs_rq->avg.util_est.last += task_util_last(p);
 
 	hrtick_update(rq);
 }
@@ -4915,14 +4918,18 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 	/* Update (top level CFS) RQ estimated utilization */
 	cfs_rq = &(task_rq(p)->cfs);
-	if (cfs_rq->avg.util_est >= task_util_est(p))
-		cfs_rq->avg.util_est -= task_util_est(p);
-	else
-		cfs_rq->avg.util_est = 0;
+	cfs_rq->avg.util_est.last = max_t(long,
+			cfs_rq->avg.util_est.last - task_util_last(p), 0);
 
 	/* Update Task's estimated utilization */
-	if (task_sleep)
-		p->se.avg.util_est = p->se.avg.util_avg;
+	if (task_sleep) {
+		p->se.avg.util_est.last = task_util(p);
+
+		/* Update EWMA for Task utilization */
+		ewma_util_add(&p->se.avg.util_ewma, task_util_last(p));
+		p->se.avg.util_est.ewma = ewma_util_read(&p->se.avg.util_ewma);
+
+	}
 
 	hrtick_update(rq);
 }
@@ -5952,6 +5959,23 @@ static int cpu_util(int cpu)
 	return (util >= capacity) ? capacity : util;
 }
 
+static inline int cpu_util_est(int cpu)
+{
+	struct sched_avg *sa = &cpu_rq(cpu)->cfs.avg;
+	unsigned long util = cpu_util(cpu);
+
+	return max(util, util_est(sa, UTIL_EST_POLICY));
+}
+
+static inline int cpu_util_last(int cpu)
+{
+
+	struct sched_avg *sa = &cpu_rq(cpu)->cfs.avg;
+	unsigned long util = cpu_util(cpu);
+
+	return max(util, util_est(sa, UTIL_EST_LAST));
+}
+
 static inline int task_util(struct task_struct *p)
 {
 	return p->se.avg.util_avg;
@@ -5959,7 +5983,16 @@ static inline int task_util(struct task_struct *p)
 
 static inline int task_util_est(struct task_struct *p)
 {
-	return p->se.avg.util_est;
+	struct sched_avg *sa = &p->se.avg;
+
+	return util_est(sa, UTIL_EST_POLICY);
+}
+
+static inline int task_util_last(struct task_struct *p)
+{
+	struct sched_avg *sa = &p->se.avg;
+
+	return util_est(sa, UTIL_EST_LAST);
 }
 
 /*
