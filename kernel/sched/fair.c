@@ -4823,6 +4823,69 @@ static int group_idle_state(struct sched_group *sg)
 	return state;
 }
 
+static void __sched_group_energy(struct energy_env *eenv)
+{
+
+	int sg_busy_energy, sg_idle_energy;
+	struct sched_group *sg = eenv->sg;
+	unsigned long util_delta;
+	unsigned long group_util;
+	int cap_idx, idle_idx;
+	int total_energy = 0;
+	bool after;
+
+	/*
+	 * Compute energy for this group:
+	 * first iteration, before moving the utilization, i.e.
+	 *   util_delta == 0
+	 * second iteration, after moving the utilization, i.e.
+	 *   util_delta != 0
+	 */
+	util_delta = eenv->util_delta;
+	eenv->util_delta = 0;
+	after = false;
+
+compute_after:
+
+	cap_idx = find_new_capacity(eenv);
+	idle_idx = group_idle_state(eenv->sg);
+
+	group_util = group_norm_util(eenv);
+
+	sg_busy_energy = (group_util * sg->sge->cap_states[cap_idx].power)
+					>> SCHED_CAPACITY_SHIFT;
+	sg_idle_energy = ((SCHED_LOAD_SCALE-group_util)
+					* sg->sge->idle_states[idle_idx].power)
+					>> SCHED_CAPACITY_SHIFT;
+
+	total_energy = sg_busy_energy + sg_idle_energy;
+
+	/* Account for "after" metrics */
+	if (after) {
+		if (sg->group_weight == 1 &&
+		    cpumask_test_cpu(eenv->dst_cpu, sched_group_cpus(sg))) {
+			eenv->after.capacity = sg->sge->cap_states[cap_idx].cap;
+			eenv->after.utilization = group_util;
+		}
+		eenv->after.energy += total_energy;
+		return;
+	}
+
+	/* Account for "before" metrics */
+	if (sg->group_weight == 1 &&
+	    cpumask_test_cpu(eenv->src_cpu, sched_group_cpus(sg))) {
+		eenv->before.capacity = sg->sge->cap_states[cap_idx].cap;
+		eenv->before.utilization = group_util;
+	}
+	eenv->before.energy += total_energy;
+
+	/* Setup eenv for the "after" case */
+	eenv->util_delta = util_delta;
+	after = true;
+	goto compute_after;
+
+}
+
 /*
  * sched_group_energy(): Computes the absolute energy consumption of cpus
  * belonging to the sched_group including shared resources shared only by
@@ -4836,9 +4899,9 @@ static int group_idle_state(struct sched_group *sg)
 static int sched_group_energy(struct energy_env *eenv)
 {
 	struct sched_domain *sd;
-	int cpu, total_energy = 0;
 	struct cpumask visit_cpus;
 	struct sched_group *sg;
+	int cpu;
 
 	WARN_ON(!eenv->sg_top->sge);
 
@@ -4874,42 +4937,12 @@ static int sched_group_energy(struct energy_env *eenv)
 				break;
 
 			do {
-				unsigned long group_util;
-				int sg_busy_energy, sg_idle_energy;
-				int cap_idx, idle_idx;
-
+				eenv->sg_cap = sg;
 				if (sg_shared_cap && sg_shared_cap->group_weight >= sg->group_weight)
 					eenv->sg_cap = sg_shared_cap;
-				else
-					eenv->sg_cap = sg;
 
 				eenv->sg = sg;
-				cap_idx = find_new_capacity(eenv);
-
-				if (sg->group_weight == 1) {
-					/* Remove capacity of src CPU (before task move) */
-					if (eenv->util_delta == 0 &&
-					    cpumask_test_cpu(eenv->src_cpu, sched_group_cpus(sg))) {
-						eenv->cap.before = sg->sge->cap_states[cap_idx].cap;
-						eenv->cap.delta -= eenv->cap.before;
-					}
-					/* Add capacity of dst CPU  (after task move) */
-					if (eenv->util_delta != 0 &&
-					    cpumask_test_cpu(eenv->dst_cpu, sched_group_cpus(sg))) {
-						eenv->cap.after = sg->sge->cap_states[cap_idx].cap;
-						eenv->cap.delta += eenv->cap.after;
-					}
-				}
-
-				idle_idx = group_idle_state(sg);
-				group_util = group_norm_util(eenv);
-				sg_busy_energy = (group_util * sg->sge->cap_states[cap_idx].power)
-								>> SCHED_CAPACITY_SHIFT;
-				sg_idle_energy = ((SCHED_LOAD_SCALE-group_util)
-								* sg->sge->idle_states[idle_idx].power)
-								>> SCHED_CAPACITY_SHIFT;
-
-				total_energy += sg_busy_energy + sg_idle_energy;
+				__sched_group_energy(eenv);
 
 				if (!sd->child)
 					cpumask_xor(&visit_cpus, &visit_cpus, sched_group_cpus(sg));
@@ -4920,10 +4953,10 @@ static int sched_group_energy(struct energy_env *eenv)
 			} while (sg = sg->next, sg != sd->groups);
 		}
 next_cpu:
+		cpumask_clear_cpu(cpu, &visit_cpus);
 		continue;
 	}
 
-	eenv->energy = total_energy;
 	return 0;
 }
 
