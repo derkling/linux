@@ -4719,29 +4719,6 @@ static inline bool energy_aware(void)
 	return sched_feat(ENERGY_AWARE);
 }
 
-struct energy_env {
-	struct sched_group	*sg_top;
-	struct sched_group	*sg_cap;
-	int			cap_idx;
-	int			util_delta;
-	int			src_cpu;
-	int			dst_cpu;
-	int			energy;
-	int			payoff;
-	struct task_struct	*task;
-	struct {
-		int before;
-		int after;
-		int delta;
-		int diff;
-	} nrg;
-	struct {
-		int before;
-		int after;
-		int delta;
-	} cap;
-};
-
 /*
  * __cpu_norm_util() returns the cpu util relative to a specific capacity,
  * i.e. it's busy ratio, in the range [0..SCHED_LOAD_SCALE] which is useful for
@@ -4799,10 +4776,11 @@ unsigned long group_max_util(struct energy_env *eenv)
  * estimate (more busy).
  */
 static unsigned
-long group_norm_util(struct energy_env *eenv, struct sched_group *sg)
+long group_norm_util(struct energy_env *eenv)
 {
 	int i, delta;
 	unsigned long util_sum = 0;
+	struct sched_group *sg = eenv->sg;
 	unsigned long capacity = sg->sge->cap_states[eenv->cap_idx].cap;
 
 	for_each_cpu(i, sched_group_cpus(sg)) {
@@ -4815,20 +4793,20 @@ long group_norm_util(struct energy_env *eenv, struct sched_group *sg)
 	return util_sum;
 }
 
-static int find_new_capacity(struct energy_env *eenv,
-	const struct sched_group_energy const *sge)
+static int find_new_capacity(struct energy_env *eenv)
 {
-	int idx;
+	const struct sched_group_energy const *sge = eenv->sg->sge;
 	unsigned long util = group_max_util(eenv);
+	int idx;
 
 	for (idx = 0; idx < sge->nr_cap_states; idx++) {
 		if (sge->cap_states[idx].cap >= util)
 			break;
 	}
 
+	/* Keep track of SG's capacity index */
 	eenv->cap_idx = idx;
-
-	return idx;
+	return eenv->cap_idx;
 }
 
 static int group_idle_state(struct sched_group *sg)
@@ -4905,7 +4883,8 @@ static int sched_group_energy(struct energy_env *eenv)
 				else
 					eenv->sg_cap = sg;
 
-				cap_idx = find_new_capacity(eenv, sg->sge);
+				eenv->sg = sg;
+				cap_idx = find_new_capacity(eenv);
 
 				if (sg->group_weight == 1) {
 					/* Remove capacity of src CPU (before task move) */
@@ -4923,7 +4902,7 @@ static int sched_group_energy(struct energy_env *eenv)
 				}
 
 				idle_idx = group_idle_state(sg);
-				group_util = group_norm_util(eenv, sg);
+				group_util = group_norm_util(eenv);
 				sg_busy_energy = (group_util * sg->sge->cap_states[cap_idx].power)
 								>> SCHED_CAPACITY_SHIFT;
 				sg_idle_energy = ((SCHED_LOAD_SCALE-group_util)
