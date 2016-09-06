@@ -4943,7 +4943,7 @@ static inline int __energy_diff(struct energy_env *eenv)
 {
 	struct sched_domain *sd;
 	struct sched_group *sg;
-	int sd_cpu = -1, energy_before = 0, energy_after = 0;
+	int sd_cpu = -1;
 
 	struct energy_env eenv_before = {
 		.util_delta	= 0,
@@ -4970,23 +4970,12 @@ static inline int __energy_diff(struct energy_env *eenv)
 
 			if (sched_group_energy(&eenv_before))
 				return 0; /* Invalid result abort */
-			energy_before += eenv_before.energy;
 
-			/* Keep track of SRC cpu (before) capacity */
-			eenv->cap.before = eenv_before.cap.before;
-			eenv->cap.delta = eenv_before.cap.delta;
 
 			if (sched_group_energy(eenv))
 				return 0; /* Invalid result abort */
-			energy_after += eenv->energy;
 		}
 	} while (sg = sg->next, sg != sd->groups);
-
-	eenv->nrg.before = energy_before;
-	eenv->nrg.after = energy_after;
-	eenv->nrg.diff = eenv->nrg.after - eenv->nrg.before;
-	eenv->payoff = 0;
-
 
 	return eenv->nrg.diff;
 }

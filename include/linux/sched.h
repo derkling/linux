@@ -1165,17 +1165,8 @@ struct energy_env {
 	struct task_struct	*task;
 
 	struct {
-		int before;
-		int after;
-		int delta;
-		int diff;
-	} nrg;
-	struct {
-		int before;
-		int after;
-		int delta;
-	} cap;
 
+	} before, after;
 };
 
 #define SDTL_OVERLAP	0x01
