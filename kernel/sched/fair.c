@@ -4831,6 +4831,8 @@ find_min_capacity(struct energy_env *eenv)
 
 	/* Find minimum capacity to satify the task boost value */
 	min_util = boosted_task_util(eenv->task);
+	trace_printk("    task util: %lu, boosted util: %lu",
+			task_util(eenv->task), min_util);
 	for (min_cap_idx = 0; min_cap_idx < (sge->nr_cap_states-1); min_cap_idx++) {
 		if (sge->cap_states[min_cap_idx].cap >= min_util)
 			break;
@@ -4844,6 +4846,7 @@ find_min_capacity(struct energy_env *eenv)
 	 * Compute the minumum CPU capacity required to support task boosting
 	 * within this SG.
 	 */
+	trace_printk("    sg_cap=%lu min_cap=%lu", cur_capacity, min_capacity);
 	cur_capacity = max(min_capacity, cur_capacity);
 	cap_idx = max(eenv->cap_idx, min_cap_idx);
 
@@ -4897,6 +4900,10 @@ static void __sched_group_energy(struct energy_env *eenv)
 	int total_energy = 0;
 	bool after;
 
+	unsigned int nrg_before, nrg_after;
+	int nrg_diff;
+	char buff[64];
+
 	/*
 	 * Compute energy for this group:
 	 * first iteration, before moving the utilization, i.e.
@@ -4931,7 +4938,8 @@ compute_after:
 			eenv->after.utilization = group_util;
 		}
 		eenv->after.energy += total_energy;
-		return;
+		nrg_after = total_energy;
+		goto done;
 	}
 
 	/* Account for "before" metrics */
@@ -4941,11 +4949,20 @@ compute_after:
 		eenv->before.utilization = group_util;
 	}
 	eenv->before.energy += total_energy;
+	nrg_before = total_energy;
 
 	/* Setup eenv for the "after" case */
 	eenv->util_delta = util_delta;
 	after = true;
 	goto compute_after;
+
+done:
+
+	nrg_diff = eenv->after.energy - eenv->before.energy;
+	snprintf(buff, 64, "%*pbl",
+		cpumask_pr_args(to_cpumask(sg->cpumask)));
+	trace_printk("      sg=%10s: + %3u (nrg_after) - %3u (nrg_before) = %4d (nrg_diff)",
+			buff, nrg_after, nrg_before, nrg_diff);
 
 }
 
