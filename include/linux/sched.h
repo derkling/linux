@@ -1160,11 +1160,14 @@ struct energy_env {
 	int			util_delta;
 
 	int			cap_idx;
-	int			energy;
 	int			payoff;
 	struct task_struct	*task;
 
+	int nrg_delta;
 	struct {
+		unsigned int energy;
+		unsigned int capacity;
+		unsigned int utilization;
 
 	} before, after;
 };

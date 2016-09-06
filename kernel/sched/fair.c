@@ -4945,40 +4945,30 @@ static inline int __energy_diff(struct energy_env *eenv)
 	struct sched_group *sg;
 	int sd_cpu = -1;
 
-	struct energy_env eenv_before = {
-		.util_delta	= 0,
-		.src_cpu	= eenv->src_cpu,
-		.dst_cpu	= eenv->dst_cpu,
-		.nrg		= { 0, 0, 0, 0},
-		.cap		= { 0, 0, 0 },
-	};
-
 	if (eenv->src_cpu == eenv->dst_cpu)
 		return 0;
 
 	sd_cpu = (eenv->src_cpu != -1) ? eenv->src_cpu : eenv->dst_cpu;
 	sd = rcu_dereference(per_cpu(sd_ea, sd_cpu));
-
 	if (!sd)
 		return 0; /* Error */
 
 	sg = sd->groups;
-
 	do {
-		if (cpu_in_sg(sg, eenv->src_cpu) || cpu_in_sg(sg, eenv->dst_cpu)) {
-			eenv_before.sg_top = eenv->sg_top = sg;
+		if (!cpu_in_sg(sg, eenv->src_cpu) &&
+		    !cpu_in_sg(sg, eenv->dst_cpu))
+			continue;
 
-			if (sched_group_energy(&eenv_before))
-				return 0; /* Invalid result abort */
+		eenv->sg_top = sg;
+		if (sched_group_energy(eenv))
+			return 0; /* Invalid result abort */
 
-
-			if (sched_group_energy(eenv))
-				return 0; /* Invalid result abort */
-		}
 	} while (sg = sg->next, sg != sd->groups);
 
-	return eenv->nrg.diff;
+
+	return eenv->nrg_delta;
 }
+
 
 #ifdef CONFIG_SCHED_TUNE
 
