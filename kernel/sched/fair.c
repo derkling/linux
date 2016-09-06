@@ -5056,6 +5056,32 @@ __update_perf_energy_deltas(struct energy_env *eenv)
 {
 	unsigned long task_util = eenv->util_delta;
 
+/* #define OLD_INDEX */
+#ifdef OLD_INDEX
+
+	/*
+	 * SpeedUp Index
+	 *
+	 *   SPI := 1024 - ((1024 * task_util) / cpu_capacity)
+	 *
+	 * which represents how faster we complete a task activation by
+	 * running at a CPU capacity (i.e. OPP) higher than the minimum
+	 * capacity required to satisfy the task utilization.
+	 *
+	 * Example:
+	 * a) cpu_capacity ==  1 * task_util => SPI =   0
+	 * b) cpu_capacity ==  2 * task_util => SPI = 512
+	 * c) cpu_capacity == 10 * task_util => SPI = 922
+	 */
+	eenv_before(speedup_idx)  = SCHED_LOAD_SCALE * util;
+	eenv_before(speedup_idx) /= eenv_before(capacity);
+	eenv_before(speedup_idx)  =  1024 - eenv_before(speedup_idx);
+	eenv_after(speedup_idx)  = SCHED_LOAD_SCALE * util;
+	eenv_after(speedup_idx) /= eenv_after(capacity);
+	eenv_after(speedup_idx)  =  1024 - eenv_after(speedup_idx);
+
+#else
+
 	/*
 	 * SpeedUp Index
 	 *
@@ -5085,6 +5111,8 @@ __update_perf_energy_deltas(struct energy_env *eenv)
 	eenv_after(speedup_idx)   = SCHED_LOAD_SCALE;
 	eenv_after(speedup_idx)  *= (eenv_after(capacity) - task_util);
 	eenv_after(speedup_idx)  /= (1024 - task_util);
+
+#endif /* OLD_INDEX */
 
 	/*
 	 * Delay Index
