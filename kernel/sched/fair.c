@@ -5130,6 +5130,8 @@ static inline int __energy_diff(struct energy_env *eenv)
 
 	__update_perf_energy_deltas(eenv);
 
+	trace_sched_energy_diff_new(eenv);
+	trace_sched_energy_perf_deltas(eenv);
 
 	return eenv->nrg_delta;
 }
