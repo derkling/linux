@@ -1158,7 +1158,10 @@ struct energy_env {
 	int			util_delta;
 
 	int			cap_idx;
-	int			energy;
+
+	struct {
+		unsigned int energy;
+	} before, after;
 };
 
 #define SDTL_OVERLAP	0x01

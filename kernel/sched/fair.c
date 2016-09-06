@@ -4796,6 +4796,63 @@ static int group_idle_state(struct sched_group *sg)
 }
 
 /*
+ * Compute energy for the eenv's SG (i.e. eenv->sg).
+ *
+ * This works in two iterations:
+ * first iteration, before moving the utilization, i.e.
+ *   util_delta == 0
+ * second iteration, after moving the utilization, i.e.
+ *   util_delta != 0
+ */
+static void before_after_energy(struct energy_env *eenv)
+{
+
+	int sg_busy_energy, sg_idle_energy;
+	struct sched_group *sg = eenv->sg;
+	unsigned long util_delta;
+	unsigned long group_util;
+	int cap_idx, idle_idx;
+	int total_energy = 0;
+	bool after;
+
+	util_delta = eenv->util_delta;
+	eenv->util_delta = 0;
+	after = false;
+
+compute_after:
+
+	idle_idx = group_idle_state(sg);
+
+	cap_idx = find_new_capacity(eenv);
+	group_util = group_norm_util(eenv);
+
+	sg_busy_energy   = group_util * sg->sge->cap_states[cap_idx].power;
+	sg_busy_energy >>= SCHED_CAPACITY_SHIFT;
+
+	sg_idle_energy   = SCHED_CAPACITY_SCALE - group_util;
+	sg_idle_energy  *= sg->sge->idle_states[idle_idx].power;
+	sg_idle_energy >>= SCHED_CAPACITY_SHIFT;
+
+	total_energy = sg_busy_energy + sg_idle_energy;
+
+	/* Account for "after" metrics */
+	if (after) {
+		eenv->after.energy += total_energy;
+		return;
+	}
+
+	/* Account for "before" metrics */
+	eenv->before.energy += total_energy;
+
+	/* Setup eenv for the "after" case */
+	eenv->util_delta = util_delta;
+	after = true;
+
+	goto compute_after;
+
+}
+
+/*
  * sched_group_energy(): Computes the absolute energy consumption of cpus
  * belonging to the sched_group including shared resources shared only by
  * members of the group. Iterates over all cpus in the hierarchy below the
@@ -4808,9 +4865,9 @@ static int group_idle_state(struct sched_group *sg)
 static int sched_group_energy(struct energy_env *eenv)
 {
 	struct sched_domain *sd;
-	int cpu, total_energy = 0;
 	struct cpumask visit_cpus;
 	struct sched_group *sg;
+	int cpu;
 
 	WARN_ON(!eenv->sg_top->sge);
 
@@ -4826,16 +4883,7 @@ static int sched_group_energy(struct energy_env *eenv)
 		 * sched_group?
 		 */
 		sd = rcu_dereference(per_cpu(sd_scs, cpu));
-
-		if (!sd)
-			/*
-			 * We most probably raced with hotplug; returning a
-			 * wrong energy estimation is better than entering an
-			 * infinite loop.
-			 */
-			return -EINVAL;
-
-		if (sd->parent)
+		if (sd && sd->parent)
 			sg_shared_cap = sd->parent->groups;
 
 		for_each_domain(cpu, sd) {
@@ -4846,28 +4894,12 @@ static int sched_group_energy(struct energy_env *eenv)
 				break;
 
 			do {
-				unsigned long group_util;
-				int sg_busy_energy, sg_idle_energy;
-				int cap_idx, idle_idx;
-
+				eenv->sg_cap = sg;
 				if (sg_shared_cap && sg_shared_cap->group_weight >= sg->group_weight)
 					eenv->sg_cap = sg_shared_cap;
-				else
-					eenv->sg_cap = sg;
 
 				eenv->sg = sg;
-				cap_idx = find_new_capacity(eenv);
-				idle_idx = group_idle_state(sg);
-
-				group_util = group_norm_util(eenv);
-
-				sg_busy_energy = (group_util * sg->sge->cap_states[cap_idx].power)
-								>> SCHED_CAPACITY_SHIFT;
-				sg_idle_energy = ((SCHED_LOAD_SCALE-group_util)
-								* sg->sge->idle_states[idle_idx].power)
-								>> SCHED_CAPACITY_SHIFT;
-
-				total_energy += sg_busy_energy + sg_idle_energy;
+				before_after_energy(eenv);
 
 				if (!sd->child)
 					cpumask_xor(&visit_cpus, &visit_cpus, sched_group_cpus(sg));
@@ -4878,10 +4910,10 @@ static int sched_group_energy(struct energy_env *eenv)
 			} while (sg = sg->next, sg != sd->groups);
 		}
 next_cpu:
+		cpumask_clear_cpu(cpu, &visit_cpus);
 		continue;
 	}
 
-	eenv->energy = total_energy;
 	return 0;
 }
 
@@ -4901,40 +4933,29 @@ static int energy_diff(struct energy_env *eenv)
 {
 	struct sched_domain *sd;
 	struct sched_group *sg;
-	int sd_cpu = -1, energy_before = 0, energy_after = 0;
-
-	struct energy_env eenv_before = {
-		.util_delta	= 0,
-		.src_cpu	= eenv->src_cpu,
-		.dst_cpu	= eenv->dst_cpu,
-	};
+	int sd_cpu = -1;
 
 	if (eenv->src_cpu == eenv->dst_cpu)
 		return 0;
 
 	sd_cpu = (eenv->src_cpu != -1) ? eenv->src_cpu : eenv->dst_cpu;
 	sd = rcu_dereference(per_cpu(sd_ea, sd_cpu));
-
 	if (!sd)
 		return 0; /* Error */
 
 	sg = sd->groups;
-
 	do {
-		if (cpu_in_sg(sg, eenv->src_cpu) || cpu_in_sg(sg, eenv->dst_cpu)) {
-			eenv_before.sg_top = eenv->sg_top = sg;
+		if (!cpu_in_sg(sg, eenv->src_cpu) &&
+		    !cpu_in_sg(sg, eenv->dst_cpu))
+			continue;
 
-			if (sched_group_energy(&eenv_before))
-				return 0; /* Invalid result abort */
-			energy_before += eenv_before.energy;
+		eenv->sg_top = sg;
+		if (sched_group_energy(eenv))
+			return 0; /* Invalid result abort */
 
-			if (sched_group_energy(eenv))
-				return 0; /* Invalid result abort */
-			energy_after += eenv->energy;
-		}
 	} while (sg = sg->next, sg != sd->groups);
 
-	return energy_after-energy_before;
+	return eenv->after.energy - eenv->before.energy;
 }
 
 /*
