@@ -5147,7 +5147,8 @@ __update_perf_energy_deltas(struct energy_env *eenv)
  * utilization is removed from or added to the system (e.g. task wake-up). If
  * both are specified, the utilization is migrated.
  */
-static inline int __energy_diff(struct energy_env *eenv)
+noinline int
+__energy_diff(struct energy_env *eenv)
 {
 	struct sched_domain *sd;
 	struct sched_group *sg;
@@ -5155,6 +5156,8 @@ static inline int __energy_diff(struct energy_env *eenv)
 
 	if (eenv->src_cpu == eenv->dst_cpu)
 		return 0;
+
+	trace_printk("Original");
 
 	sd_cpu = (eenv->src_cpu != -1) ? eenv->src_cpu : eenv->dst_cpu;
 	sd = rcu_dereference(per_cpu(sd_ea, sd_cpu));
@@ -5358,7 +5361,7 @@ __update_group_capacity(struct energy_env *eenv)
  *     energy diff for:      2
  *
  */
-static inline int
+noinline int
 __energy_diff_new(struct energy_env *eenv)
 {
 	struct sched_domain *ea_sd, *sd;
@@ -5463,6 +5466,30 @@ next_sg:
 	return eenv->nrg_delta;
 }
 
+void
+test_eawake_code(void)
+{
+	struct energy_env eenv = {
+		.util_delta = 100,
+		.task = current,
+	};
+
+	printk(KERN_WARNING ".:: In-Cluster migration (0->5) test:\n");
+	eenv.src_cpu = 0;
+	eenv.dst_cpu = 5;
+	__energy_diff_new(&eenv);
+
+	printk(KERN_WARNING ".:: Down-migration (2->3) test:\n");
+	eenv.src_cpu = 2;
+	eenv.dst_cpu = 3;
+	__energy_diff_new(&eenv);
+
+	printk(KERN_WARNING ".:: Up-migration (5->1) test:\n");
+	eenv.src_cpu = 5;
+	eenv.dst_cpu = 1;
+	__energy_diff_new(&eenv);
+
+}
 
 #ifdef CONFIG_SCHED_TUNE
 
@@ -5505,6 +5532,7 @@ energy_diff(struct energy_env *eenv)
 	int boost = schedtune_task_boost(eenv->task);
 
 	/* Conpute "absolute" energy diff */
+	__energy_diff_new(eenv);
 	__energy_diff(eenv);
 
 	/* Return energy diff when boost margin is 0 */
