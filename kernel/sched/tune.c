@@ -5,8 +5,11 @@
  */
 
 #include "sched.h"
+#include "tune.h"
 
 unsigned int sysctl_sched_cfs_boost __read_mostly;
+
+extern struct reciprocal_value schedtune_spc_rdiv;
 
 int
 sysctl_sched_cfs_boost_handler(struct ctl_table *table, int write,
@@ -19,4 +22,12 @@ sysctl_sched_cfs_boost_handler(struct ctl_table *table, int write,
 
 	return 0;
 }
+
+static int
+schedtune_init(void)
+{
+	schedtune_spc_rdiv = reciprocal_value(100);
+	return 0;
+}
+late_initcall(schedtune_init);
 
