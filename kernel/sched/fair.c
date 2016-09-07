@@ -5122,7 +5122,7 @@ schedtune_margin(unsigned long signal, unsigned long boost)
 static inline unsigned int
 schedtune_cpu_margin(unsigned long util, int cpu)
 {
-	int boost = get_sysctl_sched_cfs_boost();
+	int boost = schedtune_cpu_boost(cpu);
 
 	if (boost == 0)
 		return 0;
