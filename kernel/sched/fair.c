@@ -4849,6 +4849,7 @@ static void before_after_energy(struct energy_env *eenv)
 	unsigned long group_util;
 	int cap_idx, idle_idx;
 	int total_energy = 0;
+	unsigned int cap;
 	bool after;
 
 	util_delta = eenv->util_delta;
@@ -4861,6 +4862,7 @@ compute_after:
 
 	cap_idx = find_new_capacity(eenv);
 	group_util = group_norm_util(eenv);
+	cap = sg->sge->cap_states[cap_idx].cap;
 
 	sg_busy_energy   = group_util * sg->sge->cap_states[cap_idx].power;
 	sg_busy_energy >>= SCHED_CAPACITY_SHIFT;
@@ -4873,11 +4875,21 @@ compute_after:
 
 	/* Account for "after" metrics */
 	if (after) {
+		if (sg->group_weight == 1 &&
+		    cpumask_test_cpu(eenv->dst_cpu, sched_group_cpus(sg))) {
+			eenv->after.utilization = group_util;
+			eenv->after.capacity = cap;
+		}
 		eenv->after.energy += total_energy;
 		return;
 	}
 
 	/* Account for "before" metrics */
+	if (sg->group_weight == 1 &&
+	    cpumask_test_cpu(eenv->src_cpu, sched_group_cpus(sg))) {
+		eenv->after.utilization = group_util;
+		eenv->before.capacity = cap;
+	}
 	eenv->before.energy += total_energy;
 
 	/* Setup eenv for the "after" case */

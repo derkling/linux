@@ -1161,6 +1161,8 @@ struct energy_env {
 
 	struct {
 		unsigned int energy;
+		unsigned int capacity;
+		unsigned int utilization;
 	} before, after;
 };
 
