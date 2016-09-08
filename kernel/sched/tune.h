@@ -8,6 +8,15 @@
 
 #include <linux/reciprocal_div.h>
 
+/*
+ * System energy normalization constants
+ */
+struct target_nrg {
+	unsigned long min_power;
+	unsigned long max_power;
+	struct reciprocal_value rdiv;
+};
+
 #ifdef CONFIG_CGROUP_SCHEDTUNE
 
 int schedtune_cpu_boost(int cpu);
