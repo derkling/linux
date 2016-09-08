@@ -5009,6 +5009,73 @@ static inline bool cpu_in_sg(struct sched_group *sg, int cpu)
 	return cpu != -1 && cpumask_test_cpu(cpu, sched_group_cpus(sg));
 }
 
+static inline int normalize_energy(int energy_diff);
+
+#define eenv_before(__X) eenv->before.__X
+#define eenv_after(__X)  eenv->after.__X
+#define eenv_delta(__X)  eenv->after.__X - eenv->before.__X
+
+static inline void
+__update_perf_energy_deltas(struct energy_env *eenv)
+{
+	unsigned long task_util = eenv->util_delta;
+
+	/*
+	 * SpeedUp Index
+	 *
+	 *   SPI := 1024 * ((cpu_capacity - task_util) / (1024 - task_util))
+	 *
+	 * which represents the relative speedup for the completion of a
+	 * task's activation, assuming it's running alone. That metric is a
+	 * linear value ranging from:
+	 *    0 (i.e. min) if the task is running at cpu_capacity == task_util
+	 * 1024 (i.e. max) if the task is running at cpu_capacity == 1024
+	 *
+	 * NOTE: this metric is the dual of the SPC boosting strategy, the
+	 * value returned indeed is the boost value which the task is getting.
+	 *
+	 * Example (task_util = 100):
+	 * a) cpu_capacity ==  1 * task_util => SPI =   0
+	 * b) cpu_capacity ==  2 * task_util => SPI = 110
+	 * c) cpu_capacity == 10 * task_util => SPI = 997
+	 *
+	 * Example (task_util = 500):
+	 * a) cpu_capacity ==  1 * task_util => SPI =   0
+	 * b) cpu_capacity ==  2 * task_util => SPI = 997
+	 */
+	eenv_before(speedup_idx)  = SCHED_CAPACITY_SCALE;
+	eenv_before(speedup_idx) *= (eenv_before(capacity) - task_util);
+	eenv_before(speedup_idx) /= (1024 - task_util);
+	eenv_after(speedup_idx)   = SCHED_CAPACITY_SCALE;
+	eenv_after(speedup_idx)  *= (eenv_after(capacity) - task_util);
+	eenv_after(speedup_idx)  /= (1024 - task_util);
+
+	/*
+	 * Delay Index
+	 *
+	 *   DLI := 1024 * (cpu_util - task_util) / cpu_util
+	 *
+	 * which represents the "fraction" of CPU bandwidth consumed by other
+	 * tasks in the worst case, i.e. assuming all other tasks runs before.
+	 *
+	 * NOTE: in the above formula we assume that "cpu_util" includes
+	 *       already the task utilization.
+	 */
+	eenv_before(delay_idx)  =  SCHED_CAPACITY_SCALE;
+	eenv_before(delay_idx) *= (eenv_before(utilization) - task_util);
+	eenv_before(delay_idx) /=  eenv_before(utilization);
+	eenv_after(delay_idx)   =  SCHED_CAPACITY_SCALE;
+	eenv_after(delay_idx)  *= (eenv_after(utilization) - task_util);
+	eenv_after(delay_idx)  /=  eenv_after(utilization);
+
+	/* Performance Variation */
+	eenv->prf_delta = eenv_delta(speedup_idx) - eenv_delta(delay_idx);
+
+	/* Energy Variation */
+	eenv->nrg_delta = normalize_energy(eenv_delta(energy));
+
+}
+
 /*
  * energy_diff(): Estimate the energy impact of changing the utilization
  * distribution. eenv specifies the change: utilisation amount, source, and
@@ -5042,7 +5109,9 @@ static int energy_diff(struct energy_env *eenv)
 
 	} while (sg = sg->next, sg != sd->groups);
 
-	return eenv->after.energy - eenv->before.energy;
+	__update_perf_energy_deltas(eenv);
+
+	return eenv->nrg_delta;
 }
 
 #ifdef CONFIG_SCHED_TUNE
