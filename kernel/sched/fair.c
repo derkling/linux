@@ -4797,6 +4797,10 @@ long group_norm_util(struct energy_env *eenv)
 	return util_sum;
 }
 
+#ifdef CONFIG_SCHED_TUNE
+static inline unsigned long boosted_task_util(struct task_struct *task);
+#endif /* CONFIG_SCHED_TUNE */
+
 static int find_new_capacity(struct energy_env *eenv)
 {
 	const struct sched_group_energy const *sge = eenv->sg->sge;
@@ -5092,7 +5096,7 @@ static inline bool __task_fits(struct task_struct *p, int cpu, int util)
 {
 	unsigned long capacity = capacity_of(cpu);
 
-	util += task_util(p);
+	util += boosted_task_util(p);
 
 	return (capacity * 1024) > (util * capacity_margin);
 }
@@ -5158,10 +5162,32 @@ schedtune_cpu_margin(unsigned long util, int cpu)
 	return schedtune_margin(util, boost);
 }
 
+static inline unsigned long
+schedtune_task_margin(struct task_struct *task)
+{
+	int boost = schedtune_task_boost(task);
+	unsigned long util;
+	unsigned long margin;
+
+	if (boost == 0)
+		return 0;
+
+	util = task_util(task);
+	margin = schedtune_margin(util, boost);
+
+	return margin;
+}
+
 #else /* CONFIG_SCHED_TUNE */
 
 static inline unsigned int
 schedtune_cpu_margin(unsigned long util, int cpu)
+{
+	return 0;
+}
+
+static inline unsigned int
+schedtune_task_margin(struct task_struct *task)
 {
 	return 0;
 }
@@ -5173,6 +5199,15 @@ boosted_cpu_util(int cpu)
 {
 	unsigned long util = cpu_util(cpu);
 	unsigned long margin = schedtune_cpu_margin(util, cpu);
+
+	return util + margin;
+}
+
+static inline unsigned long
+boosted_task_util(struct task_struct *task)
+{
+	unsigned long util = task_util(task);
+	unsigned long margin = schedtune_task_margin(task);
 
 	return util + margin;
 }
@@ -5371,6 +5406,8 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 	struct sched_group *sg, *sg_target;
 	int target_max_cap = INT_MAX;
 	int target_cpu = task_cpu(p);
+	unsigned long min_util;
+	unsigned long new_util;
 	int i;
 
 	sd = rcu_dereference(per_cpu(sd_ea, task_cpu(p)));
@@ -5405,13 +5442,22 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 	} while (sg = sg->next, sg != sd->groups);
 
 	/* Find cpu with sufficient capacity */
+	min_util = boosted_task_util(p);
 	for_each_cpu_and(i, tsk_cpus_allowed(p), sched_group_cpus(sg_target)) {
 		/*
 		 * p's blocked utilization is still accounted for on prev_cpu
 		 * so prev_cpu will receive a negative bias due to the double
 		 * accounting. However, the blocked utilization may be zero.
 		 */
-		int new_util = cpu_util(i) + task_util(p);
+		new_util = cpu_util(i) + task_util(p);
+
+		/*
+		 * Ensure minimum capacity to grant the required boost.
+		 * The target CPU can be already at a capacity level higher
+		 * than the one required to boost the task.
+		 */
+		new_util = max(min_util, new_util);
+
 
 		if (new_util > capacity_orig_of(i))
 			continue;
