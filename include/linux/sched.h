@@ -1158,6 +1158,7 @@ struct energy_env {
 	int			util_delta;
 
 	int			cap_idx;
+	int			payoff;
 
 	int nrg_delta;
 	int prf_delta;
