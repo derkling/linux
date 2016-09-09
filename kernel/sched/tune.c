@@ -8,6 +8,7 @@
 #include <linux/err.h>
 #include <linux/kernel.h>
 #include <linux/percpu.h>
+#include <linux/printk.h>
 #include <linux/rcupdate.h>
 #include <linux/slab.h>
 
