@@ -5127,6 +5127,9 @@ static int energy_diff(struct energy_env *eenv)
 
 	__update_perf_energy_deltas(eenv);
 
+	trace_sched_energy_diff(eenv);
+	trace_sched_energy_perf_deltas(eenv);
+
 	return eenv->nrg_delta;
 }
 
@@ -5684,6 +5687,7 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target)
 			.util_delta	= task_util(p),
 			.src_cpu	= task_cpu(p),
 			.dst_cpu	= target_cpu,
+			.task		= p,
 		};
 
 		/* Not enough spare capacity on previous cpu */
