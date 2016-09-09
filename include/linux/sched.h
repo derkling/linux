@@ -1153,6 +1153,8 @@ const struct sched_group_energy * const(*sched_domain_energy_f)(int cpu);
 struct energy_env {
 	struct sched_group	*sg_top;
 	struct sched_group	*sg_cap;
+
+	struct sched_domain 	*top_sd;
 	struct sched_group 	*sg;
 
 	int			src_cpu;
@@ -1161,6 +1163,8 @@ struct energy_env {
 	struct task_struct	*task;
 
 	int			cap_idx;
+	int 			cap_idx_before;
+	int 			cap_idx_after;
 	int			payoff;
 
 	int nrg_delta;
