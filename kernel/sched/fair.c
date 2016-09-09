@@ -4276,6 +4276,16 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	int task_wakeup = flags & ENQUEUE_WAKEUP;
 #endif
 
+	/*
+	 * If in_iowait is set, the code below may not trigger any cpufreq
+	 * utilization updates, so do it here explicitly with the IOWAIT flag
+	 * passed.
+	 */
+	if (p->in_iowait) {
+		if (cpu_of(rq) == smp_processor_id())
+			cpufreq_update_util(rq_clock(rq), SCHED_CPUFREQ_IOWAIT);
+	}
+
 	for_each_sched_entity(se) {
 		if (se->on_rq)
 			break;
