@@ -3,6 +3,7 @@
 
 #ifdef CONFIG_ARM_CPU_TOPOLOGY
 
+#include <linux/cpufreq.h>
 #include <linux/cpumask.h>
 
 struct cputopo_arm {
