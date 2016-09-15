@@ -147,11 +147,11 @@ static unsigned int get_next_freq(struct sugov_cpu *sg_cpu, unsigned long util,
 static void sugov_get_util(unsigned long *util, unsigned long *max)
 {
 	int cpu = smp_processor_id();
+	unsigned long max_cap = arch_scale_cpu_capacity(NULL, cpu);
+#ifndef CONFIG_SCHED_WALT
 	struct rq *rq = cpu_rq(cpu);
-	unsigned long max_cap, rt;
+	unsigned long rt;
 	s64 delta;
-
-	max_cap = arch_scale_cpu_capacity(NULL, cpu);
 
 	delta = rq_clock(rq) - rq->age_stamp;
 	if (unlikely(delta < 0))
@@ -160,6 +160,11 @@ static void sugov_get_util(unsigned long *util, unsigned long *max)
 	rt = (rt * max_cap) >> SCHED_CAPACITY_SHIFT;
 
 	*util = min(rq->cfs.avg.util_avg + rt, max_cap);
+#else
+	if (!walt_disabled && sysctl_sched_use_walt_cpu_util)
+		*util = (cpu_rq(cpu)->prev_runnable_sum << SCHED_LOAD_SHIFT) /
+			walt_ravg_window;
+#endif
 	*max = max_cap;
 }
 
