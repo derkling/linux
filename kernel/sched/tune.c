@@ -2,7 +2,6 @@
 #include <linux/err.h>
 #include <linux/kernel.h>
 #include <linux/percpu.h>
-#include <linux/printk.h>
 #include <linux/rcupdate.h>
 #include <linux/slab.h>
 
@@ -772,8 +771,7 @@ schedtune_accept_deltas(int nrg_delta, int cap_delta,
 
 int
 sysctl_sched_cfs_boost_handler(struct ctl_table *table, int write,
-			       void __user *buffer, size_t *lenp,
-			       loff_t *ppos)
+		void __user *buffer, size_t *lenp, loff_t *ppos)
 {
 	int ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 	unsigned threshold_idx;
