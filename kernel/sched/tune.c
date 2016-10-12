@@ -1,3 +1,9 @@
+/*
+ * Scheduler Tunability (SchedTune) Extensions for CFS
+ *
+ * Copyright (C) 2016 ARM Ltd, Patrick Bellasi <patrick.bellasi@arm.com>
+ */
+
 #include <linux/cgroup.h>
 #include <linux/err.h>
 #include <linux/kernel.h>

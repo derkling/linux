@@ -1,3 +1,8 @@
+/*
+ * Scheduler Tunability (SchedTune) Extensions for CFS
+ *
+ * Copyright (C) 2016 ARM Ltd, Patrick Bellasi <patrick.bellasi@arm.com>
+ */
 
 #ifdef CONFIG_SCHED_TUNE
 
