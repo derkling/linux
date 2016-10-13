@@ -5636,7 +5636,9 @@ static int energy_diff(struct energy_env *eenv)
 	 */
 	margin = eenv->before.energy >> 6; /* ~1.56% */
 	if (abs(eenv->nrg_delta) < margin)
-		return 0;
+		eenv->nrg_delta = 0;
+
+	trace_sched_energy_diff(eenv);
 
 	return eenv->nrg_delta;
 }

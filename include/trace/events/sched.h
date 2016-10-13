@@ -698,6 +698,49 @@ TRACE_EVENT(sched_pelt_tg,
 		  __entry->cpu, __entry->id, __entry->load_avg,
 		  __entry->shares, __entry->tg_load_avg_contrib)
 );
+
+/*
+ * Tracepoint for accounting sched group energy
+ */
+TRACE_EVENT(sched_energy_diff,
+
+	TP_PROTO(struct energy_env *eenv),
+
+	TP_ARGS(eenv),
+
+	TP_STRUCT__entry(
+		__array( char,	comm,	TASK_COMM_LEN	)
+		__field( pid_t,	pid	)
+		__field( int,	s_cpu	)
+		__field( int,	d_cpu	)
+		__field( int,	utl_d	)
+		__field( int,	nrg_b	)
+		__field( int,	nrg_a	)
+		__field( int,	nrg_d	)
+	),
+
+	TP_fast_assign(
+		memcpy(__entry->comm,	  eenv->task->comm, TASK_COMM_LEN);
+		__entry->pid	= eenv->task->pid;
+		__entry->s_cpu 	= eenv->src_cpu;
+		__entry->d_cpu 	= eenv->dst_cpu;
+		__entry->utl_d  = eenv->util_delta;
+		__entry->nrg_b 	= eenv->before.energy;
+		__entry->nrg_a 	= eenv->after.energy;
+		__entry->nrg_d	= eenv->nrg_delta;
+	),
+
+	TP_printk("pid=%d comm=%s s_cpu=%d d_cpu=%d utl_d=%d "
+		  "nrg_b=%u nrg_a=%u nrg_d=%d",
+		__entry->pid,   __entry->comm,
+		__entry->s_cpu, __entry->d_cpu,
+		__entry->utl_d,
+		__entry->nrg_b, __entry->nrg_a,
+		__entry->nrg_d)
+
+);
+
+
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 #endif /* CONFIG_SMP */
 #endif /* _TRACE_SCHED_H */
