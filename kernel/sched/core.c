@@ -3526,7 +3526,8 @@ void __setprio_other(struct rq *rq, struct task_struct *p) {
 	prev_class = p->sched_class;
 	queued = task_on_rq_queued(p);
 	running = task_current(rq, p);
-	trace_printk("tsk=%d que=%d run=%d thr=%d pr=%d st_pr=%d no_pr=%d rt_pr=%u",
+	trace_printk("%s tsk=%d que=%d run=%d thr=%d pr=%d st_pr=%d no_pr=%d rt_pr=%u\n",
+			__func__,
 			task_pid_nr(p), queued, running,
 			p->rt.throttled, p->prio, p->static_prio,
 			p->normal_prio, p->rt_priority);
@@ -3551,8 +3552,8 @@ void __setprio_other(struct rq *rq, struct task_struct *p) {
 	if (queued)
 		enqueue_task(rq, p, 0);
 
-	trace_printk("tsk=%d que=%d run=%d thr=%d pr=%d st_pr=%d no_pr=%d rt_pr=%u class=%p",
-			task_pid_nr(p), queued, running,
+	trace_printk("%s tsk=%d que=%d run=%d thr=%d pr=%d st_pr=%d no_pr=%d rt_pr=%u class=%p\n",
+			__func__, task_pid_nr(p), queued, running,
 			p->rt.throttled, p->prio, p->static_prio,
 			p->normal_prio, p->rt_priority,
 			p->sched_class);
@@ -3585,8 +3586,8 @@ again:
 	prev_class = p->sched_class;
 	queued = task_on_rq_queued(p);
 	running = task_current(cpu_rq(cpu), p);
-	trace_printk("tsk=%d que=%d run=%d thr=%d pr=%d st_pr=%d no_pr=%d rt_pr=%u",
-			task_pid_nr(p), queued, running,
+	trace_printk("%s tsk=%d que=%d run=%d thr=%d pr=%d st_pr=%d no_pr=%d rt_pr=%u\n",
+			__func__, task_pid_nr(p), queued, running,
 			p->rt.throttled, p->prio, p->static_prio,
 			p->normal_prio, p->rt_priority);
 	BUG_ON(p->rt.throttled);
@@ -3604,8 +3605,8 @@ again:
 	if (queued)
 		enqueue_task(cpu_rq(cpu), p, ENQUEUE_REPLENISH);
 
-	trace_printk("tsk=%d que=%d run=%d thr=%d pr=%d st_pr=%d no_pr=%d rt_pr=%u class=%p",
-			task_pid_nr(p), queued, running,
+	trace_printk("%s tsk=%d que=%d run=%d thr=%d pr=%d st_pr=%d no_pr=%d rt_pr=%u class=%p\n",
+			__func__, task_pid_nr(p), queued, running,
 			p->rt.throttled, p->prio, p->static_prio,
 			p->normal_prio, p->rt_priority,
 			p->sched_class);
@@ -4318,6 +4319,7 @@ static int _sched_setscheduler(struct task_struct *p, int policy,
 int sched_setscheduler(struct task_struct *p, int policy,
 		       const struct sched_param *param)
 {
+	trace_printk("%s tsk=%d %p\n", __func__, p->pid, p->sched_class);
 	return _sched_setscheduler(p, policy, param, true);
 }
 EXPORT_SYMBOL_GPL(sched_setscheduler);
@@ -8234,6 +8236,13 @@ void sched_move_task(struct task_struct *tsk)
 	tg = autogroup_task_group(tsk, tg);
 	tsk->sched_task_group = tg;
 
+	trace_printk("%s tsk=%d %p\n", __func__, tsk->pid, tsk->sched_class);
+/*
+#ifdef CONFIG_RT_GROUP_SCHED
+	if (tsk->sched_class == &fair_sched_class)
+		tsk->rt.throttled = 0;
+#endif
+*/
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	if (tsk->sched_class->task_move_group)
 		tsk->sched_class->task_move_group(tsk);

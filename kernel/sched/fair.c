@@ -505,12 +505,12 @@ static void __enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	int leftmost = 1;
 
 	if (entity_is_task(se))
-		trace_printk("tsk=%d cpu=%d cfs_rq=%p",
+		trace_printk("tsk=%d cpu=%d cfs_rq=%p\n",
 				task_pid_nr(task_of(se)),
 				cpu_of(rq_of(cfs_rq)),
 				cfs_rq);
 	else
-		trace_printk("grp=%p cpu=%d cfs_rq=%p",
+		trace_printk("grp=%p cpu=%d cfs_rq=%p\n",
 				se,
 				cpu_of(rq_of(cfs_rq)),
 				cfs_rq);
@@ -526,11 +526,11 @@ static void __enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 		 * the same key stay together.
 		 */
 		if (entity_before(se, entry)) {
-			trace_printk("entry=%p se=%p left",
+			trace_printk("entry=%p se=%p left\n",
 					entry, se);
 			link = &parent->rb_left;
 		} else {
-			trace_printk("entry=%p se=%p right",
+			trace_printk("entry=%p se=%p right\n",
 					entry, se);
 			link = &parent->rb_right;
 			leftmost = 0;
@@ -544,12 +544,12 @@ static void __enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	if (leftmost) {
 		cfs_rq->rb_leftmost = &se->run_node;
 		if (entity_is_task(se))
-			trace_printk("tsk=%d cpu=%d cfs_rq=%p leftmost",
+			trace_printk("tsk=%d cpu=%d cfs_rq=%p leftmost\n",
 					task_pid_nr(task_of(se)),
 					cpu_of(rq_of(cfs_rq)),
 					cfs_rq);
 		else
-			trace_printk("grp=%p cpu=%d cfs_rq=%p leftmost",
+			trace_printk("grp=%p cpu=%d cfs_rq=%p leftmost\n",
 					se,
 					cpu_of(rq_of(cfs_rq)),
 					cfs_rq);
@@ -562,11 +562,11 @@ static void __enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 static void __dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
 	if (entity_is_task(se))
-		trace_printk("tsk=%d cpu=%d",
+		trace_printk("tsk=%d cpu=%d\n",
 				task_pid_nr(task_of(se)),
 				cpu_of(rq_of(cfs_rq)));
 	else
-		trace_printk("grp=%p cpu=%d",
+		trace_printk("grp=%p cpu=%d\n",
 				se,
 				cpu_of(rq_of(cfs_rq)));
 
@@ -3299,7 +3299,7 @@ pick_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	struct sched_entity *left = __pick_first_entity(cfs_rq);
 	struct sched_entity *se;
 
-	trace_printk("[1] cpu=%d left=%d curr=%d se=%d",
+	trace_printk("[1] cpu=%d left=%d curr=%d se=%d\n",
 			cpu_of(rq_of(cfs_rq)),
 			left ? task_pid_nr(task_of(left)) : -1,
 			curr ? task_pid_nr(task_of(curr)) : -1, -1);
@@ -3312,7 +3312,7 @@ pick_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 		left = curr;
 
 	se = left; /* ideally we run the leftmost entity */
-	trace_printk("[2] cpu=%d left=%d curr=%d se=%d",
+	trace_printk("[2] cpu=%d left=%d curr=%d se=%d\n",
 			cpu_of(rq_of(cfs_rq)),
 			left ? task_pid_nr(task_of(left)) : -1,
 			curr ? task_pid_nr(task_of(curr)) : -1,
@@ -3335,7 +3335,7 @@ pick_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 
 		if (second && wakeup_preempt_entity(second, left) < 1) {
 			se = second;
-			trace_printk("[3] cpu=%d left=%d curr=%d se=%d",
+			trace_printk("[3] cpu=%d left=%d curr=%d se=%d\n",
 					cpu_of(rq_of(cfs_rq)),
 					left ? task_pid_nr(task_of(left)) : -1,
 					curr ? task_pid_nr(task_of(curr)) : -1,
@@ -3348,7 +3348,7 @@ pick_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	 */
 	if (cfs_rq->last && wakeup_preempt_entity(cfs_rq->last, left) < 1) {
 		se = cfs_rq->last;
-		trace_printk("[4] cpu=%d left=%d curr=%d se=%d",
+		trace_printk("[4] cpu=%d left=%d curr=%d se=%d\n",
 				cpu_of(rq_of(cfs_rq)),
 				left ? task_pid_nr(task_of(left)) : -1,
 				curr ? task_pid_nr(task_of(curr)) : -1,
@@ -3360,7 +3360,7 @@ pick_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	 */
 	if (cfs_rq->next && wakeup_preempt_entity(cfs_rq->next, left) < 1) {
 		se = cfs_rq->next;
-		trace_printk("[5] cpu=%d left=%d curr=%d se=%d",
+		trace_printk("[5] cpu=%d left=%d curr=%d se=%d\n",
 				cpu_of(rq_of(cfs_rq)),
 				left ? task_pid_nr(task_of(left)) : -1,
 				curr ? task_pid_nr(task_of(curr)) : -1,
@@ -3369,7 +3369,7 @@ pick_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 
 	clear_buddies(cfs_rq, se);
 
-	trace_printk("[return] cpu=%d %s",
+	trace_printk("[return] cpu=%d %s\n",
 			cpu_of(rq_of(cfs_rq)),
 			se   ? "OK" : "BUGBUGBUG");
 
@@ -4285,7 +4285,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	int task_wakeup = flags & ENQUEUE_WAKEUP;
 #endif
 
-	trace_printk("[1] tsk=%d se=%p cpu=%d nr=%d cfs_nr=%d cfs_h_nr=%d rt_nr=%d f=%d",
+	trace_printk("[1] tsk=%d se=%p cpu=%d nr=%d cfs_nr=%d cfs_h_nr=%d rt_nr=%d f=%d\n",
 			task_pid_nr(p), &p->se,
 			task_cpu(p), rq->nr_running,
 			rq->cfs.nr_running, rq->cfs.h_nr_running, rq->rt.rt_nr_running,
@@ -4373,7 +4373,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	struct sched_entity *se = &p->se;
 	int task_sleep = flags & DEQUEUE_SLEEP;
 
-	trace_printk("[1] tsk=%d se=%p cpu=%d nr=%d cfs_nr=%d cfs_h_nr=%d rt_nr=%d f=%d",
+	trace_printk("[1] tsk=%d se=%p cpu=%d nr=%d cfs_nr=%d cfs_h_nr=%d rt_nr=%d f=%d\n",
 			task_pid_nr(p), &p->se,
 			task_cpu(p), rq->nr_running,
 			rq->cfs.nr_running, rq->cfs.h_nr_running, rq->rt.rt_nr_running,
@@ -4453,7 +4453,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 	hrtick_update(rq);
 
-	trace_printk("[2] tsk=%d se=%p cpu=%d nr=%d cfs_nr=%d cfs_h_nr=%d rt_nr=%d f=%d",
+	trace_printk("[2] tsk=%d se=%p cpu=%d nr=%d cfs_nr=%d cfs_h_nr=%d rt_nr=%d f=%d\n",
 			task_pid_nr(p), &p->se,
 			task_cpu(p), rq->nr_running,
 			rq->cfs.nr_running, rq->cfs.h_nr_running, rq->rt.rt_nr_running,
@@ -6219,7 +6219,7 @@ pick_next_task_fair(struct rq *rq, struct task_struct *prev)
 	int new_tasks;
 
 again:
-	trace_printk("[again] cpu=%d prev=%d nr=%d cfs_nr=%d cfs_h_nr=%d rt_nr=%d",
+	trace_printk("[again] cpu=%d prev=%d nr=%d cfs_nr=%d cfs_h_nr=%d rt_nr=%d\n",
 			cpu_of(rq), task_pid_nr(prev), rq->nr_running,
 			rq->cfs.nr_running, rq->cfs.h_nr_running,
 			rq->rt.rt_nr_running);
@@ -6303,7 +6303,7 @@ again:
 	return p;
 simple:
 	cfs_rq = &rq->cfs;
-	trace_printk("[simple] cpu=%d prev=%d on_rq=%d cfs_rq=%p cfs_nr=%d",
+	trace_printk("[simple] cpu=%d prev=%d on_rq=%d cfs_rq=%p cfs_nr=%d\n",
 			cpu_of(rq), task_pid_nr(prev),
 			prev->se.on_rq, cfs_rq,
 			cfs_rq->nr_running);
@@ -6330,7 +6330,7 @@ simple:
 	return p;
 
 idle:
-	trace_printk("[idle] cpu=%d prev=%d on_rq=%d", cpu_of(rq), task_pid_nr(prev), prev->se.on_rq);
+	trace_printk("[idle] cpu=%d prev=%d on_rq=%d\n", cpu_of(rq), task_pid_nr(prev), prev->se.on_rq);
 	rq->misfit_task = 0;
 	/*
 	 * This is OK, because current is on_cpu, which avoids it being picked
@@ -6363,7 +6363,7 @@ static void put_prev_task_fair(struct rq *rq, struct task_struct *prev)
 	struct sched_entity *se = &prev->se;
 	struct cfs_rq *cfs_rq;
 
-	trace_printk("tsk=%d cpu=%d nr_running=%d",
+	trace_printk("tsk=%d cpu=%d nr_running=%d\n",
 			task_pid_nr(prev),
 			task_cpu(prev),
 			cpu_rq(task_cpu(prev))->nr_running);
@@ -6765,7 +6765,7 @@ static void detach_task(struct task_struct *p, struct lb_env *env)
 {
 	lockdep_assert_held(&env->src_rq->lock);
 
-	trace_printk("tsk=%d src_cpu=%d",
+	trace_printk("tsk=%d src_cpu=%d\n",
 			task_pid_nr(p), cpu_of(env->src_rq));
 
 	deactivate_task(env->src_rq, p, 0);
@@ -6903,7 +6903,7 @@ static void attach_task(struct rq *rq, struct task_struct *p)
 {
 	lockdep_assert_held(&rq->lock);
 
-	trace_printk("tsk=%d dst_cpu=%d",
+	trace_printk("tsk=%d dst_cpu=%d\n",
 			task_pid_nr(p), cpu_of(rq));
 	BUG_ON(task_rq(p) != rq);
 	p->on_rq = TASK_ON_RQ_QUEUED;
@@ -8512,7 +8512,7 @@ static int idle_balance(struct rq *this_rq)
 			pulled_task = load_balance(this_cpu, this_rq,
 						   sd, CPU_NEWLY_IDLE,
 						   &continue_balancing);
-			trace_printk("[new_idle] cpu=%d pulled_task=%d sd=%s",
+			trace_printk("[new_idle] cpu=%d pulled_task=%d sd=%s\n",
 					cpu_of(this_rq), pulled_task, sd->name);
 
 			domain_cost = sched_clock_cpu(this_cpu) - t0;
@@ -8529,7 +8529,7 @@ static int idle_balance(struct rq *this_rq)
 		 * now runnable tasks on this rq.
 		 */
 		if (pulled_task || this_rq->nr_running > 0) {
-			trace_printk("[stop] pulled_task=%d cpu=%d nr_running=%d cfs_nr_running=%d cfs_h_nr_running=%d rt_nr_running=%d",
+			trace_printk("[stop] pulled_task=%d cpu=%d nr_running=%d cfs_nr_running=%d cfs_h_nr_running=%d rt_nr_running=%d\n",
 					pulled_task, cpu_of(this_rq),
 					this_rq->nr_running,
 					this_rq->cfs.nr_running,
@@ -8552,7 +8552,7 @@ static int idle_balance(struct rq *this_rq)
 	 */
 	if (this_rq->cfs.h_nr_running && !pulled_task) {
 		pulled_task = 1;
-		trace_printk("[pretend] pulled_task=%d cpu=%d nr_running=%d cfs_nr_running=%d cfs_h_nr_running=%d rt_nr_running=%d",
+		trace_printk("[pretend] pulled_task=%d cpu=%d nr_running=%d cfs_nr_running=%d cfs_h_nr_running=%d rt_nr_running=%d\n",
 				pulled_task, cpu_of(this_rq),
 				this_rq->nr_running,
 				this_rq->cfs.nr_running,
@@ -8568,7 +8568,7 @@ out:
 	/* Is there a task of a high priority class? */
 	if (this_rq->nr_running != this_rq->cfs.h_nr_running) {
 		pulled_task = -1;
-		trace_printk("[high] pulled_task=%d cpu=%d nr_running=%d cfs_nr_running=%d cfs_h_nr_running=%d rt_nr_running=%d",
+		trace_printk("[high] pulled_task=%d cpu=%d nr_running=%d cfs_nr_running=%d cfs_h_nr_running=%d rt_nr_running=%d\n",
 				pulled_task, cpu_of(this_rq),
 				this_rq->nr_running,
 				this_rq->cfs.nr_running,
@@ -9136,7 +9136,7 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 	struct sched_entity *se = &curr->se;
 
 	if (entity_is_task(se))
-		trace_printk("OTHER rq=%p tsk=%d cpu=%d se=%p nr_running=%d cfs_nr_running=%d rt_nr_running=%d",
+		trace_printk("OTHER rq=%p tsk=%d cpu=%d se=%p nr_running=%d cfs_nr_running=%d rt_nr_running=%d\n",
 				rq, task_pid_nr(curr), task_cpu(curr),
 				se, rq->nr_running,
 				rq->cfs.nr_running, rq->rt.rt_nr_running);
@@ -9304,7 +9304,7 @@ static void switched_from_fair(struct rq *rq, struct task_struct *p)
 
 static void switched_to_fair(struct rq *rq, struct task_struct *p)
 {
-	trace_printk("tsk=%d cpu=%d",
+	trace_printk("tsk=%d cpu=%d\n",
 			task_pid_nr(p), cpu_of(rq));
 	attach_task_cfs_rq(p);
 
@@ -9330,7 +9330,7 @@ static void set_curr_task_fair(struct rq *rq)
 {
 	struct sched_entity *se = &rq->curr->se;
 
-	trace_printk("tsk=%d cpu=%d nr_running=%d",
+	trace_printk("tsk=%d cpu=%d nr_running=%d\n",
 			task_pid_nr(rq->curr),
 			task_cpu(rq->curr), rq->nr_running);
 
