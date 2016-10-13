@@ -666,6 +666,39 @@ TRACE_EVENT(sched_pelt_cfs_rq,
 		  __entry->period_contrib, __entry->last_update_time,
 		  __entry->runnable_load_avg, __entry->runnable_load_sum)
 );
+
+/*
+ * Tracepoint for task group Per Entity Load Tracking (PELT).
+ */
+#ifdef CONFIG_FAIR_GROUP_SCHED
+TRACE_EVENT(sched_pelt_tg,
+
+	TP_PROTO(struct cfs_rq *cfs_rq),
+
+	TP_ARGS(cfs_rq),
+
+	TP_STRUCT__entry(
+		__field( int,		cpu			)
+		__field( int,		id			)
+		__field( long,		load_avg		)
+		__field( unsigned long,	shares			)
+		__field( unsigned long,	tg_load_avg_contrib	)
+	),
+
+	TP_fast_assign(
+		__entry->cpu			= cfs_rq->rq->cpu;
+		__entry->id			= cfs_rq->tg->css.id;
+		__entry->load_avg		= atomic_long_read(&cfs_rq->tg->load_avg);
+		__entry->shares			= scale_load_down(cfs_rq->tg->shares);
+		__entry->tg_load_avg_contrib	= cfs_rq->tg_load_avg_contrib;
+	),
+
+	TP_printk("cpu=%d tg_css_id=%d load_avg=%ld shares=%lu"
+		  " tg_load_avg_contrib=%lu",
+		  __entry->cpu, __entry->id, __entry->load_avg,
+		  __entry->shares, __entry->tg_load_avg_contrib)
+);
+#endif /* CONFIG_FAIR_GROUP_SCHED */
 #endif /* CONFIG_SMP */
 #endif /* _TRACE_SCHED_H */
 
