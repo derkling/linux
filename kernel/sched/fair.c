@@ -6042,9 +6042,51 @@ static void migrate_task_rq_fair(struct task_struct *p)
 	p->se.exec_start = 0;
 }
 
+#ifdef CONFIG_RT_GROUP_SCHED
+static inline struct rq *rq_of_rt_rq(struct rt_rq *rt_rq)
+{
+	return rt_rq->rq;
+}
+
+static inline struct rt_rq *rt_rq_of_se(struct sched_rt_entity *rt_se)
+{
+	return rt_se->rt_rq;
+}
+#else
+static inline struct rq *rq_of_rt_rq(struct rt_rq *rt_rq)
+{
+	return container_of(rt_rq, struct rq, rt);
+}
+
+static inline struct rt_rq *rt_rq_of_se(struct sched_rt_entity *rt_se)
+{
+	struct rq *rq = rq_of_rt_se(rt_se);
+
+	return &rq->rt;
+}
+#endif /* CONFIG_RT_GROUP_SCHED */
+
 static void task_dead_fair(struct task_struct *p)
 {
 	remove_entity_load_avg(&p->se);
+	/*
+	 * p got killed while hanging out in RT.
+	 * Remove it from throttled_task list.
+	 */
+	if (p->rt.throttled) {
+		struct sched_rt_entity *rt_se = &p->rt;
+		struct rt_rq *rt_rq = rt_rq_of_se(rt_se);
+
+		lockdep_assert_held(rq_of_rt_rq(rt_rq)->lock);
+		trace_printk("%s tsk=%d thr=%d cpu=%d rt_nr_cfs_thr=%d rt_se=%p --> DEAD\n",
+				__func__,
+				task_pid_nr(p),
+				p->rt.throttled, task_cpu(p),
+				rt_rq->rt_nr_cfs_throttled, rt_se);
+		list_del_init(&rt_se->cfs_throttled_task);
+		rt_rq->rt_nr_cfs_throttled--;
+		rt_se->throttled = 0;
+	}
 }
 #else
 #define task_fits_max(p, cpu) true
