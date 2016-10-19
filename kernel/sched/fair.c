@@ -6077,7 +6077,7 @@ static void task_dead_fair(struct task_struct *p)
 		struct sched_rt_entity *rt_se = &p->rt;
 		struct rt_rq *rt_rq = rt_rq_of_se(rt_se);
 
-		lockdep_assert_held(rq_of_rt_rq(rt_rq)->lock);
+		lockdep_assert_held(&rq_of_rt_rq(rt_rq)->lock);
 		trace_printk("%s tsk=%d thr=%d cpu=%d rt_nr_cfs_thr=%d rt_se=%p --> DEAD\n",
 				__func__,
 				task_pid_nr(p),
