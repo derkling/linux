@@ -4060,6 +4060,11 @@ static int __sched_setscheduler(struct task_struct *p,
 	struct rq *rq;
 	int reset_on_fork;
 
+	trace_printk("%s tsk=%d thr=%d cpu=%d prio=%d rt_prio=%u new_prio=%d\n",
+			__func__,
+			task_pid_nr(p),
+			p->rt.throttled, task_cpu(p),
+			p->prio, p->rt_priority, newprio);
 	/* may grab non-irq protected spin_locks */
 	BUG_ON(in_interrupt());
 recheck:
@@ -4257,6 +4262,11 @@ change:
 
 	prev_class = p->sched_class;
 	__setscheduler(rq, p, attr, pi);
+	trace_printk("%s tsk=%d thr=%d cpu=%d old_class:%p new_class:%p \n",
+			__func__,
+			task_pid_nr(p),
+			p->rt.throttled, task_cpu(p),
+			prev_class, p->sched_class);
 
 	if (running)
 		p->sched_class->set_curr_task(rq);
@@ -4319,7 +4329,6 @@ static int _sched_setscheduler(struct task_struct *p, int policy,
 int sched_setscheduler(struct task_struct *p, int policy,
 		       const struct sched_param *param)
 {
-	trace_printk("%s tsk=%d %p\n", __func__, p->pid, p->sched_class);
 	return _sched_setscheduler(p, policy, param, true);
 }
 EXPORT_SYMBOL_GPL(sched_setscheduler);
