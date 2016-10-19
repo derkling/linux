@@ -9341,11 +9341,25 @@ static void attach_task_cfs_rq(struct task_struct *p)
 
 static void switched_from_fair(struct rq *rq, struct task_struct *p)
 {
+	if (p->rt.throttled) {
+		struct sched_rt_entity *rt_se = &p->rt;
+		struct rt_rq *rt_rq = rt_rq_of_se(rt_se);
+
+		lockdep_assert_held(&rq_of_rt_rq(rt_rq)->lock);
+		list_del_init(&rt_se->cfs_throttled_task);
+		rt_rq->rt_nr_cfs_throttled--;
+		rt_se->throttled = 0;
+		return;
+	}
+
 	detach_task_cfs_rq(p);
 }
 
 static void switched_to_fair(struct rq *rq, struct task_struct *p)
 {
+	if (p->rt.throttled)
+		return;
+
 	trace_printk("tsk=%d cpu=%d\n",
 			task_pid_nr(p), cpu_of(rq));
 	attach_task_cfs_rq(p);
