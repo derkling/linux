@@ -42,6 +42,12 @@
  */
 #define IOMMU_PRIV	(1 << 5)
 
+#if CONFIG_HISI_IOMMU
+#define IOMMU_DEVICE    (1 << 4)
+#define IOMMU_SEC       (1 << 5)
+#define IOMMU_EXEC      (1 << 6)
+#endif
+
 struct iommu_ops;
 struct iommu_group;
 struct bus_type;
@@ -94,6 +100,7 @@ struct iommu_domain {
 	void *handler_token;
 	struct iommu_domain_geometry geometry;
 	void *iova_cookie;
+	void *priv;
 };
 
 enum iommu_cap {
@@ -138,6 +145,28 @@ enum iommu_resv_type {
 	/* Software-managed MSI translation window */
 	IOMMU_RESV_SW_MSI,
 };
+
+#if CONFIG_HISI_IOMMU
+/* metadata for iommu mapping */
+struct iommu_map_format {
+	unsigned long iova_start;
+	unsigned long iova_size;
+	unsigned long iommu_ptb_base;
+	unsigned long iommu_iova_base;
+	unsigned long header_size;
+	unsigned long phys_page_line;
+	unsigned long virt_page_line;
+	unsigned long is_tile;
+	unsigned long prot;
+};
+
+struct tile_format {
+	unsigned long header_size;
+	unsigned long is_tile;
+	unsigned long phys_page_line;
+	unsigned long virt_page_line;
+};
+#endif
 
 /**
  * struct iommu_resv_region - descriptor for a reserved memory region
@@ -234,6 +263,14 @@ struct iommu_ops {
 
 	int (*of_xlate)(struct device *dev, struct of_phandle_args *args);
 	bool (*is_attach_deferred)(struct iommu_domain *domain, struct device *dev);
+
+#if CONFIG_HISI_IOMMU
+	int (*map_tile)(struct iommu_domain *domain, unsigned long iova,
+			struct scatterlist *sg, size_t size, int prot,
+			struct tile_format *format);
+	size_t (*unmap_tile)(struct iommu_domain *domain, unsigned long iova,
+			     size_t size);
+#endif
 
 	unsigned long pgsize_bitmap;
 };
@@ -349,7 +386,14 @@ extern int iommu_domain_get_attr(struct iommu_domain *domain, enum iommu_attr,
 				 void *data);
 extern int iommu_domain_set_attr(struct iommu_domain *domain, enum iommu_attr,
 				 void *data);
+#if CONFIG_HISI_IOMMU
+int iommu_map_tile(struct iommu_domain *domain, unsigned long iova,
+		    struct scatterlist *sg, size_t size, int prot,
+		    struct tile_format *format);
 
+int iommu_unmap_tile(struct iommu_domain *domain, unsigned long iova,
+		      size_t size);
+#endif
 /* Window handling function prototypes */
 extern int iommu_domain_window_enable(struct iommu_domain *domain, u32 wnd_nr,
 				      phys_addr_t offset, u64 size,
