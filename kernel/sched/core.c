@@ -3552,6 +3552,7 @@ void __setprio_other(struct rq *rq, struct task_struct *p) {
 	if (queued)
 		enqueue_task(rq, p, 0);
 
+	check_class_changed(rq, p, prev_class, oldprio);
 	trace_printk("%s tsk=%d que=%d run=%d thr=%d pr=%d st_pr=%d no_pr=%d rt_pr=%u class=%p\n",
 			__func__, task_pid_nr(p), queued, running,
 			p->rt.throttled, p->prio, p->static_prio,
@@ -3605,6 +3606,7 @@ again:
 	if (queued)
 		enqueue_task(cpu_rq(cpu), p, ENQUEUE_REPLENISH);
 
+	check_class_changed(rq, p, prev_class, oldprio);
 	trace_printk("%s tsk=%d que=%d run=%d thr=%d pr=%d st_pr=%d no_pr=%d rt_pr=%u class=%p\n",
 			__func__, task_pid_nr(p), queued, running,
 			p->rt.throttled, p->prio, p->static_prio,
