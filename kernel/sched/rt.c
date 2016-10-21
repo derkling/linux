@@ -24,7 +24,7 @@ static enum hrtimer_restart sched_rt_period_timer(struct hrtimer *timer)
 	int overrun;
 
 	raw_spin_lock(&rt_b->rt_runtime_lock);
-	trace_printk("TIMER cpu=%d rt_b:%p\n", smp_processor_id(), rt_b);
+	//trace_printk("TIMER cpu=%d rt_b:%p\n", smp_processor_id(), rt_b);
 	for (;;) {
 		overrun = hrtimer_forward_now(timer, rt_b->rt_period);
 		if (!overrun)
@@ -564,11 +564,6 @@ static void cfs_unthrottle_rt_tasks(struct rt_rq *rt_rq)
 		p = rt_task_of(rt_se);
 		list_del_init(&rt_se->cfs_throttled_task);
 		rt_rq->rt_nr_cfs_throttled--;
-		/*
-		if (rt_se->throttled == 0) {
-			trace_printk("%s tsk=%d skipping shifted already shifted --> SCHED_FIFO\n", __func__, p->pid);
-			continue;
-		}*/
 		rt_se->throttled = 0;
 		trace_printk("%s tsk=%d thr=%d cpu=%d rt_nr_cfs_thr=%d rt_se=%p --> SCHED_FIFO (%p)\n",
 				__func__,
@@ -943,10 +938,10 @@ static int do_sched_rt_period_timer(struct rt_bandwidth *rt_b, int overrun)
 			if (rt_rq->rt_throttled && rt_rq->rt_time < runtime) {
 				rt_rq->rt_throttled = 0;
 				enqueue = 1;
-				trace_printk("UNTHROTTLE rt_rq=%p rt_nr_running=%d rt_time=%llu\n",
-						rt_rq,
-						rt_rq->rt_nr_running,
-						rt_rq->rt_time);
+				//trace_printk("UNTHROTTLE rt_rq=%p rt_nr_running=%d rt_time=%llu\n",
+				//		rt_rq,
+				//		rt_rq->rt_nr_running,
+				//		rt_rq->rt_time);
 
 				/*
 				 * When we're idle and a woken (rt) task is
@@ -1299,15 +1294,15 @@ static void __enqueue_rt_entity(struct sched_rt_entity *rt_se, int flags)
 			/*|| rt_se->throttled*/)
 		return;
 
-	if (rt_se->throttled)
-		trace_printk("Enqueing a throttled rt_se=%p\n", rt_se);
+	//if (rt_se->throttled)
+	//	trace_printk("Enqueing a throttled rt_se=%p\n", rt_se);
 	/*
 	 * rt_se's group was throttled while this task was
 	 * sleeping/blocked/migrated.
 	 *
 	 * Do the transition towards OTHER now.
 	 */
-	if (rt_rq->rt_throttled &&
+	if (!group_rq && rt_rq->rt_throttled &&
 	    !rt_se->throttled   &&
 	    flags != ENQUEUE_REPLENISH) {
 		struct task_struct *p;
@@ -1922,9 +1917,9 @@ static struct task_struct *pick_next_pushable_task(struct rq *rq)
 
 	p = plist_first_entry(&rq->rt.pushable_tasks,
 			      struct task_struct, pushable_tasks);
-	trace_printk("tsk=%d check=%s\n",
-			task_pid_nr(p),
-			rq->cpu != task_cpu(p) ? "BUGBUGBUG" : "OK");
+	//trace_printk("tsk=%d check=%s\n",
+	//		task_pid_nr(p),
+	//		rq->cpu != task_cpu(p) ? "BUGBUGBUG" : "OK");
 
 	BUG_ON(rq->cpu != task_cpu(p));
 	BUG_ON(task_current(rq, p));
@@ -1950,9 +1945,9 @@ static int push_rt_task(struct rq *rq)
 	if (!rq->rt.overloaded)
 		return 0;
 
-	trace_printk("cpu=%d nr=%d cfs_nr=%d cfs_h_nr=%d rt_nr=%d\n",
-			cpu_of(rq), rq->nr_running, rq->cfs.nr_running,
-			rq->cfs.h_nr_running, rq->rt.rt_nr_running);
+	//trace_printk("cpu=%d nr=%d cfs_nr=%d cfs_h_nr=%d rt_nr=%d\n",
+	//		cpu_of(rq), rq->nr_running, rq->cfs.nr_running,
+	//		rq->cfs.h_nr_running, rq->rt.rt_nr_running);
 	next_task = pick_next_pushable_task(rq);
 	if (!next_task)
 		return 0;
@@ -2012,16 +2007,16 @@ retry:
 	}
 
 	if (next_task->sched_class != &rt_sched_class) {
-		trace_printk("tsk=%d switched to OTHER\n", task_pid_nr(next_task));
+		//trace_printk("tsk=%d switched to OTHER\n", task_pid_nr(next_task));
 		goto skip;
 	}
 
-	trace_printk("tsk=%d sched_class=%p src=%d dst=%d\n",
-			task_pid_nr(next_task), next_task->sched_class,
-			cpu_of(rq), cpu_of(lowest_rq));
+	//trace_printk("tsk=%d sched_class=%p src=%d dst=%d\n",
+	//		task_pid_nr(next_task), next_task->sched_class,
+	//		cpu_of(rq), cpu_of(lowest_rq));
 	deactivate_task(rq, next_task, 0);
 	if (next_task->sched_class != &rt_sched_class) {
-		trace_printk("tsk=%d switched to OTHER\n", task_pid_nr(next_task));
+		//trace_printk("tsk=%d switched to OTHER\n", task_pid_nr(next_task));
 		goto skip;
 	}
 	set_task_cpu(next_task, lowest_rq->cpu);
@@ -2281,11 +2276,11 @@ static void pull_rt_task(struct rq *this_rq)
 
 			resched = true;
 
-			trace_printk("tsk=%d sched_class=%p src=%d dst=%d\n",
-					task_pid_nr(p), p->sched_class, cpu_of(src_rq), cpu_of(this_rq));
+			//trace_printk("tsk=%d sched_class=%p src=%d dst=%d\n",
+			//		task_pid_nr(p), p->sched_class, cpu_of(src_rq), cpu_of(this_rq));
 			deactivate_task(src_rq, p, 0);
 			if (p->sched_class != &rt_sched_class) {
-				trace_printk("tsk=%d switched to OTHER\n", task_pid_nr(p));
+				//trace_printk("tsk=%d switched to OTHER\n", task_pid_nr(p));
 				goto skip;
 			}
 			set_task_cpu(p, this_cpu);
@@ -2348,6 +2343,8 @@ static void rq_offline_rt(struct rq *rq)
  */
 static void switched_from_rt(struct rq *rq, struct task_struct *p)
 {
+	trace_printk("%s tsk=%d cpu=%d\n",
+			__func__, task_pid_nr(p), cpu_of(rq));
 	/*
 	 * If there are other RT tasks then we will reschedule
 	 * and the scheduling of the other RT tasks will handle
@@ -2387,6 +2384,8 @@ void __init init_sched_rt_class(void)
  */
 static void switched_to_rt(struct rq *rq, struct task_struct *p)
 {
+	trace_printk("%s tsk=%d cpu=%d\n",
+			__func__, task_pid_nr(p), cpu_of(rq));
 	/*
 	 * If we are already running, then there's nothing
 	 * that needs to be done. But if we are not running
