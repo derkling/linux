@@ -10,10 +10,13 @@
  */
 
 #include <linux/cpufreq.h>
+#include <linux/kthread.h>
 #include <linux/slab.h>
 #include <trace/events/power.h>
 
 #include "sched.h"
+
+#define SUGOV_KTHREAD_PRIORITY	50
 
 struct sugov_tunables {
 	struct gov_attr_set attr_set;
@@ -33,8 +36,10 @@ struct sugov_policy {
 
 	/* The next fields are only needed if fast switch cannot be used. */
 	struct irq_work irq_work;
-	struct work_struct work;
+	struct kthread_work work;
 	struct mutex work_lock;
+	struct kthread_worker worker;
+	struct task_struct *thread;
 	bool work_in_progress;
 
 	bool need_freq_update;
@@ -289,7 +294,7 @@ static void sugov_update_shared(struct update_util_data *hook, u64 time,
 	raw_spin_unlock(&sg_policy->update_lock);
 }
 
-static void sugov_work(struct work_struct *work)
+static void sugov_work(struct kthread_work *work)
 {
 	struct sugov_policy *sg_policy = container_of(work, struct sugov_policy, work);
 
@@ -306,7 +311,21 @@ static void sugov_irq_work(struct irq_work *irq_work)
 	struct sugov_policy *sg_policy;
 
 	sg_policy = container_of(irq_work, struct sugov_policy, irq_work);
-	schedule_work_on(smp_processor_id(), &sg_policy->work);
+
+	/*
+	 * For Real Time and Deadline tasks, schedutil governor shoots the
+	 * frequency to maximum. And special care must be taken to ensure that
+	 * this kthread doesn't result in that.
+	 *
+	 * This is (mostly) guaranteed by the work_in_progress flag. The flag is
+	 * updated only at the end of the sugov_work() and before that schedutil
+	 * rejects all other frequency scaling requests.
+	 *
+	 * Though there is a very rare case where the RT thread yields right
+	 * after the work_in_progress flag is cleared. The effects of that are
+	 * neglected for now.
+	 */
+	queue_kthread_work(&sg_policy->worker, &sg_policy->work);
 }
 
 /************************** sysfs interface ************************/
@@ -370,7 +389,6 @@ static struct sugov_policy *sugov_policy_alloc(struct cpufreq_policy *policy)
 
 	sg_policy->policy = policy;
 	init_irq_work(&sg_policy->irq_work, sugov_irq_work);
-	INIT_WORK(&sg_policy->work, sugov_work);
 	mutex_init(&sg_policy->work_lock);
 	raw_spin_lock_init(&sg_policy->update_lock);
 	return sg_policy;
@@ -380,6 +398,51 @@ static void sugov_policy_free(struct sugov_policy *sg_policy)
 {
 	mutex_destroy(&sg_policy->work_lock);
 	kfree(sg_policy);
+}
+
+static int sugov_kthread_create(struct sugov_policy *sg_policy)
+{
+	struct task_struct *thread;
+	struct sched_param param = { .sched_priority = MAX_USER_RT_PRIO / 2 };
+	struct cpufreq_policy *policy = sg_policy->policy;
+	int ret;
+
+	/* kthread only required for slow path */
+	if (policy->fast_switch_enabled)
+		return 0;
+
+	init_kthread_work(&sg_policy->work, sugov_work);
+	init_kthread_worker(&sg_policy->worker);
+	thread = kthread_create(kthread_worker_fn, &sg_policy->worker,
+				"sugov:%d",
+				cpumask_first(policy->related_cpus));
+	if (IS_ERR(thread)) {
+		pr_err("failed to create sugov thread: %ld\n", PTR_ERR(thread));
+		return PTR_ERR(thread);
+	}
+
+	ret = sched_setscheduler_nocheck(thread, SCHED_FIFO, &param);
+	if (ret) {
+		kthread_stop(thread);
+		pr_warn("%s: failed to set SCHED_FIFO\n", __func__);
+		return ret;
+	}
+
+	sg_policy->thread = thread;
+	kthread_bind_mask(thread, policy->related_cpus);
+	wake_up_process(thread);
+
+	return 0;
+}
+
+static void sugov_kthread_stop(struct sugov_policy *sg_policy)
+{
+	/* kthread only required for slow path */
+	if (sg_policy->policy->fast_switch_enabled)
+		return;
+
+	flush_kthread_worker(&sg_policy->worker);
+	kthread_stop(sg_policy->thread);
 }
 
 static struct sugov_tunables *sugov_tunables_alloc(struct sugov_policy *sg_policy)
@@ -422,12 +485,16 @@ static int sugov_init(struct cpufreq_policy *policy)
 		goto disable_fast_switch;
 	}
 
+	ret = sugov_kthread_create(sg_policy);
+	if (ret)
+		goto free_sg_policy;
+
 	mutex_lock(&global_tunables_lock);
 
 	if (global_tunables) {
 		if (WARN_ON(have_governor_per_policy())) {
 			ret = -EINVAL;
-			goto free_sg_policy;
+			goto stop_kthread;
 		}
 		policy->governor_data = sg_policy;
 		sg_policy->tunables = global_tunables;
@@ -439,7 +506,7 @@ static int sugov_init(struct cpufreq_policy *policy)
 	tunables = sugov_tunables_alloc(sg_policy);
 	if (!tunables) {
 		ret = -ENOMEM;
-		goto free_sg_policy;
+		goto stop_kthread;
 	}
 
 	tunables->rate_limit_us = LATENCY_MULTIPLIER;
@@ -463,6 +530,9 @@ out:
 fail:
 	policy->governor_data = NULL;
 	sugov_tunables_free(tunables);
+
+stop_kthread:
+	sugov_kthread_stop(sg_policy);
 
 free_sg_policy:
 	mutex_unlock(&global_tunables_lock);
@@ -491,6 +561,7 @@ static void sugov_exit(struct cpufreq_policy *policy)
 
 	mutex_unlock(&global_tunables_lock);
 
+	sugov_kthread_stop(sg_policy);
 	sugov_policy_free(sg_policy);
 	cpufreq_disable_fast_switch(policy);
 }
@@ -528,6 +599,46 @@ static int sugov_start(struct cpufreq_policy *policy)
 	return 0;
 }
 
+/*
+ * Backport modifications
+ * Avoid bringing back wholesale kthread changes by having a local
+ * function here which implements the necessary work cancelling
+ */
+static void __schedutil_cancel_kthread_work_sync(struct kthread_work *work)
+{
+	struct kthread_worker *worker = work->worker;
+	unsigned long flags;
+
+	if (!worker)
+		return;
+
+	spin_lock_irqsave(&worker->lock, flags);
+	/* Work must not be used with >1 worker, see kthread_queue_work(). */
+	WARN_ON_ONCE(work->worker != worker);
+
+	/*
+	 * Backport changes - only remove work since we don't use deferred work
+	 */
+	if (!list_empty(&work->node))
+		list_del_init(&work->node);
+
+	if (worker->current_work != work)
+		goto out_fast;
+
+	/*
+	 * The work is in progress and we need to wait with the lock released.
+	 * In the meantime, block any queuing by setting the canceling counter.
+	 */
+	work->canceling++;
+	spin_unlock_irqrestore(&worker->lock, flags);
+	flush_kthread_work(work);
+	spin_lock_irqsave(&worker->lock, flags);
+	work->canceling--;
+
+out_fast:
+	spin_unlock_irqrestore(&worker->lock, flags);
+}
+
 static void sugov_stop(struct cpufreq_policy *policy)
 {
 	struct sugov_policy *sg_policy = policy->governor_data;
@@ -539,7 +650,7 @@ static void sugov_stop(struct cpufreq_policy *policy)
 	synchronize_sched();
 
 	irq_work_sync(&sg_policy->irq_work);
-	cancel_work_sync(&sg_policy->work);
+	__schedutil_cancel_kthread_work_sync(&sg_policy->work);
 }
 
 static void sugov_limits(struct cpufreq_policy *policy)
