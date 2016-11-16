@@ -176,6 +176,8 @@ static cpumask_var_t cpus_to_visit;
 static bool cap_parsing_done;
 static void parsing_done_workfn(struct work_struct *work);
 static DECLARE_WORK(parsing_done_work, parsing_done_workfn);
+static DEFINE_PER_CPU(unsigned long, freq_scale) = SCHED_CAPACITY_SCALE;
+static DEFINE_PER_CPU(unsigned long, max_freq);
 
 static int
 init_cpu_capacity_callback(struct notifier_block *nb,
@@ -190,13 +192,14 @@ init_cpu_capacity_callback(struct notifier_block *nb,
 
 	switch (val) {
 	case CPUFREQ_NOTIFY:
-		pr_debug("cpu_capacity: init cpu capacity for CPUs [%*pbl] (to_visit=%*pbl)\n",
-				cpumask_pr_args(policy->related_cpus),
-				cpumask_pr_args(cpus_to_visit));
+		pr_debug("cpu_capacity: calling %s for CPUs [%*pbl] (to_visit=[%*pbl])\n",
+			 __func__, cpumask_pr_args(policy->related_cpus),
+			 cpumask_pr_args(cpus_to_visit));
 		cpumask_andnot(cpus_to_visit,
 			       cpus_to_visit,
 			       policy->related_cpus);
 		for_each_cpu(cpu, policy->related_cpus) {
+			per_cpu(max_freq, cpu) = policy->cpuinfo.max_freq;
 			if (cap_parsing_failed)
 				continue;
 			raw_capacity[cpu] = arch_scale_cpu_capacity(NULL, cpu) *
@@ -207,8 +210,10 @@ init_cpu_capacity_callback(struct notifier_block *nb,
 			if (!cap_parsing_failed) {
 				normalize_cpu_capacity();
 				kfree(raw_capacity);
+				pr_debug("cpu_capacity: parsing done\n");
+			} else {
+				pr_debug("cpu_capacity: max frequency parsing done\n");
 			}
-			pr_debug("cpu_capacity: parsing done\n");
 			cap_parsing_done = true;
 			schedule_work(&parsing_done_work);
 		}
@@ -220,16 +225,57 @@ static struct notifier_block init_cpu_capacity_notifier = {
 	.notifier_call = init_cpu_capacity_callback,
 };
 
+unsigned long scale_freq_capacity(struct sched_domain *sd, int cpu)
+{
+	return per_cpu(freq_scale, cpu);
+}
+
+static void set_freq_scale(unsigned int cpu, unsigned long freq)
+{
+	unsigned long max = per_cpu(max_freq, cpu);
+
+	if (!max)
+		return;
+
+	per_cpu(freq_scale, cpu) = (freq << SCHED_CAPACITY_SHIFT) / max;
+}
+
+static int
+set_freq_scale_callback(struct notifier_block *nb,
+			unsigned long val,
+			void *data)
+{
+	struct cpufreq_freqs *freq = data;
+
+	switch (val) {
+	case CPUFREQ_PRECHANGE:
+		set_freq_scale(freq->cpu, freq->new);
+	}
+	return 0;
+}
+
+static struct notifier_block set_freq_scale_notifier = {
+	.notifier_call = set_freq_scale_callback,
+};
+
 static int __init register_cpufreq_notifier(void)
 {
+	int ret;
+
 	if (!alloc_cpumask_var(&cpus_to_visit, GFP_KERNEL)) {
 		pr_err("cpu_capacity: failed to allocate memory for cpus_to_visit\n");
 		return -ENOMEM;
 	}
 	cpumask_copy(cpus_to_visit, cpu_possible_mask);
 
-	return cpufreq_register_notifier(&init_cpu_capacity_notifier,
-					 CPUFREQ_POLICY_NOTIFIER);
+	ret = cpufreq_register_notifier(&init_cpu_capacity_notifier,
+					CPUFREQ_POLICY_NOTIFIER);
+
+	if (ret)
+		return ret;
+
+	return cpufreq_register_notifier(&set_freq_scale_notifier,
+					 CPUFREQ_TRANSITION_NOTIFIER);
 }
 core_initcall(register_cpufreq_notifier);
 
