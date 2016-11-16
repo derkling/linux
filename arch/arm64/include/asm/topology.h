@@ -32,6 +32,10 @@ int pcibus_to_node(struct pci_bus *bus);
 
 #endif /* CONFIG_NUMA */
 
+struct sched_domain;
+extern unsigned long scale_cpu_capacity(struct sched_domain *sd, int cpu);
+#define arch_scale_cpu_capacity scale_cpu_capacity
+
 #include <asm-generic/topology.h>
 
 #endif /* _ASM_ARM_TOPOLOGY_H */
