@@ -28,6 +28,13 @@ struct sched_domain;
 extern unsigned long scale_cpu_capacity(struct sched_domain *sd, int cpu);
 #define arch_scale_cpu_capacity scale_cpu_capacity
 
+#ifdef CONFIG_CPU_FREQ
+
+extern unsigned long scale_freq_capacity(struct sched_domain *sd, int cpu);
+#define arch_scale_freq_capacity scale_freq_capacity
+
+#endif /* CONFIG_CPU_FREQ */
+
 #else
 
 static inline void init_cpu_topology(void) { }
