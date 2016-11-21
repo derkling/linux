@@ -185,7 +185,7 @@ init_cpu_capacity_callback(struct notifier_block *nb,
 	struct cpufreq_policy *policy = data;
 	int cpu;
 
-	if (cap_parsing_failed || cap_parsing_done)
+	if (cap_parsing_done)
 		return 0;
 
 	switch (val) {
@@ -197,13 +197,17 @@ init_cpu_capacity_callback(struct notifier_block *nb,
 			       cpus_to_visit,
 			       policy->related_cpus);
 		for_each_cpu(cpu, policy->related_cpus) {
+			if (cap_parsing_failed)
+				continue;
 			raw_capacity[cpu] = arch_scale_cpu_capacity(NULL, cpu) *
 					    policy->cpuinfo.max_freq / 1000UL;
 			capacity_scale = max(raw_capacity[cpu], capacity_scale);
 		}
 		if (cpumask_empty(cpus_to_visit)) {
-			normalize_cpu_capacity();
-			kfree(raw_capacity);
+			if (!cap_parsing_failed) {
+				normalize_cpu_capacity();
+				kfree(raw_capacity);
+			}
 			pr_debug("cpu_capacity: parsing done\n");
 			cap_parsing_done = true;
 			schedule_work(&parsing_done_work);
@@ -218,9 +222,6 @@ static struct notifier_block init_cpu_capacity_notifier = {
 
 static int __init register_cpufreq_notifier(void)
 {
-	if (cap_parsing_failed)
-		return -EINVAL;
-
 	if (!alloc_cpumask_var(&cpus_to_visit, GFP_KERNEL)) {
 		pr_err("cpu_capacity: failed to allocate memory for cpus_to_visit\n");
 		return -ENOMEM;
