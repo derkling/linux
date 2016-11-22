@@ -110,6 +110,7 @@ static void hps_get_sysinfo(void)
 	char *str1_ptr = str1;
 	char *str2_ptr = str2;
 	int scaled_tlp, avg_tlp;
+#ifdef CONFIG_MTK_SCHED_RQAVG_US
 	/* AHT: Average heavy task */
 	int lastpoll_htask1 = 0, lastpoll_htask2 = 0;
 	int avg_htask = 0, avg_htask_scal = 0;
@@ -123,6 +124,7 @@ static void hps_get_sysinfo(void)
 	int avg_htask_scal_idx1 = 0;
 	int avg_htask_scal_idx2 = 0;
 	int max_idx1 = 0;
+#endif
 	/*
 	 * calculate cpu loading
 	 */
