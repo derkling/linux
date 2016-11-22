@@ -206,8 +206,6 @@ static void hps_get_sysinfo(void)
 	 * To pick max of scaled_tlp and avg_tlp.
 	 */
 	hps_ctxt.cur_tlp = max_t(int, scaled_tlp, (int)avg_tlp);
-	mt_sched_printf(sched_log, "[heavy_task] :%s, scaled_tlp:%d, avg_tlp:%d, max:%d",
-			__func__, scaled_tlp, (int)avg_tlp, (int)hps_ctxt.cur_tlp);
 #if 0
 	ppm_lock(&ppm_main_info.lock);
 	ppm_hps_algo_data.ppm_cur_loads = hps_ctxt.cur_loads;

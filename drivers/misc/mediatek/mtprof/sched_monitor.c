@@ -467,8 +467,6 @@ void MT_trace_preempt_on(void)
 			e->last_ts = e->cur_ts;
 			e->last_te = sched_clock();
 			t_dur = e->last_te - e->last_ts;
-			if (t_dur != e->last_te)
-				curr->preempt_dur = t_dur;
 		}
 	}
 }
@@ -483,7 +481,6 @@ extern void MT_trace_check_preempt_dur(void)
 		if (unlikely(__raw_get_cpu_var(mtsched_mon_enabled) & 0x1)) {
 			b = &__raw_get_cpu_var(ISR_mon);
 			e = &__raw_get_cpu_var(Preempt_disable_mon);
-			t_dur = current->preempt_dur;
 
 			if (t_dur > WARN_PREEMPT_DUR && e->last_ts > 0 && e->last_te > 0) {
 				pr_err("[PREEMPT DURATION WARN]dur:%llu ns (s:%llu,e:%llu),lock_dur:%llu owenr:%s lock:%pS\n",
@@ -504,7 +501,6 @@ extern void MT_trace_check_preempt_dur(void)
 						"PREEMPT DURATION WARN dur:%llu ns", t_dur);
 #endif
 			}
-			current->preempt_dur = 0;
 			e->cur_ts = 0;
 			e->last_te = 0;
 			e->last_ts = 0;

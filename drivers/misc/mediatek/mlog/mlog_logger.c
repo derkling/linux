@@ -525,7 +525,7 @@ static void mlog_procinfo(void)
 		struct task_struct *p;
 		pid_t ppid;
 		struct task_struct *t;
-		unsigned long swap_in, swap_out, fm_flt, min_flt, maj_flt;
+		unsigned long min_flt, maj_flt;
 		unsigned long rss;
 		unsigned long rswap;
 
@@ -583,19 +583,11 @@ static void mlog_procinfo(void)
 
 collect_proc_mem_info:
 		/* reset data */
-		swap_in = swap_out = fm_flt = min_flt = maj_flt = 0;
+		min_flt = maj_flt = 0;
 
 		/* all threads */
 		t = p;
 		do {
-			/* min_flt += t->min_flt; */
-			/* maj_flt += t->maj_flt; */
-
-			fm_flt += t->fm_flt;
-#ifdef CONFIG_SWAP
-			swap_in += t->swap_in;
-			swap_out += t->swap_out;
-#endif
 			t = next_thread(t);
 #ifdef MLOG_DEBUG
 #if defined(__LP64__) || defined(_LP64)
@@ -615,11 +607,6 @@ collect_proc_mem_info:
 		mlog_emit_32(oom_score_adj);
 		mlog_emit_32(rss);
 		mlog_emit_32(rswap);
-		mlog_emit_32(swap_in);
-		mlog_emit_32(swap_out);
-		mlog_emit_32(fm_flt);
-		/* mlog_emit_32(min_flt); */
-		/* mlog_emit_32(maj_flt); */
 		spin_unlock_bh(&mlogbuf_lock);
 
  unlock_continue:
