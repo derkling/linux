@@ -123,12 +123,12 @@ static long monitor_hang_ioctl(struct file *file, unsigned int cmd, unsigned lon
 	}
 	/* QHQ RT Monitor */
 	if (cmd == AEEIOCTL_RT_MON_Kick) {
-		LOGE("AEEIOCTL_RT_MON_Kick ( %d)\n", (int)arg);
+		LOGV("AEEIOCTL_RT_MON_Kick ( %d)\n", (int)arg);
 		aee_kernel_RT_Monitor_api((int)arg);
 		return ret;
 	}
-	/* LOGE("AEEIOCTL_RT_MON_Kick unknown cmd :(%d)( %d)\n",(int)cmd, (int)arg); */
-	/* LOGE("AEEIOCTL_RT_MON_Kick known cmd :(%d)( %d)\n",
+	/* LOGV("AEEIOCTL_RT_MON_Kick unknown cmd :(%d)( %d)\n",(int)cmd, (int)arg); */
+	/* LOGV("AEEIOCTL_RT_MON_Kick known cmd :(%d)( %d)\n",
 	   (int)AEEIOCTL_WDT_KICK_POWERKEY,
 	   (int)AEEIOCTL_RT_MON_Kick); */
 	/* QHQ RT Monitor end */
@@ -136,7 +136,7 @@ static long monitor_hang_ioctl(struct file *file, unsigned int cmd, unsigned lon
 	if (cmd == AEEIOCTL_SET_SF_STATE) {
 		if (copy_from_user(&monitor_status, (void __user *)arg, sizeof(long long)))
 			ret = -1;
-		LOGE("AEE_MONITOR_SET[status]: 0x%llx", monitor_status);
+		LOGV("AEE_MONITOR_SET[status]: 0x%llx", monitor_status);
 		return ret;
 	} else if (cmd == AEEIOCTL_GET_SF_STATE) {
 		if (copy_to_user((void __user *)arg, &monitor_status, sizeof(long long)))
@@ -431,19 +431,19 @@ static int hang_detect_thread(void *arg)
 	struct sched_param param = {
 		.sched_priority = 99 };
 
-	LOGE("[Hang_Detect] hang_detect thread starts.\n");
+	LOGV("[Hang_Detect] hang_detect thread starts.\n");
 
 	sched_setscheduler(current, SCHED_FIFO, &param);
 
 	while (1) {
 		if ((1 == hd_detect_enabled) && (FindTaskByName("system_server") != -1)) {
-			LOGE("[Hang_Detect] hang_detect thread counts down %d:%d.\n", hang_detect_counter, hd_timeout);
+			LOGV("[Hang_Detect] hang_detect thread counts down %d:%d.\n", hang_detect_counter, hd_timeout);
 
 			if (hang_detect_counter <= 0)
 				ShowStatus();
 
 			if (hang_detect_counter == 0) {
-				LOGE("[Hang_Detect] we should triger	HWT	...\n");
+				LOGV("[Hang_Detect] we should triger	HWT	...\n");
 				if (aee_mode != AEE_MODE_CUSTOMER_USER) {
 					aee_kernel_warning_api
 						(__FILE__, __LINE__,
@@ -471,7 +471,7 @@ static int hang_detect_thread(void *arg)
 				hang_detect_counter = hd_timeout + 4;
 				hd_detect_enabled = 0;
 			}
-			LOGE("[Hang_Detect] hang_detect disabled.\n");
+			LOGV("[Hang_Detect] hang_detect disabled.\n");
 		}
 
 		msleep((HD_INTER) * 1000);
@@ -491,7 +491,7 @@ void aee_kernel_RT_Monitor_api(int lParam)
 		hd_detect_enabled = 0;
 		hang_detect_counter =
 			hd_timeout;
-		LOGE("[Hang_Detect] hang_detect disabled\n");
+		LOGV("[Hang_Detect] hang_detect disabled\n");
 	} else if (lParam > 0) {
 		/* lParem=0x1000|timeout,only set in aee call when NE in system_server
 		*  so only change hang_detect_counter when call from AEE
@@ -505,7 +505,7 @@ void aee_kernel_RT_Monitor_api(int lParam)
 			hang_detect_counter =
 				hd_timeout = ((long)lParam + HD_INTER - 1) / (HD_INTER);
 		}
-		LOGE("[Hang_Detect] hang_detect enabled %d\n", hd_timeout);
+		LOGV("[Hang_Detect] hang_detect enabled %d\n", hd_timeout);
 	}
 }
 
@@ -520,7 +520,7 @@ static int hd_proc_cmd_read(char *buf,
 	/* with a read of the /proc/hang_detect, we reset the counter. */
 	int len = 0;
 
-	LOGE("[Hang_Detect] read proc	%d\n", count);
+	LOGV("[Hang_Detect] read proc	%d\n", count);
 
 	len =
 		sprintf(buf, "%d:%d\n",
@@ -551,7 +551,7 @@ static int hd_proc_cmd_write(struct file
 	if (retval == 0)
 		LOGE("can not identify counter!\n");
 
-	LOGE("[Hang_Detect] write	proc %d, original %d: %d\n", counter, hang_detect_counter, hd_timeout);
+	LOGV("[Hang_Detect] write	proc %d, original %d: %d\n", counter, hang_detect_counter, hd_timeout);
 
 	if (counter > 0) {
 		if (counter % HD_INTER != 0)
@@ -622,7 +622,7 @@ void aee_kernel_wdt_kick_Powkey_api(const
 	spin_unlock(&pwk_hang_lock);
 	/*  //reduce kernel log
 	if (pwk_start_monitor)
-		LOGE("powerkey_kick:%s:%x,%x\r", module, msg, wdt_kick_status);
+		LOGV("powerkey_kick:%s:%x,%x\r", module, msg, wdt_kick_status);
 	*/
 
 }
@@ -636,7 +636,7 @@ void aee_powerkey_notify_press(unsigned long
 		wdt_kick_status = 0;
 		hwt_kick_times = 0;
 		pwk_start_monitor = 1;
-		LOGE("(%s) HW keycode powerkey\n", pressed ? "pressed" : "released");
+		LOGV("(%s) HW keycode powerkey\n", pressed ? "pressed" : "released");
 	}
 }
 EXPORT_SYMBOL(aee_powerkey_notify_press);
@@ -653,7 +653,7 @@ int aee_kernel_wdt_kick_api(int kinterval)
 			(FindTaskByName("system_server")
 			 != -1)) {
 		/* Only in normal_boot! */
-		LOGE("Press powerkey!!	g_boot_mode=%d,wdt_kick_status=0x%x,tickTimes=0x%x,g_kinterval=%d,RT[%lld]\n",
+		LOGV("Press powerkey!!	g_boot_mode=%d,wdt_kick_status=0x%x,tickTimes=0x%x,g_kinterval=%d,RT[%lld]\n",
 				get_boot_mode(), wdt_kick_status, hwt_kick_times, kinterval, sched_clock());
 		hwt_kick_times++;
 		if ((kinterval * hwt_kick_times > 180)) {	/* only monitor 3 min */
@@ -691,7 +691,7 @@ int aee_kernel_wdt_kick_api(int kinterval)
 				 WDT_SETBY_SF)) {
 			pwk_start_monitor =
 				0;
-			LOGE("[WDK] Powerkey Tick ok,kick_status 0x%08x,RT[%lld]\n ", wdt_kick_status, sched_clock());
+			LOGV("[WDK] Powerkey Tick ok,kick_status 0x%08x,RT[%lld]\n ", wdt_kick_status, sched_clock());
 		}
 	}
 	return ret;

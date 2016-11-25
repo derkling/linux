@@ -22,7 +22,7 @@
 #include <linux/ptrace.h>
 
 #define LOGD(fmt, msg...)	pr_notice(fmt, ##msg)
-#define LOGV(fmt, msg...)
+#define LOGV(fmt, msg...)	pr_debug(fmt, ##msg)
 #define LOGI	LOGD
 #define LOGE(fmt, msg...)	pr_err(fmt, ##msg)
 #define LOGW	LOGE
