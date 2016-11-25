@@ -168,6 +168,7 @@ static int _ufoe_partial_update(DISP_MODULE_ENUM module, void *arg, void *handle
 
 	if (ufoe_enable) {
 		if (lr_mode_en == 0) {
+#if 0 /* unreachable - compress_ratio is boolean  */
 			if (compress_ratio == 3) {
 				unsigned int internal_width = width + width % 4;
 
@@ -178,6 +179,7 @@ static int _ufoe_partial_update(DISP_MODULE_ENUM module, void *arg, void *handle
 							(((internal_width / 6 + 1) * 6) - internal_width));
 				}
 			}
+#endif
 		}
 		DISP_REG_SET(handle, DISP_REG_UFO_FRAME_WIDTH, width);
 		DISP_REG_SET(handle, DISP_REG_UFO_FRAME_HEIGHT, height);
