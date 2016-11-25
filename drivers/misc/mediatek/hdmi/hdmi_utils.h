@@ -49,13 +49,13 @@ do { \
 #define HDMI_FUNC() \
 do { \
 	if (HDMI_LOG_LEVEL_DBG >= hdmi_log_lv) \
-		pr_err(TAG "%s\n", __func__); \
+		pr_debug(TAG "%s\n", __func__); \
 } while (0)
 
 #define HDMI_LINE() \
 do { \
 	if (HDMI_LOG_LEVEL_DBG >= hdmi_log_lv) { \
-		pr_err(TAG "%s,%d ", __func__, __LINE__); \
+		pr_debug(TAG "%s,%d ", __func__, __LINE__); \
 	} \
 } while (0)
 
