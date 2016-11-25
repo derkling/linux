@@ -607,12 +607,12 @@ static u32 pause_log_en = /*PSF_PAUSE_SUSPEND |*/
 static u32 dbgx_log_en = /*(DLF_DVFS << 16) |*/
 			 /*DLF_NOTIFY |*/
 			 /*DLF_LIMIT |*/
-			 DLF_STOP |
-			 DLF_PAUSE |
+			 DLF_STOP << 16 |
+			 DLF_PAUSE << 16 |
 			 /*DLF_SEMA |*/
 			 /*DLF_DVFS |*/
-			 DLF_CLUSTER |
-			 DLF_KICK;
+			 DLF_CLUSTER << 16 |
+			 DLF_KICK << 16 ;
 
 #ifdef __TRIAL_RUN__
 static u32 dvfs_fail_ke = 1;

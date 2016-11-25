@@ -819,7 +819,7 @@ out:
 				for (i = 0; i < nr_cpu_ids; i++)
 					p += snprintf(p, LOG_BUF_LEN - strlen(log_buf), "[%d] = (%lu,%lu), ",
 						      i, soidle3_cnt[i], rgidle_cnt[i]);
-				idle_warn("%s\n", log_buf);
+				idle_info("%s\n", log_buf);
 
 				/* block category */
 				p = log_buf;
@@ -827,14 +827,14 @@ out:
 				for (i = 0; i < NR_REASONS; i++)
 					p += snprintf(p, LOG_BUF_LEN - strlen(log_buf), "[%s] = %lu, ",
 						      reason_name[i], soidle3_block_cnt[i]);
-				idle_warn("%s\n", log_buf);
+				idle_info("%s\n", log_buf);
 
 				p = log_buf;
 				p += snprintf(p, LOG_BUF_LEN - strlen(log_buf), "soidle3_block_mask: ");
 				for (i = 0; i < NR_GRPS; i++)
 					p += snprintf(p, LOG_BUF_LEN - strlen(log_buf), "0x%08x, ",
 						      soidle3_block_mask[i]);
-				idle_warn("%s\n", log_buf);
+				idle_info("%s\n", log_buf);
 
 				memset(soidle3_block_cnt, 0, sizeof(soidle3_block_cnt));
 				soidle3_block_prev_time = idle_get_current_time_ms();
@@ -1083,7 +1083,7 @@ bool soidle_can_enter(int cpu)
 			reason = BY_OTH;
 			goto out;
 		} else {
-			idle_warn("SODI: blocking by uptime, count = %d\n", sodi_by_uptime_count);
+			idle_info("SODI: blocking by uptime, count = %d\n", sodi_by_uptime_count);
 			sodi_by_uptime_count = -1;
 		}
 	}
@@ -1140,7 +1140,7 @@ out:
 				for (i = 0; i < nr_cpu_ids; i++)
 					p += snprintf(p, LOG_BUF_LEN - strlen(log_buf), "[%d] = (%lu,%lu), ",
 						      i, soidle_cnt[i], rgidle_cnt[i]);
-				idle_warn("%s\n", log_buf);
+				idle_info("%s\n", log_buf);
 
 				/* block category */
 				p = log_buf;
@@ -1148,14 +1148,14 @@ out:
 				for (i = 0; i < NR_REASONS; i++)
 					p += snprintf(p, LOG_BUF_LEN - strlen(log_buf), "[%s] = %lu, ",
 						      reason_name[i], soidle_block_cnt[i]);
-				idle_warn("%s\n", log_buf);
+				idle_info("%s\n", log_buf);
 
 				p = log_buf;
 				p += snprintf(p, LOG_BUF_LEN - strlen(log_buf), "soidle_block_mask: ");
 				for (i = 0; i < NR_GRPS; i++)
 					p += snprintf(p, LOG_BUF_LEN - strlen(log_buf), "0x%08x, ",
 						      soidle_block_mask[i]);
-				idle_warn("%s\n", log_buf);
+				idle_info("%s\n", log_buf);
 
 				memset(soidle_block_cnt, 0, sizeof(soidle_block_cnt));
 				soidle_block_prev_time = idle_get_current_time_ms();
@@ -1567,7 +1567,7 @@ out:
 				for (i = 0; i < nr_cpu_ids; i++)
 					p += snprintf(p, LOG_BUF_LEN - strlen(log_buf), "[%d] = (%lu,%lu), ",
 						      i, dpidle_cnt[i], rgidle_cnt[i]);
-				idle_warn("%s\n", log_buf);
+				idle_info("%s\n", log_buf);
 
 				/* block category */
 				p = log_buf;
@@ -1575,14 +1575,14 @@ out:
 				for (i = 0; i < NR_REASONS; i++)
 					p += snprintf(p, LOG_BUF_LEN - strlen(log_buf), "[%s] = %lu, ",
 						      reason_name[i], dpidle_block_cnt[i]);
-				idle_warn("%s\n", log_buf);
+				idle_info("%s\n", log_buf);
 
 				p = log_buf;
 				p += snprintf(p, LOG_BUF_LEN - strlen(log_buf), "dpidle_block_mask: ");
 				for (i = 0; i < NR_GRPS; i++)
 					p += snprintf(p, LOG_BUF_LEN - strlen(log_buf), "0x%08x, ",
 						      dpidle_block_mask[i]);
-				idle_warn("%s\n", log_buf);
+				idle_info("%s\n", log_buf);
 
 				memset(dpidle_block_cnt, 0, sizeof(dpidle_block_cnt));
 				dpidle_block_prev_time = idle_get_current_time_ms();
@@ -2112,12 +2112,12 @@ void dump_idle_cnt_in_interval(int cpu)
 		p2 += snprintf(p2, LOG_BUF_LEN - strlen(log_buf), "SODI: No enter --- ");
 
 	/* dump log */
-	idle_warn("%s\n", log_buf_2);
+	idle_info("%s\n", log_buf_2);
 
 	/* dump idle ratio */
 	if (idle_ratio_en) {
 		idle_ratio_profile_duration = idle_get_current_time_ms() - idle_ratio_profile_start_time;
-		idle_warn("--- CPU 0 idle: %llu, DP = %llu, SO3 = %llu, SO = %llu, RG = %llu --- (ms)\n",
+		idle_info("--- CPU 0 idle: %llu, DP = %llu, SO3 = %llu, SO = %llu, RG = %llu --- (ms)\n",
 				idle_ratio_profile_duration,
 				idle_ratio_value[IDLE_TYPE_DP],
 				idle_ratio_value[IDLE_TYPE_SO3],
@@ -2705,7 +2705,7 @@ static ssize_t dpidle_state_write(struct file *filp,
 			dpidle_by_pass_i2c_appm_cg = param;
 		else if (!strcmp(cmd, "bypass_pg")) {
 			dpidle_by_pass_pg = param;
-			idle_warn("bypass_pg = %d\n", dpidle_by_pass_pg);
+			idle_info("bypass_pg = %d\n", dpidle_by_pass_pg);
 		} else if (!strcmp(cmd, "log"))
 			dpidle_dump_log = param;
 
@@ -2968,7 +2968,7 @@ static ssize_t soidle_state_write(struct file *filp,
 			idle_dbg("bypass_appm = %d\n", soidle_by_pass_i2c_appm_cg);
 		} else if (!strcmp(cmd, "bypass_pg")) {
 			soidle_by_pass_pg = param;
-			idle_warn("bypass_pg = %d\n", soidle_by_pass_pg);
+			idle_info("bypass_pg = %d\n", soidle_by_pass_pg);
 		} else if (!strcmp(cmd, "bypass_en")) {
 			soidle_by_pass_en = param;
 			idle_dbg("bypass_en = %d\n", soidle_by_pass_en);

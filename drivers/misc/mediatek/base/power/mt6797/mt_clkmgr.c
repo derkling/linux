@@ -65,7 +65,7 @@ void __iomem *clk_camsys_base;
 void __iomem *clk_topmics_base;
 #endif
 
-#define Bring_Up
+//#define Bring_Up
 
 #define dbg_bug_size 4096
 static char dbg_buf[dbg_bug_size] = { 0 };

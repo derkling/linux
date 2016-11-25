@@ -71,7 +71,7 @@ void __iomem *clk_vdec_gcon_base;
 #define PLL_LOG
 
 /* **** */
-#define Bring_Up
+//#define Bring_Up
 
 #define VLTE_SUPPORT
 

@@ -569,7 +569,7 @@ HPS_END:
 		if (action_print) {
 			hps_set_funct_ctrl();
 			if (action_break)
-				hps_warn
+				hps_debug
 				    ("(0x%X)%s action break!! (%u)(%u)(%u) %s %s%s-->%s%s (%u)(%u)(%u)(%u) %s\n",
 				     ((hps_ctxt.hps_func_control << 12) | hps_sys.action_id),
 				     str_online, hps_ctxt.cur_loads,
@@ -580,7 +580,7 @@ HPS_END:
 				     hps_sys.down_load_avg, hps_sys.tlp_avg, hps_sys.rush_cnt,
 				     str_target);
 			else {
-				hps_warn
+				hps_debug
 				    ("(0x%X)%s action end (%u)(%u)(%u) %s %s%s (%u)(%u)(%u)(%u) %s\n",
 				     ((hps_ctxt.hps_func_control << 12) | hps_sys.action_id),
 				     str_online, hps_ctxt.cur_loads,
@@ -600,7 +600,7 @@ HPS_END:
 #if HPS_HRT_BT_EN
 	if (hrtbt_dbg) {
 		hps_set_funct_ctrl();
-		hps_warn("(0x%X)%s HRT_BT_DBG (%u)(%u)(%u) %s %s%s (%u)(%u)(%u)(%u) %s\n",
+		hps_debug("(0x%X)%s HRT_BT_DBG (%u)(%u)(%u) %s %s%s (%u)(%u)(%u)(%u) %s\n",
 			 ((hps_ctxt.hps_func_control << 12) | hps_sys.action_id),
 			 str_online, hps_ctxt.cur_loads, hps_ctxt.cur_tlp,
 			 hps_ctxt.cur_iowait, str_hvytsk, str_criteria_limit,
