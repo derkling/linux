@@ -68,6 +68,14 @@ void mt_ppm_hica_update_algo_data(unsigned int cur_loads,
 {
 }
 
+void mt_ppm_sysboost_freq(enum ppm_sysboost_user user, unsigned int freq)
+{
+}
+
+void mt_ppm_sysboost_core(enum ppm_sysboost_user user, unsigned int core_num)
+{
+}
+
 int mt_ppm_main(void)
 {
 	return 0;
