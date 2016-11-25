@@ -33,10 +33,7 @@ endif
 endif
 
 obj-  := dummy.o
-ifeq ($(CONFIG_THERMAL), y)
-else
-    obj-y += mtk_thermal_dummy.o
-endif
+#obj-y += mtk_thermal_dummy.o
 
 obj-$(CONFIG_THERMAL) += mtk_thermal_platform.o
 obj-$(CONFIG_THERMAL) += ap_thermal_limit.o
