@@ -5,7 +5,7 @@
 
 #define I2CTAG			"[I2C]"
 /* #define pr_fmt(fmt)		"[I2C]"fmt */
-#define I2CLOG(fmt, arg...)	pr_err(fmt, ##arg)
+#define I2CLOG(fmt, arg...)	pr_debug(fmt, ##arg)
 #define I2CMSG(fmt, arg...)	pr_debug(fmt, ##arg)
 #define I2CERR(fmt, arg...)	pr_err("ERROR,%d: "fmt, __LINE__, ##arg)
 #define I2CFUC(fmt, arg...)	pr_debug("%s\n", __func__)
