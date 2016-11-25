@@ -12,7 +12,7 @@
  *  Copyright (C) 2004 Nadia Yvette Chambers
  */
 
-#define DEBUG 1
+//#define DEBUG 1
 
 #include <linux/ring_buffer.h>
 #include <generated/utsrelease.h>
