@@ -528,7 +528,7 @@ static void __batt_meter_parse_table(const struct device_node *np,
 	while (!of_property_read_u32_index(np, node_srting, idx, &addr)) {
 		idx++;
 		if (!of_property_read_u32_index(np, node_srting, idx, &val)) {
-			battery_log(BAT_LOG_CRTI, "batt_temperature_table: addr: %d, val: %d\n",
+			battery_log(BAT_LOG_FULL, "batt_temperature_table: addr: %d, val: %d\n",
 				    addr, val);
 		}
 		profile_p->percentage = addr;
