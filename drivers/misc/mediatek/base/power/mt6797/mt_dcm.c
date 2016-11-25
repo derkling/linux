@@ -1861,12 +1861,16 @@ static int mt_dcm_dts_map(void)
 }
 #endif
 
+extern int __init mt6797_0x1001AXXX_sw_protect_init(void);
+
 int mt_dcm_init(void)
 {
 	if (dcm_initiated)
 		return 0;
 
 	dcm_info("=== mt_dcm_init ===\n");
+
+	mt6797_0x1001AXXX_sw_protect_init();
 
 	mt_dcm_dts_map();
 
@@ -1879,6 +1883,15 @@ int mt_dcm_init(void)
 
 	dcm_dump_regs();
 
+	dcm_initiated = 1;
+
+	return 0;
+}
+early_initcall(mt_dcm_init);
+
+
+int mt_dcm_init_sysfs(void)
+{
 #if defined(CONFIG_PM)
 	{
 		int err = 0;
@@ -1899,11 +1912,9 @@ int mt_dcm_init(void)
 #endif /* #if defined (DCM_DEBUG_MON) */
 #endif /* #if defined (CONFIG_PM) */
 
-	dcm_initiated = 1;
-
 	return 0;
 }
-late_initcall(mt_dcm_init);
+late_initcall(mt_dcm_init_sysfs);
 
 /**** public APIs *****/
 void mt_dcm_disable(void)

@@ -241,7 +241,7 @@ static unsigned long g_reg_cspm_poweron_en;
 
 /* 0x1001AXXX mistake-proofing mechanism. */
 /* Whole system only dispatch VA of 0x1001A000 in the API */
-static int __init mt6797_0x1001AXXX_sw_protect_init(void)
+int __init mt6797_0x1001AXXX_sw_protect_init(void)
 {
 	FH_MSG_DEBUG("init_mcumixedsys_base_addr+++");
 	/* Init APMIXED base address */
@@ -269,7 +269,6 @@ static int __init mt6797_0x1001AXXX_sw_protect_init(void)
 
 	return 0;
 }
-core_initcall(mt6797_0x1001AXXX_sw_protect_init);
 
 /* HW semaphore3 M0 get.
  *  For ATF, SPM and kernel protecting 0x1001AXXX access
