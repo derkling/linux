@@ -28,7 +28,7 @@ DRVGEN_TOOL := $(srctree)/tools/dct/DrvGen
 
 .PHONY: drvgen
 drvgen: $(DRVGEN_FILE_LIST)
-$(DRVGEN_OUT)/cust.dtsi: $(DRVGEN_TOOL) $(DWS_FILE)
+$(DRVGEN_OUT)/cust.dtsi: $(DWS_FILE)
 	@mkdir -p $(dir $@)
 	$(DRVGEN_TOOL) $(DWS_FILE) $(dir $@) $(dir $@) cust_dtsi
 
