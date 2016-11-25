@@ -957,7 +957,7 @@ static int __init mtk_wdt_get_base_addr(void)
 #endif
 	return 0;
 }
-core_initcall(mtk_wdt_get_base_addr);
+early_initcall(mtk_wdt_get_base_addr);
 postcore_initcall(mtk_wdt_init);
 module_exit(mtk_wdt_exit);
 
