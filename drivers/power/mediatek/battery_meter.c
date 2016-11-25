@@ -509,6 +509,7 @@ static void __batt_meter_parse_node(const struct device_node *np,
 		(*cust_val) = (int)val;
 		bm_print(BM_LOG_FULL, "Get %s: %d\n", node_srting, (*cust_val));
 	} else {
+		*cust_val = 0;
 		bm_print(BM_LOG_CRTI, "Get %s failed\n", node_srting);
 	}
 }
