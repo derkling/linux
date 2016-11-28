@@ -5,8 +5,6 @@
 # Rewritten to use lists instead of if-statements.
 #
 
-subdir-ccflags-y += -Werror -Wno-error=maybe-uninitialized
-
 obj-y	:= nonet.o
 
 obj-$(CONFIG_NET)		:= socket.o core/

@@ -1,5 +1,3 @@
-subdir-ccflags-y += -Werror
-
 obj-$(CONFIG_VGASTATE)            += vgastate.o
 obj-$(CONFIG_HDMI)                += hdmi.o
 
