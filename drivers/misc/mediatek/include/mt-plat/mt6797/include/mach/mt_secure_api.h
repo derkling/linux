@@ -43,8 +43,9 @@
 #define MTK_SIP_KERNEL_MSG                  0x820002ff
 
 #ifdef CONFIG_ARM64
+
 /* SIP SMC Call 64 */
-static noinline int mt_secure_call(u64 function_id,
+static inline __maybe_unused int mt_secure_call(u64 function_id,
 	u64 arg0, u64 arg1, u64 arg2)
 {
 	register u64 reg0 __asm__("x0") = function_id;
@@ -64,7 +65,7 @@ static noinline int mt_secure_call(u64 function_id,
 #include <asm/opcodes-sec.h>
 #include <asm/opcodes-virt.h>
 /* SIP SMC Call 32 */
-static noinline int mt_secure_call(u32 function_id,
+static inline __maybe_unused int mt_secure_call(u32 function_id,
 	u32 arg0, u32 arg1, u32 arg2)
 {
 	register u32 reg0 __asm__("r0") = function_id;

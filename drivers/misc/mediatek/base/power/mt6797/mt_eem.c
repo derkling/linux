@@ -966,7 +966,8 @@ unsigned int gpuMb_5[16] = {0x29, 0x29, 0x26, 0x26, 0x21, 0x21, 0x1E, 0x1E,
 
 unsigned int gpuOutput[8];
 static unsigned int record_tbl_locked[16];
-static unsigned int *recordTbl, *gpuTbl, *tTbl;
+//static unsigned int *recordTbl, *gpuTbl, *tTbl;
+static unsigned int *recordTbl, *gpuTbl;
 static unsigned int cpu_speed;
 
 /**
@@ -1647,6 +1648,7 @@ struct eem_devinfo {
 static DEFINE_SPINLOCK(eem_spinlock);
 static DEFINE_MUTEX(record_mutex);
 
+#if 0
 /* CPU callback */
 static int __cpuinit _mt_eem_cpu_CB(struct notifier_block *nfb,
 					unsigned long action, void *hcpu);
@@ -1692,6 +1694,7 @@ static void eem_release_semaphore(void)
 		BUG_ON(eem_read(g_reg_sema0_m0) & 0x1);	/* semaphore release failed */
 	}
 }
+#endif
 
 #endif
 
@@ -3504,28 +3507,14 @@ static void eem_set_eem_volt(struct eem_det *det)
 {
 #if SET_PMIC_VOLT
 	unsigned i, ITurboRunSet = 0;
-	int cur_temp, low_temp_offset;
+	int low_temp_offset;
 	struct eem_ctrl *ctrl = id_to_eem_ctrl(det->ctrl_id);
 
-	cur_temp = det->ops->get_temp(det);
-	/* eem_debug("eem_set_eem_volt cur_temp = %d\n", cur_temp); */
-	/* 6250 * 10uV = 62.5mv */
-	if (cur_temp <= 33000) {
-		if (EEM_CTRL_BIG == det->ctrl_id)
-			low_temp_offset = det->ops->volt_2_pmic(det, 6250 + det->pmic_base);
-		else
-			low_temp_offset = det->ops->volt_2_eem(det, 6250 + det->eem_v_base);
+	if ((EEM_CTRL_L == det->ctrl_id) && (1 == ITurboRun))
+		ITurboRunSet = 0;
+	low_temp_offset = 0;
+	ctrl->volt_update |= EEM_VOLT_UPDATE;
 
-		if ((EEM_CTRL_L == det->ctrl_id) && (1 == ITurboRun))
-			ITurboRunSet = 0;
-
-		ctrl->volt_update |= EEM_VOLT_UPDATE;
-	} else {
-		if ((EEM_CTRL_L == det->ctrl_id) && (1 == ITurboRun))
-			ITurboRunSet = 0;
-		low_temp_offset = 0;
-		ctrl->volt_update |= EEM_VOLT_UPDATE;
-	}
 	/*
 	eem_error("Temp=(%d) ITR=(%d), ITRS=(%d)\n", cur_temp, ITurboRun, ITurboRunSet);
 	eem_debug("ctrl->volt_update |= EEM_VOLT_UPDATE\n");
@@ -3829,15 +3818,17 @@ static inline void handle_init02_isr(struct eem_det *det)
 			);
 	}
 #endif
-	temp = eem_read(EEM_VOP30);
+	//temp = eem_read(EEM_VOP30);
 	/* eem_debug("init02 read(EEM_VOP30) = 0x%08X\n", temp); */
 	/* EEM_VOP30=>pmic value */
+	temp = 0x444C4E52;
 	det->volt_tbl[0] = (temp & 0xff);
 	det->volt_tbl[1 * (NR_FREQ / 8)] = (temp >> 8)  & 0xff;
 	det->volt_tbl[2 * (NR_FREQ / 8)] = (temp >> 16) & 0xff;
 	det->volt_tbl[3 * (NR_FREQ / 8)] = (temp >> 24) & 0xff;
 
-	temp = eem_read(EEM_VOP74);
+	//temp = eem_read(EEM_VOP74);
+	temp = 0x3232353B;
 	/* eem_debug("init02 read(EEM_VOP74) = 0x%08X\n", temp); */
 	/* EEM_VOP74=>pmic value */
 	det->volt_tbl[4 * (NR_FREQ / 8)] = (temp & 0xff);
@@ -4135,16 +4126,18 @@ static inline void handle_mon_mode_isr(struct eem_det *det)
 		goto out;
 	}
 
-	temp = eem_read(EEM_VOP30);
-	/* eem_debug("mon eem_read(EEM_VOP30) = 0x%08X\n", temp); */
+	//temp = eem_read(EEM_VOP30);
+	temp = 0x444C4E52;
+	eem_error("mon eem_read(EEM_VOP30) = 0x%08X\n", temp);
 	/* EEM_VOP30=>pmic value */
 	det->volt_tbl[0] = (temp & 0xff);
 	det->volt_tbl[1 * (NR_FREQ / 8)] = (temp >> 8)  & 0xff;
 	det->volt_tbl[2 * (NR_FREQ / 8)] = (temp >> 16) & 0xff;
 	det->volt_tbl[3 * (NR_FREQ / 8)] = (temp >> 24) & 0xff;
 
-	temp = eem_read(EEM_VOP74);
-	/* eem_debug("mon eem_read(EEM_VOP74) = 0x%08X\n", temp); */
+	//temp = eem_read(EEM_VOP74);
+	temp = 0x3232353B;
+	eem_error("mon eem_read(EEM_VOP74) = 0x%08X\n", temp);
 	/* EEM_VOP74=>pmic value */
 	det->volt_tbl[4 * (NR_FREQ / 8)] = (temp & 0xff);
 	det->volt_tbl[5 * (NR_FREQ / 8)] = (temp >> 8)  & 0xff;
@@ -4483,6 +4476,8 @@ int ptp_isr(void)
 
 #ifdef __KERNEL__
 #define ITURBO_CPU_NUM 1
+
+#if 0
 static int __cpuinit _mt_eem_cpu_CB(struct notifier_block *nfb,
 					unsigned long action, void *hcpu)
 {
@@ -4664,6 +4659,9 @@ unsigned int get_turbo_status(void)
 {
 	return ITurboRun;
 }
+
+#endif
+
 #endif
 
 void eem_init02(void)
@@ -5087,7 +5085,7 @@ static int eem_probe(struct platform_device *pdev)
 			ckgen_meter(1),
 			ckgen_meter(2));
 		*/
-	register_hotcpu_notifier(&_mt_eem_cpu_notifier);
+	//register_hotcpu_notifier(&_mt_eem_cpu_notifier);
 	#endif
 	eem_debug("eem_probe ok\n");
 	FUNC_EXIT(FUNC_LV_MODULE);
