@@ -237,6 +237,19 @@ void update_cpu_capacity_request(int cpu, bool request)
 
 	scr = &per_cpu(cpu_sched_capacity_reqs, cpu);
 
+#ifdef CONFIG_SCHED_WALT
+	if (!walt_disabled && sysctl_sched_use_walt_cpu_util) {
+		new_capacity = scr->total;
+		trace_cpufreq_sched_update_capacity(cpu, request, scr,
+				new_capacity);
+
+		scr->total = new_capacity;
+		if (request)
+			update_fdomain_capacity_request(cpu);
+
+		return;
+	}
+#endif
 	new_capacity = scr->cfs + scr->rt;
 	new_capacity = new_capacity * capacity_margin
 		/ SCHED_CAPACITY_SCALE;
