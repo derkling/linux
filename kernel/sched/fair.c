@@ -7080,6 +7080,7 @@ static unsigned long scale_rt_capacity(int cpu)
 	total = sched_avg_period() + delta;
 
 	used = div_u64(avg, total);
+	trace_sched_rt_avg_cpu(cpu, used);
 
 	/*
 	 * deadline bandwidth is defined at system level so we must

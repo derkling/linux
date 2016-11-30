@@ -8,6 +8,8 @@
 #include <linux/slab.h>
 #include <linux/irq_work.h>
 
+#include <trace/events/sched.h>
+
 #include "walt.h"
 
 int sched_rr_timeslice = RR_TIMESLICE;
@@ -1580,6 +1582,8 @@ static struct task_struct *_pick_next_task_rt(struct rq *rq)
 	return p;
 }
 
+static void update_rt_avg(struct rq *rq);
+
 static struct task_struct *
 pick_next_task_rt(struct rq *rq, struct task_struct *prev)
 {
@@ -1621,6 +1625,7 @@ pick_next_task_rt(struct rq *rq, struct task_struct *prev)
 		 * This value will be the used as an estimation of the next
 		 * activity.
 		 */
+		update_rt_avg(rq);
 		sched_rt_update_capacity_req(rq, false);
 		return NULL;
 	}
@@ -2334,11 +2339,39 @@ static void watchdog(struct rq *rq, struct task_struct *p)
 	}
 }
 
+static void update_rt_avg(struct rq *rq)
+{
+	u64 total, used, age_stamp, avg;
+	s64 delta;
+	int cpu = cpu_of(rq);
+
+	sched_avg_update(rq);
+
+	/*
+	 * Since we're reading these variables without serialization make sure
+	 * we read them once before doing sanity checks on them.
+	 */
+	age_stamp = READ_ONCE(rq->age_stamp);
+	avg = READ_ONCE(rq->rt_avg);
+	delta = rq_clock(rq) - age_stamp;
+
+	if (unlikely(delta < 0))
+		delta = 0;
+
+	total = sched_avg_period() + delta;
+
+	used = div_u64(avg, total);
+	if (unlikely(used > SCHED_CAPACITY_SCALE))
+		used = SCHED_CAPACITY_SCALE;
+	trace_sched_rt_avg_cpu(cpu, used);
+}
+
 static void task_tick_rt(struct rq *rq, struct task_struct *p, int queued)
 {
 	struct sched_rt_entity *rt_se = &p->rt;
 
 	update_curr_rt(rq);
+	update_rt_avg(rq);
 
 	if (rq->rt.rt_nr_running)
 		sched_rt_update_capacity_req(rq, true);

@@ -707,6 +707,29 @@ TRACE_EVENT(sched_load_avg_cpu,
 );
 
 /*
+ * Tracepoint for accounting sched rt_avg for cpus.
+ */
+TRACE_EVENT(sched_rt_avg_cpu,
+
+	TP_PROTO(int cpu, u64 rt_avg),
+
+	TP_ARGS(cpu, rt_avg),
+
+	TP_STRUCT__entry(
+		__field( int,	cpu				)
+		__field( u64,	rt_avg			)
+	),
+
+	TP_fast_assign(
+		__entry->cpu			= cpu;
+		__entry->rt_avg			= rt_avg;
+	),
+
+	TP_printk("cpu=%d rt_avg=%llu",
+		  __entry->cpu, __entry->rt_avg)
+);
+
+/*
  * Tracepoint for sched_tune_config settings
  */
 TRACE_EVENT(sched_tune_config,
