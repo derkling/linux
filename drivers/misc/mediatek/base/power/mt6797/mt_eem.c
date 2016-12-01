@@ -120,74 +120,18 @@ unsigned int bigFreq_FY_7[16] = {
 	2314000, 2197000, 2171000, 2119000, 2093000, 1989000, 1781000, 1677000,
 	1495000, 1378000, 1248000, 1131000, 1001000, 845000, 676000, 338000};
 
-unsigned int bigFreq_SB_7[16] = {
-	2522000, 2392000, 2327000, 2262000, 2223000, 2158000, 2093000, 1885000,
-	1677000, 1495000, 1378000, 1131000, 1001000, 845000, 676000, 338000};
-
-unsigned int bigFreq_SBP_7[16] = {
-	2587000, 2431000, 2327000, 2262000, 2223000, 2158000, 2093000, 1885000,
-	1677000, 1495000, 1378000, 1131000, 1001000, 845000, 676000, 338000};
-
-unsigned int bigFreq_MB_7[16] = {
-	2106000, 1989000, 1963000, 1898000, 1859000, 1768000, 1586000, 1495000,
-	1339000, 1222000, 1118000, 1001000, 897000, 741000, 598000, 304000};
-
-unsigned int bigFreq_LB_7[16] = {
-	1794000, 1729000, 1690000, 1625000, 1573000, 1495000, 1339000, 1261000,
-	1092000, 949000, 897000, 793000, 702000, 598000, 507000, 304000};
-
 /* GPU */
 unsigned int gpuFreq_FY_7[16] = {
 	780000, 780000, 700000, 700000, 610000, 610000, 520000, 520000,
 	442500, 442500, 365000, 365000, 238000, 238000, 154500, 154500};
-
-unsigned int gpuFreq_SB_7[16] = {
-	850000, 850000, 700000, 700000, 610000, 610000, 520000, 520000,
-	442500, 442500, 365000, 365000, 238000, 238000, 154500, 154500};
-
-unsigned int gpuFreq_SBP_7[16] = {
-	900000, 900000, 780000, 780000, 610000, 610000, 520000, 520000,
-	442500, 442500, 365000, 365000, 238000, 238000, 154500, 154500};
-
-unsigned int gpuFreq_MB_7[16] = {
-	700000, 700000, 610000, 610000, 520000, 520000, 442500, 442500,
-	365000, 365000, 301500, 301500, 238000, 238000, 154500, 154500};
-
-unsigned int gpuFreq_LB_7[16] = {
-	600000, 600000, 522500, 522500, 445000, 445000, 379000, 379000,
-	313000, 313000, 258500, 258500, 204000, 204000, 154500, 154500};
 
 /* L */
 unsigned int L_Freq_FY_7[16] = {
 	1846000, 1781000, 1703000, 1625000, 1495000, 1417000, 1274000, 1209000,
 	1092000, 949000, 832000, 741000, 650000, 559000, 468000, 325000};
 
-unsigned int L_Freq_SB_7[16] = {
-	2002000, 1950000, 1885000, 1820000, 1755000, 1703000, 1625000, 1495000,
-	1352000, 1209000, 1092000, 962000, 832000, 650000, 468000 , 325000};
-
-unsigned int L_Freq_MB_7[16] = {
-	1846000, 1781000, 1703000, 1625000, 1495000, 1417000, 1274000, 1209000,
-	1092000, 949000, 832000, 741000, 650000, 559000, 468000, 325000};
-
-unsigned int L_Freq_LB_7[16] = {
-	1599000, 1534000, 1456000, 1378000, 1274000, 1209000, 1092000, 949000,
-	936000, 845000, 754000, 689000, 611000, 546000, 468000, 325000};
-
 /* LL */
 unsigned int LL_Freq_FY_7[16] = {
-	1391000, 1339000, 1287000, 1222000, 1118000, 1092000, 949000, 897000,
-	806000, 715000, 624000, 559000, 481000, 416000, 338000, 221000};
-
-unsigned int LL_Freq_SB_7[16] = {
-	1547000, 1495000, 1443000, 1391000, 1339000, 1274000, 1222000, 1118000,
-	1014000, 897000, 806000, 715000, 624000, 481000, 338000, 221000};
-
-unsigned int LL_Freq_MB_7[16] = {
-	1391000, 1339000, 1287000, 1222000, 1118000, 1092000, 949000, 897000,
-	806000, 715000, 624000, 559000, 481000, 416000, 338000, 221000};
-
-unsigned int LL_Freq_LB_7[16] = {
 	1391000, 1339000, 1287000, 1222000, 1118000, 1092000, 949000, 897000,
 	806000, 715000, 624000, 559000, 481000, 416000, 338000, 221000};
 
@@ -195,18 +139,6 @@ unsigned int LL_Freq_LB_7[16] = {
 unsigned int cciFreq_FY_7[16] = {
 	923000, 884000, 858000, 819000, 754000, 715000, 637000, 611000,
 	533000, 481000, 416000, 377000, 325000, 286000, 234000, 169000};
-
-unsigned int cciFreq_SB_7[16] = {
-	988000, 975000, 936000, 910000, 884000, 845000, 819000, 754000,
-	676000, 611000, 533000, 481000, 416000, 325000, 234000, 169000};
-
-unsigned int cciFreq_MB_7[16] = {
-	923000, 884000, 858000, 819000, 754000, 715000, 637000, 611000,
-	533000, 481000, 416000, 377000, 325000, 286000, 234000, 169000};
-
-unsigned int cciFreq_LB_7[16] = {
-	806000, 767000, 728000, 689000, 637000, 611000, 546000, 520000,
-	468000, 429000, 377000, 338000, 312000, 273000, 234000, 169000};
 
 /*
 [25:21] dcmdiv
@@ -219,11 +151,6 @@ unsigned int cciFreq_LB_7[16] = {
 [13:7] Vsram pmic value
 [6:0] Vproc pmic value
 */
-/*For DA9210 PMIC (0.3 + (x * 0.01)) */
-unsigned int tFyTbl[6] = {0x1F, 0x16C, 0x8, 0x0, 0xF, 0x2F51F};/* 2.366 */
-unsigned int tSbTbl[6] = {0x1F, 0x18C, 0x8, 0x0, 0xF, 0x337AE};/* 2.574 */
-unsigned int tMbTbl[6] = {0x1E, 0x14C, 0x8, 0x0, 0xF, 0x2B28F};/* 2.158 */
-unsigned int tLbTbl[6] = {0x1A, 0x11C, 0x8, 0x0, 0xF, 0x24EB8};/* 1.846 */
 
 unsigned int fyTbl_7[][8] = {
 /* dcmdiv, DDS, clk_div, post_div, CF_index, iDVFS, Vsram, Vproc */
@@ -2697,85 +2624,16 @@ static void get_freq_table_cpu(struct eem_det *det)
 		#else
 			binLevel = GET_BITS_VAL(3:0, eem_read(0x1020671C));
 		#endif
-		if ((binLevel == 0) || (binLevel == 3)) {
-			det->freq_tbl[i] =
-			PERCENT((det_to_id(det) == EEM_DET_BIG) ? ((ateVer < 7) ? bigFreq_FY[i] : bigFreq_FY_7[i]) :
-				(det_to_id(det) == EEM_DET_L) ? ((ateVer < 7) ?  L_Freq_FY[i] : L_Freq_FY_7[i]) :
-				(det_to_id(det) == EEM_DET_2L) ? ((ateVer < 7) ? LL_Freq_FY[i] : LL_Freq_FY_7[i]) :
-				((ateVer < 7) ? cciFreq_FY[i] : cciFreq_FY_7[i])
-				,
-				det->max_freq_khz);
-			#if defined(__MTK_SLT_)
-				if (ateVer < 7)
-					recordTbl = &fyTbl[0][0];
-				else
-					recordTbl = &fyTbl_7[0][0];
-			#endif
-		} else if ((binLevel == 1) || (binLevel == 6)) {
-			det->freq_tbl[i] =
-			PERCENT((det_to_id(det) == EEM_DET_BIG) ? ((ateVer < 7) ? bigFreq_SB[i] : bigFreq_SB_7[i]) :
-				(det_to_id(det) == EEM_DET_L) ? ((ateVer < 7) ? L_Freq_SB[i] : L_Freq_SB_7[i]) :
-				(det_to_id(det) == EEM_DET_2L) ? ((ateVer < 7) ? LL_Freq_SB[i] : LL_Freq_SB_7[i]) :
-				((ateVer < 7) ? cciFreq_SB[i] : cciFreq_SB_7[i])
-				,
-				det->max_freq_khz);
-			#if defined(__MTK_SLT_)
-				if (ateVer < 7)
-					recordTbl = &sbTbl[0][0];
-				else
-					recordTbl = &sbTbl_7[0][0];
-			#endif
-		} else if ((binLevel == 2) || (binLevel == 7)) {
-			det->freq_tbl[i] =
-			PERCENT((det_to_id(det) == EEM_DET_BIG) ? ((ateVer < 7) ? bigFreq_MB[i] : bigFreq_MB_7[i]) :
-				(det_to_id(det) == EEM_DET_L) ? ((ateVer < 7) ? L_Freq_MB[i] : L_Freq_MB_7[i]) :
-				(det_to_id(det) == EEM_DET_2L) ? ((ateVer < 7) ? LL_Freq_MB[i] : LL_Freq_MB_7[i]) :
-				((ateVer < 7) ? cciFreq_MB[i] : cciFreq_MB_7[i])
-				,
-				det->max_freq_khz);
-			#if defined(__MTK_SLT_)
-				if (ateVer < 7)
-					recordTbl = &mbTbl[0][0];
-				else
-					recordTbl = &mbTbl_7[0][0];
-			#endif
-		} else if (binLevel == 0x0F) {
-			det->freq_tbl[i] =
-			PERCENT((det_to_id(det) == EEM_DET_BIG) ? (bigFreq_LB_7[i]) :
-				(det_to_id(det) == EEM_DET_L) ? (L_Freq_LB_7[i]) :
-				(det_to_id(det) == EEM_DET_2L) ? (LL_Freq_LB_7[i]) :
-				(cciFreq_LB_7[i])
-				,
-				det->max_freq_khz);
-			#if defined(__MTK_SLT_)
-				recordTbl = &lbTbl_7[0][0];
-			#endif
-		} else if (binLevel == 0x04) {
-			det->freq_tbl[i] =
-			PERCENT((det_to_id(det) == EEM_DET_BIG) ? (bigFreq_SBP_7[i]) :
-				(det_to_id(det) == EEM_DET_L) ? (L_Freq_SB_7[i]) :
-				(det_to_id(det) == EEM_DET_2L) ? (LL_Freq_SB_7[i]) :
-				(cciFreq_SB_7[i])
-				,
-				det->max_freq_khz);
-			#if defined(__MTK_SLT_)
-				recordTbl = &sbpTbl_7[0][0];
-			#endif
-		} else {
-			det->freq_tbl[i] =
-			PERCENT((det_to_id(det) == EEM_DET_BIG) ? ((ateVer < 7) ? bigFreq_FY[i] : bigFreq_FY_7[i]) :
-				(det_to_id(det) == EEM_DET_L) ? ((ateVer < 7) ? L_Freq_FY[i] : L_Freq_FY_7[i]) :
-				(det_to_id(det) == EEM_DET_2L) ? ((ateVer < 7) ? LL_Freq_FY[i] : LL_Freq_FY_7[i]) :
-				((ateVer < 7) ? cciFreq_FY[i] : cciFreq_FY_7[i])
-				,
-				det->max_freq_khz);
-			#if defined(__MTK_SLT_)
-				if (ateVer < 7)
-					recordTbl = &fyTbl[0][0];
-				else
-					recordTbl = &fyTbl_7[0][0];
-			#endif
-		}
+
+		printk("%s: binLevel %d ateVer %d\n", __func__, binLevel, ateVer);
+
+		det->freq_tbl[i] =
+		PERCENT((det_to_id(det) == EEM_DET_BIG) ? bigFreq_FY_7[i] :
+			(det_to_id(det) == EEM_DET_L)   ? L_Freq_FY_7[i] :
+			(det_to_id(det) == EEM_DET_2L)  ? LL_Freq_FY_7[i] :
+			(cciFreq_FY_7[i]),
+			det->max_freq_khz);
+
 		/* eem_debug("Timer Bank = %d, freq_procent = (%d)\n", det->ctrl_id, det->freq_tbl[i]); */
 		if (0 == det->freq_tbl[i])
 			break;
@@ -2849,83 +2707,19 @@ static void get_freq_table_gpu(struct eem_det *det)
 		#else
 			binLevel = GET_BITS_VAL(3:0, eem_read(0x1020671C));
 		#endif
-		if ((binLevel == 0) || (binLevel == 3)) {
-			det->freq_tbl[i] = PERCENT(((ateVer < 7) ?
-						((ateVer < 6) ? gpuFreq_FY_5[i] : gpuFreq_FY_6[i]) :
-						gpuFreq_FY_7[i]),
-						det->max_freq_khz);
-			#ifdef CONFIG_REGULATOR_RT5735
-			if (rt_is_hw_exist())
-				gpuTbl = (ateVer < 7) ?
-					((ateVer < 6) ? &gpuFy_5_rt5735[0] : &gpuFy_6_rt5735[0]) :
-					&gpuFy_7_rt5735[0];
-			#endif
-			if (is_fan53555_exist())
-				gpuTbl = (ateVer < 7) ?
-					((ateVer < 6) ? &gpuFy_5[0] : &gpuFy_6[0]) :
-					&gpuFy_7[0];
-		} else if ((binLevel == 1) || (binLevel == 6)) {
-			det->freq_tbl[i] = PERCENT(((ateVer < 7) ?
-						((ateVer < 6) ? gpuFreq_SB_5[i] : gpuFreq_SB_6[i]) :
-						gpuFreq_SB_7[i]),
-						det->max_freq_khz);
-			#ifdef CONFIG_REGULATOR_RT5735
-			if (rt_is_hw_exist())
-				gpuTbl = (ateVer < 7) ?
-					((ateVer < 6) ? &gpuSb_5_rt5735[0] : &gpuSb_6_rt5735[0]) :
-					&gpuSb_7_rt5735[0];
-			#endif
-			if (is_fan53555_exist())
-				gpuTbl = (ateVer < 7) ?
-					((ateVer < 6) ? &gpuSb_5[0] : &gpuSb_6[0]) :
-					&gpuSb_7[0];
-		} else if ((binLevel == 2) || (binLevel == 7)) {
-			det->freq_tbl[i] = PERCENT(((ateVer < 7) ?
-						((ateVer < 6) ? gpuFreq_MB_5[i] : gpuFreq_MB_6[i]) :
-						gpuFreq_MB_7[i]),
-						det->max_freq_khz);
-			#ifdef CONFIG_REGULATOR_RT5735
-			if (rt_is_hw_exist())
-				gpuTbl = (ateVer < 7) ?
-					((ateVer < 6) ? &gpuMb_5_rt5735[0] : &gpuMb_6_rt5735[0]) :
-					&gpuMb_7_rt5735[0];
-			#endif
-			if (is_fan53555_exist())
-				gpuTbl = (ateVer < 7) ?
-					((ateVer < 6) ? &gpuMb_5[0] : &gpuMb_6[0]) :
-					&gpuMb_7[0];
-		} else if (binLevel == 0x0F) {
-			det->freq_tbl[i] = PERCENT((gpuFreq_LB_7[i]), det->max_freq_khz);
-			#ifdef CONFIG_REGULATOR_RT5735
-			if (rt_is_hw_exist())
-				gpuTbl = &gpuLb_7_rt5735[0];
-			#endif
-			if (is_fan53555_exist())
-				gpuTbl = &gpuLb_7[0];
-		} else if (binLevel == 0x04) {
-			det->freq_tbl[i] = PERCENT((gpuFreq_SBP_7[i]), det->max_freq_khz);
-			#ifdef CONFIG_REGULATOR_RT5735
-			if (rt_is_hw_exist())
-				gpuTbl = &gpuSbp_7_rt5735[0];
-			#endif
-			if (is_fan53555_exist())
-				gpuTbl = &gpuSbp_7[0];
-		} else {
-			det->freq_tbl[i] = PERCENT(((ateVer < 7) ?
-						((ateVer < 6) ? gpuFreq_FY_5[i] : gpuFreq_FY_6[i]) :
-						gpuFreq_FY_7[i]),
-						det->max_freq_khz);
-			#ifdef CONFIG_REGULATOR_RT5735
-			if (rt_is_hw_exist())
-				gpuTbl = (ateVer < 7) ?
-					((ateVer < 6) ? &gpuFy_5_rt5735[0] : &gpuFy_6_rt5735[0]) :
-					&gpuFy_7_rt5735[0];
-			#endif
-			if (is_fan53555_exist())
-				gpuTbl = (ateVer < 7) ?
-					((ateVer < 6) ? &gpuFy_5[0] : &gpuFy_6[0]) :
-					&gpuFy_7[0];
-		}
+
+		det->freq_tbl[i] = PERCENT(gpuFreq_FY_7[i], det->max_freq_khz);
+
+		#ifdef CONFIG_REGULATOR_RT5735
+		if (rt_is_hw_exist())
+			gpuTbl = (ateVer < 7) ?
+				((ateVer < 6) ? &gpuFy_5_rt5735[0] : &gpuFy_6_rt5735[0]) :
+				&gpuFy_7_rt5735[0];
+		#endif
+		if (is_fan53555_exist())
+			gpuTbl = (ateVer < 7) ?
+				((ateVer < 6) ? &gpuFy_5[0] : &gpuFy_6[0]) :
+				&gpuFy_7[0];
 
 		if (0 == det->freq_tbl[i])
 			break;
@@ -6253,45 +6047,8 @@ static int __init eem_conf(void)
 		binLevel = 0;
 	}
 
-	if ((binLevel == 0) || (binLevel == 3)) {
-		if (ate_Ver < 7) {
-			recordTbl = &fyTbl[0][0];
-			eem_error("@The table ----->(fyTbl)\n");
-		} else {
-			recordTbl = &fyTbl_7[0][0];
-			eem_error("@The table ----->(fyTbl_7)\n");
-		}
-	} else if ((binLevel == 1) || (binLevel == 6)) {
-		if (ate_Ver < 7) {
-			recordTbl = &sbTbl[0][0];
-			eem_error("@The table ----->(sbTbl)\n");
-		} else {
-			recordTbl = &sbTbl_7[0][0];
-			eem_error("@The table ----->(sbTbl_7)\n");
-		}
-	} else if ((binLevel == 2) || (binLevel == 7)) {
-		if (ate_Ver < 7) {
-			recordTbl = &mbTbl[0][0];
-			eem_error("@The table ----->(mbTbl)\n");
-		} else {
-			recordTbl = &mbTbl_7[0][0];
-			eem_error("@The table ----->(mbTbl_7)\n");
-		}
-	} else if (binLevel == 0x0F) {
-			recordTbl = &lbTbl_7[0][0];
-			eem_error("@The table ----->(lbTbl_7)\n");
-	} else if (binLevel == 0x04) {
-			recordTbl = &sbpTbl_7[0][0];
-			eem_error("@The table ----->(sbpTbl_7)\n");
-	} else {
-		if (ate_Ver < 7) {
-			recordTbl = &fyTbl[0][0];
-			eem_error("@The table ----->(unknown fyTbl)\n");
-		} else {
-			recordTbl = &fyTbl_7[0][0];
-			eem_error("@The table ----->(fyTbl_7)\n");
-		}
-	}
+	recordTbl = &fyTbl_7[0][0];
+	eem_error("@The table ----->(fyTbl_7)\n");
 
 	for (i = 0; i < NR_FREQ; i++) {
 		/* LL
