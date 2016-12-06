@@ -3232,7 +3232,7 @@ static int _cpufreq_set_locked(struct mt_cpu_dvfs *p, unsigned int cur_khz, unsi
 				cpufreq_err("volt = %u, target_volt = %u, freq = %u, target_khz = %u\n",
 					volt, target_volt, freq, target_khz);
 				dump_all_opp_table();
-				BUG();
+				//BUG();
 			}
 		}
 	}
