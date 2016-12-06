@@ -339,4 +339,10 @@ config CMA_ALIGNMENT
 
 endif
 
+config GENERIC_ARCH_TOPOLOGY
+	bool
+	depends on ARM || ARM64
+	help
+	  Enable support for architectures common topology code.
+
 endmenu
