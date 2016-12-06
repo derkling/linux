@@ -75,6 +75,7 @@
 #include <linux/compiler.h>
 #include <linux/frame.h>
 #include <linux/prefetch.h>
+#include <linux/rbtree.h>
 
 #include <asm/switch_to.h>
 #include <asm/tlb.h>
@@ -752,12 +753,324 @@ static void set_load_weight(struct task_struct *p)
 	load->inv_weight = sched_prio_to_wmult[prio];
 }
 
+#ifdef CONFIG_STUNE_GROUP_SCHED
+
+/* Tracks maximum capacities for all tasks in each CPU */
+DEFINE_PER_CPU(struct rb_root, stune_cap_max_nodes);
+/* Cache pointer for the maximum capacity on each CPU */
+DEFINE_PER_CPU(struct rb_node *, stune_cap_max_node);
+
+/* Tracks minimum capacities for all tasks in each CPU */
+DEFINE_PER_CPU(struct rb_root, stune_cap_min_nodes);
+/* Cache pointer for the minimum capacity on each CPU */
+DEFINE_PER_CPU(struct rb_node *, stune_cap_min_node);
+
+unsigned int stune_cap(unsigned int util, unsigned int cpu)
+{
+	unsigned int cap_max = SCHED_CAPACITY_SCALE;
+	unsigned int cap_min = 0;
+	struct task_struct *tsk;
+	struct rb_node *node;
+	unsigned int util_tuned;
+
+	node = per_cpu(stune_cap_min_node, cpu);
+	if (node) {
+		tsk = container_of(node, struct task_struct, cap_min_node);
+		cap_min = task_group(tsk)->capacity_min;
+	}
+
+	node = per_cpu(stune_cap_max_node, cpu);
+	if (node) {
+		tsk = container_of(node, struct task_struct, cap_max_node);
+		cap_max = task_group(tsk)->capacity_max;
+	}
+
+	util_tuned = clamp(util, cap_min, cap_max);
+
+	trace_printk("stune_cap: cpu=%d util=%u cap_min=%u cap_max=%u util_tuned=%u",
+			cpu, util, cap_min, cap_max, util_tuned);
+
+	return util_tuned;
+}
+
+static inline void stune_insert_capacity_min(
+		struct task_struct *p, unsigned int cpu)
+{
+	struct task_group *tg = task_group(p);
+	struct rb_node *parent = NULL;
+	struct task_struct *entry;
+	struct rb_node **link;
+	struct rb_root *root;
+	int update_cache = 1;
+	u64 capacity_new;
+	u64 capacity_cur;
+
+	BUG_ON(!RB_EMPTY_NODE(&p->cap_min_node));
+
+	/* Find the right place of MIN in the rbtree */
+	capacity_new = tg->capacity_min;
+	root = &per_cpu(stune_cap_min_nodes, cpu);
+	link = &root->rb_node;
+	while (*link) {
+		parent = *link;
+		entry = rb_entry(parent, struct task_struct, cap_min_node);
+
+		capacity_cur = task_group(entry)->capacity_min;
+		if (capacity_new < capacity_cur) {
+			link = &parent->rb_left;
+			update_cache = 0;
+		} else {
+			link = &parent->rb_right;
+		}
+	}
+
+	/* Add task's MIN capacity and rebalance the tree */
+	rb_link_node(&p->cap_min_node, parent, link);
+	rb_insert_color(&p->cap_min_node, root);
+
+	/* Update CPU's minimum capacity cache pointer */
+	if (update_cache) {
+		per_cpu(stune_cap_min_node, cpu) = &p->cap_min_node;
+		trace_printk("stune_nq_update_min: cpu=%d min=%llu",
+				cpu, capacity_new);
+	}
+}
+
+
+static inline void stune_insert_capacity_max(
+		struct task_struct *p, unsigned int cpu)
+{
+	struct task_group *tg = task_group(p);
+	struct rb_node *parent = NULL;
+	struct task_struct *entry;
+	struct rb_node **link;
+	struct rb_root *root;
+	int update_cache = 1;
+	u64 capacity_new;
+	u64 capacity_cur;
+
+	BUG_ON(!RB_EMPTY_NODE(&p->cap_max_node));
+
+	/* Find the right place of MAX in the rbtree */
+	capacity_new = tg->capacity_max;
+	root = &per_cpu(stune_cap_max_nodes, cpu);
+	link = &root->rb_node;
+	while (*link) {
+		parent = *link;
+		entry = rb_entry(parent, struct task_struct, cap_max_node);
+
+		capacity_cur = task_group(entry)->capacity_max;
+		if (capacity_new < capacity_cur) {
+			link = &parent->rb_left;
+			update_cache = 0;
+		} else {
+			link = &parent->rb_right;
+		}
+	}
+
+	/* Add task's MAX capacity and rebalance the tree */
+	rb_link_node(&p->cap_max_node, parent, link);
+	rb_insert_color(&p->cap_max_node, root);
+
+	/* Update CPU's maximum capacity cache pointer */
+	if (update_cache) {
+		per_cpu(stune_cap_max_node, cpu) = &p->cap_max_node;
+		trace_printk("stune_nq_update_max: cpu=%d max=%llu",
+				cpu, capacity_new);
+	}
+
+}
+
+static inline void stune_remove_capacity_min(
+	struct task_struct *p ,unsigned int cpu)
+{
+	struct rb_root *root;
+	struct rb_node *node;
+
+	if (RB_EMPTY_NODE(&p->cap_min_node))
+		return;
+
+	/* Update CPU's minimum capacity cache pointer */
+	node = per_cpu(stune_cap_min_node, cpu);
+	if (node == &p->cap_min_node) {
+		struct rb_node *prev_node;
+
+		prev_node = rb_next(&p->cap_min_node);
+		per_cpu(stune_cap_min_node, cpu) = prev_node;
+		if (!prev_node)
+			trace_printk("stune_dq_update: cpu=%d min=None", cpu);
+	}
+
+	/* Remove task's minimum capacity */
+	root = &per_cpu(stune_cap_min_nodes, cpu);
+	rb_erase(&p->cap_min_node, root);
+	RB_CLEAR_NODE(&p->cap_min_node);
+}
+
+static inline void stune_remove_capacity_max(
+	struct task_struct *p ,unsigned int cpu)
+{
+	struct rb_root *root;
+	struct rb_node *node;
+
+	if (RB_EMPTY_NODE(&p->cap_max_node))
+		return;
+
+	/* Update CPU's maximum capacity cache pointer */
+	node = per_cpu(stune_cap_max_node, cpu);
+	if (node == &p->cap_max_node) {
+		struct rb_node *prev_node;
+
+		prev_node = rb_next(&p->cap_max_node);
+		per_cpu(stune_cap_max_node, cpu) = prev_node;
+		if (!prev_node)
+			trace_printk("stune_dq_update: cpu=%d max=None", cpu);
+	}
+
+	/* Remove task's maximum capacity */
+	root = &per_cpu(stune_cap_max_nodes, cpu);
+	rb_erase(&p->cap_max_node, root);
+	RB_CLEAR_NODE(&p->cap_max_node);
+}
+
+static inline void stune_update_capacity_min(struct task_struct *p)
+{
+	struct task_group *tg = task_group(p);
+	unsigned int prev_cap, next_cap;
+	struct task_struct *entry;
+	struct rb_node *node;
+
+	/*
+	 * If the task has not a node in the RBTree, it's not yet RUNNABLE or
+	 * it's going to be enqueued with the proper value.
+	 */
+	if (RB_EMPTY_NODE(&p->cap_min_node))
+		return;
+
+	/* Check current position in the capacity RBTree */
+	node = rb_prev(&p->cap_min_node);
+	entry = rb_entry(node, struct task_struct, cap_min_node);
+	prev_cap = task_group(entry)->capacity_min;
+
+	node = rb_next(&p->cap_min_node);
+	entry = rb_entry(node, struct task_struct, cap_min_node);
+	next_cap = task_group(entry)->capacity_min;
+
+	/* If our relative position has not chanced: noting to do */
+	if (prev_cap <= tg->capacity_min &&
+	    next_cap >= tg->capacity_min)
+		return;
+
+	/* Reposition this node within the min RBTree */
+	stune_remove_capacity_min(p, task_cpu(p));
+	stune_insert_capacity_min(p, task_cpu(p));
+}
+
+static inline void stune_update_capacity_max(struct task_struct *p)
+{
+	struct task_group *tg = task_group(p);
+	unsigned int prev_cap, next_cap;
+	struct task_struct *entry;
+	struct rb_node *node;
+
+	/*
+	 * If the task has not a node in the RBTree, it's not yet RUNNABLE or
+	 * it's going to be enqueued with the proper value.
+	 */
+	if (RB_EMPTY_NODE(&p->cap_max_node))
+		return;
+
+	/* Check current position in the capacity RBTree */
+	node = rb_prev(&p->cap_max_node);
+	entry = rb_entry(node, struct task_struct, cap_max_node);
+	prev_cap = task_group(entry)->capacity_max;
+
+	node = rb_next(&p->cap_max_node);
+	entry = rb_entry(node, struct task_struct, cap_max_node);
+	next_cap = task_group(entry)->capacity_max;
+
+	/* If our relative position has not chanced: noting to do */
+	if (prev_cap <= tg->capacity_max &&
+	    next_cap >= tg->capacity_max)
+		return;
+
+	/* Reposition this node within the max RBTree */
+	stune_remove_capacity_max(p, task_cpu(p));
+	stune_insert_capacity_max(p, task_cpu(p));
+}
+
+
+static inline void stune_enqueue_task(struct rq *rq,
+		struct task_struct *p, int flags)
+{
+	/* struct cgroup_subsys_state *css; */
+	unsigned int cpu = cpu_of(rq);
+	/* char cg_name[16]; */
+
+	spin_lock(&p->cap_lock);
+
+	trace_printk("stune_nq: cpu=%d pid=%d comm=%s t_min=%d t_max=%d",
+			cpu, p->pid, p->comm,
+			task_group(p)->capacity_min,
+			task_group(p)->capacity_max);
+
+	/* css = task_css(p, cpu_cgrp_id); */
+	/* cgroup_name(css->cgroup, cg_name, 16); */
+
+	/* if (p->pid != 1) */
+	/* 	printk(KERN_WARNING "%s: cpu=%d cg=%s pid=%d comm=%s\n", */
+	/* 			__FUNCTION__, task_cpu(p), cg_name, p->pid, p->comm); */
+
+	/* Track task's min/max capacities */
+	stune_insert_capacity_min(p, cpu);
+	stune_insert_capacity_max(p, cpu);
+
+	spin_unlock(&p->cap_lock);
+
+}
+
+static inline void stune_dequeue_task(struct rq *rq,
+		struct task_struct *p, int flags)
+{
+	/* struct cgroup_subsys_state *css; */
+	unsigned int cpu = cpu_of(rq);
+	/* char cg_name[16]; */
+
+	spin_lock(&p->cap_lock);
+
+	trace_printk("stune_dq: cpu=%d pid=%d comm=%s t_min=%d t_max=%d",
+			cpu, p->pid, p->comm,
+			task_group(p)->capacity_min,
+			task_group(p)->capacity_max);
+
+	/* css = task_css(p, cpu_cgrp_id); */
+	/* cgroup_name(css->cgroup, cg_name, 16); */
+
+	/* if (p->pid != 1) */
+	/* 	printk(KERN_WARNING "%s: cpu=%d cg=%s pid=%d comm=%s\n", */
+	/* 			__FUNCTION__, task_cpu(p), cg_name, p->pid, p->comm); */
+
+	/* Track task's min/max capacities */
+	stune_remove_capacity_min(p, cpu);
+	stune_remove_capacity_max(p, cpu);
+
+	spin_unlock(&p->cap_lock);
+}
+#else
+
+static inline void stune_enqueue_task(struct rq *rq,
+		struct task_struct *p, int flags) { }
+static inline void stune_dequeue_task(struct rq *rq,
+		struct task_struct *p, int flags) { }
+#endif /* CONFIG_STUNE_GROUP_SCHED */
+
 static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	update_rq_clock(rq);
 	if (!(flags & ENQUEUE_RESTORE))
 		sched_info_queued(rq, p);
 	p->sched_class->enqueue_task(rq, p, flags);
+	stune_enqueue_task(rq, p, flags);
 }
 
 static inline void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
@@ -766,6 +1079,7 @@ static inline void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 	if (!(flags & DEQUEUE_SAVE))
 		sched_info_dequeued(rq, p);
 	p->sched_class->dequeue_task(rq, p, flags);
+	stune_dequeue_task(rq, p, flags);
 }
 
 void activate_task(struct rq *rq, struct task_struct *p, int flags)
@@ -2446,6 +2760,10 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 #ifdef CONFIG_SMP
 	plist_node_init(&p->pushable_tasks, MAX_PRIO);
 	RB_CLEAR_NODE(&p->pushable_dl_tasks);
+#endif
+#ifdef CONFIG_STUNE_GROUP_SCHED
+	RB_CLEAR_NODE(&p->cap_min_node);
+	RB_CLEAR_NODE(&p->cap_max_node);
 #endif
 
 	put_cpu();
@@ -5083,7 +5401,7 @@ long __sched io_schedule_timeout(long timeout)
 EXPORT_SYMBOL(io_schedule_timeout);
 
 /**
- * sys_sched_get_priority_max - return maximum RT priority.
+ tune sys_sched_get_priority_max - return maximum RT priority.
  * @policy: scheduling class.
  *
  * Return: On success, this syscall returns the maximum
@@ -7734,6 +8052,14 @@ void __init sched_init(void)
 		init_tg_cfs_entry(&root_task_group, &rq->cfs, NULL, i, NULL);
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 
+#ifdef CONFIG_STUNE_GROUP_SCHED
+		root_task_group.capacity_max = SCHED_CAPACITY_SCALE;
+		per_cpu(stune_cap_max_nodes, i) = RB_ROOT;
+		per_cpu(stune_cap_max_node, i) = NULL;
+		per_cpu(stune_cap_min_nodes, i) = RB_ROOT;
+		per_cpu(stune_cap_min_node, i) = NULL;
+#endif /* CONFIG_STUNE_GROUP_SCHED */
+
 		rq->rt.rt_runtime = def_rt_bandwidth.rt_runtime;
 #ifdef CONFIG_RT_GROUP_SCHED
 		init_tg_rt_entry(&root_task_group, &rq->rt, NULL, i, NULL);
@@ -7964,6 +8290,21 @@ void ia64_set_curr_task(int cpu, struct task_struct *p)
 /* task_group_lock serializes the addition/removal of task groups */
 static DEFINE_SPINLOCK(task_group_lock);
 
+#ifdef CONFIG_STUNE_GROUP_SCHED
+static void alloc_stune_sched_group(struct task_group *tg,
+				   struct task_group *parent)
+{
+	tg->capacity_max = parent->capacity_max;
+	tg->capacity_min = parent->capacity_min;
+}
+#else
+static void alloc_stune_sched_group(struct task_group *tg,
+				    struct task_group *parent)
+{
+	return 0;
+}
+#endif /* CONFIG_STUNE_GROUP_SCHED */
+
 static void sched_free_group(struct task_group *tg)
 {
 	free_fair_sched_group(tg);
@@ -7986,6 +8327,8 @@ struct task_group *sched_create_group(struct task_group *parent)
 
 	if (!alloc_rt_sched_group(tg, parent))
 		goto err;
+
+	alloc_stune_sched_group(tg, parent);
 
 	return tg;
 
@@ -8570,6 +8913,134 @@ static void cpu_cgroup_attach(struct cgroup_taskset *tset)
 		sched_move_task(task);
 }
 
+#ifdef CONFIG_STUNE_GROUP_SCHED
+
+static DEFINE_MUTEX(capacity_mutex);
+
+static int cpu_capacity_max_write_u64(struct cgroup_subsys_state *css,
+				      struct cftype *cftype, u64 value)
+{
+	unsigned int max_value = (unsigned int)value;
+	struct task_group *tg = css_tg(css);
+	struct cgroup_subsys_state *pos;
+	struct css_task_iter it;
+	struct task_struct *p;
+	int ret = -EINVAL;
+
+	mutex_lock(&capacity_mutex);
+	rcu_read_lock();
+
+	max_value = min(max_value, (unsigned int)SCHED_CAPACITY_SCALE);
+
+	if (tg->capacity_max == max_value)
+		goto done;
+
+	/* Ensure to not constraint the minimum capacity */
+	if (tg->capacity_min > max_value)
+		goto done;
+
+	/* Ensure containement within parent's constraint */
+	if (tg->parent->capacity_max < max_value)
+		goto out;
+
+	/* Each of our child must be a subset of us */
+	css_for_each_child(pos, css) {
+		if (css_tg(pos)->capacity_max > max_value)
+			goto out;
+	}
+
+	tg->capacity_max = max_value;
+
+	/* Update the max capacity of RUNNABLE tasks */
+	css_task_iter_start(css, &it);
+	while ((p = css_task_iter_next(&it))) {
+		/* task_lock(p); */
+		spin_lock(&p->cap_lock);
+		stune_update_capacity_max(p);
+		spin_unlock(&p->cap_lock);
+		/* task_unlock(p); */
+	}
+	css_task_iter_end(&it);
+
+done:
+	ret = 0;
+out:
+	rcu_read_unlock();
+	mutex_unlock(&capacity_mutex);
+
+	return ret;
+}
+static int cpu_capacity_min_write_u64(struct cgroup_subsys_state *css,
+				      struct cftype *cftype, u64 value)
+{
+	unsigned int min_value = (unsigned int)value;
+	struct task_group *tg = css_tg(css);
+	struct cgroup_subsys_state *pos;
+	struct css_task_iter it;
+	struct task_struct *p;
+	int ret = -EINVAL;
+
+	mutex_lock(&capacity_mutex);
+	rcu_read_lock();
+
+	min_value = min(min_value, (unsigned int)SCHED_CAPACITY_SCALE);
+
+	if (tg->capacity_min == min_value)
+		goto done;
+
+	/* Ensure to not exceed the maximum capacity */
+	if (tg->capacity_max < min_value)
+		goto done;
+
+	/* Ensure containement within parent's constraint */
+	if (tg->parent->capacity_min > min_value)
+		goto out;
+
+	/* Each of our child must be a subset of us */
+	css_for_each_child(pos, css) {
+		if (css_tg(pos)->capacity_min < min_value)
+			goto out;
+	}
+
+	tg->capacity_min = min_value;
+
+	/* Update the min capacity of RUNNABLE tasks */
+	css_task_iter_start(css, &it);
+	while ((p = css_task_iter_next(&it))) {
+		/* task_lock(p); */
+		spin_lock(&p->cap_lock);
+		stune_update_capacity_min(p);
+		spin_unlock(&p->cap_lock);
+		/* task_unlock(p); */
+	}
+	css_task_iter_end(&it);
+
+done:
+	ret = 0;
+out:
+	rcu_read_unlock();
+	mutex_unlock(&capacity_mutex);
+
+	return ret;
+}
+
+static u64 cpu_capacity_max_read_u64(struct cgroup_subsys_state *css,
+			             struct cftype *cft)
+{
+	struct task_group *tg = css_tg(css);
+
+	return (u64) tg->capacity_max;
+}
+
+static u64 cpu_capacity_min_read_u64(struct cgroup_subsys_state *css,
+			             struct cftype *cft)
+{
+	struct task_group *tg = css_tg(css);
+
+	return (u64) tg->capacity_min;
+}
+#endif /* CONFIG_STUNE_GROUP_SCHED */
+
 #ifdef CONFIG_FAIR_GROUP_SCHED
 static int cpu_shares_write_u64(struct cgroup_subsys_state *css,
 				struct cftype *cftype, u64 shareval)
@@ -8860,6 +9331,18 @@ static struct cftype cpu_files[] = {
 		.name = "shares",
 		.read_u64 = cpu_shares_read_u64,
 		.write_u64 = cpu_shares_write_u64,
+	},
+#endif
+#ifdef CONFIG_STUNE_GROUP_SCHED
+	{
+		.name = "capacity_min",
+		.read_u64 = cpu_capacity_min_read_u64,
+		.write_u64 = cpu_capacity_min_write_u64,
+	},
+	{
+		.name = "capacity_max",
+		.read_u64 = cpu_capacity_max_read_u64,
+		.write_u64 = cpu_capacity_max_write_u64,
 	},
 #endif
 #ifdef CONFIG_CFS_BANDWIDTH

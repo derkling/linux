@@ -203,12 +203,15 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 		return;
 
 	if (flags & SCHED_CPUFREQ_RT_DL) {
-		next_f = policy->cpuinfo.max_freq;
+		util = stune_cap(SCHED_CAPACITY_SCALE, smp_processor_id());
+		next_f = get_next_freq(sg_cpu, util, policy->cpuinfo.max_freq);
 	} else {
 		sugov_get_util(&util, &max);
 		sugov_iowait_boost(sg_cpu, &util, &max);
+		util = stune_cap(util, smp_processor_id());
 		next_f = get_next_freq(sg_cpu, util, max);
 	}
+
 	sugov_update_commit(sg_policy, time, next_f);
 }
 
@@ -218,14 +221,18 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu,
 {
 	struct sugov_policy *sg_policy = sg_cpu->sg_policy;
 	struct cpufreq_policy *policy = sg_policy->policy;
-	unsigned int max_f = policy->cpuinfo.max_freq;
 	u64 last_freq_update_time = sg_policy->last_freq_update_time;
+	unsigned int next_f;
 	unsigned int j;
 
-	if (flags & SCHED_CPUFREQ_RT_DL)
-		return max_f;
+	if (flags & SCHED_CPUFREQ_RT_DL) {
+		util = stune_cap(SCHED_CAPACITY_SCALE, smp_processor_id());
+		next_f = get_next_freq(sg_cpu, util, policy->cpuinfo.max_freq);
+		return next_f;
+	}
 
 	sugov_iowait_boost(sg_cpu, &util, &max);
+	util = stune_cap(util, smp_processor_id());
 
 	for_each_cpu(j, policy->cpus) {
 		struct sugov_cpu *j_sg_cpu;
@@ -248,10 +255,8 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu,
 			j_sg_cpu->iowait_boost = 0;
 			continue;
 		}
-		if (j_sg_cpu->flags & SCHED_CPUFREQ_RT_DL)
-			return max_f;
 
-		j_util = j_sg_cpu->util;
+		j_util = stune_cap(j_sg_cpu->util, j);
 		j_max = j_sg_cpu->max;
 		if (j_util * max > j_max * util) {
 			util = j_util;

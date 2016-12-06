@@ -1550,6 +1550,11 @@ struct task_struct {
 #ifdef CONFIG_CGROUP_SCHED
 	struct task_group *sched_task_group;
 #endif
+#ifdef CONFIG_STUNE_GROUP_SCHED
+	struct rb_node cap_max_node;
+	struct rb_node cap_min_node;
+	spinlock_t cap_lock;
+#endif
 	struct sched_dl_entity dl;
 
 #ifdef CONFIG_PREEMPT_NOTIFIERS

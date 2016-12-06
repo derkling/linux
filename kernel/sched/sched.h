@@ -272,6 +272,11 @@ struct task_group {
 #endif
 #endif
 
+#ifdef CONFIG_STUNE_GROUP_SCHED
+	unsigned int capacity_max;
+	unsigned int capacity_min;
+#endif
+
 #ifdef CONFIG_RT_GROUP_SCHED
 	struct sched_rt_entity **rt_se;
 	struct rt_rq **rt_rq;
@@ -1799,6 +1804,12 @@ static inline u64 irq_time_read(int cpu)
 	return total;
 }
 #endif /* CONFIG_IRQ_TIME_ACCOUNTING */
+
+#ifdef CONFIG_STUNE_GROUP_SCHED
+unsigned int stune_cap(unsigned int cpu, unsigned int next_f);
+#else
+#define stune_cap(cpu, next_f) next_f
+#endif
 
 #ifdef CONFIG_CPU_FREQ
 DECLARE_PER_CPU(struct update_util_data *, cpufreq_update_util_data);
