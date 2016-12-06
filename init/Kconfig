@@ -1044,6 +1044,15 @@ menuconfig CGROUP_SCHED
 	  bandwidth allocation to such task groups. It uses cgroups to group
 	  tasks.
 
+config STUNE_GROUP_SCHED
+	bool "Capacity provisioning per group of tasks"
+	depends on CGROUP_SCHED
+	default n
+	help
+	  This feature allows the scheduler to enforce maximum and minimum
+	  capacity on each CPU based on RUNNABLE tasks currently scheduled on
+	  each CPU.
+
 if CGROUP_SCHED
 config FAIR_GROUP_SCHED
 	bool "Group scheduling for SCHED_OTHER"

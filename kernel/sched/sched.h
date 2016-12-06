@@ -272,6 +272,11 @@ struct task_group {
 #endif
 #endif
 
+#ifdef CONFIG_STUNE_GROUP_SCHED
+	unsigned int capacity_max;
+	unsigned int capacity_min;
+#endif
+
 #ifdef CONFIG_RT_GROUP_SCHED
 	struct sched_rt_entity **rt_se;
 	struct rt_rq **rt_rq;
