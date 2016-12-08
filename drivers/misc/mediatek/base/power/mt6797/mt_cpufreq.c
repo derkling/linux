@@ -1995,7 +1995,7 @@ EXPORT_SYMBOL(mt_cpufreq_restore_default_volt);
 /* for PBM */
 unsigned int mt_cpufreq_get_leakage_mw(enum mt_cpu_dvfs_id id)
 {
-#ifndef DISABLE_PBM_FEATURE
+#if 0
 	struct mt_cpu_dvfs *p;
 	int temp;
 	int mw = 0;
@@ -2029,9 +2029,8 @@ unsigned int mt_cpufreq_get_leakage_mw(enum mt_cpu_dvfs_id id)
 		}
 	}
 	return mw;
-#else
-	return 0;
 #endif
+	return 0;
 }
 
 #define IDVFS_FMAX 2500

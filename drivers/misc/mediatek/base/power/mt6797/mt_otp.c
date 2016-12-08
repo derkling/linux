@@ -196,7 +196,6 @@ void BigOTPDisable(void);
 int BigOTPSetTempTarget (int TempTarget);
 int BigOTPSetTempPolicy (enum otp_policy TempPolicy);
 struct TempInfo BigOTPGetTemp f(void)
-int BigOTPGetCurrTemp (void);
 int BigOTPSetTempUpdate (int TempTarget);
 */
 
@@ -843,11 +842,11 @@ static void Normal_Mode_Setting(void)
 void getTHslope(void)
 {
 #ifndef EARLY_PORTING
-	struct TS_PTPOD ts_info;
-	thermal_bank_name ts_bank;
+	//struct TS_PTPOD ts_info;
+	//thermal_bank_name ts_bank;
 #endif
 
-#if 1
+#if 0
 	ts_bank = BIG_CORE_BANK;
 	get_thermal_slope_intercept(&ts_info, ts_bank);
 	MTS = ts_info.ts_MTS;
@@ -859,12 +858,13 @@ void getTHslope(void)
 }
 
 
+#if 0
 int BigOTPSetTempUpdate(void)
 {
 	thermal_set_big_core_speed(0xC, 0x00010032, 0x30D);
 	return 0;
 }
-
+#endif
 
 int ADC2Temp(int ADC)
 {
@@ -935,8 +935,8 @@ static int otp_thread_handler(void *arg)
 				if ((otp_info_data.score != 0x0) &&
 				((otp_info_data.score < LOWER_BOUND) || (score_status == 0x1))) {
 					if (dump_debug_log) {
-						otp_info("Big_Temp=%d\tscore=0x%06x\tfreq=0x%05x\tchannel=%d\n",
-						get_immediate_big_wrap(), otp_info_data.score, otp_info_data.freq,
+						otp_info("score=0x%06x\tfreq=0x%05x\tchannel=%d\n",
+						otp_info_data.score, otp_info_data.freq,
 						otp_info_data.channel_status);
 						otp_info(" Channel enable\n");
 					}
@@ -947,8 +947,8 @@ static int otp_thread_handler(void *arg)
 			} else {
 				if ((otp_info_data.score > UPPER_BOUND) && (score_status == 0x0)) {
 					if (dump_debug_log) {
-						otp_info("Big_Temp=%d\tscore=0x%06x\tfreq=0x%05x\tchannel=%d\n",
-						get_immediate_big_wrap(), otp_info_data.score, otp_info_data.freq,
+						otp_info("score=0x%06x\tfreq=0x%05x\tchannel=%d\n",
+						otp_info_data.score, otp_info_data.freq,
 						otp_info_data.channel_status);
 						otp_info(" Channel disable\n");
 					}
@@ -1013,7 +1013,7 @@ static void enable_OTP(void)
 
 	getTHslope();
 
-	BigOTPSetTempUpdate();
+	//BigOTPSetTempUpdate();
 
 	set_otp_config_data(
 		Temp2ADC(t_target), error_sum_mode, fifo_size, adapt_mode, error_sum_clamp, fifo_clean,
@@ -1034,14 +1034,11 @@ static void enable_OTP(void)
 	/* otp_info_data_reset(&otp_info_data); */
 
 #if OTP_TIMER_INTERRUPT
-	if (get_immediate_big_wrap() < 70000)
-		sw_channel_status = 0;
-	else
-		sw_channel_status = 1;
+	sw_channel_status = 0;
 
 	if (dump_debug_log)
-		otp_info(" Configuration finished, temp = %d, sw_channel_status = %d, pid_en = %d\n",
-		get_immediate_big_wrap(), sw_channel_status, pid_en);
+		otp_info(" Configuration finished, sw_channel_status = %d, pid_en = %d\n",
+		sw_channel_status, pid_en);
 
 	mutex_lock(&timer_mutex);
 	if (sw_channel_status == 1)
@@ -1256,15 +1253,6 @@ int BigOTPGetCurrTemp(void)
 }
 */
 
-int BigOTPGetCurrTemp(void)
-{
-	int CurTemp;
-
-	CurTemp = get_immediate_big_wrap();
-
-	return CurTemp;
-}
-
 int BigOTPISRHandler(void)
 {
 	unsigned int freq_intb_value;
@@ -1285,7 +1273,6 @@ int BigOTPISRHandler(void)
 	if (!freq_intb_value) {
 		otp_info(" ISR\n");
 		#if DEBUG
-			otp_info(" Temp from TC, Temp=%d\n", get_immediate_big_wrap());
 			Temparray = BigOTPGetTemp();
 			for (i = 0; i < 32; i++)
 				otp_info(" TempArray <%0d> %d\n", i, Temparray.data[i]);
@@ -1689,8 +1676,8 @@ static int otp_curr_temp_proc_show(struct seq_file *m, void *v)
 		freqpct_x100_internal = 0;
 	}
 
-	seq_printf(m, "%d,0x%06x,0x%05x,%u,%d,0x%06x,0x%05x,%u,%u\n",
-	get_immediate_big_wrap(), score, freq, freqpct_x100_internal,
+	seq_printf(m, "0x%06x,0x%05x,%u,%d,0x%06x,0x%05x,%u,%u\n",
+	score, freq, freqpct_x100_internal,
 	otp_info_data.channel_status, otp_info_data.score, info_freq,
 	freqpct_x100, freqpct_x100_real);
 

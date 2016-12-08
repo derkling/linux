@@ -1585,8 +1585,10 @@ static int dvt_test_proc_show(struct seq_file *m, void *v)
 			seq_puts(m, "\n");
 		if (i == IDVFS_CHANNEL_OCP)
 			seq_printf(m, " (L_PWR = %umW, T_TWR = %umW)\n", Leakage, Total);
+#if 0
 		if (i == IDVFS_CHANNEL_OTP)
 			seq_printf(m, " (Big thermal = %u)\n", get_immediate_big_wrap());
+#endif
 	}
 	seq_printf(m, "iDVFS ctrl = 0x%x.\n", SEC_BIGIDVFS_READ(0x10222470));
 	seq_printf(m, "iDVFS debugout = 0x%x.\n", SEC_BIGIDVFS_READ(0x102224c8));

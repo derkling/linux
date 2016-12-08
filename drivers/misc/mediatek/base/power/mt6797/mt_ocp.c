@@ -4488,7 +4488,7 @@ if (sscanf(buf, "%d %d %d %d %d", &function_id, &val[0], &val[1], &val[2], &val[
 					else
 						dvfs_hqa[2][j].Freq = BigiDVFSPllGetFreq();
 
-						dvfs_hqa[2][j].Thermal = get_immediate_big_wrap();
+						dvfs_hqa[2][j].Thermal = 0;
 
 						BigOCPCaptureStatus(&Leakage, &Total, &ClkPct);
 						ocp_hqa[2][j].CapToLkg = Leakage;
@@ -4536,7 +4536,7 @@ if (sscanf(buf, "%d %d %d %d %d", &function_id, &val[0], &val[1], &val[2], &val[
 					else
 						dvfs_hqa[2][j].Freq = BigiDVFSPllGetFreq();
 
-						dvfs_hqa[2][j].Thermal = get_immediate_big_wrap();
+						dvfs_hqa[2][j].Thermal = 0;
 
 						ocp_hqa[2][j].CaptureValid = 0;
 						ocp_hqa[2][j].CGAvg = BigOCPAvgPwrGet(val[1]);
@@ -4597,8 +4597,8 @@ if (sscanf(buf, "%d %d %d %d %d", &function_id, &val[0], &val[1], &val[2], &val[
 						dvfs_hqa[1][i].Freq = freq_L;
 						dvfs_hqa[1][i].Volt = volt_L;
 
-						dvfs_hqa[0][i].Thermal = get_immediate_cpuLL_wrap();
-						dvfs_hqa[1][i].Thermal = get_immediate_cpuL_wrap();
+						dvfs_hqa[0][i].Thermal = 0;
+						dvfs_hqa[1][i].Thermal = 0;
 
 						udelay(val[3]);
 

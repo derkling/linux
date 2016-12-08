@@ -1369,7 +1369,6 @@ static int base_ops_init02(struct eem_det *det)
 static int base_ops_mon_mode(struct eem_det *det)
 {
 	#ifndef EARLY_PORTING
-	struct TS_PTPOD ts_info;
 	thermal_bank_name ts_bank;
 	#endif
 
@@ -1387,15 +1386,10 @@ static int base_ops_mon_mode(struct eem_det *det)
 		return -2;
 	}
 
-#if !defined(EARLY_PORTING)
 	ts_bank = det->ctrl_id;
-	get_thermal_slope_intercept(&ts_info, ts_bank);
-	det->MTS = ts_info.ts_MTS;
-	det->BTS = ts_info.ts_BTS;
-#else
 	det->MTS =  0x2cf; /* (2048 * TS_SLOPE) + 2048; */
 	det->BTS =  0x80E; /* 4 * TS_INTERCEPT; */
-#endif
+
 	eem_debug("Bk = %d, MTS = %d, BTS = %d\n", det->ctrl_id, det->MTS, det->BTS);
 	/*
 	if ((det->EEMINITEN == 0x0) || (det->EEMMONEN == 0x0)) {
@@ -1613,19 +1607,7 @@ static int base_ops_get_temp(struct eem_det *det)
 	FUNC_EXIT(FUNC_LV_HELP);
 #endif
 
-#if !defined(EARLY_PORTING)
-	#ifdef __KERNEL__
-		return tscpu_get_temp_by_bank(ts_bank);
-	#else
-		/*
-		thermal_init();
-		udelay(1000);
-		*/
-		return mtktscpu_get_hw_temp();
-	#endif
-#else
 	return 0;
-#endif
 }
 
 static int base_ops_get_volt(struct eem_det *det)
@@ -3144,48 +3126,17 @@ static inline void handle_mon_mode_isr(struct eem_det *det)
 
 	eem_isr_info("mode = mon %s-isr\n", ((char *)(det->name) + 8));
 
-	#if defined(CONFIG_THERMAL) && !defined(EARLY_PORTING)
-	eem_isr_info("B_temp=%d, G_temp=%d, L_temp=%d, 2L_temp=%d CCI_temp=%d\n",
-		tscpu_get_temp_by_bank(THERMAL_BANK0),
-		tscpu_get_temp_by_bank(THERMAL_BANK1),
-		tscpu_get_temp_by_bank(THERMAL_BANK3),
-		tscpu_get_temp_by_bank(THERMAL_BANK4),
-		tscpu_get_temp_by_bank(THERMAL_BANK5)
-		);
-	#endif
-
 	#if defined(CONFIG_EEM_AEE_RR_REC) && !defined(EARLY_PORTING)
 	switch (det->ctrl_id) {
 	case EEM_CTRL_BIG:
-		#ifdef CONFIG_THERMAL
-		if (tscpu_get_temp_by_bank(THERMAL_BANK0) != 0) {
-			aee_rr_rec_ptp_temp(
-			(tscpu_get_temp_by_bank(THERMAL_BANK0) / 1000) << (8 * EEM_CPU_BIG_IS_SET_VOLT) |
-			(aee_rr_curr_ptp_temp() & ~(0xFF << (8 * EEM_CPU_BIG_IS_SET_VOLT))));
-		}
-		#endif
 		break;
 
 	case EEM_CTRL_GPU:
-		#ifdef CONFIG_THERMAL
-		if (tscpu_get_temp_by_bank(THERMAL_BANK1) != 0) {
-			aee_rr_rec_ptp_temp(
-			(tscpu_get_temp_by_bank(THERMAL_BANK1) / 1000) << (8 * EEM_GPU_IS_SET_VOLT) |
-			(aee_rr_curr_ptp_temp() & ~(0xFF << (8 * EEM_GPU_IS_SET_VOLT))));
-		}
-		#endif
 		break;
 
 	case EEM_CTRL_L:
 	case EEM_CTRL_2L:
 	case EEM_CTRL_CCI:
-		#ifdef CONFIG_THERMAL
-		if (tscpu_get_temp_by_bank(THERMAL_BANK3) != 0) {
-			aee_rr_rec_ptp_temp(
-			(tscpu_get_temp_by_bank(THERMAL_BANK3) / 1000) << (8 * EEM_CPU_LITTLE_IS_SET_VOLT) |
-			(aee_rr_curr_ptp_temp() & ~(0xFF << (8 * EEM_CPU_LITTLE_IS_SET_VOLT))));
-		}
-		#endif
 		break;
 
 	default:
@@ -4350,25 +4301,6 @@ void mt_eem_opp_freq(enum eem_det_id id, unsigned int *freq)
 	FUNC_EXIT(FUNC_LV_API);
 }
 EXPORT_SYMBOL(mt_eem_opp_freq);
-
-void mt_eem_opp_status(enum eem_det_id id, unsigned int *temp, unsigned int *volt)
-{
-	struct eem_det *det = id_to_eem_det(id);
-	int i = 0;
-
-	FUNC_ENTER(FUNC_LV_API);
-
-#if defined(__KERNEL__) && defined(CONFIG_THERMAL) && !defined(EARLY_PORTING)
-	*temp = tscpu_get_temp_by_bank(id);
-#else
-	*temp = 0;
-#endif
-	for (i = 0; i < det->num_freq_tbl; i++)
-		volt[i] = det->ops->pmic_2_volt(det, det->volt_tbl_pmic[i]);
-
-	FUNC_EXIT(FUNC_LV_API);
-}
-EXPORT_SYMBOL(mt_eem_opp_status);
 
 /***************************
 * return current EEM stauts
