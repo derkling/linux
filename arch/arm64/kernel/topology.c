@@ -134,9 +134,9 @@ static void __init parse_cpu_capacity(struct device_node *cpu_node, int cpu)
 			pr_err("cpu_capacity: missing %s raw capacity\n",
 				cpu_node->full_name);
 			pr_err("cpu_capacity: partial information: fallback to 1024 for all CPUs\n");
+			kfree(raw_capacity);
 		}
 		cap_parsing_failed = true;
-		kfree(raw_capacity);
 	}
 }
 
