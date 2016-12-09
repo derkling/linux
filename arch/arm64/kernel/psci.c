@@ -600,10 +600,11 @@ static int cpu_psci_cpu_boot(unsigned int cpu)
 	} else if ((cpu == 8) || (cpu == 9)) {
 		if (bypass_boot > 0) {
 #ifdef CONFIG_CL2_BUCK_CTRL
-			if (!g_cl2_online)
-				cpu_power_on_buck(cpu, 0);
+			//if (!g_cl2_online)
+			//	cpu_power_on_buck(cpu, 0);
 #endif
 			bypass_boot--;
+			return -EPERM;
 		} else {
 			if (!g_cl2_online) {
 #ifdef CONFIG_CL2_BUCK_CTRL
