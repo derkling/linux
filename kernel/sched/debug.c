@@ -595,6 +595,25 @@ void proc_sched_show_task(struct task_struct *p, struct seq_file *m)
 	P(se.statistics.nr_wakeups_affine_attempts);
 	P(se.statistics.nr_wakeups_passive);
 	P(se.statistics.nr_wakeups_idle);
+	/* eas */
+	/* select_idle_sibling() */
+	P(se.statistics.nr_wakeups_sis_attempts);
+	P(se.statistics.nr_wakeups_sis_idle);
+	P(se.statistics.nr_wakeups_sis_cache_affine);
+	P(se.statistics.nr_wakeups_sis_suff_cap);
+	P(se.statistics.nr_wakeups_sis_idle_cpu);
+	/* energy_aware_wake_cpu() */
+	P(se.statistics.nr_wakeups_eawc_attempts);
+	P(se.statistics.nr_wakeups_eawc_sync);
+	P(se.statistics.nr_wakeups_eawc_no_sd);
+	P(se.statistics.nr_wakeups_eawc_insuff_cap);
+	P(se.statistics.nr_wakeups_eawc_no_nrg_sav);
+	P(se.statistics.nr_wakeups_eawc_count);
+	/* find_best_target() */
+	P(se.statistics.nr_wakeups_fbt_attempts);
+	P(se.statistics.nr_wakeups_fbt_count);
+	/* select_task_rq_fair() */
+	P(se.statistics.nr_wakeups_strf_slow_attempts);
 
 	{
 		u64 avg_atom, avg_per_cpu;

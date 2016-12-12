@@ -950,6 +950,30 @@ unsigned long capacity_curr_of(int cpu);
 
 struct sched_group;
 
+struct eas_stats {
+	/* select_idle_sibling() stats */
+	u64 sis_attempts;
+	u64 sis_idle;
+	u64 sis_cache_affine;
+	u64 sis_suff_cap;
+	u64 sis_idle_cpu;
+
+	/* energy_aware_wake_cpu() stats */
+	u64 eawc_attempts;
+	u64 eawc_sync;
+	u64 eawc_no_sd;
+	u64 eawc_insuff_cap;
+	u64 eawc_no_nrg_sav;
+	u64 eawc_count;
+
+	/* find_best_target() stats */
+	u64 fbt_attempts;
+	u64 fbt_count;
+
+	/* select_task_rq_fair() stats */
+	u64 strf_slow_attempts;
+};
+
 struct sched_domain {
 	/* These fields must be setup */
 	struct sched_domain *parent;	/* top domain must be null terminated */
@@ -1010,6 +1034,8 @@ struct sched_domain {
 	unsigned int ttwu_wake_remote;
 	unsigned int ttwu_move_affine;
 	unsigned int ttwu_move_balance;
+
+	struct eas_stats eas_stats;
 #endif
 #ifdef CONFIG_SCHED_DEBUG
 	char *name;
@@ -1196,6 +1222,28 @@ struct sched_statistics {
 	u64			nr_wakeups_affine_attempts;
 	u64			nr_wakeups_passive;
 	u64			nr_wakeups_idle;
+
+	/* select_idle_sibling() */
+	u64			nr_wakeups_sis_attempts;
+	u64			nr_wakeups_sis_idle;
+	u64			nr_wakeups_sis_cache_affine;
+	u64			nr_wakeups_sis_suff_cap;
+	u64			nr_wakeups_sis_idle_cpu;
+
+	/* energy_aware_wake_cpu() */
+	u64			nr_wakeups_eawc_attempts;
+	u64			nr_wakeups_eawc_sync;
+	u64			nr_wakeups_eawc_no_sd;
+	u64			nr_wakeups_eawc_insuff_cap;
+	u64			nr_wakeups_eawc_no_nrg_sav;
+	u64			nr_wakeups_eawc_count;
+
+	/* find_best_target() */
+	u64			nr_wakeups_fbt_attempts;
+	u64			nr_wakeups_fbt_count;
+
+	/* select_task_rq_fair() */
+	u64			nr_wakeups_strf_slow_attempts;
 };
 #endif
 
