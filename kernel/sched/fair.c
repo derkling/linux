@@ -816,7 +816,7 @@ void post_init_entity_util_avg(struct sched_entity *se)
 			 * such that the next switched_to_fair() has the
 			 * expected state.
 			 */
-			se->avg.last_update_time = cfs_rq_clock_task(cfs_rq);
+			se->avg.last_update_time = cfs_rq_clock_task(cfs_rq) & (u64) ~0x3FF;
 			return;
 		}
 	}
@@ -2838,6 +2838,14 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 	unsigned int delta_w, scaled_delta_w, decayed = 0;
 	unsigned long scale_freq, scale_cpu;
 
+	/*
+	 * Use 1024ns as the unit of measurement since it's a reasonable
+	 * approximation of 1us and fast to compute. We just round down using
+	 * 1us precision here and shift later to keep 'now' compatible with ns
+	 * precision input.
+	 */
+	now &= (u64) ~0x3FF;
+
 	delta = now - sa->last_update_time;
 	/*
 	 * This should only happen when time goes backwards, which it
@@ -2848,10 +2856,6 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		goto trace;
 	}
 
-	/*
-	 * Use 1024ns as the unit of measurement since it's a reasonable
-	 * approximation of 1us and fast to compute.
-	 */
 	delta >>= 10;
 	if (!delta)
 		goto trace;
