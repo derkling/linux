@@ -105,7 +105,7 @@ static void task_non_contending(struct task_struct *p)
 	 * If this is a non-deadline task that has been boosted,
 	 * do nothing
 	 */
-	if (dl_se->dl_runtime == 0)
+	if (dl_se->dl_runtime == 0 || dl_entity_is_special(dl_se))
 		return;
 
 	WARN_ON(hrtimer_active(&dl_se->inactive_timer));
@@ -900,6 +900,9 @@ static void update_curr_dl(struct rq *rq)
 
 	curr->se.exec_start = rq_clock_task(rq);
 	cpuacct_charge(curr, delta_exec);
+
+	if (unlikely(dl_entity_is_special(dl_se)))
+		return;
 
 	scale_freq = arch_scale_freq_capacity(NULL, cpu);
 	scale_cpu = arch_scale_cpu_capacity(NULL, cpu);
