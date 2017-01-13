@@ -189,6 +189,7 @@ static void sugov_get_util(unsigned long *util, unsigned long *max, u64 time)
 	int cpu = smp_processor_id();
 	struct rq *rq = cpu_rq(cpu);
 	unsigned long max_cap, rt;
+	unsigned long dl = (rq->dl.running_bw * SCHED_CAPACITY_SCALE) >> 20;
 	s64 delta;
 
 	max_cap = arch_scale_cpu_capacity(NULL, cpu);
@@ -200,7 +201,7 @@ static void sugov_get_util(unsigned long *util, unsigned long *max, u64 time)
 	rt = div64_u64(rq->rt_avg, sched_avg_period() + delta);
 	rt = (rt * max_cap) >> SCHED_CAPACITY_SHIFT;
 
-	*util = min(rq->cfs.avg.util_avg + rt, max_cap);
+	*util = min(rq->cfs.avg.util_avg + rt + dl, max_cap);
 #ifdef CONFIG_SCHED_WALT
 	if (!walt_disabled && sysctl_sched_use_walt_cpu_util)
 		*util = boosted_cpu_util(cpu);
@@ -243,7 +244,6 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 {
 	struct sugov_cpu *sg_cpu = container_of(hook, struct sugov_cpu, update_util);
 	struct sugov_policy *sg_policy = sg_cpu->sg_policy;
-	struct cpufreq_policy *policy = sg_policy->policy;
 	unsigned long util, max;
 	unsigned int next_f;
 
@@ -253,13 +253,10 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 	if (!sugov_should_update_freq(sg_policy, time))
 		return;
 
-	if (flags & SCHED_CPUFREQ_DL) {
-		next_f = policy->cpuinfo.max_freq;
-	} else {
-		sugov_get_util(&util, &max, time);
-		sugov_iowait_boost(sg_cpu, &util, &max);
-		next_f = get_next_freq(sg_cpu, util, max);
-	}
+	sugov_get_util(&util, &max, time);
+	sugov_iowait_boost(sg_cpu, &util, &max);
+	next_f = get_next_freq(sg_cpu, util, max);
+
 	sugov_update_commit(sg_policy, time, next_f);
 }
 
@@ -269,12 +266,8 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu,
 {
 	struct sugov_policy *sg_policy = sg_cpu->sg_policy;
 	struct cpufreq_policy *policy = sg_policy->policy;
-	unsigned int max_f = policy->cpuinfo.max_freq;
 	u64 last_freq_update_time = sg_policy->last_freq_update_time;
 	unsigned int j;
-
-	if (flags & SCHED_CPUFREQ_DL)
-		return max_f;
 
 	sugov_iowait_boost(sg_cpu, &util, &max);
 
@@ -299,8 +292,6 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu,
 			j_sg_cpu->iowait_boost = 0;
 			continue;
 		}
-		if (j_sg_cpu->flags & SCHED_CPUFREQ_DL)
-			return max_f;
 
 		j_util = j_sg_cpu->util;
 		j_max = j_sg_cpu->max;
