@@ -272,6 +272,14 @@ struct task_group {
 #endif
 #endif
 
+#ifdef CONFIG_STUNE_GROUP_SCHED
+#define STUNE_CAP_MIN 0
+#define STUNE_CAP_MAX 1
+
+	/* Min and Max capacity constraints for tasks in this group */
+	unsigned int stune_cap[2];
+#endif
+
 #ifdef CONFIG_RT_GROUP_SCHED
 	struct sched_rt_entity **rt_se;
 	struct rt_rq **rt_rq;

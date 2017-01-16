@@ -7734,6 +7734,11 @@ void __init sched_init(void)
 		init_tg_cfs_entry(&root_task_group, &rq->cfs, NULL, i, NULL);
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 
+#ifdef CONFIG_STUNE_GROUP_SCHED
+		root_task_group.stune_cap[STUNE_CAP_MIN] = 0;
+		root_task_group.stune_cap[STUNE_CAP_MAX] = SCHED_CAPACITY_SCALE;
+#endif /* CONFIG_STUNE_GROUP_SCHED */
+
 		rq->rt.rt_runtime = def_rt_bandwidth.rt_runtime;
 #ifdef CONFIG_RT_GROUP_SCHED
 		init_tg_rt_entry(&root_task_group, &rq->rt, NULL, i, NULL);
@@ -7964,6 +7969,21 @@ void ia64_set_curr_task(int cpu, struct task_struct *p)
 /* task_group_lock serializes the addition/removal of task groups */
 static DEFINE_SPINLOCK(task_group_lock);
 
+#ifdef CONFIG_STUNE_GROUP_SCHED
+static void alloc_stune_sched_group(
+		struct task_group *tg, struct task_group *parent)
+{
+	tg->stune_cap[STUNE_CAP_MIN] = parent->stune_cap[STUNE_CAP_MIN];
+	tg->stune_cap[STUNE_CAP_MAX] = parent->stune_cap[STUNE_CAP_MAX];
+}
+#else
+static void alloc_stune_sched_group(struct task_group *tg,
+				    struct task_group *parent)
+{
+	return 0;
+}
+#endif /* CONFIG_STUNE_GROUP_SCHED */
+
 static void sched_free_group(struct task_group *tg)
 {
 	free_fair_sched_group(tg);
@@ -7986,6 +8006,8 @@ struct task_group *sched_create_group(struct task_group *parent)
 
 	if (!alloc_rt_sched_group(tg, parent))
 		goto err;
+
+	alloc_stune_sched_group(tg, parent);
 
 	return tg;
 
@@ -8570,6 +8592,115 @@ static void cpu_cgroup_attach(struct cgroup_taskset *tset)
 		sched_move_task(task);
 }
 
+#ifdef CONFIG_STUNE_GROUP_SCHED
+
+static DEFINE_MUTEX(capacity_mutex);
+
+static int cpu_capacity_min_write_u64(struct cgroup_subsys_state *css,
+				      struct cftype *cftype, u64 value)
+{
+	struct cgroup_subsys_state *pos;
+	unsigned int min_value;
+	struct task_group *tg;
+	int ret = -EINVAL;
+
+	min_value = min_t(unsigned int, value, SCHED_CAPACITY_SCALE);
+
+	mutex_lock(&capacity_mutex);
+	rcu_read_lock();
+
+	tg = css_tg(css);
+
+	/* Already at the required value */
+	if (tg->stune_cap[STUNE_CAP_MIN] == min_value)
+		goto done;
+
+	/* Ensure to not exceed the maximum capacity */
+	if (tg->stune_cap[STUNE_CAP_MAX] < min_value)
+		goto out;
+
+	/* Ensure containement within parent's constraint */
+	if (tg->parent->stune_cap[STUNE_CAP_MIN] > min_value)
+		goto out;
+
+	/* Each of our child must be a subset of us */
+	css_for_each_child(pos, css) {
+		if (css_tg(pos)->stune_cap[STUNE_CAP_MIN] < min_value)
+			goto out;
+	}
+
+	tg->stune_cap[STUNE_CAP_MIN] = min_value;
+
+done:
+	ret = 0;
+out:
+	rcu_read_unlock();
+	mutex_unlock(&capacity_mutex);
+
+	return ret;
+}
+
+static int cpu_capacity_max_write_u64(struct cgroup_subsys_state *css,
+				      struct cftype *cftype, u64 value)
+{
+	struct cgroup_subsys_state *pos;
+	unsigned int max_value;
+	struct task_group *tg;
+	int ret = -EINVAL;
+
+	max_value = min_t(unsigned int, value, SCHED_CAPACITY_SCALE);
+
+	mutex_lock(&capacity_mutex);
+	rcu_read_lock();
+
+	tg = css_tg(css);
+
+	/* Already at the required value */
+	if (tg->stune_cap[STUNE_CAP_MAX] == max_value)
+		goto done;
+
+	/* Ensure to not constraint the minimum capacity */
+	if (tg->stune_cap[STUNE_CAP_MIN] > max_value)
+		goto done;
+
+	/* Ensure containement within parent's constraint */
+	if (tg->parent->stune_cap[STUNE_CAP_MAX] < max_value)
+		goto out;
+
+	/* Each of our child must be a subset of us */
+	css_for_each_child(pos, css) {
+		if (css_tg(pos)->stune_cap[STUNE_CAP_MAX] > max_value)
+			goto out;
+	}
+
+	tg->stune_cap[STUNE_CAP_MAX] = max_value;
+
+done:
+	ret = 0;
+out:
+	rcu_read_unlock();
+	mutex_unlock(&capacity_mutex);
+
+	return ret;
+}
+
+static u64 cpu_capacity_min_read_u64(
+		struct cgroup_subsys_state *css, struct cftype *cft)
+{
+	struct task_group *tg = css_tg(css);
+
+	return (u64)tg->stune_cap[STUNE_CAP_MIN];
+}
+
+static u64 cpu_capacity_max_read_u64(
+		struct cgroup_subsys_state *css, struct cftype *cft)
+{
+	struct task_group *tg = css_tg(css);
+
+	return (u64)tg->stune_cap[STUNE_CAP_MAX];
+}
+#endif /* CONFIG_STUNE_GROUP_SCHED */
+
 #ifdef CONFIG_FAIR_GROUP_SCHED
 static int cpu_shares_write_u64(struct cgroup_subsys_state *css,
 				struct cftype *cftype, u64 shareval)
@@ -8860,6 +8991,18 @@ static struct cftype cpu_files[] = {
 		.name = "shares",
 		.read_u64 = cpu_shares_read_u64,
 		.write_u64 = cpu_shares_write_u64,
+	},
+#endif
+#ifdef CONFIG_STUNE_GROUP_SCHED
+	{
+		.name = "capacity_min",
+		.read_u64 = cpu_capacity_min_read_u64,
+		.write_u64 = cpu_capacity_min_write_u64,
+	},
+	{
+		.name = "capacity_max",
+		.read_u64 = cpu_capacity_max_read_u64,
+		.write_u64 = cpu_capacity_max_write_u64,
 	},
 #endif
 #ifdef CONFIG_CFS_BANDWIDTH
