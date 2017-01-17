@@ -98,6 +98,25 @@ config ARM_TEGRA_DEVFREQ
          It reads ACTMON counters of memory controllers and adjusts the
          operating frequencies and voltages with OPP support.
 
+config ARM_FCM_DEVFREQ
+	tristate "ARM FCM Partial-Way Cache DEVFREQ Driver"
+	select PM_OPP
+	help
+	  This adds the DEVFREQ driver which is used to control the ARM
+	  FCM partial-way cache. Which allows a dynamic number of portions
+	  in the FCM to be enabled, depending on the FCM cache miss rate.
+	  A portion is the minimum number of ways that can be enabled.
+
+	  It should be noted that the DEVFREQ infrastructure is normally
+	  used to control "frequency" of a non-CPU device. This driver
+	  is actually controlling the number of portions that are enabled.
+	  It should be noted that we are deliberately making an "odd"
+	  association, in as much as we are equating a notional frequency
+	  of 1 Hz to 1-portion, and 2 Hz to 2-portion, etc. Hence, in the sysfs
+	  "min_freq" should be interpreted as "min_number_of_portions", etc.
+
+	  QQQ - to fill in "depends on" clause e.g. ARM SoCs ...
+
 source "drivers/devfreq/event/Kconfig"
 
 endif # PM_DEVFREQ
