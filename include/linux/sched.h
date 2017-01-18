@@ -1550,6 +1550,9 @@ struct task_struct {
 #ifdef CONFIG_CGROUP_SCHED
 	struct task_group *sched_task_group;
 #endif
+#ifdef CONFIG_STUNE_GROUP_SCHED
+	struct rb_node stune_node[2];
+#endif
 	struct sched_dl_entity dl;
 
 #ifdef CONFIG_PREEMPT_NOTIFIERS

@@ -75,6 +75,7 @@
 #include <linux/compiler.h>
 #include <linux/frame.h>
 #include <linux/prefetch.h>
+#include <linux/rbtree.h>
 
 #include <asm/switch_to.h>
 #include <asm/tlb.h>
@@ -752,12 +753,165 @@ static void set_load_weight(struct task_struct *p)
 	load->inv_weight = sched_prio_to_wmult[prio];
 }
 
+#ifdef CONFIG_STUNE_GROUP_SCHED
+
+struct stune_cpu {
+	/*
+	 * RBTree to keep sorted capacity constrains
+	 * of currently RUNNABLE tasks on a CPU.
+	 */
+	struct rb_root cap_tree;
+
+	/*
+	 * Pointers to the RUNNABLE task defining the current
+	 * capacity constraint for a CPU.
+	 */
+	struct rb_node *cap_node;
+
+	/* Current CPU's capacity constraint */
+	unsigned int cap_value;
+};
+
+/* Min and Max capacity constraints */
+DEFINE_PER_CPU(struct stune_cpu[2], stune_cpu);
+
+static inline void stune_insert_capacity(
+		struct task_struct *p, unsigned int cpu,
+		unsigned int cap_idx)
+{
+	struct stune_cpu *st_cpu = &(per_cpu(stune_cpu, cpu)[cap_idx]);
+	struct task_group *tg = task_group(p);
+	struct rb_node *parent = NULL;
+	struct task_struct *entry;
+	struct rb_node **link;
+	struct rb_root *root;
+	struct rb_node *node;
+	int update_cache = 1;
+	u64 capacity_new;
+	u64 capacity_cur;
+
+	node = &p->stune_node[cap_idx];
+	BUG_ON(!RB_EMPTY_NODE(node));
+
+	/* Find the right place of MIN in the rbtree */
+	capacity_new = tg->stune_cap[cap_idx];
+	root = &st_cpu->cap_tree;
+	link = &root->rb_node;
+	while (*link) {
+		parent = *link;
+		entry = rb_entry(parent, struct task_struct,
+				 stune_node[cap_idx]);
+		capacity_cur = task_group(entry)->stune_cap[cap_idx];
+		if (capacity_new <= capacity_cur) {
+			link = &parent->rb_left;
+			update_cache = 0;
+		} else {
+			link = &parent->rb_right;
+		}
+	}
+
+	/* Add task's MIN capacity and rebalance the tree */
+	rb_link_node(node, parent, link);
+	rb_insert_color(node, root);
+
+	/* Update CPU's capacity cache pointer */
+	if (update_cache) {
+		st_cpu->cap_node = node;
+		st_cpu->cap_value = capacity_new;
+	}
+}
+
+static inline void stune_remove_capacity(
+	struct task_struct *p, unsigned int cpu, unsigned int cap_idx)
+{
+	struct stune_cpu *st_cpu = &(per_cpu(stune_cpu, cpu)[cap_idx]);
+	struct rb_root *root = &st_cpu->cap_tree;
+	struct rb_node *node = &p->stune_node[cap_idx];
+
+	if (RB_EMPTY_NODE(node))
+		return;
+
+	/* Update CPU's minimum capacity cache pointer */
+	if (node == st_cpu->cap_node)
+		st_cpu->cap_node = rb_prev(node);
+
+	/* Remove task's minimum capacity */
+	rb_erase(node, root);
+	RB_CLEAR_NODE(node);
+}
+
+static inline void stune_update_capacity(
+		struct task_struct *p, unsigned int cap_idx)
+{
+	struct task_group *tg = task_group(p);
+	unsigned int next_cap = SCHED_CAPACITY_SCALE;
+	unsigned int prev_cap = 0;
+	struct task_struct *entry;
+	struct rb_node *node;
+
+	/*
+	 * If the task has not a node in the RBTree, it's not yet RUNNABLE or
+	 * it's going to be enqueued with the proper value.
+	 */
+	if (RB_EMPTY_NODE(&p->stune_node[cap_idx]))
+		return;
+
+	/* Check current position in the capacity RBTree */
+	node = rb_next(&p->stune_node[cap_idx]);
+	if (node) {
+		entry = rb_entry(node, struct task_struct, stune_node[cap_idx]);
+		next_cap = task_group(entry)->stune_cap[cap_idx];
+	}
+
+	node = rb_prev(&p->stune_node[cap_idx]);
+	if (node) {
+		entry = rb_entry(node, struct task_struct, stune_node[cap_idx]);
+		prev_cap = task_group(entry)->stune_cap[cap_idx];
+	}
+
+	/* If our relative position has not changed: noting to do */
+	if (prev_cap <= tg->stune_cap[cap_idx] &&
+	    next_cap >= tg->stune_cap[cap_idx])
+		return;
+
+	/* Reposition this node within the min RBTree */
+	stune_remove_capacity(p, task_cpu(p), cap_idx);
+	stune_insert_capacity(p, task_cpu(p), cap_idx);
+}
+
+static inline void stune_enqueue_task(
+		struct rq *rq, struct task_struct *p, int flags)
+{
+	unsigned int cpu = cpu_of(rq);
+
+	/* Track task's min/max capacities */
+	stune_insert_capacity(p, cpu, STUNE_CAP_MIN);
+	stune_insert_capacity(p, cpu, STUNE_CAP_MAX);
+}
+
+static inline void stune_dequeue_task(
+		struct rq *rq, struct task_struct *p, int flags)
+{
+	unsigned int cpu = cpu_of(rq);
+
+	/* Track task's min/max capacities */
+	stune_remove_capacity(p, cpu, STUNE_CAP_MIN);
+	stune_remove_capacity(p, cpu, STUNE_CAP_MAX);
+}
+#else
+static inline void stune_enqueue_task(
+		struct rq *rq, struct task_struct *p, int flags) { }
+static inline void stune_dequeue_task(
+		struct rq *rq, struct task_struct *p, int flags) { }
+#endif /* CONFIG_STUNE_GROUP_SCHED */
+
 static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	update_rq_clock(rq);
 	if (!(flags & ENQUEUE_RESTORE))
 		sched_info_queued(rq, p);
 	p->sched_class->enqueue_task(rq, p, flags);
+	stune_enqueue_task(rq, p, flags);
 }
 
 static inline void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
@@ -766,6 +920,7 @@ static inline void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 	if (!(flags & DEQUEUE_SAVE))
 		sched_info_dequeued(rq, p);
 	p->sched_class->dequeue_task(rq, p, flags);
+	stune_dequeue_task(rq, p, flags);
 }
 
 void activate_task(struct rq *rq, struct task_struct *p, int flags)
@@ -2446,6 +2601,10 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 #ifdef CONFIG_SMP
 	plist_node_init(&p->pushable_tasks, MAX_PRIO);
 	RB_CLEAR_NODE(&p->pushable_dl_tasks);
+#endif
+#ifdef CONFIG_STUNE_GROUP_SCHED
+	RB_CLEAR_NODE(&p->stune_node[STUNE_CAP_MIN]);
+	RB_CLEAR_NODE(&p->stune_node[STUNE_CAP_MAX]);
 #endif
 
 	put_cpu();
@@ -7737,6 +7896,10 @@ void __init sched_init(void)
 #ifdef CONFIG_STUNE_GROUP_SCHED
 		root_task_group.stune_cap[STUNE_CAP_MIN] = 0;
 		root_task_group.stune_cap[STUNE_CAP_MAX] = SCHED_CAPACITY_SCALE;
+		per_cpu(stune_cpu, i)[STUNE_CAP_MIN].cap_tree = RB_ROOT;
+		per_cpu(stune_cpu, i)[STUNE_CAP_MIN].cap_node = NULL;
+		per_cpu(stune_cpu, i)[STUNE_CAP_MAX].cap_tree = RB_ROOT;
+		per_cpu(stune_cpu, i)[STUNE_CAP_MAX].cap_node = NULL;
 #endif /* CONFIG_STUNE_GROUP_SCHED */
 
 		rq->rt.rt_runtime = def_rt_bandwidth.rt_runtime;
