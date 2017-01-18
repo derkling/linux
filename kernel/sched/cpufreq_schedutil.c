@@ -58,7 +58,8 @@ struct sugov_cpu {
 	u64 last_update;
 
 	/* The fields below are only needed when sharing a policy. */
-	unsigned long util;
+	unsigned long util_cfs;
+	unsigned long util_dl;
 	unsigned long max;
 	unsigned int flags;
 
@@ -157,14 +158,13 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
 	return cpufreq_driver_resolve_freq(policy, freq);
 }
 
-static void sugov_get_util(unsigned long *util, unsigned long *max)
+static void sugov_get_util(struct sugov_cpu *sg_cpu)
 {
 	struct rq *rq = this_rq();
-	unsigned long dl_util = (rq->dl.running_bw * SCHED_CAPACITY_SCALE) >> 20;
 
-	*max = arch_scale_cpu_capacity(NULL, smp_processor_id());
-
-	*util = min(rq->cfs.avg.util_avg + dl_util, *max);
+	sg_cpu->max = arch_scale_cpu_capacity(NULL, smp_processor_id());
+	sg_cpu->util_cfs = rq->cfs.avg.util_avg;
+	sg_cpu->util_dl = (rq->dl.running_bw * SCHED_CAPACITY_SCALE) >> 20;
 }
 
 static void sugov_set_iowait_boost(struct sugov_cpu *sg_cpu, u64 time,
@@ -231,7 +231,9 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 	if (flags & SCHED_CPUFREQ_RT) {
 		next_f = policy->cpuinfo.max_freq;
 	} else {
-		sugov_get_util(&util, &max);
+		sugov_get_util(sg_cpu);
+		max = sg_cpu->max;
+		util = min(sg_cpu->util_cfs + sg_cpu->util_dl, max);
 		sugov_iowait_boost(sg_cpu, &util, &max);
 		next_f = get_next_freq(sg_policy, util, max);
 		/*
@@ -257,22 +259,27 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 		s64 delta_ns;
 
 		/*
-		 * If the CPU utilization was last updated before the previous
-		 * frequency update and the time elapsed between the last update
-		 * of the CPU utilization and the last frequency update is long
-		 * enough, don't take the CPU into account as it probably is
-		 * idle now (and clear iowait_boost for it).
+		 * If the CFS CPU utilization was last updated before the
+		 * previous frequency update and the time elapsed between the
+		 * last update of the CPU utilization and the last frequency
+		 * update is long enough, reset iowait_boost and util_cfs, as
+		 * they are now probably stale. However, still consider the
+		 * CPU contribution if it has some DEADLINE utilization
+		 * (util_dl).
 		 */
 		delta_ns = time - j_sg_cpu->last_update;
 		if (delta_ns > TICK_NSEC) {
 			j_sg_cpu->iowait_boost = 0;
-			continue;
+			j_sg_cpu->util_cfs = 0;
+			if (j_sg_cpu->util_dl == 0)
+				continue;
 		}
+
 		if (j_sg_cpu->flags & SCHED_CPUFREQ_RT)
 			return policy->cpuinfo.max_freq;
 
-		j_util = j_sg_cpu->util;
 		j_max = j_sg_cpu->max;
+		j_util = min(j_sg_cpu->util_cfs + j_sg_cpu->util_dl, j_max);
 		if (j_util * max > j_max * util) {
 			util = j_util;
 			max = j_max;
@@ -289,15 +296,12 @@ static void sugov_update_shared(struct update_util_data *hook, u64 time,
 {
 	struct sugov_cpu *sg_cpu = container_of(hook, struct sugov_cpu, update_util);
 	struct sugov_policy *sg_policy = sg_cpu->sg_policy;
-	unsigned long util, max;
 	unsigned int next_f;
 
-	sugov_get_util(&util, &max);
 
 	raw_spin_lock(&sg_policy->update_lock);
 
-	sg_cpu->util = util;
-	sg_cpu->max = max;
+	sugov_get_util(sg_cpu);
 	sg_cpu->flags = flags;
 
 	sugov_set_iowait_boost(sg_cpu, time, flags);
