@@ -543,6 +543,11 @@ struct dl_rq {
 	 */
 	struct rb_root pushable_dl_tasks_root;
 	struct rb_node *pushable_dl_tasks_leftmost;
+
+#ifdef CONFIG_IRQ_WORK
+	struct task_struct *push_task;
+	struct irq_work push_work;
+#endif
 #else
 	struct dl_bw dl_bw;
 #endif

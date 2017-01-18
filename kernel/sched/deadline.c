@@ -145,6 +145,10 @@ void init_dl_bw(struct dl_bw *dl_b)
 	dl_b->total_bw = 0;
 }
 
+#if defined(CONFIG_SMP) && defined(CONFIG_IRQ_WORK)
+static void push_irq_work_func(struct irq_work *work);
+#endif
+
 void init_dl_rq(struct dl_rq *dl_rq)
 {
 	dl_rq->rb_root = RB_ROOT;
@@ -156,6 +160,9 @@ void init_dl_rq(struct dl_rq *dl_rq)
 	dl_rq->dl_nr_migratory = 0;
 	dl_rq->overloaded = 0;
 	dl_rq->pushable_dl_tasks_root = RB_ROOT;
+#ifdef CONFIG_IRQ_WORK
+	init_irq_work(&dl_rq->push_work, push_irq_work_func);
+#endif
 #else
 	init_dl_bw(&dl_rq->dl_bw);
 #endif
@@ -1960,6 +1967,56 @@ static void switched_from_dl(struct rq *rq, struct task_struct *p)
 	queue_pull_task(rq);
 }
 
+#ifdef CONFIG_IRQ_WORK
+static int active_push_stop(void *data)
+{
+	struct task_struct *p = data;
+	struct rq *rq = task_rq(p), *later_rq;
+	unsigned long flags;
+
+	raw_spin_lock_irqsave(&rq->lock, flags);
+
+	later_rq = find_lock_later_rq(p, rq);
+	if (!later_rq)
+		goto out_unlock;
+
+	deactivate_task(rq, p, 0);
+	sub_running_bw(&p->dl, &rq->dl);
+	set_task_cpu(p, later_rq->cpu);
+	add_running_bw(&p->dl, &later_rq->dl);
+	activate_task(later_rq, p, 0);
+
+	resched_curr(later_rq);
+
+	double_unlock_balance(rq, later_rq);
+
+out_unlock:
+	raw_spin_unlock_irqrestore(&rq->lock, flags);
+	put_task_struct(p);
+
+	return 0;
+}
+
+static void push_irq_work_func(struct irq_work *work)
+{
+	struct dl_rq *dl_rq = container_of(work, struct dl_rq, push_work);
+	struct rq *rq = rq_of_dl_rq(dl_rq);
+	struct task_struct *p = dl_rq->push_task;
+
+	stop_one_cpu_nowait(cpu_of(rq), active_push_stop, p,
+			&rq->active_balance_work);
+}
+
+static void active_push(struct rq *rq, struct task_struct *p)
+{
+	get_task_struct(p);
+	rq->dl.push_task = p;
+	irq_work_queue_on(&rq->dl.push_work, cpu_of(rq));
+}
+#else
+static void active_push(struct rq *rq, struct task_struct *p) { }
+#endif
+
 /*
  * When switching to -deadline, we may overload the rq, then
  * we try to push someone off, if possible.
@@ -1992,6 +2049,7 @@ static void switched_to_dl(struct rq *rq, struct task_struct *p)
 			resched_curr(rq);
 #endif
 	} else if (!task_fits_cpu(p, cpu_of(rq))) {
+		active_push(rq, p);
 	}
 }
 
