@@ -135,6 +135,8 @@ static inline int task_has_dl_policy(struct task_struct *p)
 
 #define cap_scale(v, s) ((v)*(s) >> SCHED_CAPACITY_SHIFT)
 
+unsigned long capacity_orig_of(int cpu);
+
 static inline int dl_entity_is_special(struct sched_dl_entity *dl_se)
 {
 	return dl_se->flags & SCHED_FLAG_SPECIAL;

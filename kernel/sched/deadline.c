@@ -1206,6 +1206,7 @@ static void yield_task_dl(struct rq *rq)
 
 #ifdef CONFIG_SMP
 
+static inline int task_fits_cpu(struct task_struct *task, int cpu);
 static int find_later_rq(struct task_struct *task);
 
 static int
@@ -1231,10 +1232,11 @@ select_task_rq_dl(struct task_struct *p, int cpu, int sd_flag, int flags)
 	 * other hand, if it has a shorter deadline, we
 	 * try to make it stay here, it might be important.
 	 */
-	if (unlikely(dl_task(curr)) &&
-	    (tsk_nr_cpus_allowed(curr) < 2 ||
-	     !dl_entity_preempt(&p->dl, &curr->dl)) &&
-	    (tsk_nr_cpus_allowed(p) > 1)) {
+	if (!task_fits_cpu(p, cpu) ||
+	    (unlikely(dl_task(curr)) &&
+	     (tsk_nr_cpus_allowed(curr) < 2 ||
+	      !dl_entity_preempt(&p->dl, &curr->dl)) &&
+	     (tsk_nr_cpus_allowed(p) > 1))) {
 		int target = find_later_rq(p);
 
 		if (target != -1 &&
@@ -1485,6 +1487,18 @@ next_node:
 	return NULL;
 }
 
+static inline unsigned long bw_cap_scale(u64 bw)
+{
+	return (bw * SCHED_CAPACITY_SCALE) >> 20;
+}
+
+static inline int task_fits_cpu(struct task_struct *task, int cpu)
+{
+	unsigned long tsk_util = bw_cap_scale(task->dl.dl_bw);
+
+	return tsk_util < capacity_orig_of(cpu);
+}
+
 static DEFINE_PER_CPU(cpumask_var_t, local_cpu_mask_dl);
 
 static int find_later_rq(struct task_struct *task)
@@ -1523,8 +1537,9 @@ static int find_later_rq(struct task_struct *task)
 	 * The last cpu where the task run is our first
 	 * guess, since it is most likely cache-hot there.
 	 */
-	if (cpumask_test_cpu(cpu, later_mask))
+	if (cpumask_test_cpu(cpu, later_mask) && task_fits_cpu(task, cpu)) {
 		return cpu;
+	}
 	/*
 	 * Check if this_cpu is to be skipped (i.e., it is
 	 * not in the mask) or not.
@@ -1541,7 +1556,8 @@ static int find_later_rq(struct task_struct *task)
 			 * cheaper than migrating.
 			 */
 			if (this_cpu != -1 &&
-			    cpumask_test_cpu(this_cpu, sched_domain_span(sd))) {
+			    cpumask_test_cpu(this_cpu, sched_domain_span(sd)) &&
+			    task_fits_cpu(task, this_cpu)) {
 				rcu_read_unlock();
 				return this_cpu;
 			}
@@ -1551,7 +1567,8 @@ static int find_later_rq(struct task_struct *task)
 			 * in the mask, that becomes our choice.
 			 */
 			if (best_cpu < nr_cpu_ids &&
-			    cpumask_test_cpu(best_cpu, sched_domain_span(sd))) {
+			    cpumask_test_cpu(best_cpu, sched_domain_span(sd)) &&
+			    task_fits_cpu(task, best_cpu)) {
 				rcu_read_unlock();
 				return best_cpu;
 			}
@@ -1563,12 +1580,14 @@ static int find_later_rq(struct task_struct *task)
 	 * At this point, all our guesses failed, we just return
 	 * 'something', and let the caller sort the things out.
 	 */
-	if (this_cpu != -1)
+	if (this_cpu != -1 && task_fits_cpu(task, this_cpu)) {
 		return this_cpu;
+	}
 
-	cpu = cpumask_any(later_mask);
-	if (cpu < nr_cpu_ids)
-		return cpu;
+	for_each_cpu(cpu, later_mask)
+		if (cpu < nr_cpu_ids && task_fits_cpu(task, cpu)) {
+			return cpu;
+		}
 
 	return -1;
 }
@@ -1963,7 +1982,8 @@ static void switched_to_dl(struct rq *rq, struct task_struct *p)
 
 	if (rq->curr != p) {
 #ifdef CONFIG_SMP
-		if (tsk_nr_cpus_allowed(p) > 1 && rq->dl.overloaded)
+		if (tsk_nr_cpus_allowed(p) > 1 &&
+		    (rq->dl.overloaded || !task_fits_cpu(p, cpu_of(rq))))
 			queue_push_tasks(rq);
 #else
 		if (dl_task(rq->curr))
@@ -1971,6 +1991,7 @@ static void switched_to_dl(struct rq *rq, struct task_struct *p)
 		else
 			resched_curr(rq);
 #endif
+	} else if (!task_fits_cpu(p, cpu_of(rq))) {
 	}
 }
 
