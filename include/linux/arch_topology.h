@@ -12,6 +12,10 @@ int atd_parse_cpu_capacity(struct device_node *cpu_node, int cpu);
 struct sched_domain;
 unsigned long atd_scale_cpu_capacity(struct sched_domain *sd, int cpu);
 
+#ifdef CONFIG_CPU_FREQ
+unsigned long atd_scale_freq_capacity(struct sched_domain *sd, int cpu);
+#endif
+
 void atd_set_capacity_scale(unsigned int cpu, unsigned long capacity);
 
 #endif /* _LINUX_ARCH_TOPOLOGY_H_ */
