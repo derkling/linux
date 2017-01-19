@@ -2842,7 +2842,7 @@ static __always_inline int
 __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		  unsigned long weight, int running, struct cfs_rq *cfs_rq)
 {
-	u64 delta, scaled_delta, periods;
+	u64 delta, scaled_delta, delta_clamped = 0, periods;
 	u32 contrib;
 	unsigned int delta_w, scaled_delta_w, decayed = 0;
 	unsigned long scale_freq, scale_cpu;
@@ -2872,6 +2872,17 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 
 	scale_freq = arch_scale_freq_capacity(NULL, cpu);
 	scale_cpu = arch_scale_cpu_capacity(NULL, cpu);
+
+
+	/* Apply decay clamping to tasks only */
+	if (!cfs_rq && !weight
+	    && sysctl_sched_pelt_decay_clamp_ms < LOAD_AVG_MAX_N
+	    && entity_is_task(container_of(sa, struct sched_entity, avg))) {
+		if (delta > sched_pelt_decay_clamp) {
+			delta_clamped = delta - sched_pelt_decay_clamp;
+			delta = sched_pelt_decay_clamp;
+		}
+	}
 
 	/* delta_w is the amount already accumulated against our next period */
 	delta_w = sa->period_contrib;
@@ -2942,6 +2953,20 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 				div_u64(cfs_rq->runnable_load_sum, LOAD_AVG_MAX);
 		}
 		sa->util_avg = sa->util_sum / LOAD_AVG_MAX;
+
+		if (delta_clamped) {
+			/* Add idle time accrued against u_0` */
+			delta_clamped += delta;
+			periods = delta_clamped / 1024;
+			sa->full_decay_load_sum =
+				decay_load((u64)(sa->load_sum), periods);
+			sa->full_decay_util_sum =
+				decay_load((u64)(sa->util_sum), periods);
+			sa->full_decay_load_avg =
+				div_u64(sa->full_decay_load_sum, LOAD_AVG_MAX);
+			sa->full_decay_util_avg =
+				sa->full_decay_util_sum / LOAD_AVG_MAX;
+		}
 	}
 
 trace:
@@ -3317,6 +3342,16 @@ static inline void update_load_avg(struct sched_entity *se, int flags)
 		update_tg_load_avg(cfs_rq, 0);
 }
 
+static void clear_entity_full_decay(struct sched_entity *se)
+{
+	struct sched_avg *sa = &se->avg;
+
+	sa->full_decay_load_avg = 0;
+	sa->full_decay_load_sum = 0;
+	sa->full_decay_util_avg = 0;
+	sa->full_decay_util_sum = 0;
+}
+
 /**
  * attach_entity_load_avg - attach this entity to its cfs_rq load avg
  * @cfs_rq: cfs_rq to attach to
@@ -3375,6 +3410,23 @@ enqueue_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	if (!sa->last_update_time) {
 		attach_entity_load_avg(cfs_rq, se);
 		update_tg_load_avg(cfs_rq, 0);
+	} else if (sa->full_decay_util_avg) {
+		/*
+		 * The cfs_rq contribution has decayed beyond the decay clamp
+		 * add the delta do correct that.
+		 */
+		cfs_rq->avg.load_avg += sa->load_avg - sa->full_decay_load_avg;
+		cfs_rq->avg.load_sum += sa->load_sum - sa->full_decay_load_sum;
+		cfs_rq->avg.util_avg += sa->util_avg - sa->full_decay_util_avg;
+		cfs_rq->avg.util_sum += sa->util_sum - sa->full_decay_util_sum;
+		clear_entity_full_decay(se);
+		set_tg_cfs_propagate(cfs_rq);
+		update_tg_load_avg(cfs_rq, 0);
+
+		cfs_rq_util_change(cfs_rq);
+
+		trace_sched_pelt_cfs_rq(cfs_rq);
+		trace_sched_pelt_se(se);
 	}
 }
 
@@ -3441,8 +3493,15 @@ void remove_entity_load_avg(struct sched_entity *se)
 	 */
 
 	sync_entity_load_avg(se);
-	atomic_long_add(se->avg.load_avg, &cfs_rq->removed_load_avg);
-	atomic_long_add(se->avg.util_avg, &cfs_rq->removed_util_avg);
+
+	if (se->avg.full_decay_util_avg) {
+		atomic_long_add(se->avg.full_decay_load_avg, &cfs_rq->removed_load_avg);
+		atomic_long_add(se->avg.full_decay_util_avg, &cfs_rq->removed_util_avg);
+		clear_entity_full_decay(se);
+	} else {
+		atomic_long_add(se->avg.load_avg, &cfs_rq->removed_load_avg);
+		atomic_long_add(se->avg.util_avg, &cfs_rq->removed_util_avg);
+	}
 }
 
 static inline unsigned long cfs_rq_runnable_load_avg(struct cfs_rq *cfs_rq)
