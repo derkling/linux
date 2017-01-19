@@ -13,84 +13,34 @@
 #include <linux/spinlock.h>
 #include <linux/clk.h>
 #include <linux/component.h>
+#include <linux/list.h>
 #include <linux/of_graph.h>
+#include <linux/of_reserved_mem.h>
+#include <linux/pm_runtime.h>
 
 #include <drm/drmP.h>
+#include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_fb_helper.h>
-#include "hdlcd_fb_helper.h"
+#include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_gem_cma_helper.h>
 #include <drm/drm_of.h>
 
 #include "hdlcd_drv.h"
 #include "hdlcd_regs.h"
 
-static void hdlcd_setup_mode_config(struct drm_device *dev);
-
-static int compare_dev(struct device *dev, void *data)
+static int hdlcd_load(struct drm_device *drm, unsigned long flags)
 {
-	return dev->of_node == data;
-}
-
-struct drm_encoder *
-hdlcd_connector_best_encoder(struct drm_connector *connector)
-{
-	int enc_id = connector->encoder_ids[0];
-	struct drm_mode_object *obj;
-	struct drm_encoder *encoder;
-
-	if (connector->encoder)
-		return connector->encoder;
-
-	if (enc_id) {
-		obj = drm_mode_object_find(connector->dev, enc_id,
-					DRM_MODE_OBJECT_ENCODER);
-		if (obj) {
-			encoder = obj_to_encoder(obj);
-			return encoder;
-		}
-	}
-	return NULL;
-
-}
-
-static int hdlcd_unload(struct drm_device *dev)
-{
-	struct hdlcd_drm_private *hdlcd = dev->dev_private;
-
-	drm_kms_helper_poll_fini(dev);
-	if (hdlcd->fbdev)
-		hdlcd_drm_fbdev_fini(hdlcd->fbdev);
-
-	drm_vblank_cleanup(dev);
-	drm_mode_config_cleanup(dev);
-
-	drm_irq_uninstall(dev);
-
-	if (!IS_ERR(hdlcd->clk))
-		clk_put(hdlcd->clk);
-
-	dma_release_declared_memory(dev->dev);
-	platform_set_drvdata(dev->platformdev, NULL);
-	dev->dev_private = NULL;
-
-	return 0;
-}
-
-static int hdlcd_load(struct drm_device *dev, unsigned long flags)
-{
-	struct platform_device *pdev = dev->platformdev;
-	struct hdlcd_drm_private *hdlcd;
+	struct hdlcd_drm_private *hdlcd = drm->dev_private;
+	struct platform_device *pdev = to_platform_device(drm->dev);
 	struct resource *res;
 	u32 version;
 	int ret;
-	struct device_node *node;
-	int preferred_bpp;
 
-	hdlcd = devm_kzalloc(dev->dev, sizeof(*hdlcd), GFP_KERNEL);
-	if (!hdlcd)
-		return -ENOMEM;
+	hdlcd->clk = devm_clk_get(drm->dev, "pxlclk");
+	if (IS_ERR(hdlcd->clk))
+		return PTR_ERR(hdlcd->clk);
 
 #ifdef CONFIG_DEBUG_FS
 	atomic_set(&hdlcd->buffer_underrun_count, 0);
@@ -98,184 +48,138 @@ static int hdlcd_load(struct drm_device *dev, unsigned long flags)
 	atomic_set(&hdlcd->vsync_count, 0);
 	atomic_set(&hdlcd->dma_end_count, 0);
 #endif
-	platform_set_drvdata(pdev, dev);
-	dev->dev_private = hdlcd;
+
+	INIT_LIST_HEAD(&hdlcd->event_list);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	hdlcd->mmio = devm_ioremap_resource(&pdev->dev, res);
+	hdlcd->mmio = devm_ioremap_resource(drm->dev, res);
 	if (IS_ERR(hdlcd->mmio)) {
 		DRM_ERROR("failed to map control registers area\n");
 		ret = PTR_ERR(hdlcd->mmio);
-		goto fail;
+		hdlcd->mmio = NULL;
+		return ret;
 	}
 
 	version = hdlcd_read(hdlcd, HDLCD_REG_VERSION);
 	if ((version & HDLCD_PRODUCT_MASK) != HDLCD_PRODUCT_ID) {
 		DRM_ERROR("unknown product id: 0x%x\n", version);
-		ret = -EINVAL;
-		goto fail;
+		return -EINVAL;
 	}
 	DRM_INFO("found ARM HDLCD version r%dp%d\n",
 		(version & HDLCD_VERSION_MAJOR_MASK) >> 8,
 		version & HDLCD_VERSION_MINOR_MASK);
 
-	/* Make sure hardware is in a safe reset state */
-	hdlcd_write(hdlcd, HDLCD_REG_COMMAND, 0);
-	hdlcd_write(hdlcd, HDLCD_REG_INT_MASK, 0);
-	hdlcd_write(hdlcd, HDLCD_REG_INT_CLEAR,~0);
-	hdlcd_write(hdlcd, HDLCD_REG_INT_RAWSTAT, 0);
+	/* Get the optional framebuffer memory resource */
+	ret = of_reserved_mem_device_init(drm->dev);
+	if (ret && ret != -ENODEV)
+		return ret;
 
-	/* Get the optional coherent memory resource */
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
-	if (res) {
-		ret = dma_declare_coherent_memory(dev->dev, res->start, res->start,
-					resource_size(res), DMA_MEMORY_MAP);
-		if ((ret & DMA_MEMORY_MAP) == 0) {
-			DRM_ERROR("failed to declare coherent device memory\n");
-			ret = -ENXIO;
-			goto fail;
-		}
-	}
+	ret = dma_set_mask_and_coherent(drm->dev, DMA_BIT_MASK(32));
+	if (ret)
+		goto setup_fail;
 
-	hdlcd_setup_mode_config(dev);
-	ret = hdlcd_setup_crtc(dev);
+	ret = hdlcd_setup_crtc(drm);
 	if (ret < 0) {
 		DRM_ERROR("failed to create crtc\n");
-		goto fail;
+		goto setup_fail;
 	}
 
-	hdlcd->clk = clk_get(dev->dev, NULL);
-	if (IS_ERR(hdlcd->clk)) {
-		ret = PTR_ERR(hdlcd->clk);
-		goto fail;
-	}
+	pm_runtime_enable(drm->dev);
 
-	ret = component_bind_all(dev->dev, dev);
-	if (ret) {
-		DRM_ERROR("Failed to bind all components\n");
-		goto fail;
-	}
-
-	drm_kms_helper_poll_init(dev);
-	drm_mode_config_reset(dev);
-
-	ret = drm_irq_install(dev, platform_get_irq(pdev, 0));
+	pm_runtime_get_sync(drm->dev);
+	ret = drm_irq_install(drm, platform_get_irq(pdev, 0));
+	pm_runtime_put_sync(drm->dev);
 	if (ret < 0) {
 		DRM_ERROR("failed to install IRQ handler\n");
-		goto fail;
-	}
-
-	dev->irq_enabled = true;
-	dev->vblank_disable_allowed = true;
-
-	ret = drm_vblank_init(dev, dev->mode_config.num_crtc);
-	if (ret < 0) {
-		DRM_ERROR("failed to initialise vblank\n");
-		goto fail;
-	}
-	
-	init_completion(&hdlcd->frame_completion);
-
-	/* Try to pick the colour depth that Android user-side is hard-coded for */
-	preferred_bpp = 16;
-	node = of_find_compatible_node(NULL,NULL,"arm,mali-midgard");
-	if (node) {
-		of_node_put(node);
-		preferred_bpp = 32; /* If Mali present, assume 32bpp */
-	}
-
-	hdlcd->fbdev = hdlcd_drm_fbdev_init(dev, preferred_bpp,
-					dev->mode_config.num_crtc,
-					dev->mode_config.num_connector);
-
-	if (IS_ERR(hdlcd->fbdev)) {
-		DRM_ERROR("failed to initialise fbdev buffer\n");
-		ret = PTR_ERR(hdlcd->fbdev);
-		hdlcd->fbdev = NULL;
-		goto fail;
+		goto irq_fail;
 	}
 
 	return 0;
 
-fail:
-	hdlcd_unload(dev);
+irq_fail:
+	drm_crtc_cleanup(&hdlcd->crtc);
+setup_fail:
+	of_reserved_mem_device_release(drm->dev);
 
 	return ret;
 }
 
-static void hdlcd_fb_output_poll_changed(struct drm_device *dev)
+static void hdlcd_fb_output_poll_changed(struct drm_device *drm)
 {
-	struct hdlcd_drm_private *hdlcd = dev->dev_private;
-	if (hdlcd->fbdev) {
-		hdlcd_drm_fbdev_hotplug_event(hdlcd->fbdev);
-	}
+	struct hdlcd_drm_private *hdlcd = drm->dev_private;
+
+	if (hdlcd->fbdev)
+		drm_fbdev_cma_hotplug_event(hdlcd->fbdev);
+}
+
+static int hdlcd_atomic_commit(struct drm_device *dev,
+			       struct drm_atomic_state *state, bool async)
+{
+	return drm_atomic_helper_commit(dev, state, false);
 }
 
 static const struct drm_mode_config_funcs hdlcd_mode_config_funcs = {
-	.fb_create = hdlcd_fb_create,
+	.fb_create = drm_fb_cma_create,
 	.output_poll_changed = hdlcd_fb_output_poll_changed,
+	.atomic_check = drm_atomic_helper_check,
+	.atomic_commit = hdlcd_atomic_commit,
 };
 
-static void hdlcd_setup_mode_config(struct drm_device *dev)
+static void hdlcd_setup_mode_config(struct drm_device *drm)
 {
-	drm_mode_config_init(dev);
-	dev->mode_config.min_width = 0;
-	dev->mode_config.min_height = 0;
-	dev->mode_config.max_width = HDLCD_MAX_XRES;
-	dev->mode_config.max_height = HDLCD_MAX_YRES;
-	dev->mode_config.funcs = &hdlcd_mode_config_funcs;
+	drm_mode_config_init(drm);
+	drm->mode_config.min_width = 0;
+	drm->mode_config.min_height = 0;
+	drm->mode_config.max_width = HDLCD_MAX_XRES;
+	drm->mode_config.max_height = HDLCD_MAX_YRES;
+	drm->mode_config.funcs = &hdlcd_mode_config_funcs;
 }
 
-static void hdlcd_preclose(struct drm_device *dev, struct drm_file *file)
+static void hdlcd_lastclose(struct drm_device *drm)
 {
-}
+	struct hdlcd_drm_private *hdlcd = drm->dev_private;
 
-static void hdlcd_lastclose(struct drm_device *dev)
-{
-	struct hdlcd_drm_private *hdlcd = dev->dev_private;
-	hdlcd_drm_fbdev_restore_mode(hdlcd->fbdev);
+	drm_fbdev_cma_restore_mode(hdlcd->fbdev);
 }
 
 static irqreturn_t hdlcd_irq(int irq, void *arg)
 {
-	struct drm_device *dev = arg;
-	struct hdlcd_drm_private *hdlcd = dev->dev_private;
+	struct drm_device *drm = arg;
+	struct hdlcd_drm_private *hdlcd = drm->dev_private;
 	unsigned long irq_status;
 
 	irq_status = hdlcd_read(hdlcd, HDLCD_REG_INT_STATUS);
 
 #ifdef CONFIG_DEBUG_FS
-	if (irq_status & HDLCD_INTERRUPT_UNDERRUN) {
+	if (irq_status & HDLCD_INTERRUPT_UNDERRUN)
 		atomic_inc(&hdlcd->buffer_underrun_count);
-	}
-	if (irq_status & HDLCD_INTERRUPT_DMA_END) {
+
+	if (irq_status & HDLCD_INTERRUPT_DMA_END)
 		atomic_inc(&hdlcd->dma_end_count);
-	}
-	if (irq_status & HDLCD_INTERRUPT_BUS_ERROR) {
+
+	if (irq_status & HDLCD_INTERRUPT_BUS_ERROR)
 		atomic_inc(&hdlcd->bus_error_count);
-	}
-	if (irq_status & HDLCD_INTERRUPT_VSYNC) {
+
+	if (irq_status & HDLCD_INTERRUPT_VSYNC)
 		atomic_inc(&hdlcd->vsync_count);
-	}
+
 #endif
 	if (irq_status & HDLCD_INTERRUPT_VSYNC) {
-		struct drm_pending_vblank_event *event;
+		bool events_sent = false;
 		unsigned long flags;
+		struct drm_pending_vblank_event	*e, *t;
 
-		drm_handle_vblank(dev, 0);
+		drm_crtc_handle_vblank(&hdlcd->crtc);
 
-		spin_lock_irqsave(&dev->event_lock, flags);
-		if (hdlcd->event) {
-			event = hdlcd->event;
-			hdlcd->event = NULL;
-			drm_send_vblank_event(dev, 0, event);
-			drm_vblank_put(dev, 0);
+		spin_lock_irqsave(&drm->event_lock, flags);
+		list_for_each_entry_safe(e, t, &hdlcd->event_list, base.link) {
+			list_del(&e->base.link);
+			drm_crtc_send_vblank_event(&hdlcd->crtc, e);
+			events_sent = true;
 		}
-		spin_unlock_irqrestore(&dev->event_lock, flags);
-	}
-	if (irq_status & HDLCD_INTERRUPT_DMA_END) {
-		// send completion when reading the frame has finished
-		complete_all(&hdlcd->frame_completion);
+		if (events_sent)
+			drm_crtc_vblank_put(&hdlcd->crtc);
+		spin_unlock_irqrestore(&drm->event_lock, flags);
 	}
 
 	/* acknowledge interrupt(s) */
@@ -284,34 +188,31 @@ static irqreturn_t hdlcd_irq(int irq, void *arg)
 	return IRQ_HANDLED;
 }
 
-static void hdlcd_irq_preinstall(struct drm_device *dev)
+static void hdlcd_irq_preinstall(struct drm_device *drm)
 {
-	struct hdlcd_drm_private *hdlcd = dev->dev_private;
+	struct hdlcd_drm_private *hdlcd = drm->dev_private;
 	/* Ensure interrupts are disabled */
 	hdlcd_write(hdlcd, HDLCD_REG_INT_MASK, 0);
 	hdlcd_write(hdlcd, HDLCD_REG_INT_CLEAR, ~0);
 }
 
-static int hdlcd_irq_postinstall(struct drm_device *dev)
+static int hdlcd_irq_postinstall(struct drm_device *drm)
 {
-	struct hdlcd_drm_private *hdlcd = dev->dev_private;
+#ifdef CONFIG_DEBUG_FS
+	struct hdlcd_drm_private *hdlcd = drm->dev_private;
 	unsigned long irq_mask = hdlcd_read(hdlcd, HDLCD_REG_INT_MASK);
 
-#ifdef CONFIG_DEBUG_FS
 	/* enable debug interrupts */
 	irq_mask |= HDLCD_DEBUG_INT_MASK;
-#endif
 
-	/* enable DMA completion interrupts */
-	irq_mask |= HDLCD_INTERRUPT_DMA_END;
 	hdlcd_write(hdlcd, HDLCD_REG_INT_MASK, irq_mask);
-
+#endif
 	return 0;
 }
 
-static void hdlcd_irq_uninstall(struct drm_device *dev)
+static void hdlcd_irq_uninstall(struct drm_device *drm)
 {
-	struct hdlcd_drm_private *hdlcd = dev->dev_private;
+	struct hdlcd_drm_private *hdlcd = drm->dev_private;
 	/* disable all the interrupts that we might have enabled */
 	unsigned long irq_mask = hdlcd_read(hdlcd, HDLCD_REG_INT_MASK);
 
@@ -320,15 +221,23 @@ static void hdlcd_irq_uninstall(struct drm_device *dev)
 	irq_mask &= ~HDLCD_DEBUG_INT_MASK;
 #endif
 
-	/* disable vsync and dma interrupts */
-	irq_mask &= ~(HDLCD_INTERRUPT_VSYNC | HDLCD_INTERRUPT_DMA_END);
+	/* disable vsync interrupts */
+	irq_mask &= ~HDLCD_INTERRUPT_VSYNC;
 
 	hdlcd_write(hdlcd, HDLCD_REG_INT_MASK, irq_mask);
 }
 
-static int hdlcd_enable_vblank(struct drm_device *dev, unsigned int pipe)
+static u32 hdlcd_get_vblank_counter(struct drm_device *drm, int crtc)
 {
-	struct hdlcd_drm_private *hdlcd = dev->dev_private;
+	/* Newer kernels have the drm_vblank_no_hw_counter() helper
+	 * that does this, we have to implement it for the 4.3
+	 * backport */
+	return 0;
+}
+
+static int hdlcd_enable_vblank(struct drm_device *drm, int crtc)
+{
+	struct hdlcd_drm_private *hdlcd = drm->dev_private;
 	unsigned int mask = hdlcd_read(hdlcd, HDLCD_REG_INT_MASK);
 
 	hdlcd_write(hdlcd, HDLCD_REG_INT_MASK, mask | HDLCD_INTERRUPT_VSYNC);
@@ -336,9 +245,9 @@ static int hdlcd_enable_vblank(struct drm_device *dev, unsigned int pipe)
 	return 0;
 }
 
-static void hdlcd_disable_vblank(struct drm_device *dev, unsigned int pipe)
+static void hdlcd_disable_vblank(struct drm_device *drm, int crtc)
 {
-	struct hdlcd_drm_private *hdlcd = dev->dev_private;
+	struct hdlcd_drm_private *hdlcd = drm->dev_private;
 	unsigned int mask = hdlcd_read(hdlcd, HDLCD_REG_INT_MASK);
 
 	hdlcd_write(hdlcd, HDLCD_REG_INT_MASK, mask & ~HDLCD_INTERRUPT_VSYNC);
@@ -348,8 +257,8 @@ static void hdlcd_disable_vblank(struct drm_device *dev, unsigned int pipe)
 static int hdlcd_show_underrun_count(struct seq_file *m, void *arg)
 {
 	struct drm_info_node *node = (struct drm_info_node *)m->private;
-	struct drm_device *dev = node->minor->dev;
-	struct hdlcd_drm_private *hdlcd = dev->dev_private;
+	struct drm_device *drm = node->minor->dev;
+	struct hdlcd_drm_private *hdlcd = drm->dev_private;
 
 	seq_printf(m, "underrun : %d\n", atomic_read(&hdlcd->buffer_underrun_count));
 	seq_printf(m, "dma_end  : %d\n", atomic_read(&hdlcd->dma_end_count));
@@ -358,8 +267,22 @@ static int hdlcd_show_underrun_count(struct seq_file *m, void *arg)
 	return 0;
 }
 
+static int hdlcd_show_pxlclock(struct seq_file *m, void *arg)
+{
+	struct drm_info_node *node = (struct drm_info_node *)m->private;
+	struct drm_device *drm = node->minor->dev;
+	struct hdlcd_drm_private *hdlcd = drm->dev_private;
+	unsigned long clkrate = clk_get_rate(hdlcd->clk);
+	unsigned long mode_clock = hdlcd->crtc.mode.crtc_clock * 1000;
+
+	seq_printf(m, "hw  : %lu\n", clkrate);
+	seq_printf(m, "mode: %lu\n", mode_clock);
+	return 0;
+}
+
 static struct drm_info_list hdlcd_debugfs_list[] = {
 	{ "interrupt_count", hdlcd_show_underrun_count, 0 },
+	{ "clocks", hdlcd_show_pxlclock, 0 },
 };
 
 static int hdlcd_debugfs_init(struct drm_minor *minor)
@@ -385,101 +308,185 @@ static const struct file_operations fops = {
 #endif
 	.poll		= drm_poll,
 	.read		= drm_read,
-	.llseek		= no_llseek,
+	.llseek		= noop_llseek,
 	.mmap		= drm_gem_cma_mmap,
 };
 
 static struct drm_driver hdlcd_driver = {
-	.driver_features	= DRIVER_HAVE_IRQ | DRIVER_GEM |
-					DRIVER_MODESET | DRIVER_PRIME,
-	.load			= hdlcd_load,
-	.unload			= hdlcd_unload,
-	.preclose		= hdlcd_preclose,
-	.lastclose		= hdlcd_lastclose,
-	.irq_handler		= hdlcd_irq,
-	.irq_preinstall		= hdlcd_irq_preinstall,
-	.irq_postinstall	= hdlcd_irq_postinstall,
-	.irq_uninstall		= hdlcd_irq_uninstall,
-	.set_busid		= drm_platform_set_busid,
-	.get_vblank_counter	= drm_vblank_no_hw_counter,
-	.enable_vblank		= hdlcd_enable_vblank,
-	.disable_vblank		= hdlcd_disable_vblank,
-	.gem_free_object	= drm_gem_cma_free_object,
-	.gem_vm_ops		= &drm_gem_cma_vm_ops,
-	.dumb_create		= drm_gem_cma_dumb_create,
-	.dumb_map_offset	= drm_gem_cma_dumb_map_offset,
-	.dumb_destroy		= drm_gem_dumb_destroy,
-	.prime_handle_to_fd	= drm_gem_prime_handle_to_fd,
-	.prime_fd_to_handle	= drm_gem_prime_fd_to_handle,
-	.gem_prime_export	= drm_gem_prime_export,
-	.gem_prime_import	= drm_gem_prime_import,
-	.gem_prime_get_sg_table	= drm_gem_cma_prime_get_sg_table,
-	.gem_prime_vmap		= drm_gem_cma_prime_vmap,
-	.gem_prime_vunmap	= drm_gem_cma_prime_vunmap,
-	.gem_prime_mmap		= drm_gem_cma_prime_mmap,
+	.driver_features = DRIVER_HAVE_IRQ | DRIVER_GEM |
+			   DRIVER_MODESET | DRIVER_PRIME |
+			   DRIVER_ATOMIC,
+	.lastclose = hdlcd_lastclose,
+	.irq_handler = hdlcd_irq,
+	.irq_preinstall = hdlcd_irq_preinstall,
+	.irq_postinstall = hdlcd_irq_postinstall,
+	.irq_uninstall = hdlcd_irq_uninstall,
+	.get_vblank_counter = hdlcd_get_vblank_counter,
+	.enable_vblank = hdlcd_enable_vblank,
+	.disable_vblank = hdlcd_disable_vblank,
+	.gem_free_object = drm_gem_cma_free_object,
+	.gem_vm_ops = &drm_gem_cma_vm_ops,
+	.dumb_create = drm_gem_cma_dumb_create,
+	.dumb_map_offset = drm_gem_cma_dumb_map_offset,
+	.dumb_destroy = drm_gem_dumb_destroy,
+	.prime_handle_to_fd = drm_gem_prime_handle_to_fd,
+	.prime_fd_to_handle = drm_gem_prime_fd_to_handle,
+	.gem_prime_export = drm_gem_prime_export,
+	.gem_prime_import = drm_gem_prime_import,
+	.gem_prime_get_sg_table = drm_gem_cma_prime_get_sg_table,
+	.gem_prime_import_sg_table = drm_gem_cma_prime_import_sg_table,
+	.gem_prime_vmap = drm_gem_cma_prime_vmap,
+	.gem_prime_vunmap = drm_gem_cma_prime_vunmap,
+	.gem_prime_mmap = drm_gem_cma_prime_mmap,
 #ifdef CONFIG_DEBUG_FS
-	.debugfs_init		= hdlcd_debugfs_init,
-	.debugfs_cleanup	= hdlcd_debugfs_cleanup,
+	.debugfs_init = hdlcd_debugfs_init,
+	.debugfs_cleanup = hdlcd_debugfs_cleanup,
 #endif
-	.fops			= &fops,
-	.name			= "hdlcd",
-	.desc			= "ARM HDLCD Controller DRM",
-	.date			= "20130505",
-	.major			= 1,
-	.minor			= 0,
+	.fops = &fops,
+	.name = "hdlcd",
+	.desc = "ARM HDLCD Controller DRM",
+	.date = "20151021",
+	.major = 1,
+	.minor = 0,
 };
 
-static int hdlcd_add_components(struct device *dev, struct master *master)
+static int hdlcd_drm_bind(struct device *dev)
 {
-	struct device_node *port, *ep = NULL;
-	int ret = -ENXIO;
+	struct drm_device *drm;
+	struct hdlcd_drm_private *hdlcd;
+	int ret;
 
-	if (!dev->of_node)
-		return -ENODEV;
+	hdlcd = devm_kzalloc(dev, sizeof(*hdlcd), GFP_KERNEL);
+	if (!hdlcd)
+		return -ENOMEM;
 
-	do {
-		ep = of_graph_get_next_endpoint(dev->of_node, ep);
-		if (!ep)
-			break;
+	drm = drm_dev_alloc(&hdlcd_driver, dev);
+	if (!drm)
+		return -ENOMEM;
 
-		if (!of_device_is_available(ep)) {
-			of_node_put(ep);
-			continue;
-		}
+	drm->dev_private = hdlcd;
+	hdlcd_setup_mode_config(drm);
+	ret = hdlcd_load(drm, 0);
+	if (ret)
+		goto err_free;
 
-		port = of_graph_get_remote_port_parent(ep);
-		of_node_put(ep);
-		if (!port || !of_device_is_available(port)) {
-			of_node_put(port);
-			continue;
-		}
+	ret = drm_dev_register(drm, 0);
+	if (ret)
+		goto err_unload;
 
-		ret = component_master_add_child(master, compare_dev, port);
-		of_node_put(port);
-	} while (1);
+	dev_set_drvdata(dev, drm);
+
+	ret = component_bind_all(dev, drm);
+	if (ret) {
+		DRM_ERROR("Failed to bind all components\n");
+		goto err_unregister;
+	}
+
+	ret = drm_vblank_init(drm, drm->mode_config.num_crtc);
+	if (ret < 0) {
+		DRM_ERROR("failed to initialise vblank\n");
+		goto err_vblank;
+	}
+	drm->vblank_disable_allowed = true;
+
+	drm_mode_config_reset(drm);
+	drm_kms_helper_poll_init(drm);
+
+	hdlcd->fbdev = drm_fbdev_cma_init(drm, 32, drm->mode_config.num_crtc,
+					  drm->mode_config.num_connector);
+
+	if (IS_ERR(hdlcd->fbdev)) {
+		ret = PTR_ERR(hdlcd->fbdev);
+		hdlcd->fbdev = NULL;
+		goto err_fbdev;
+	}
+
+	return 0;
+
+err_fbdev:
+	drm_kms_helper_poll_fini(drm);
+	drm_mode_config_cleanup(drm);
+	drm_vblank_cleanup(drm);
+err_vblank:
+	component_unbind_all(dev, drm);
+err_unregister:
+	drm_dev_unregister(drm);
+err_unload:
+	pm_runtime_get_sync(drm->dev);
+	drm_irq_uninstall(drm);
+	pm_runtime_put_sync(drm->dev);
+	pm_runtime_disable(drm->dev);
+	of_reserved_mem_device_release(drm->dev);
+err_free:
+	drm_dev_unref(drm);
 
 	return ret;
 }
 
-static int hdlcd_drm_bind(struct device *dev)
-{
-	return drm_platform_init(&hdlcd_driver, to_platform_device(dev));
-}
-
 static void hdlcd_drm_unbind(struct device *dev)
 {
-	drm_put_dev(dev_get_drvdata(dev));
+	struct drm_device *drm = dev_get_drvdata(dev);
+	struct hdlcd_drm_private *hdlcd = drm->dev_private;
+
+	if (hdlcd->fbdev) {
+		drm_fbdev_cma_fini(hdlcd->fbdev);
+		hdlcd->fbdev = NULL;
+	}
+	drm_kms_helper_poll_fini(drm);
+	component_unbind_all(dev, drm);
+	drm_vblank_cleanup(drm);
+	pm_runtime_get_sync(drm->dev);
+	drm_irq_uninstall(drm);
+	pm_runtime_put_sync(drm->dev);
+	pm_runtime_disable(drm->dev);
+	of_reserved_mem_device_release(drm->dev);
+	drm_mode_config_cleanup(drm);
+	drm_dev_unregister(drm);
+	drm_dev_unref(drm);
+	drm->dev_private = NULL;
+	dev_set_drvdata(dev, NULL);
 }
 
 static const struct component_master_ops hdlcd_master_ops = {
-	.add_components	= hdlcd_add_components,
 	.bind		= hdlcd_drm_bind,
 	.unbind		= hdlcd_drm_unbind,
 };
 
+static int compare_dev(struct device *dev, void *data)
+{
+	return dev->of_node == data;
+}
+
 static int hdlcd_probe(struct platform_device *pdev)
 {
-	return component_master_add(&pdev->dev, &hdlcd_master_ops);
+	struct device_node *port, *ep;
+	struct component_match *match = NULL;
+
+	if (!pdev->dev.of_node)
+		return -ENODEV;
+
+	/* there is only one output port inside each device, find it */
+	ep = of_graph_get_next_endpoint(pdev->dev.of_node, NULL);
+	if (!ep)
+		return -ENODEV;
+
+	if (!of_device_is_available(ep)) {
+		of_node_put(ep);
+		return -ENODEV;
+	}
+
+	/* add the remote encoder port as component */
+	port = of_graph_get_remote_port_parent(ep);
+	of_node_put(ep);
+	if (!port || !of_device_is_available(port)) {
+		of_node_put(port);
+		return -EAGAIN;
+	}
+
+	component_match_add(&pdev->dev, &match, compare_dev, port);
+
+	return component_master_add_with_match(&pdev->dev, &hdlcd_master_ops,
+					       match);
 }
 
 static int hdlcd_remove(struct platform_device *pdev)
@@ -488,45 +495,55 @@ static int hdlcd_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct of_device_id  hdlcd_of_match[] = {
+static const struct of_device_id  hdlcd_of_match[] = {
 	{ .compatible	= "arm,hdlcd" },
 	{},
 };
 MODULE_DEVICE_TABLE(of, hdlcd_of_match);
 
+static int __maybe_unused hdlcd_pm_suspend(struct device *dev)
+{
+	struct drm_device *drm = dev_get_drvdata(dev);
+	struct drm_crtc *crtc;
+
+	if (pm_runtime_suspended(dev))
+		return 0;
+
+	drm_modeset_lock_all(drm);
+	list_for_each_entry(crtc, &drm->mode_config.crtc_list, head)
+		hdlcd_crtc_suspend(crtc);
+	drm_modeset_unlock_all(drm);
+	return 0;
+}
+
+static int __maybe_unused hdlcd_pm_resume(struct device *dev)
+{
+	struct drm_device *drm = dev_get_drvdata(dev);
+	struct drm_crtc *crtc;
+
+	if (!pm_runtime_suspended(dev))
+		return 0;
+
+	drm_modeset_lock_all(drm);
+	list_for_each_entry(crtc, &drm->mode_config.crtc_list, head)
+		hdlcd_crtc_resume(crtc);
+	drm_modeset_unlock_all(drm);
+	return 0;
+}
+
+static SIMPLE_DEV_PM_OPS(hdlcd_pm_ops, hdlcd_pm_suspend, hdlcd_pm_resume);
+
 static struct platform_driver hdlcd_platform_driver = {
 	.probe		= hdlcd_probe,
 	.remove		= hdlcd_remove,
 	.driver	= {
-		.name		= "hdlcd",
-		.owner		= THIS_MODULE,
+		.name = "hdlcd",
+		.pm = &hdlcd_pm_ops,
 		.of_match_table	= hdlcd_of_match,
 	},
 };
 
-static int __init hdlcd_init(void)
-{
-	int err = platform_driver_register(&hdlcd_platform_driver);
-
-#ifdef HDLCD_COUNT_BUFFERUNDERRUNS
-	if (!err)
-		hdlcd_underrun_init();
-#endif
-
-	return err;
-}
-
-static void __exit hdlcd_exit(void)
-{
-#ifdef HDLCD_COUNT_BUFFERUNDERRUNS
-	hdlcd_underrun_close();
-#endif
-	platform_driver_unregister(&hdlcd_platform_driver);
-}
-
-/* need late_initcall() so we load after i2c driver */
-late_initcall(hdlcd_init);
-module_exit(hdlcd_exit);
+module_platform_driver(hdlcd_platform_driver);
 
 MODULE_AUTHOR("Liviu Dudau");
 MODULE_DESCRIPTION("ARM HDLCD DRM driver");
