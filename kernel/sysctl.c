@@ -272,6 +272,8 @@ static int max_wakeup_granularity_ns = NSEC_PER_SEC;	/* 1 second */
 #ifdef CONFIG_SMP
 static int min_sched_tunable_scaling = SCHED_TUNABLESCALING_NONE;
 static int max_sched_tunable_scaling = SCHED_TUNABLESCALING_END-1;
+static int min_sched_pelt_decay_clamp = 1;	/* 1 PELT ms */
+static int max_sched_pelt_decay_clamp = 345;	/* LOAD_AVG_MAX_N PELT ms */
 #endif /* CONFIG_SMP */
 #endif /* CONFIG_SCHED_DEBUG */
 
@@ -346,6 +348,15 @@ static struct ctl_table kern_table[] = {
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname	= "sched_pelt_decay_clamp_ms",
+		.data		= &sysctl_sched_pelt_decay_clamp_ms,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= sched_proc_update_handler,
+		.extra1		= &min_sched_pelt_decay_clamp,
+		.extra2		= &max_sched_pelt_decay_clamp,
 	},
 #ifdef CONFIG_SCHEDSTATS
 	{

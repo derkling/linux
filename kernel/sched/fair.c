@@ -97,6 +97,13 @@ unsigned int normalized_sysctl_sched_wakeup_granularity	= 1000000UL;
 
 const_debug unsigned int sysctl_sched_migration_cost	= 500000UL;
 
+/*
+ * Per-entity load-tracking (PELT) decay clamping.
+ */
+
+unsigned int sysctl_sched_pelt_decay_clamp_ms 		= 345;
+u64 sched_pelt_decay_clamp				= 345 << 10;
+
 #ifdef CONFIG_SMP
 /*
  * For asym packing, by default the lower numbered cpu has higher priority.
@@ -637,6 +644,8 @@ int sched_proc_update_handler(struct ctl_table *table, int write,
 
 	sched_nr_latency = DIV_ROUND_UP(sysctl_sched_latency,
 					sysctl_sched_min_granularity);
+
+	sched_pelt_decay_clamp = sysctl_sched_pelt_decay_clamp_ms << 10;
 
 #define WRT_SYSCTL(name) \
 	(normalized_sysctl_##name = sysctl_##name / (factor))
