@@ -10,16 +10,18 @@
  */
 
 #include <drm/drmP.h>
+#include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_fb_helper.h>
-#include "hdlcd_fb_helper.h"
+#include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_gem_cma_helper.h>
 #include <drm/drm_of.h>
 #include <drm/drm_plane_helper.h>
 #include <linux/clk.h>
 #include <linux/of_graph.h>
 #include <linux/platform_data/simplefb.h>
+#include <video/videomode.h>
 
 #include "hdlcd_drv.h"
 #include "hdlcd_regs.h"
@@ -30,90 +32,173 @@
  * emulated by the software that does the actual rendering.
  *
  */
-static void hdlcd_crtc_destroy(struct drm_crtc *crtc)
+
+static const struct drm_crtc_funcs hdlcd_crtc_funcs = {
+	.destroy = drm_crtc_cleanup,
+	.set_config = drm_atomic_helper_set_config,
+	.page_flip = drm_atomic_helper_page_flip,
+	.reset = drm_atomic_helper_crtc_reset,
+	.atomic_duplicate_state = drm_atomic_helper_crtc_duplicate_state,
+	.atomic_destroy_state = drm_atomic_helper_crtc_destroy_state,
+};
+
+static struct simplefb_format supported_formats[] = SIMPLEFB_FORMATS;
+
+/*
+ * Setup the HDLCD registers for decoding the pixels out of the framebuffer
+ */
+static int hdlcd_set_pxl_fmt(struct drm_crtc *crtc)
+{
+	unsigned int btpp;
+	struct hdlcd_drm_private *hdlcd = crtc_to_hdlcd_priv(crtc);
+	uint32_t pixel_format;
+	struct simplefb_format *format = NULL;
+	int i;
+
+	pixel_format = crtc->primary->state->fb->pixel_format;
+
+	for (i = 0; i < ARRAY_SIZE(supported_formats); i++) {
+		if (supported_formats[i].fourcc == pixel_format)
+			format = &supported_formats[i];
+	}
+
+	if (WARN_ON(!format))
+		return 0;
+
+	/* HDLCD uses 'bytes per pixel', zero means 1 byte */
+	btpp = (format->bits_per_pixel + 7) / 8;
+	hdlcd_write(hdlcd, HDLCD_REG_PIXEL_FORMAT, (btpp - 1) << 3);
+
+	/*
+	 * The format of the HDLCD_REG_<color>_SELECT register is:
+	 *   - bits[23:16] - default value for that color component
+	 *   - bits[11:8]  - number of bits to extract for each color component
+	 *   - bits[4:0]   - index of the lowest bit to extract
+	 *
+	 * The default color value is used when bits[11:8] are zero, when the
+	 * pixel is outside the visible frame area or when there is a
+	 * buffer underrun.
+	 */
+	hdlcd_write(hdlcd, HDLCD_REG_RED_SELECT, format->red.offset |
+#ifdef CONFIG_DRM_HDLCD_SHOW_UNDERRUN
+		    0x00ff0000 |	/* show underruns in red */
+#endif
+		    ((format->red.length & 0xf) << 8));
+	hdlcd_write(hdlcd, HDLCD_REG_GREEN_SELECT, format->green.offset |
+		    ((format->green.length & 0xf) << 8));
+	hdlcd_write(hdlcd, HDLCD_REG_BLUE_SELECT, format->blue.offset |
+		    ((format->blue.length & 0xf) << 8));
+
+	return 0;
+}
+
+static void hdlcd_crtc_mode_set_nofb(struct drm_crtc *crtc)
+{
+	struct hdlcd_drm_private *hdlcd = crtc_to_hdlcd_priv(crtc);
+	struct drm_display_mode *m = &crtc->state->adjusted_mode;
+	struct videomode vm;
+	unsigned int polarities, line_length, err;
+
+	vm.vfront_porch = m->crtc_vsync_start - m->crtc_vdisplay;
+	vm.vback_porch = m->crtc_vtotal - m->crtc_vsync_end;
+	vm.vsync_len = m->crtc_vsync_end - m->crtc_vsync_start;
+	vm.hfront_porch = m->crtc_hsync_start - m->crtc_hdisplay;
+	vm.hback_porch = m->crtc_htotal - m->crtc_hsync_end;
+	vm.hsync_len = m->crtc_hsync_end - m->crtc_hsync_start;
+
+	polarities = HDLCD_POLARITY_DATAEN | HDLCD_POLARITY_DATA;
+
+	if (m->flags & DRM_MODE_FLAG_PHSYNC)
+		polarities |= HDLCD_POLARITY_HSYNC;
+	if (m->flags & DRM_MODE_FLAG_PVSYNC)
+		polarities |= HDLCD_POLARITY_VSYNC;
+
+	line_length = crtc->primary->state->fb->pitches[0];
+
+	/* Allow max number of outstanding requests and largest burst size */
+	hdlcd_write(hdlcd, HDLCD_REG_BUS_OPTIONS,
+		    HDLCD_BUS_MAX_OUTSTAND | HDLCD_BUS_BURST_16);
+
+	hdlcd_write(hdlcd, HDLCD_REG_FB_LINE_LENGTH, line_length);
+	hdlcd_write(hdlcd, HDLCD_REG_FB_LINE_PITCH, line_length);
+	hdlcd_write(hdlcd, HDLCD_REG_FB_LINE_COUNT, m->crtc_vdisplay - 1);
+	hdlcd_write(hdlcd, HDLCD_REG_V_DATA, m->crtc_vdisplay - 1);
+	hdlcd_write(hdlcd, HDLCD_REG_V_BACK_PORCH, vm.vback_porch - 1);
+	hdlcd_write(hdlcd, HDLCD_REG_V_FRONT_PORCH, vm.vfront_porch - 1);
+	hdlcd_write(hdlcd, HDLCD_REG_V_SYNC, vm.vsync_len - 1);
+	hdlcd_write(hdlcd, HDLCD_REG_H_BACK_PORCH, vm.hback_porch - 1);
+	hdlcd_write(hdlcd, HDLCD_REG_H_FRONT_PORCH, vm.hfront_porch - 1);
+	hdlcd_write(hdlcd, HDLCD_REG_H_SYNC, vm.hsync_len - 1);
+	hdlcd_write(hdlcd, HDLCD_REG_H_DATA, m->crtc_hdisplay - 1);
+	hdlcd_write(hdlcd, HDLCD_REG_POLARITIES, polarities);
+
+	err = hdlcd_set_pxl_fmt(crtc);
+	if (err)
+		return;
+
+	clk_set_rate(hdlcd->clk, m->crtc_clock * 1000);
+}
+
+static void hdlcd_crtc_enable(struct drm_crtc *crtc)
 {
 	struct hdlcd_drm_private *hdlcd = crtc_to_hdlcd_priv(crtc);
 
-	of_node_put(hdlcd->crtc.port);
-	drm_crtc_cleanup(crtc);
+	clk_prepare_enable(hdlcd->clk);
+	hdlcd_write(hdlcd, HDLCD_REG_COMMAND, 1);
+	drm_crtc_vblank_on(crtc);
 }
 
-void hdlcd_set_scanout(struct hdlcd_drm_private *hdlcd, bool wait)
-{
-	struct drm_framebuffer *fb = hdlcd->crtc.primary->fb;
-	struct drm_gem_cma_object *gem;
-	unsigned int depth, bpp;
-	dma_addr_t scanout_start;
-
-	drm_fb_get_bpp_depth(fb->pixel_format, &depth, &bpp);
-	gem = hdlcd_fb_get_gem_obj(fb, 0);
-
-	scanout_start = gem->paddr + fb->offsets[0] +
-		(hdlcd->crtc.y * fb->pitches[0]) + (hdlcd->crtc.x * bpp/8);
-
-	hdlcd_write(hdlcd, HDLCD_REG_FB_BASE, scanout_start);
-
-	if (wait && hdlcd->dpms == DRM_MODE_DPMS_ON) {
-		drm_vblank_get(fb->dev, 0);
-		/* Clear any interrupt that may be from before we changed scanout */
-		hdlcd_write(hdlcd, HDLCD_REG_INT_CLEAR, HDLCD_INTERRUPT_DMA_END);
-		/* Wait for next interrupt so we know scanout change is live */
-		reinit_completion(&hdlcd->frame_completion);
-		wait_for_completion_interruptible(&hdlcd->frame_completion);
-
-		drm_vblank_put(fb->dev, 0);
-	}
-}
-
-static int hdlcd_crtc_page_flip(struct drm_crtc *crtc,
-			struct drm_framebuffer *fb,
-			struct drm_pending_vblank_event *event,
-			uint32_t flags)
+static void hdlcd_crtc_disable(struct drm_crtc *crtc)
 {
 	struct hdlcd_drm_private *hdlcd = crtc_to_hdlcd_priv(crtc);
 
-	if (hdlcd->dpms == DRM_MODE_DPMS_ON) {
-		/* don't schedule any page flipping if one is in progress */
-		if (hdlcd->event)
-			return -EBUSY;
+	if (!crtc->primary->fb)
+		return;
 
-		hdlcd->event = event;
-		drm_vblank_get(crtc->dev, 0);
-	}
+	clk_disable_unprepare(hdlcd->clk);
+	hdlcd_write(hdlcd, HDLCD_REG_COMMAND, 0);
+	drm_crtc_vblank_off(crtc);
+}
 
-	crtc->primary->fb = fb;
+static int hdlcd_crtc_atomic_check(struct drm_crtc *crtc,
+				   struct drm_crtc_state *state)
+{
+	struct hdlcd_drm_private *hdlcd = crtc_to_hdlcd_priv(crtc);
+	struct drm_display_mode *mode = &state->adjusted_mode;
+	long rate, clk_rate = mode->clock * 1000;
 
-	if (hdlcd->dpms == DRM_MODE_DPMS_ON) {
-		hdlcd_set_scanout(hdlcd, true);
-	} else {
-		unsigned long flags;
-
-		/* not active, update registers immediately */
-		hdlcd_set_scanout(hdlcd, false);
-		spin_lock_irqsave(&crtc->dev->event_lock, flags);
-		if (event)
-			drm_send_vblank_event(crtc->dev, 0, event);
-		spin_unlock_irqrestore(&crtc->dev->event_lock, flags);
+	rate = clk_round_rate(hdlcd->clk, clk_rate);
+	if (rate != clk_rate) {
+		/* clock required by mode not supported by hardware */
+		return -EINVAL;
 	}
 
 	return 0;
 }
 
-static const struct drm_crtc_funcs hdlcd_crtc_funcs = {
-	.destroy	= hdlcd_crtc_destroy,
-	.set_config	= drm_crtc_helper_set_config,
-	.page_flip	= hdlcd_crtc_page_flip,
-};
-
-static void hdlcd_crtc_dpms(struct drm_crtc *crtc, int mode)
+static void hdlcd_crtc_atomic_begin(struct drm_crtc *crtc,
+				    struct drm_crtc_state *state)
 {
 	struct hdlcd_drm_private *hdlcd = crtc_to_hdlcd_priv(crtc);
+	unsigned long flags;
 
-	hdlcd->dpms = mode;
-	if (mode == DRM_MODE_DPMS_ON)
-		hdlcd_write(hdlcd, HDLCD_REG_COMMAND, 1);
-	else
-		hdlcd_write(hdlcd, HDLCD_REG_COMMAND, 0);
+	if (crtc->state->event) {
+		struct drm_pending_vblank_event *event = crtc->state->event;
+
+		crtc->state->event = NULL;
+		event->pipe = drm_crtc_index(crtc);
+
+		WARN_ON(drm_crtc_vblank_get(crtc) != 0);
+
+		spin_lock_irqsave(&crtc->dev->event_lock, flags);
+		list_add_tail(&event->base.link, &hdlcd->event_list);
+		spin_unlock_irqrestore(&crtc->dev->event_lock, flags);
+	}
+}
+
+static void hdlcd_crtc_atomic_flush(struct drm_crtc *crtc,
+				    struct drm_crtc_state *state)
+{
 }
 
 static bool hdlcd_crtc_mode_fixup(struct drm_crtc *crtc,
@@ -123,179 +208,120 @@ static bool hdlcd_crtc_mode_fixup(struct drm_crtc *crtc,
 	return true;
 }
 
-static void hdlcd_crtc_prepare(struct drm_crtc *crtc)
-{
-	hdlcd_crtc_dpms(crtc, DRM_MODE_DPMS_OFF);
-}
-
-static void hdlcd_crtc_commit(struct drm_crtc *crtc)
-{
-	drm_vblank_post_modeset(crtc->dev, 0);
-	hdlcd_crtc_dpms(crtc, DRM_MODE_DPMS_ON);
-}
-
-static struct simplefb_format supported_formats[] = SIMPLEFB_FORMATS;
-
-static int hdlcd_crtc_colour_set(struct hdlcd_drm_private *hdlcd,
-				uint32_t pixel_format)
-{
-	unsigned int depth, bpp;
-	unsigned int default_color = 0x00000000;
-	struct simplefb_format *format = NULL;
-	int i;
-
-#ifdef HDLCD_SHOW_UNDERRUN
-	default_color = 0x00ff0000;	/* show underruns in red */
-#endif
-
-	/* Calculate each colour's number of bits */
-	drm_fb_get_bpp_depth(pixel_format, &depth, &bpp);
-
-	for (i = 0; i < ARRAY_SIZE(supported_formats); i++) {
-		if (supported_formats[i].fourcc == pixel_format)
-			format = &supported_formats[i];
-	}
-
-	if (!format) {
-		DRM_ERROR("Format not supported: 0x%x\n", pixel_format);
-		return -EINVAL;
-	}
-
-	/* HDLCD uses 'bytes per pixel' */
-	bpp = (bpp + 7) / 8;
-	hdlcd_write(hdlcd, HDLCD_REG_PIXEL_FORMAT, (bpp - 1) << 3);
-
-	/*
-	 * The format of the HDLCD_REG_<color>_SELECT register is:
-	 *   - bits[23:16] - default value for that color component
-	 *   - bits[11:8]  - number of bits to extract for each color component
-	 *   - bits[4:0]   - index of the lowest bit to extract
-	 *
-	 * The default color value is used when bits[11:8] read zero, when the
-	 * pixel is outside the visible frame area or when there is a
-	 * buffer underrun.
-	 */
-	if(!config_enabled(CONFIG_ARM)) {
-		hdlcd_write(hdlcd, HDLCD_REG_RED_SELECT, default_color |
-			format->red.offset | (format->red.length & 0xf) << 8);
-		hdlcd_write(hdlcd, HDLCD_REG_GREEN_SELECT, default_color |
-			format->green.offset | (format->green.length & 0xf) << 8);
-		hdlcd_write(hdlcd, HDLCD_REG_BLUE_SELECT, default_color |
-			format->blue.offset | (format->blue.length & 0xf) << 8);
-	} else {
-		/*
-		 * This is a hack to swap read and blue when building for
-		 * 32-bit ARM, because Versatile Express motherboard seems
-		 * to be wired up differently.
-		 */
-		hdlcd_write(hdlcd, HDLCD_REG_BLUE_SELECT, default_color |
-			format->red.offset | (format->red.length & 0xf) << 8);
-		hdlcd_write(hdlcd, HDLCD_REG_GREEN_SELECT, default_color |
-			format->green.offset | (format->green.length & 0xf) << 8);
-		hdlcd_write(hdlcd, HDLCD_REG_RED_SELECT, default_color |
-			format->blue.offset | (format->blue.length & 0xf) << 8);
-	}
-	return 0;
-}
-
-static int hdlcd_crtc_mode_set_base(struct drm_crtc *crtc, int x, int y,
-	struct drm_framebuffer *old_fb)
-{
-	struct hdlcd_drm_private *hdlcd = crtc_to_hdlcd_priv(crtc);
-	hdlcd_set_scanout(hdlcd, true);
-	return 0;
-}
-
-
-static int hdlcd_crtc_mode_set(struct drm_crtc *crtc,
-			struct drm_display_mode *mode,
-			struct drm_display_mode *adjusted_mode,
-			int x, int y, struct drm_framebuffer *oldfb)
-{
-	struct hdlcd_drm_private *hdlcd = crtc_to_hdlcd_priv(crtc);
-	unsigned int depth, bpp, polarities, line_length, err;
-
-	drm_vblank_pre_modeset(crtc->dev, 0);
-
-	polarities = HDLCD_POLARITY_DATAEN | HDLCD_POLARITY_DATA;
-
-	if (adjusted_mode->flags & DRM_MODE_FLAG_PHSYNC)
-		polarities |= HDLCD_POLARITY_HSYNC;
-	if (adjusted_mode->flags & DRM_MODE_FLAG_PVSYNC)
-		polarities |= HDLCD_POLARITY_VSYNC;
-
-	drm_fb_get_bpp_depth(crtc->primary->fb->pixel_format, &depth, &bpp);
-	/* switch to the more useful 'bytes per pixel' HDLCD needs */
-	bpp = (bpp + 7) / 8;
-	line_length = crtc->primary->fb->width * bpp;
-
-	/* Allow max number of outstanding requests and largest burst size */
-	hdlcd_write(hdlcd, HDLCD_REG_BUS_OPTIONS,
-		    HDLCD_BUS_MAX_OUTSTAND | HDLCD_BUS_BURST_16);
-
-	hdlcd_write(hdlcd, HDLCD_REG_FB_LINE_LENGTH, line_length);
-	hdlcd_write(hdlcd, HDLCD_REG_FB_LINE_COUNT,
-				crtc->primary->fb->height - 1);
-	hdlcd_write(hdlcd, HDLCD_REG_FB_LINE_PITCH, line_length);
-	hdlcd_write(hdlcd, HDLCD_REG_V_BACK_PORCH,
-				mode->vtotal - mode->vsync_end - 1);
-	hdlcd_write(hdlcd, HDLCD_REG_V_FRONT_PORCH,
-				mode->vsync_start - mode->vdisplay - 1);
-	hdlcd_write(hdlcd, HDLCD_REG_V_SYNC,
-				mode->vsync_end - mode->vsync_start - 1);
-	hdlcd_write(hdlcd, HDLCD_REG_V_DATA, mode->vdisplay - 1);
-	hdlcd_write(hdlcd, HDLCD_REG_H_BACK_PORCH,
-				mode->htotal - mode->hsync_end - 1);
-	hdlcd_write(hdlcd, HDLCD_REG_H_FRONT_PORCH,
-				mode->hsync_start - mode->hdisplay - 1);
-	hdlcd_write(hdlcd, HDLCD_REG_H_SYNC,
-				mode->hsync_end - mode->hsync_start - 1);
-	hdlcd_write(hdlcd, HDLCD_REG_H_DATA, mode->hdisplay - 1);
-	hdlcd_write(hdlcd, HDLCD_REG_POLARITIES, polarities);
-
-	err = hdlcd_crtc_colour_set(hdlcd, crtc->primary->fb->pixel_format);
-	if (err)
-		return err;
-
-	clk_prepare(hdlcd->clk);
-	clk_set_rate(hdlcd->clk, mode->crtc_clock * 1000);
-	clk_enable(hdlcd->clk);
-
-	hdlcd_set_scanout(hdlcd, false);
-
-	return 0;
-}
-
-static void hdlcd_crtc_load_lut(struct drm_crtc *crtc)
-{
-}
-
 static const struct drm_crtc_helper_funcs hdlcd_crtc_helper_funcs = {
-	.dpms		= hdlcd_crtc_dpms,
 	.mode_fixup	= hdlcd_crtc_mode_fixup,
-	.prepare	= hdlcd_crtc_prepare,
-	.commit		= hdlcd_crtc_commit,
-	.mode_set	= hdlcd_crtc_mode_set,
-	.mode_set_base	= hdlcd_crtc_mode_set_base,
-	.load_lut	= hdlcd_crtc_load_lut,
+	.mode_set	= drm_helper_crtc_mode_set,
+	.mode_set_base	= drm_helper_crtc_mode_set_base,
+	.mode_set_nofb	= hdlcd_crtc_mode_set_nofb,
+	.enable		= hdlcd_crtc_enable,
+	.disable	= hdlcd_crtc_disable,
+	.prepare	= hdlcd_crtc_disable,
+	.commit		= hdlcd_crtc_enable,
+	.atomic_check	= hdlcd_crtc_atomic_check,
+	.atomic_begin	= hdlcd_crtc_atomic_begin,
+	.atomic_flush	= hdlcd_crtc_atomic_flush,
 };
 
-int hdlcd_setup_crtc(struct drm_device *dev)
+static int hdlcd_plane_atomic_check(struct drm_plane *plane,
+				    struct drm_plane_state *state)
 {
-	struct hdlcd_drm_private *hdlcd = dev->dev_private;
+	return 0;
+}
+
+static void hdlcd_plane_atomic_update(struct drm_plane *plane,
+				      struct drm_plane_state *state)
+{
+	struct hdlcd_drm_private *hdlcd;
+	struct drm_gem_cma_object *gem;
+	dma_addr_t scanout_start;
+
+	if (!plane->state->crtc || !plane->state->fb)
+		return;
+
+	hdlcd = crtc_to_hdlcd_priv(plane->state->crtc);
+	gem = drm_fb_cma_get_gem_obj(plane->state->fb, 0);
+	scanout_start = gem->paddr;
+	hdlcd_write(hdlcd, HDLCD_REG_FB_BASE, scanout_start);
+}
+
+static const struct drm_plane_helper_funcs hdlcd_plane_helper_funcs = {
+	.prepare_fb = NULL,
+	.cleanup_fb = NULL,
+	.atomic_check = hdlcd_plane_atomic_check,
+	.atomic_update = hdlcd_plane_atomic_update,
+};
+
+static void hdlcd_plane_destroy(struct drm_plane *plane)
+{
+	drm_plane_helper_disable(plane);
+	drm_plane_cleanup(plane);
+}
+
+static const struct drm_plane_funcs hdlcd_plane_funcs = {
+	.update_plane		= drm_atomic_helper_update_plane,
+	.disable_plane		= drm_atomic_helper_disable_plane,
+	.destroy		= hdlcd_plane_destroy,
+	.reset			= drm_atomic_helper_plane_reset,
+	.atomic_duplicate_state = drm_atomic_helper_plane_duplicate_state,
+	.atomic_destroy_state	= drm_atomic_helper_plane_destroy_state,
+};
+
+static struct drm_plane *hdlcd_plane_init(struct drm_device *drm)
+{
+	struct hdlcd_drm_private *hdlcd = drm->dev_private;
+	struct drm_plane *plane = NULL;
+	u32 formats[ARRAY_SIZE(supported_formats)], i;
 	int ret;
 
-	hdlcd->crtc.port = of_graph_get_next_endpoint(dev->platformdev->dev.of_node, NULL);
-	if (!hdlcd->crtc.port)
-		return -ENXIO;
+	plane = devm_kzalloc(drm->dev, sizeof(*plane), GFP_KERNEL);
+	if (!plane)
+		return ERR_PTR(-ENOMEM);
 
-	ret = drm_crtc_init(dev, &hdlcd->crtc, &hdlcd_crtc_funcs);
-	if (ret < 0) {
-		of_node_put(hdlcd->crtc.port);
+	for (i = 0; i < ARRAY_SIZE(supported_formats); i++)
+		formats[i] = supported_formats[i].fourcc;
+
+	ret = drm_universal_plane_init(drm, plane, 0xff, &hdlcd_plane_funcs,
+				       formats, ARRAY_SIZE(formats),
+				       DRM_PLANE_TYPE_PRIMARY);
+	if (ret) {
+		devm_kfree(drm->dev, plane);
+		return ERR_PTR(ret);
+	}
+
+	drm_plane_helper_add(plane, &hdlcd_plane_helper_funcs);
+	hdlcd->plane = plane;
+
+	return plane;
+}
+
+void hdlcd_crtc_suspend(struct drm_crtc *crtc)
+{
+	hdlcd_crtc_disable(crtc);
+}
+
+void hdlcd_crtc_resume(struct drm_crtc *crtc)
+{
+	hdlcd_crtc_enable(crtc);
+}
+
+int hdlcd_setup_crtc(struct drm_device *drm)
+{
+	struct hdlcd_drm_private *hdlcd = drm->dev_private;
+	struct drm_plane *primary;
+	int ret;
+
+	primary = hdlcd_plane_init(drm);
+	if (IS_ERR(primary))
+		return PTR_ERR(primary);
+
+	ret = drm_crtc_init_with_planes(drm, &hdlcd->crtc, primary, NULL,
+					&hdlcd_crtc_funcs);
+	if (ret) {
+		hdlcd_plane_destroy(primary);
+		devm_kfree(drm->dev, primary);
 		return ret;
 	}
 
 	drm_crtc_helper_add(&hdlcd->crtc, &hdlcd_crtc_helper_funcs);
 	return 0;
 }
-
