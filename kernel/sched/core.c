@@ -780,6 +780,7 @@ unsigned int stune_cap(unsigned int util, unsigned int cpu)
 	unsigned int cap_max = SCHED_CAPACITY_SCALE;
 	unsigned int cap_min = 0;
 	struct stune_cpu *st_cpu;
+	unsigned int stune_util;
 
 	st_cpu = &(per_cpu(stune_cpu, cpu)[STUNE_CAP_MIN]);
 	if (st_cpu->cap_node)
@@ -789,7 +790,12 @@ unsigned int stune_cap(unsigned int util, unsigned int cpu)
 	if (st_cpu->cap_node)
 		cap_max = st_cpu->cap_value;
 
-	return clamp(util, cap_min, cap_max);
+	stune_util = clamp(util, cap_min, cap_max);
+
+	trace_printk("stune_cap: cpu=%d util=%u cap_min=%u cap_max=%u stune_util=%u",
+		     cpu, util, cap_min, cap_max, stune_util);
+
+	return stune_util;
 }
 
 static inline void stune_insert_capacity(
@@ -835,6 +841,12 @@ static inline void stune_insert_capacity(
 	if (update_cache) {
 		st_cpu->cap_node = node;
 		st_cpu->cap_value = capacity_new;
+		if (cap_idx == STUNE_CAP_MIN)
+			trace_printk("stune_nq_update_min: cpu=%d min=%llu",
+				     cpu, capacity_new);
+		else
+			trace_printk("stune_nq_update_max: cpu=%d max=%llu",
+				     cpu, capacity_new);
 	}
 }
 
@@ -849,8 +861,13 @@ static inline void stune_remove_capacity(
 		return;
 
 	/* Update CPU's minimum capacity cache pointer */
-	if (node == st_cpu->cap_node)
-		st_cpu->cap_node = rb_prev(node);
+	if (node == st_cpu->cap_node) {
+		struct rb_node *prev_node = rb_prev(node);
+
+		st_cpu->cap_node = prev_node;
+		if (!prev_node)
+			trace_printk("stune_dq_update: cpu=%d min=0", cpu);
+	}
 
 	/* Remove task's minimum capacity */
 	rb_erase(node, root);
@@ -903,6 +920,11 @@ static inline void stune_enqueue_task(
 
 	spin_lock(&p->cap_lock);
 
+	trace_printk("stune_nq: cpu=%d pid=%d comm=%s t_min=%d t_max=%d",
+		     cpu, p->pid, p->comm,
+		     task_group(p)->stune_cap[STUNE_CAP_MIN],
+		     task_group(p)->stune_cap[STUNE_CAP_MAX]);
+
 	/* Track task's min/max capacities */
 	stune_insert_capacity(p, cpu, STUNE_CAP_MIN);
 	stune_insert_capacity(p, cpu, STUNE_CAP_MAX);
@@ -916,6 +938,11 @@ static inline void stune_dequeue_task(
 	unsigned int cpu = cpu_of(rq);
 
 	spin_lock(&p->cap_lock);
+
+	trace_printk("stune_dq: cpu=%d pid=%d comm=%s t_min=%d t_max=%d",
+		     cpu, p->pid, p->comm,
+		     task_group(p)->stune_cap[STUNE_CAP_MIN],
+		     task_group(p)->stune_cap[STUNE_CAP_MAX]);
 
 	/* Track task's min/max capacities */
 	stune_remove_capacity(p, cpu, STUNE_CAP_MIN);
