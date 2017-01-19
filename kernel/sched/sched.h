@@ -1808,6 +1808,12 @@ static inline u64 irq_time_read(int cpu)
 }
 #endif /* CONFIG_IRQ_TIME_ACCOUNTING */
 
+#ifdef CONFIG_STUNE_GROUP_SCHED
+unsigned int stune_cap(unsigned int util, unsigned int cpu);
+#else
+#define stune_cap(util, cpu) util
+#endif
+
 #ifdef CONFIG_CPU_FREQ
 DECLARE_PER_CPU(struct update_util_data *, cpufreq_update_util_data);
 

@@ -775,6 +775,23 @@ struct stune_cpu {
 /* Min and Max capacity constraints */
 DEFINE_PER_CPU(struct stune_cpu[2], stune_cpu);
 
+unsigned int stune_cap(unsigned int util, unsigned int cpu)
+{
+	unsigned int cap_max = SCHED_CAPACITY_SCALE;
+	unsigned int cap_min = 0;
+	struct stune_cpu *st_cpu;
+
+	st_cpu = &(per_cpu(stune_cpu, cpu)[STUNE_CAP_MIN]);
+	if (st_cpu->cap_node)
+		cap_min = st_cpu->cap_value;
+
+	st_cpu = &(per_cpu(stune_cpu, cpu)[STUNE_CAP_MAX]);
+	if (st_cpu->cap_node)
+		cap_max = st_cpu->cap_value;
+
+	return clamp(util, cap_min, cap_max);
+}
+
 static inline void stune_insert_capacity(
 		struct task_struct *p, unsigned int cpu,
 		unsigned int cap_idx)
