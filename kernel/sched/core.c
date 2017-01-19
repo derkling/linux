@@ -813,6 +813,9 @@ cap_group_insert_capacity(struct task_struct *p, unsigned int cpu,
 	u64 capacity_new;
 	u64 capacity_cur;
 
+	unsigned int tw_idx = 1;
+	char tw[32] = "R";
+
 	node = &p->cap_group_node[cap_idx];
 	BUG_ON(!RB_EMPTY_NODE(node));
 
@@ -831,12 +834,18 @@ cap_group_insert_capacity(struct task_struct *p, unsigned int cpu,
 				 cap_group_node[cap_idx]);
 		capacity_cur = task_group(entry)->cap_group[cap_idx];
 		if (capacity_new <= capacity_cur) {
+			tw[tw_idx++] = 'l';
 			link = &parent->rb_left;
 			update_cache = 0;
 		} else {
+			tw[tw_idx++] = 'r';
 			link = &parent->rb_right;
 		}
 	}
+
+	tw[tw_idx] = 0;
+	trace_printk("cap_group_nq_update: cpu=%d cap_idx=%s tw=%s",
+		     cpu, cap_idx ? "max" : "min", tw);
 
 	/* Add task's capacity_{min,max} and rebalance the rbtree */
 	rb_link_node(node, parent, link);
