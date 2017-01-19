@@ -2979,6 +2979,8 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 				div_u64(sa->full_decay_load_sum, LOAD_AVG_MAX);
 			sa->full_decay_util_avg =
 				sa->full_decay_util_sum / LOAD_AVG_MAX;
+
+			trace_printk("__ula: p=%d load_avg=%lu util_avg=%lu fd_load_avg=%lu fd_util_avg=%lu delta_clamp=%llu clamp=%llu", task_of(container_of(sa, struct sched_entity, avg))->pid, sa->load_avg, sa->util_avg, sa->full_decay_load_avg, sa->full_decay_util_avg, delta_clamped, sched_pelt_decay_clamp);
 		}
 	}
 
