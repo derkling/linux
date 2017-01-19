@@ -884,9 +884,13 @@ static inline void stune_enqueue_task(
 {
 	unsigned int cpu = cpu_of(rq);
 
+	spin_lock(&p->cap_lock);
+
 	/* Track task's min/max capacities */
 	stune_insert_capacity(p, cpu, STUNE_CAP_MIN);
 	stune_insert_capacity(p, cpu, STUNE_CAP_MAX);
+
+	spin_unlock(&p->cap_lock);
 }
 
 static inline void stune_dequeue_task(
@@ -894,9 +898,13 @@ static inline void stune_dequeue_task(
 {
 	unsigned int cpu = cpu_of(rq);
 
+	spin_lock(&p->cap_lock);
+
 	/* Track task's min/max capacities */
 	stune_remove_capacity(p, cpu, STUNE_CAP_MIN);
 	stune_remove_capacity(p, cpu, STUNE_CAP_MAX);
+
+	spin_unlock(&p->cap_lock);
 }
 #else
 static inline void stune_enqueue_task(
@@ -8763,8 +8771,10 @@ static int cpu_capacity_min_write_u64(struct cgroup_subsys_state *css,
 				      struct cftype *cftype, u64 value)
 {
 	struct cgroup_subsys_state *pos;
+	struct css_task_iter it;
 	unsigned int min_value;
 	struct task_group *tg;
+	struct task_struct *p;
 	int ret = -EINVAL;
 
 	min_value = min_t(unsigned int, value, SCHED_CAPACITY_SCALE);
@@ -8794,6 +8804,15 @@ static int cpu_capacity_min_write_u64(struct cgroup_subsys_state *css,
 
 	tg->stune_cap[STUNE_CAP_MIN] = min_value;
 
+	/* Update the min capacity of RUNNABLE tasks */
+	css_task_iter_start(css, &it);
+	while ((p = css_task_iter_next(&it))) {
+		spin_lock(&p->cap_lock);
+		stune_update_capacity(p, STUNE_CAP_MIN);
+		spin_unlock(&p->cap_lock);
+	}
+	css_task_iter_end(&it);
+
 done:
 	ret = 0;
 out:
@@ -8807,8 +8826,10 @@ static int cpu_capacity_max_write_u64(struct cgroup_subsys_state *css,
 				      struct cftype *cftype, u64 value)
 {
 	struct cgroup_subsys_state *pos;
+	struct css_task_iter it;
 	unsigned int max_value;
 	struct task_group *tg;
+	struct task_struct *p;
 	int ret = -EINVAL;
 
 	max_value = min_t(unsigned int, value, SCHED_CAPACITY_SCALE);
@@ -8837,6 +8858,15 @@ static int cpu_capacity_max_write_u64(struct cgroup_subsys_state *css,
 	}
 
 	tg->stune_cap[STUNE_CAP_MAX] = max_value;
+
+	/* Update the max capacity of RUNNABLE tasks */
+	css_task_iter_start(css, &it);
+	while ((p = css_task_iter_next(&it))) {
+		spin_lock(&p->cap_lock);
+		stune_update_capacity(p, STUNE_CAP_MAX);
+		spin_unlock(&p->cap_lock);
+	}
+	css_task_iter_end(&it);
 
 done:
 	ret = 0;

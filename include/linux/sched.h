@@ -1552,6 +1552,16 @@ struct task_struct {
 #endif
 #ifdef CONFIG_STUNE_GROUP_SCHED
 	struct rb_node stune_node[2];
+	/*
+	 * Protection for stune_nodes placement within RQ's rb-trees.
+	 *
+	 * This is used to synchronize the these two paths:
+	 * - slow-path: min/max capacity updates for the CPU controller's
+	 *              cgroup the task is currently part of.
+	 * - fast-path: enqueue/dequeue of a task on wakeup/sleep, migrations
+	 *              and CPU controller's cgroup change.
+	 */
+	spinlock_t cap_lock;
 #endif
 	struct sched_dl_entity dl;
 

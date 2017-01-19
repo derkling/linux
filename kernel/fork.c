@@ -1513,6 +1513,10 @@ static __latent_entropy struct task_struct *copy_process(
 
 	rt_mutex_init_task(p);
 
+#ifdef CONFIG_STUNE_GROUP_SCHED
+	spin_lock_init(&p->cap_lock);
+#endif
+
 #ifdef CONFIG_PROVE_LOCKING
 	DEBUG_LOCKS_WARN_ON(!p->hardirqs_enabled);
 	DEBUG_LOCKS_WARN_ON(!p->softirqs_enabled);
