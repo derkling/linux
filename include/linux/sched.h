@@ -1336,7 +1336,7 @@ struct load_weight {
  * issues.
  */
 struct sched_avg {
-	u64 last_update_time, load_sum;
+	u64 last_update_time, load_sum, wait_decay_time;
 	u32 util_sum, period_contrib;
 	unsigned long load_avg, util_avg;
 	u64 full_decay_load_sum;

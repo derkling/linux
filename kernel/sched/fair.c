@@ -2842,7 +2842,7 @@ static __always_inline int
 __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		  unsigned long weight, int running, struct cfs_rq *cfs_rq)
 {
-	u64 delta, scaled_delta, delta_clamped = 0, periods;
+	u64 delta, scaled_delta, delta_clamped = 0, adjusted_clamp = 0, periods;
 	u32 contrib;
 	unsigned int delta_w, scaled_delta_w, decayed = 0;
 	unsigned long scale_freq, scale_cpu;
@@ -2874,14 +2874,27 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 	scale_cpu = arch_scale_cpu_capacity(NULL, cpu);
 
 
+	/* Track waiting time since last sleep */
+	if (!running && weight) {
+		sa->wait_decay_time += delta;
+	}
+
 	/* Apply decay clamping to tasks only */
 	if (!cfs_rq && !weight
 	    && sysctl_sched_pelt_decay_clamp_ms < LOAD_AVG_MAX_N
 	    && entity_is_task(container_of(sa, struct sched_entity, avg))) {
-		if (delta > sched_pelt_decay_clamp) {
-			delta_clamped = delta - sched_pelt_decay_clamp;
-			delta = sched_pelt_decay_clamp;
+
+		if (sa->wait_decay_time > sched_pelt_decay_clamp)
+			adjusted_clamp = 1;
+		else
+			adjusted_clamp = sched_pelt_decay_clamp - sa->wait_decay_time;
+
+		if (delta > adjusted_clamp) {
+			delta_clamped = delta - adjusted_clamp;
+			delta = adjusted_clamp;
 		}
+
+		sa->wait_decay_time = 0;
 	}
 
 	/* delta_w is the amount already accumulated against our next period */
