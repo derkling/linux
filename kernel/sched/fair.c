@@ -2889,6 +2889,8 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		else
 			adjusted_clamp = sched_pelt_decay_clamp - sa->wait_decay_time;
 
+		trace_printk("__ula: 1 p=%d load_avg=%lu util_avg=%lu adj_clamp=%llu delta=%llu clamp=%llu wdt=%llu", task_of(container_of(sa, struct sched_entity, avg))->pid, sa->load_avg, sa->util_avg, adjusted_clamp, delta, sched_pelt_decay_clamp, sa->wait_decay_time & (u64) ~0x3FF);
+
 		if (delta > adjusted_clamp) {
 			delta_clamped = delta - adjusted_clamp;
 			delta = adjusted_clamp;
@@ -2980,7 +2982,7 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 			sa->full_decay_util_avg =
 				sa->full_decay_util_sum / LOAD_AVG_MAX;
 
-			trace_printk("__ula: p=%d load_avg=%lu util_avg=%lu fd_load_avg=%lu fd_util_avg=%lu delta_clamp=%llu clamp=%llu", task_of(container_of(sa, struct sched_entity, avg))->pid, sa->load_avg, sa->util_avg, sa->full_decay_load_avg, sa->full_decay_util_avg, delta_clamped, sched_pelt_decay_clamp);
+			trace_printk("__ula: p=%d load_avg=%lu util_avg=%lu fd_load_avg=%lu fd_util_avg=%lu delta_clamp=%llu clamp=%llu", task_of(container_of(sa, struct sched_entity, avg))->pid, sa->load_avg, sa->util_avg, sa->full_decay_load_avg, sa->full_decay_util_avg, delta_clamped, adjusted_clamp);
 		}
 	}
 
