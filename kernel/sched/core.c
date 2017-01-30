@@ -75,6 +75,7 @@
 #include <linux/compiler.h>
 #include <linux/frame.h>
 #include <linux/prefetch.h>
+#include <linux/rbtree.h>
 
 #include <asm/switch_to.h>
 #include <asm/tlb.h>
@@ -752,12 +753,189 @@ static void set_load_weight(struct task_struct *p)
 	load->inv_weight = sched_prio_to_wmult[prio];
 }
 
+#ifdef CONFIG_CAP_GROUP_SCHED
+
+struct cap_group_cpu {
+	/*
+	 * RBTree to keep sorted capacity constrains
+	 * of currently RUNNABLE tasks on a CPU.
+	 */
+	struct rb_root tree;
+
+	/*
+	 * Pointers to the RUNNABLE task defining the current
+	 * capacity constraint for a CPU.
+	 */
+	struct rb_node *node;
+
+	/* Current CPU's capacity constraint */
+	unsigned int value;
+};
+
+/* Min and Max capacity constraints */
+DEFINE_PER_CPU(struct cap_group_cpu[2], cap_group_cpu);
+
+static inline void
+cap_group_insert_capacity(struct task_struct *p, unsigned int cpu,
+			  unsigned int cap_idx)
+{
+	struct cap_group_cpu *cgc = &(per_cpu(cap_group_cpu, cpu)[cap_idx]);
+	struct task_group *tg = task_group(p);
+	struct rb_node *parent = NULL;
+	struct task_struct *entry;
+	struct rb_node **link;
+	struct rb_root *root;
+	struct rb_node *node;
+	int update_cache = 1;
+	u64 capacity_new;
+	u64 capacity_cur;
+
+	node = &p->cap_group_node[cap_idx];
+	BUG_ON(!RB_EMPTY_NODE(node));
+
+	/*
+	 * The capacity_{min,max} the task is subject to is defined by the
+	 * current TG the task belongs to. The TG's capacity constraints is
+	 * thus used to place the task within the rbtree used to track
+	 * the capacity_{min,max} for the CPU.
+	 */
+	capacity_new = tg->cap_group[cap_idx];
+	root = &cgc->tree;
+	link = &root->rb_node;
+	while (*link) {
+		parent = *link;
+		entry = rb_entry(parent, struct task_struct,
+				 cap_group_node[cap_idx]);
+		capacity_cur = task_group(entry)->cap_group[cap_idx];
+		if (capacity_new <= capacity_cur) {
+			link = &parent->rb_left;
+			update_cache = 0;
+		} else {
+			link = &parent->rb_right;
+		}
+	}
+
+	/* Add task's capacity_{min,max} and rebalance the rbtree */
+	rb_link_node(node, parent, link);
+	rb_insert_color(node, root);
+
+	if (!update_cache)
+		return;
+
+	/* Update CPU's capacity cache pointer */
+	cgc->value = capacity_new;
+	cgc->node = node;
+}
+
+static inline void
+cap_group_remove_capacity(struct task_struct *p, unsigned int cpu,
+			  unsigned int cap_idx)
+{
+	struct cap_group_cpu *cgc = &(per_cpu(cap_group_cpu, cpu)[cap_idx]);
+	struct rb_node *node = &p->cap_group_node[cap_idx];
+	struct rb_root *root = &cgc->tree;
+
+	if (RB_EMPTY_NODE(node))
+		return;
+
+	/* Update CPU's capacity_{min,max} cache pointer */
+	if (node == cgc->node) {
+		struct rb_node *prev_node = rb_prev(node);
+
+		/* Reset value in case this was the last task */
+		cgc->value = (cap_idx == CAP_GROUP_MIN)
+			? 0 : SCHED_CAPACITY_SCALE;
+
+		/* Update node and value, if there is another task */
+		cgc->node = prev_node;
+		if (cgc->node) {
+			struct task_struct *entry;
+
+			entry = rb_entry(cgc->node, struct task_struct,
+					 cap_group_node[cap_idx]);
+			cgc->value = task_group(entry)->cap_group[cap_idx];
+		}
+	}
+
+	/* Remove task's capacity_{min,max] */
+	rb_erase(node, root);
+	RB_CLEAR_NODE(node);
+}
+
+static inline void
+cap_group_update_capacity(struct task_struct *p, unsigned int cap_idx)
+{
+	struct task_group *tg = task_group(p);
+	unsigned int next_cap = SCHED_CAPACITY_SCALE;
+	unsigned int prev_cap = 0;
+	struct task_struct *entry;
+	struct rb_node *node;
+
+	/*
+	 * If the task has not a node in the rbtree, it's not yet RUNNABLE or
+	 * it's going to be enqueued with the proper value.
+	 */
+	if (RB_EMPTY_NODE(&p->cap_group_node[cap_idx]))
+		return;
+
+	/* Check current position in the capacity rbtree */
+	node = rb_next(&p->cap_group_node[cap_idx]);
+	if (node) {
+		entry = rb_entry(node, struct task_struct,
+				 cap_group_node[cap_idx]);
+		next_cap = task_group(entry)->cap_group[cap_idx];
+	}
+
+	node = rb_prev(&p->cap_group_node[cap_idx]);
+	if (node) {
+		entry = rb_entry(node, struct task_struct,
+				 cap_group_node[cap_idx]);
+		prev_cap = task_group(entry)->cap_group[cap_idx];
+	}
+
+	/* If relative position has not changed: nothing to do */
+	if (prev_cap <= tg->cap_group[cap_idx] &&
+	    next_cap >= tg->cap_group[cap_idx])
+		return;
+
+	/* Reposition this node within the rbtree */
+	cap_group_remove_capacity(p, task_cpu(p), cap_idx);
+	cap_group_insert_capacity(p, task_cpu(p), cap_idx);
+}
+
+static inline void
+cap_group_enqueue_task(struct rq *rq, struct task_struct *p, int flags)
+{
+	unsigned int cpu = cpu_of(rq);
+
+	/* Track task's min/max capacities */
+	cap_group_insert_capacity(p, cpu, CAP_GROUP_MIN);
+	cap_group_insert_capacity(p, cpu, CAP_GROUP_MAX);
+}
+
+static inline void
+cap_group_dequeue_task(struct rq *rq, struct task_struct *p, int flags)
+{
+	unsigned int cpu = cpu_of(rq);
+
+	/* Track task's min/max capacities */
+	cap_group_remove_capacity(p, cpu, CAP_GROUP_MIN);
+	cap_group_remove_capacity(p, cpu, CAP_GROUP_MAX);
+}
+#else
+static inline void
+cap_group_enqueue_task(struct rq *rq, struct task_struct *p, int flags) { }
+static inline void
+cap_group_dequeue_task(struct rq *rq, struct task_struct *p, int flags) { }
+#endif /* CONFIG_CAP_GROUP_SCHED */
+
 static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	update_rq_clock(rq);
 	if (!(flags & ENQUEUE_RESTORE))
 		sched_info_queued(rq, p);
 	p->sched_class->enqueue_task(rq, p, flags);
+	cap_group_enqueue_task(rq, p, flags);
 }
 
 static inline void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
@@ -766,6 +944,7 @@ static inline void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 	if (!(flags & DEQUEUE_SAVE))
 		sched_info_dequeued(rq, p);
 	p->sched_class->dequeue_task(rq, p, flags);
+	cap_group_dequeue_task(rq, p, flags);
 }
 
 void activate_task(struct rq *rq, struct task_struct *p, int flags)
@@ -2446,6 +2625,10 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 #ifdef CONFIG_SMP
 	plist_node_init(&p->pushable_tasks, MAX_PRIO);
 	RB_CLEAR_NODE(&p->pushable_dl_tasks);
+#endif
+#ifdef CONFIG_CAP_GROUP_SCHED
+	RB_CLEAR_NODE(&p->cap_group_node[CAP_GROUP_MIN]);
+	RB_CLEAR_NODE(&p->cap_group_node[CAP_GROUP_MAX]);
 #endif
 
 	put_cpu();
@@ -7737,6 +7920,10 @@ void __init sched_init(void)
 #ifdef CONFIG_CAP_GROUP_SCHED
 		root_task_group.cap_group[CAP_GROUP_MIN] = 0;
 		root_task_group.cap_group[CAP_GROUP_MAX] = SCHED_CAPACITY_SCALE;
+		per_cpu(cap_group_cpu, i)[CAP_GROUP_MIN].tree = RB_ROOT;
+		per_cpu(cap_group_cpu, i)[CAP_GROUP_MIN].node = NULL;
+		per_cpu(cap_group_cpu, i)[CAP_GROUP_MAX].tree = RB_ROOT;
+		per_cpu(cap_group_cpu, i)[CAP_GROUP_MAX].node = NULL;
 #endif
 
 		rq->rt.rt_runtime = def_rt_bandwidth.rt_runtime;

@@ -1549,6 +1549,9 @@ struct task_struct {
 	struct sched_rt_entity rt;
 #ifdef CONFIG_CGROUP_SCHED
 	struct task_group *sched_task_group;
+#ifdef CONFIG_CAP_GROUP_SCHED
+	struct rb_node cap_group_node[2];
+#endif
 #endif
 	struct sched_dl_entity dl;
 
