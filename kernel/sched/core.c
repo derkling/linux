@@ -780,6 +780,7 @@ unsigned int cap_group_clamp(unsigned int util, unsigned int cpu)
 	unsigned int cap_max = SCHED_CAPACITY_SCALE;
 	unsigned int cap_min = 0;
 	struct cap_group_cpu *cgc;
+	unsigned int cap_group_util;
 
 	cgc = &(per_cpu(cap_group_cpu, cpu)[CAP_GROUP_MIN]);
 	if (cgc->node)
@@ -789,7 +790,12 @@ unsigned int cap_group_clamp(unsigned int util, unsigned int cpu)
 	if (cgc->node)
 		cap_max = cgc->value;
 
-	return clamp(util, cap_min, cap_max);
+	cap_group_util = clamp(util, cap_min, cap_max);
+
+	trace_printk("cap_group_clamp: cpu=%d util=%u cg_min=%u cg_max=%u cg_util=%u",
+		     cpu, util, cap_min, cap_max, cap_group_util);
+
+	return cap_group_util;
 }
 
 static inline void
@@ -842,6 +848,13 @@ cap_group_insert_capacity(struct task_struct *p, unsigned int cpu,
 	/* Update CPU's capacity cache pointer */
 	cgc->value = capacity_new;
 	cgc->node = node;
+
+	if (cap_idx == CAP_GROUP_MIN)
+		trace_printk("cap_group_nq_update_min: cpu=%d min=%u",
+			     cpu, cgc->value);
+	else
+		trace_printk("cap_group_nq_update_max: cpu=%d max=%u",
+			     cpu, cgc->value);
 }
 
 static inline void
@@ -872,6 +885,13 @@ cap_group_remove_capacity(struct task_struct *p, unsigned int cpu,
 					 cap_group_node[cap_idx]);
 			cgc->value = task_group(entry)->cap_group[cap_idx];
 		}
+
+		if (cap_idx == CAP_GROUP_MIN)
+			trace_printk("cap_group_dq_update: cpu=%d min=%u",
+				     cpu, cgc->value);
+		else
+			trace_printk("cap_group_dq_update: cpu=%d max=%u",
+				     cpu, cgc->value);
 	}
 
 	/* Remove task's capacity_{min,max] */
@@ -944,6 +964,11 @@ cap_group_enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 	lockdep_assert_held(&p->pi_lock);
 	lockdep_assert_held(&rq->lock);
 
+	trace_printk("cap_group_nq: cpu=%d pid=%d comm=%s cg_min=%d cg_max=%d",
+		     cpu, p->pid, p->comm,
+		     task_group(p)->cap_group[CAP_GROUP_MIN],
+		     task_group(p)->cap_group[CAP_GROUP_MAX]);
+
 	/* Track task's min/max capacities */
 	cap_group_insert_capacity(p, cpu, CAP_GROUP_MIN);
 	cap_group_insert_capacity(p, cpu, CAP_GROUP_MAX);
@@ -956,6 +981,11 @@ cap_group_dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 
 	lockdep_assert_held(&p->pi_lock);
 	lockdep_assert_held(&rq->lock);
+
+	trace_printk("cap_group_dq: cpu=%d pid=%d comm=%s cg_min=%d cg_max=%d",
+		     cpu, p->pid, p->comm,
+		     task_group(p)->cap_group[CAP_GROUP_MIN],
+		     task_group(p)->cap_group[CAP_GROUP_MAX]);
 
 	/* Track task's min/max capacities */
 	cap_group_remove_capacity(p, cpu, CAP_GROUP_MIN);
