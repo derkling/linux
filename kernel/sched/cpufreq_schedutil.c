@@ -207,6 +207,7 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 	} else {
 		sugov_get_util(&util, &max);
 		sugov_iowait_boost(sg_cpu, &util, &max);
+		util = cap_group_clamp(util, smp_processor_id());
 		next_f = get_next_freq(sg_cpu, util, max);
 	}
 	sugov_update_commit(sg_policy, time, next_f);
@@ -226,6 +227,7 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu,
 		return max_f;
 
 	sugov_iowait_boost(sg_cpu, &util, &max);
+	util = cap_group_clamp(util, smp_processor_id());
 
 	for_each_cpu(j, policy->cpus) {
 		struct sugov_cpu *j_sg_cpu;
@@ -251,7 +253,7 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu,
 		if (j_sg_cpu->flags & SCHED_CPUFREQ_RT_DL)
 			return max_f;
 
-		j_util = j_sg_cpu->util;
+		j_util = cap_group_clamp(j_sg_cpu->util, j);
 		j_max = j_sg_cpu->max;
 		if (j_util * max > j_max * util) {
 			util = j_util;

@@ -775,6 +775,23 @@ struct cap_group_cpu {
 /* Min and Max capacity constraints */
 DEFINE_PER_CPU(struct cap_group_cpu[2], cap_group_cpu);
 
+unsigned int cap_group_clamp(unsigned int util, unsigned int cpu)
+{
+	unsigned int cap_max = SCHED_CAPACITY_SCALE;
+	unsigned int cap_min = 0;
+	struct cap_group_cpu *cgc;
+
+	cgc = &(per_cpu(cap_group_cpu, cpu)[CAP_GROUP_MIN]);
+	if (cgc->node)
+		cap_min = cgc->value;
+
+	cgc = &(per_cpu(cap_group_cpu, cpu)[CAP_GROUP_MAX]);
+	if (cgc->node)
+		cap_max = cgc->value;
+
+	return clamp(util, cap_min, cap_max);
+}
+
 static inline void
 cap_group_insert_capacity(struct task_struct *p, unsigned int cpu,
 			  unsigned int cap_idx)
