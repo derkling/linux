@@ -870,13 +870,26 @@ cap_group_update_capacity(struct task_struct *p, unsigned int cap_idx)
 	unsigned int prev_cap = 0;
 	struct task_struct *entry;
 	struct rb_node *node;
+	struct rq_flags rf;
+	struct rq *rq;
+
+	/*
+	 * Lock the CPU's RBTree where the task is (eventually) queued.
+	 *
+	 * This can to lock the RQ's of a !RUNNABLE task but it's required to
+	 * serialize the capacity_{min,max} updates with enqueue, dequeue and
+	 * migration operations, using the same locking schema already in use
+	 * by __set_cpus_allowed_ptr().
+	 */
+	rq = task_rq_lock(p, &rf);
 
 	/*
 	 * If the task has not a node in the rbtree, it's not yet RUNNABLE or
 	 * it's going to be enqueued with the proper value.
+	 * The setting of the cap_group_node is serialized by task_rq_lock().
 	 */
 	if (RB_EMPTY_NODE(&p->cap_group_node[cap_idx]))
-		return;
+		goto done;
 
 	/* Check current position in the capacity rbtree */
 	node = rb_next(&p->cap_group_node[cap_idx]);
@@ -896,17 +909,23 @@ cap_group_update_capacity(struct task_struct *p, unsigned int cap_idx)
 	/* If relative position has not changed: nothing to do */
 	if (prev_cap <= tg->cap_group[cap_idx] &&
 	    next_cap >= tg->cap_group[cap_idx])
-		return;
+		goto done;
 
 	/* Reposition this node within the rbtree */
 	cap_group_remove_capacity(p, task_cpu(p), cap_idx);
 	cap_group_insert_capacity(p, task_cpu(p), cap_idx);
+
+done:
+	task_rq_unlock(rq, p, &rf);
 }
 
 static inline void
 cap_group_enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	unsigned int cpu = cpu_of(rq);
+
+	lockdep_assert_held(&p->pi_lock);
+	lockdep_assert_held(&rq->lock);
 
 	/* Track task's min/max capacities */
 	cap_group_insert_capacity(p, cpu, CAP_GROUP_MIN);
@@ -917,6 +936,9 @@ static inline void
 cap_group_dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	unsigned int cpu = cpu_of(rq);
+
+	lockdep_assert_held(&p->pi_lock);
+	lockdep_assert_held(&rq->lock);
 
 	/* Track task's min/max capacities */
 	cap_group_remove_capacity(p, cpu, CAP_GROUP_MIN);
@@ -8775,8 +8797,10 @@ static int cpu_capacity_min_write_u64(struct cgroup_subsys_state *css,
 				      struct cftype *cftype, u64 value)
 {
 	struct cgroup_subsys_state *pos;
+	struct css_task_iter it;
 	unsigned int min_value;
 	struct task_group *tg;
+	struct task_struct *p;
 	int ret = -EINVAL;
 
 	min_value = min_t(unsigned int, value, SCHED_CAPACITY_SCALE);
@@ -8806,6 +8830,12 @@ static int cpu_capacity_min_write_u64(struct cgroup_subsys_state *css,
 
 	tg->cap_group[CAP_GROUP_MIN] = min_value;
 
+	/* Update the capacity_min of RUNNABLE tasks */
+	css_task_iter_start(css, &it);
+	while ((p = css_task_iter_next(&it)))
+		cap_group_update_capacity(p, CAP_GROUP_MIN);
+	css_task_iter_end(&it);
+
 done:
 	ret = 0;
 out:
@@ -8819,8 +8849,10 @@ static int cpu_capacity_max_write_u64(struct cgroup_subsys_state *css,
 				      struct cftype *cftype, u64 value)
 {
 	struct cgroup_subsys_state *pos;
+	struct css_task_iter it;
 	unsigned int max_value;
 	struct task_group *tg;
+	struct task_struct *p;
 	int ret = -EINVAL;
 
 	max_value = min_t(unsigned int, value, SCHED_CAPACITY_SCALE);
@@ -8849,6 +8881,12 @@ static int cpu_capacity_max_write_u64(struct cgroup_subsys_state *css,
 	}
 
 	tg->cap_group[CAP_GROUP_MAX] = max_value;
+
+	/* Update the capacity_max of RUNNABLE tasks */
+	css_task_iter_start(css, &it);
+	while ((p = css_task_iter_next(&it)))
+		cap_group_update_capacity(p, CAP_GROUP_MAX);
+	css_task_iter_end(&it);
 
 done:
 	ret = 0;
