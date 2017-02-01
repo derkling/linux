@@ -87,6 +87,9 @@ static void sugov_update_commit(struct sugov_policy *sg_policy, u64 time,
 {
 	struct cpufreq_policy *policy = sg_policy->policy;
 
+	trace_printk("sugov_update_commit: cpu=%d time=%llu next_freq=%u",
+		     smp_processor_id(), time, next_freq);
+
 	sg_policy->last_freq_update_time = time;
 
 	if (policy->fast_switch_enabled) {
@@ -105,6 +108,7 @@ static void sugov_update_commit(struct sugov_policy *sg_policy, u64 time,
 		sg_policy->next_freq = next_freq;
 		sg_policy->work_in_progress = true;
 		irq_work_queue(&sg_policy->irq_work);
+		trace_printk("sugov_update_commit: irq_work_queue");
 	}
 }
 
@@ -297,6 +301,8 @@ static void sugov_work(struct work_struct *work)
 	struct sugov_policy *sg_policy = container_of(work, struct sugov_policy, work);
 
 	mutex_lock(&sg_policy->work_lock);
+	trace_printk("sugov_work: cpu=%u next_freq=%u",
+		     smp_processor_id(), sg_policy->next_freq);
 	__cpufreq_driver_target(sg_policy->policy, sg_policy->next_freq,
 				CPUFREQ_RELATION_L);
 	mutex_unlock(&sg_policy->work_lock);
