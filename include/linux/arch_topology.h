@@ -7,9 +7,9 @@
 #include <linux/device.h>
 #include <linux/topology.h>
 
-void normalize_cpu_capacity(void);
-int __init parse_cpu_capacity(struct device_node *cpu_node, int cpu);
-unsigned long arch_scale_cpu_capacity(struct sched_domain *sd, int cpu);
-void set_capacity_scale(unsigned int cpu, unsigned long capacity);
+void drv_normalize_cpu_capacity(void);
+int __init drv_parse_cpu_capacity(struct device_node *cpu_node, int cpu);
+unsigned long drv_scale_cpu_capacity(struct sched_domain *sd, int cpu);
+void drv_set_capacity_scale(unsigned int cpu, unsigned long capacity);
 
 #endif /* _LINUX_ARCH_TOPOLOGY_H_ */
