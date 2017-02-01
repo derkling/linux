@@ -22,12 +22,12 @@
 static DEFINE_MUTEX(cpu_scale_mutex);
 static DEFINE_PER_CPU(unsigned long, cpu_scale) = SCHED_CAPACITY_SCALE;
 
-unsigned long arch_scale_cpu_capacity(struct sched_domain *sd, int cpu)
+unsigned long atd_scale_cpu_capacity(struct sched_domain *sd, int cpu)
 {
 	return per_cpu(cpu_scale, cpu);
 }
 
-void set_capacity_scale(unsigned int cpu, unsigned long capacity)
+void atd_set_capacity_scale(unsigned int cpu, unsigned long capacity)
 {
 	per_cpu(cpu_scale, cpu) = capacity;
 }
@@ -39,7 +39,7 @@ static ssize_t cpu_capacity_show(struct device *dev,
 	struct cpu *cpu = container_of(dev, struct cpu, dev);
 
 	return sprintf(buf, "%lu\n",
-			arch_scale_cpu_capacity(NULL, cpu->dev.id));
+			atd_scale_cpu_capacity(NULL, cpu->dev.id));
 }
 
 static ssize_t cpu_capacity_store(struct device *dev,
@@ -61,7 +61,7 @@ static ssize_t cpu_capacity_store(struct device *dev,
 
 		mutex_lock(&cpu_scale_mutex);
 		for_each_cpu(i, &cpu_topology[this_cpu].core_sibling)
-			set_capacity_scale(i, new_capacity);
+			atd_set_capacity_scale(i, new_capacity);
 		mutex_unlock(&cpu_scale_mutex);
 	}
 
@@ -93,7 +93,7 @@ u32 capacity_scale;
 u32 *raw_capacity;
 static bool cap_parsing_failed;
 
-void normalize_cpu_capacity(void)
+void atd_normalize_cpu_capacity(void)
 {
 	u64 capacity;
 	int cpu;
@@ -108,14 +108,14 @@ void normalize_cpu_capacity(void)
 			 cpu, raw_capacity[cpu]);
 		capacity = (raw_capacity[cpu] << SCHED_CAPACITY_SHIFT)
 			/ capacity_scale;
-		set_capacity_scale(cpu, capacity);
+		atd_set_capacity_scale(cpu, capacity);
 		pr_debug("cpu_capacity: CPU%d cpu_capacity=%lu\n",
-			cpu, arch_scale_cpu_capacity(NULL, cpu));
+			cpu, atd_scale_cpu_capacity(NULL, cpu));
 	}
 	mutex_unlock(&cpu_scale_mutex);
 }
 
-int __init parse_cpu_capacity(struct device_node *cpu_node, int cpu)
+int __init atd_parse_cpu_capacity(struct device_node *cpu_node, int cpu)
 {
 	int ret = 1;
 	u32 cpu_capacity;
@@ -180,12 +180,12 @@ init_cpu_capacity_callback(struct notifier_block *nb,
 			       cpus_to_visit,
 			       policy->related_cpus);
 		for_each_cpu(cpu, policy->related_cpus) {
-			raw_capacity[cpu] = arch_scale_cpu_capacity(NULL, cpu) *
+			raw_capacity[cpu] = atd_scale_cpu_capacity(NULL, cpu) *
 					    policy->cpuinfo.max_freq / 1000UL;
 			capacity_scale = max(raw_capacity[cpu], capacity_scale);
 		}
 		if (cpumask_empty(cpus_to_visit)) {
-			normalize_cpu_capacity();
+			atd_normalize_cpu_capacity();
 			kfree(raw_capacity);
 			pr_debug("cpu_capacity: parsing done\n");
 			cap_parsing_done = true;
