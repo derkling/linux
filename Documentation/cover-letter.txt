@@ -1,0 +1,41 @@
+[PATCH v2 0/xx]  Fix issues and factorize arm/arm64 capacity information code
+
+Hi,
+
+arm and arm64 topology.c share a lot of code related to parsing of capacity
+information. This is v2 of a solution (based on Will's, Catalin's and Mark's
+off-line suggestions) to move such common code in a single place:
+drivers/base/arch_topology.c (by creating such file and conditionally compiling
+it for arm and arm64 only).
+
+First 5 patches are actually fixes for the current code.
+
+Patch 6 is the actual refactoring.
+
+Patch 7 removes one of the extern symbols by changing a bit the now common
+code.
+
+Patch 8 removes the remaining externs (as required by Russell during v1 review)
+by creating new header file include/ linux/arch_topology.h file and including
+that from arm, arm64 and drivers.
+
+Last patch addresses Dietmar's comments to v1 and adds a 'drv_' prefix to
+interfaces exported by drivers code and used by arch (and potentially others in
+the future).
+
+Changes from v1:
+
+ - rebase on top of 4.10-rc6
+ - fix licence issue as pointed out by Russell
+ - propose a solution for removing all remaining externs
+ - addressed Dietmar's comments regarding better namespaces
+
+The set is based on top of linux/master (4.10-rc6 e387dc122fc7) and it is also
+available from:
+
+ git://linux-arm.org/linux-jl.git upstream/default_caps_factorize-v2
+
+Best,
+
+- Juri
+
