@@ -84,6 +84,8 @@ static int update_vdd(struct clk_vdd_class *vdd_class)
 		if (vdd_class->level_votes[level])
 			break;
 
+	pr_debug("CLK_MSM: update vdd lvl=%d\n, max_lvl=%d\n", level,
+			max_lvl);
 	if (level == cur_lvl)
 		return 0;
 
@@ -92,6 +94,7 @@ static int update_vdd(struct clk_vdd_class *vdd_class)
 	for (i = 0; i < vdd_class->num_regulators; i++) {
 		rc = regulator_set_voltage(r[i], uv[new_base + i],
 			vdd_class->use_max_uV ? INT_MAX : uv[max_lvl + i]);
+		pr_debug("CLK_MSM: set vdd uv=%d\n\n", uv[new_base + i]);
 		if (rc)
 			goto set_voltage_fail;
 
