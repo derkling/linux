@@ -1204,10 +1204,35 @@ static int add_opp(struct clk *c, struct device *dev, unsigned long max_rate)
 	struct regulator *reg = c->vdd_class->regulator[0];
 	long ret;
 	bool first = true;
+	bool last = false;
 	int j = 1;
+	const unsigned long little_max_freq = 950000000;
+	const unsigned long big_min_freq = 1090000000;
+	const unsigned long last_freq_big = 1700000000;
+
+	pr_info("CLK: (%s) add opp, max_rate=%lu\n", c->dbg_name, max_rate);
 
 	while (1) {
 		rate = c->fmax[j++];
+
+		if (!strcmp(dev_name(dev), "cpu0") || !strcmp(dev_name(dev), "cpu1")) {
+			if (rate >= little_max_freq) {
+				last = true;
+			}
+		}
+
+		if (!strcmp(dev_name(dev), "cpu2") || !strcmp(dev_name(dev), "cpu3")) {
+			if (rate <= big_min_freq) {
+				continue;
+			}
+		}
+
+		if (!strcmp(dev_name(dev), "cpu2") || !strcmp(dev_name(dev), "cpu3")) {
+			if (rate >= last_freq_big) {
+				last = true;
+			}
+		}
+
 		level = find_vdd_level(c, rate);
 		if (level <= 0) {
 			pr_warn("clock-cpu: no corner for %lu.\n", rate);
@@ -1220,6 +1245,8 @@ static int add_opp(struct clk *c, struct device *dev, unsigned long max_rate)
 			return -EINVAL;
 		}
 
+		pr_info("CLK: add opp, level=%d\n, rate=%lu, uV=%d\n",
+			level, rate, uv);
 		ret = dev_pm_opp_add(dev, rate, uv);
 		if (ret) {
 			pr_warn("clock-cpu: failed to add OPP for %lu\n", rate);
@@ -1240,6 +1267,12 @@ static int add_opp(struct clk *c, struct device *dev, unsigned long max_rate)
 				first = false;
 			else
 				break;
+		}
+		if (last) {
+			/* one time print at bootup */
+			pr_info("clock-cpu-8996: set OPP pair (%lu Hz, %d uv) on %s\n",
+				rate, uv, dev_name(dev));
+			break;
 		}
 	}
 
