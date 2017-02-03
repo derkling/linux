@@ -1316,6 +1316,8 @@ enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct sched_rt_entity *rt_se = &p->rt;
 
+	trace_printk("rt_event=enqueue pid=%d comm=%s", p->pid, p->comm);
+
 	if (flags & ENQUEUE_WAKEUP)
 		rt_se->timeout = 0;
 
@@ -1329,6 +1331,7 @@ static void dequeue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct sched_rt_entity *rt_se = &p->rt;
 
+	trace_printk("rt_event=dequeue pid=%d comm=%s", p->pid, p->comm);
 	update_curr_rt(rq);
 	dequeue_rt_entity(rt_se, flags);
 
@@ -1550,8 +1553,10 @@ pick_next_task_rt(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 	 * We may dequeue prev's rt_rq in put_prev_task().
 	 * So, we update time before rt_nr_running check.
 	 */
-	if (prev->sched_class == &rt_sched_class)
+	if (prev->sched_class == &rt_sched_class) {
+		trace_printk("rt_event=prev_update pid=%d comm=%s", prev->pid, prev->comm);
 		update_curr_rt(rq);
+	}
 
 	if (!rt_rq->rt_queued)
 		return NULL;
@@ -1560,6 +1565,7 @@ pick_next_task_rt(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 
 	p = _pick_next_task_rt(rq);
 
+	trace_printk("rt_event=pick_next pid=%d comm=%s", p->pid, p->comm);
 	/* Kick cpufreq (see the comment in kernel/sched/sched.h). */
 	cpufreq_update_this_cpu(rq, SCHED_CPUFREQ_RT);
 
@@ -1573,6 +1579,7 @@ pick_next_task_rt(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 
 static void put_prev_task_rt(struct rq *rq, struct task_struct *p)
 {
+	trace_printk("rt_event=put_prev pid=%d comm=%s", p->pid, p->comm);
 	update_curr_rt(rq);
 
 	/*
@@ -2272,6 +2279,8 @@ static void task_tick_rt(struct rq *rq, struct task_struct *p, int queued)
 {
 	struct sched_rt_entity *rt_se = &p->rt;
 
+	trace_printk("rt_event=task_tick pid=%d comm=%s", p->pid, p->comm);
+
 	/* Kick cpufreq (see the comment in kernel/sched/sched.h). */
 	cpufreq_update_this_cpu(rq, SCHED_CPUFREQ_RT);
 
@@ -2307,6 +2316,8 @@ static void task_tick_rt(struct rq *rq, struct task_struct *p, int queued)
 static void set_curr_task_rt(struct rq *rq)
 {
 	struct task_struct *p = rq->curr;
+
+	trace_printk("rt_event=set_curr pid=%d comm=%s", p->pid, p->comm);
 
 	p->se.exec_start = rq_clock_task(rq);
 

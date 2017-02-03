@@ -509,17 +509,27 @@ unsigned int cpufreq_driver_resolve_freq(struct cpufreq_policy *policy,
 	policy->cached_target_freq = target_freq;
 
 	if (cpufreq_driver->target_index) {
-		int idx;
+		int idx, freq;
 
 		idx = cpufreq_frequency_table_target(policy, target_freq,
 						     CPUFREQ_RELATION_L);
 		policy->cached_resolved_idx = idx;
-		return policy->freq_table[idx].frequency;
+		freq = policy->freq_table[idx].frequency;
+		trace_printk("resolve_freq: idx=%d freq=%u", idx, freq);
+
+		return freq;
 	}
 
-	if (cpufreq_driver->resolve_freq)
-		return cpufreq_driver->resolve_freq(policy, target_freq);
+	if (cpufreq_driver->resolve_freq) {
+		unsigned int freq;
 
+		freq = cpufreq_driver->resolve_freq(policy, target_freq);
+		trace_printk("resolve_freq: freq=%u", freq);
+
+		return freq;
+	}
+
+	trace_printk("resolve_freq: target=%u", target_freq);
 	return target_freq;
 }
 EXPORT_SYMBOL_GPL(cpufreq_driver_resolve_freq);
