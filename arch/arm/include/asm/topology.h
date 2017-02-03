@@ -29,6 +29,11 @@ const struct cpumask *cpu_coregroup_mask(int cpu);
 /* Replace task scheduler's default cpu-invariant accounting */
 #define arch_scale_cpu_capacity atd_scale_cpu_capacity
 
+/* Replace task scheduler's default frequency-invariant accounting */
+#ifdef CONFIG_CPU_FREQ
+#define arch_scale_freq_capacity atd_scale_freq_capacity
+#endif
+
 #else
 
 static inline void init_cpu_topology(void) { }
