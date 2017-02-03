@@ -66,7 +66,8 @@ static DEFINE_PER_CPU(struct sugov_cpu, sugov_cpu);
 
 /************************ Governor internals ***********************/
 
-static bool sugov_should_update_freq(struct sugov_policy *sg_policy, u64 time)
+static bool sugov_should_update_freq(struct sugov_policy *sg_policy,
+				     u64 time, bool rt_mode)
 {
 	s64 delta_ns;
 
@@ -82,6 +83,10 @@ static bool sugov_should_update_freq(struct sugov_policy *sg_policy, u64 time)
 		sg_policy->next_freq = UINT_MAX;
 		return true;
 	}
+
+	/* Always update if a RT/DL task is running */
+	if (rt_mode)
+		return true;
 
 	delta_ns = time - sg_policy->last_freq_update_time;
 	return delta_ns >= sg_policy->freq_update_delay_ns;
@@ -198,16 +203,26 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 	struct sugov_cpu *sg_cpu = container_of(hook, struct sugov_cpu, update_util);
 	struct sugov_policy *sg_policy = sg_cpu->sg_policy;
 	struct cpufreq_policy *policy = sg_policy->policy;
+	unsigned int cpu = smp_processor_id();
+	struct task_struct *curr = cpu_curr(cpu);
 	unsigned long util, max;
 	unsigned int next_f;
+	bool rt_mode;
+
+	/*
+	 * While RT/DL tasks are running we do not want FAIR tasks to
+	 * overvrite this CPU's flags, still we can update utilization and
+	 * frequency (if required/possible) to be fair with these tasks.
+	 */
+	rt_mode = task_has_dl_policy(curr) || task_has_rt_policy(curr);
 
 	sugov_set_iowait_boost(sg_cpu, time, flags);
 	sg_cpu->last_update = time;
 
-	if (!sugov_should_update_freq(sg_policy, time))
+	if (!sugov_should_update_freq(sg_policy, time, false))
 		return;
 
-	if (flags & SCHED_CPUFREQ_RT_DL) {
+	if (rt_mode || (flags & SCHED_CPUFREQ_RT_DL)) {
 		next_f = policy->cpuinfo.max_freq;
 	} else {
 		sugov_get_util(&util, &max);
@@ -278,6 +293,7 @@ static void sugov_update_shared(struct update_util_data *hook, u64 time,
 	struct task_struct *curr = cpu_curr(cpu);
 	unsigned long util, max;
 	unsigned int next_f;
+	bool rt_mode;
 
 	sugov_get_util(&util, &max);
 
@@ -293,14 +309,24 @@ static void sugov_update_shared(struct update_util_data *hook, u64 time,
 	if (curr == sg_policy->thread)
 		goto done;
 
+	/*
+	 * While RT/DL tasks are running we do not want FAIR tasks to
+	 * overvrite this CPU's flags, still we can update utilization and
+	 * frequency (if required/possible) to be fair with these tasks.
+	 */
+	rt_mode = task_has_dl_policy(curr) || task_has_rt_policy(curr);
+	if (rt_mode)
+		sg_cpu->flags |= flags;
+	else
+		sg_cpu->flags = flags;
+
 	sg_cpu->util = util;
 	sg_cpu->max = max;
-	sg_cpu->flags = flags;
 
 	sugov_set_iowait_boost(sg_cpu, time, flags);
 	sg_cpu->last_update = time;
 
-	if (sugov_should_update_freq(sg_policy, time)) {
+	if (sugov_should_update_freq(sg_policy, time, rt_mode)) {
 		next_f = sugov_next_freq_shared(sg_cpu, util, max, flags);
 		sugov_update_commit(sg_policy, time, next_f);
 	}
