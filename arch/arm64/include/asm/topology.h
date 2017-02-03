@@ -37,6 +37,11 @@ int pcibus_to_node(struct pci_bus *bus);
 /* Replace task scheduler's default cpu-invariant accounting */
 #define arch_scale_cpu_capacity atd_scale_cpu_capacity
 
+/* Replace task scheduler's default frequency-invariant accounting */
+#ifdef CONFIG_CPU_FREQ
+#define arch_scale_freq_capacity atd_scale_freq_capacity
+#endif
+
 #include <asm-generic/topology.h>
 
 #endif /* _ASM_ARM_TOPOLOGY_H */
