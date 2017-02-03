@@ -37,6 +37,9 @@ int pcibus_to_node(struct pci_bus *bus);
 /* Subscribe for input data for frequency-invariant load-tracking */
 #define arch_set_freq_scale topology_set_freq_scale
 
+/* Replace task scheduler's default frequency-invariant accounting */
+#define arch_scale_freq_capacity topology_get_freq_scale
+
 #include <asm-generic/topology.h>
 
 #endif /* _ASM_ARM_TOPOLOGY_H */
