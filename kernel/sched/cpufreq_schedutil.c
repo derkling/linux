@@ -351,10 +351,9 @@ static void sugov_update_shared(struct update_util_data *hook, u64 time,
 	unsigned int next_f;
 	bool rt_mode;
 
-	sugov_get_util(&util, &max, sg_cpu->cpu);
-
 	raw_spin_lock(&sg_policy->update_lock);
 
+	sugov_get_util(&util, &max, sg_cpu->cpu);
 	sg_cpu->util = util;
 	sg_cpu->max = max;
 
