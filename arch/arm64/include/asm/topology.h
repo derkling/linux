@@ -32,6 +32,11 @@ int pcibus_to_node(struct pci_bus *bus);
 
 #endif /* CONFIG_NUMA */
 
+#include <linux/arch_topology.h>
+
+/* Replace task scheduler's default cpu-invariant accounting */
+#define arch_scale_cpu_capacity atd_scale_cpu_capacity
+
 #include <asm-generic/topology.h>
 
 #endif /* _ASM_ARM_TOPOLOGY_H */
