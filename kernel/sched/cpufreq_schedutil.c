@@ -274,12 +274,20 @@ static void sugov_update_shared(struct update_util_data *hook, u64 time,
 {
 	struct sugov_cpu *sg_cpu = container_of(hook, struct sugov_cpu, update_util);
 	struct sugov_policy *sg_policy = sg_cpu->sg_policy;
+	unsigned int cpu = smp_processor_id();
+	struct task_struct *curr = cpu_curr(cpu);
 	unsigned long util, max;
 	unsigned int next_f;
 
 	sugov_get_util(&util, &max);
 
 	raw_spin_lock(&sg_policy->update_lock);
+
+	/* CPU is entering IDLE, relax flags without triggering an update */
+	if (flags & SCHED_CPUFREQ_IDLE) {
+		sg_cpu->flags = 0;
+		goto done;
+	}
 
 	sg_cpu->util = util;
 	sg_cpu->max = max;
@@ -293,6 +301,7 @@ static void sugov_update_shared(struct update_util_data *hook, u64 time,
 		sugov_update_commit(sg_policy, time, next_f);
 	}
 
+done:
 	raw_spin_unlock(&sg_policy->update_lock);
 }
 
