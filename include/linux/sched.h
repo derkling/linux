@@ -565,6 +565,9 @@ struct task_struct {
 #ifdef CONFIG_CGROUP_SCHED
 	struct task_group		*sched_task_group;
 #endif
+#ifdef CONFIG_CAPACITY_CLAMPING
+	struct rb_node			cap_clamp_node[2];
+#endif
 	struct sched_dl_entity		dl;
 
 #ifdef CONFIG_PREEMPT_NOTIFIERS
@@ -965,7 +968,6 @@ struct task_struct {
 
 	unsigned long			numa_pages_migrated;
 #endif /* CONFIG_NUMA_BALANCING */
-
 	struct tlbflush_unmap_batch	tlb_ubc;
 
 	struct rcu_head			rcu;
