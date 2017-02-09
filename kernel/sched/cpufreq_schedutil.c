@@ -224,11 +224,14 @@ static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
 	 * utilization (PELT windows are synchronized) we can directly add them
 	 * to obtain the CPU's actual utilization.
 	 *
-	 * CFS utilization can be boosted or capped, depending utilization
-	 * constraints enforce by currently RUNNABLE tasks on the CPU.
+	 * CFS and RT utilizations can be boosted or capped, depending on
+	 * utilization constraints enforce by currently RUNNABLE tasks.
+	 * They are individually clamped to ensure fairness across classes,
+	 * meaning that CFS always gets (if possible) the (minimum) required
+	 * bandwidth on top of that required by higher priority classes.
 	 */
 	util  = uclamp_util(cpu_of(rq), cpu_util_cfs(rq));
-	util += cpu_util_rt(rq);
+	util += uclamp_util(cpu_of(rq), cpu_util_rt(rq));
 
 	/*
 	 * We do not make cpu_util_dl() a permanent part of this sum because we
@@ -333,8 +336,8 @@ static void sugov_iowait_boost(struct sugov_cpu *sg_cpu, u64 time,
 	 *
 	 * Since DL tasks have a much more advanced bandwidth control, it's
 	 * safe to assume that IO boost does not apply to those tasks.
-	 * Instead, since for RT tasks we are already going to max, we don't
-	 * rally care about clamping the IO boost max value for them too.
+	 * Instead, for CFS and RT tasks we clamp the IO boost max value
+	 * considering the current constraints for the CPU.
 	 */
 	max_boost = sg_cpu->iowait_boost_max;
 	max_boost = uclamp_util(sg_cpu->cpu, max_boost);
