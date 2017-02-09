@@ -808,6 +808,13 @@ cap_clamp_insert_capacity(struct rq *rq, struct task_struct *p,
 	/* Update CPU's capacity cache pointer */
 	cgc->value = capacity_new;
 	cgc->node = node;
+
+	if (cap_idx == CAP_CLAMP_MIN)
+		trace_printk("cap_clamp_nq_update_min: cpu=%d min=%u",
+			     cpu_of(rq), cgc->value);
+	else
+		trace_printk("cap_clamp_nq_update_max: cpu=%d max=%u",
+			     cpu_of(rq), cgc->value);
 }
 
 static inline void
@@ -838,6 +845,13 @@ cap_clamp_remove_capacity(struct rq *rq, struct task_struct *p,
 					 cap_clamp_node[cap_idx]);
 			cgc->value = task_group(entry)->cap_clamp[cap_idx];
 		}
+
+		if (cap_idx == CAP_CLAMP_MIN)
+			trace_printk("cap_clamp_dq_update: cpu=%d min=%u",
+				     cpu_of(rq), cgc->value);
+		else
+			trace_printk("cap_clamp_dq_update: cpu=%d max=%u",
+				     cpu_of(rq), cgc->value);
 	}
 
 	/* Remove task's capacity_{min,max] */
@@ -907,6 +921,11 @@ cap_clamp_enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 	lockdep_assert_held(&p->pi_lock);
 	lockdep_assert_held(&rq->lock);
 
+	trace_printk("cap_clamp_nq: cpu=%d pid=%d comm=%s cc_min=%d cc_max=%d",
+		     cpu_of(rq), p->pid, p->comm,
+		     task_group(p)->cap_clamp[CAP_CLAMP_MIN],
+		     task_group(p)->cap_clamp[CAP_CLAMP_MAX]);
+
 	/* Track task's min/max capacities */
 	cap_clamp_insert_capacity(rq, p, CAP_CLAMP_MIN);
 	cap_clamp_insert_capacity(rq, p, CAP_CLAMP_MAX);
@@ -917,6 +936,11 @@ cap_clamp_dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	lockdep_assert_held(&p->pi_lock);
 	lockdep_assert_held(&rq->lock);
+
+	trace_printk("cap_clamp_dq: cpu=%d pid=%d comm=%s cc_min=%d cc_max=%d",
+		     cpu_of(rq), p->pid, p->comm,
+		     task_group(p)->cap_clamp[CAP_CLAMP_MIN],
+		     task_group(p)->cap_clamp[CAP_CLAMP_MAX]);
 
 	/* Track task's min/max capacities */
 	cap_clamp_remove_capacity(rq, p, CAP_CLAMP_MIN);
