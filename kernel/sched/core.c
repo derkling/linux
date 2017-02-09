@@ -744,6 +744,7 @@ unsigned int sysctl_sched_uclamp_util_max = SCHED_CAPACITY_SCALE;
  * Tasks's clamp values are required to be within this range
  */
 static struct uclamp_se uclamp_default[UCLAMP_CNT];
+static struct uclamp_se uclamp_default_perf[UCLAMP_CNT];
 
 /**
  * uclamp_map: reference counts a utilization "clamp value"
@@ -940,6 +941,8 @@ static inline void uclamp_cpu_update(struct rq *rq, int clamp_id,
  */
 static inline int uclamp_effective_group_id(struct task_struct *p, int clamp_id)
 {
+	unsigned int default_value;
+	unsigned int default_group;
 	int clamp_value;
 	int group_id;
 
@@ -951,14 +954,21 @@ static inline int uclamp_effective_group_id(struct task_struct *p, int clamp_id)
 	clamp_value = p->uclamp[clamp_id].value;
 	group_id = p->uclamp[clamp_id].group_id;
 
-	/* Always restrict tasks specific clamps with system default */
-	if ((clamp_id == UCLAMP_MIN &&
-	     clamp_value < uclamp_default[UCLAMP_MIN].value) ||
-	    (clamp_id == UCLAMP_MAX &&
-	     clamp_value > uclamp_default[UCLAMP_MAX].value)) {
+	/* RT tasks have different default values */
+	if (task_has_rt_policy(p)) {
+		default_value = uclamp_default_perf[clamp_id].value;
+		default_group = uclamp_default_perf[clamp_id].group_id;
+	} else {
+		default_value = uclamp_default[clamp_id].value;
+		default_group = uclamp_default[clamp_id].group_id;
+	}
 
-		clamp_value = uclamp_default[clamp_id].value;
-		group_id = uclamp_default[clamp_id].group_id;
+	/* Always restrict tasks specific clamps with system default */
+	if ((clamp_id == UCLAMP_MIN && clamp_value < default_value) ||
+	    (clamp_id == UCLAMP_MAX && clamp_value > default_value)) {
+
+		clamp_value = default_value;
+		group_id = default_group;
 	}
 
 	p->uclamp[clamp_id].effective.value = clamp_value;
@@ -1415,6 +1425,10 @@ static void __init init_uclamp(void)
 
 		uc_se = &uclamp_default[clamp_id];
 		uclamp_group_set(clamp_id, 0, uc_se, uclamp_none(clamp_id));
+
+		/* RT tasks by default will go to max frequency */
+		uc_se = &uclamp_default_perf[clamp_id];
+		uclamp_group_set(clamp_id, 0, uc_se, uclamp_none(UCLAMP_MAX));
 	}
 }
 
