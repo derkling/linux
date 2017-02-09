@@ -188,27 +188,35 @@ static void sugov_get_util(struct sugov_cpu *sg_cpu)
 	sg_cpu->util_dl  = cpu_util_dl(rq);
 }
 
+/**
+ * sugov_aggregate_util() - Aggregate scheduling classes requests.
+ * @sg_cpu: the sugov data for the CPU to get utilization from
+ *
+ * Utilization required by DEADLINE must always be granted while, for
+ * FAIR, we use blocked utilization of IDLE CPUs as a mechanism to
+ * gracefully reduce the frequency when no tasks show up for longer
+ * periods of time.
+ *
+ * Ideally we would like to set util_dl as min/guaranteed freq and
+ * util_cfs + util_dl as requested freq. However, cpufreq is not yet
+ * ready for such an interface. So, we only do the latter for now.
+ *
+ * RT and CFS utilization are clamped, according to the current CPU
+ * constrains. They are individually clamped to ensure fairness across
+ * classes, meaning that CFS always gets (if possible) the (minimum)
+ * required bandwidth on top of that required by higher priority
+ * classes.
+ */
 static unsigned long sugov_aggregate_util(struct sugov_cpu *sg_cpu)
 {
+	unsigned long util = sg_cpu->util_dl;
 	struct rq *rq = cpu_rq(sg_cpu->cpu);
-	unsigned long util_cfs;
 
 	if (rt_rq_is_runnable(&rq->rt))
-		return sg_cpu->max;
+		util += uclamp_util(sg_cpu->cpu, sg_cpu->max);
+	util += uclamp_util(sg_cpu->cpu, sg_cpu->util_cfs);
 
-	/*
-	 * Utilization required by DEADLINE must always be granted while, for
-	 * FAIR, we use blocked utilization of IDLE CPUs as a mechanism to
-	 * gracefully reduce the frequency when no tasks show up for longer
-	 * periods of time.
-	 *
-	 * Ideally we would like to set util_dl as min/guaranteed freq and
-	 * util_cfs + util_dl as requested freq. However, cpufreq is not yet
-	 * ready for such an interface. So, we only do the latter for now.
-	 */
-	util_cfs = uclamp_util(sg_cpu->cpu, sg_cpu->util_cfs);
-
-	return min(sg_cpu->max, (sg_cpu->util_dl + util_cfs));
+	return min(sg_cpu->max, util);
 }
 
 /**
@@ -276,8 +284,8 @@ static void sugov_iowait_boost(struct sugov_cpu *sg_cpu, u64 time,
 	 *
 	 * Since DL tasks have a much more advanced bandwidth control, it's
 	 * safe to assume that IO boost does not apply to those tasks.
-	 * Instead, since for RT tasks we are already going to max, we don't
-	 * rally care about clamping the IO boost max value for them too.
+	 * Instead, for CFS and RT tasks we clamp the IO boost max value
+	 * considering the current constraints for the CPU.
 	 */
 	max_boost = sg_cpu->iowait_boost_max;
 	max_boost = uclamp_util(sg_cpu->cpu, max_boost);
