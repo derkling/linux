@@ -834,7 +834,6 @@ uclamp_effective_get(struct task_struct *p, unsigned int clamp_id,
 		*clamp_value = uclamp_default[clamp_id].value;
 		*bucket_id = uclamp_default[clamp_id].bucket_id;
 	}
-
 }
 
 static inline void
@@ -1053,30 +1052,68 @@ done:
 	return result;
 }
 
-static int __setscheduler_uclamp(struct task_struct *p,
-				 const struct sched_attr *attr)
+static int uclamp_validate(struct task_struct *p,
+			   const struct sched_attr *attr)
 {
 	unsigned int lower_bound = p->uclamp[UCLAMP_MIN].value;
 	unsigned int upper_bound = p->uclamp[UCLAMP_MAX].value;
 
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN)
 		lower_bound = attr->sched_util_min;
-
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX)
 		upper_bound = attr->sched_util_max;
 
-	if (lower_bound > upper_bound ||
-	    upper_bound > SCHED_CAPACITY_SCALE)
+	if (lower_bound > upper_bound)
+		return -EINVAL;
+	if (upper_bound > SCHED_CAPACITY_SCALE)
 		return -EINVAL;
 
-	p->uclamp[UCLAMP_MIN].bucket_id = uclamp_bucket_id(lower_bound);
-	p->uclamp[UCLAMP_MAX].bucket_id = uclamp_bucket_id(upper_bound);
-	p->uclamp[UCLAMP_MIN].value = lower_bound;
-	p->uclamp[UCLAMP_MAX].value = upper_bound;
-	uclamp_task_update_active(p, UCLAMP_MIN);
-	uclamp_task_update_active(p, UCLAMP_MAX);
-
 	return 0;
+}
+
+static void __setscheduler_uclamp(struct task_struct *p,
+				  const struct sched_attr *attr)
+{
+	unsigned int clamp_id;
+
+	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP) {
+
+		if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN) {
+			unsigned int lower_bound = attr->sched_util_min;
+
+			p->uclamp[UCLAMP_MIN].user_defined = true;
+			p->uclamp[UCLAMP_MIN].value = lower_bound;
+			p->uclamp[UCLAMP_MIN].bucket_id =
+				uclamp_bucket_id(lower_bound);
+		}
+
+		if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX) {
+			unsigned int upper_bound =  attr->sched_util_max;
+
+			p->uclamp[UCLAMP_MAX].user_defined = true;
+			p->uclamp[UCLAMP_MAX].value = upper_bound;
+			p->uclamp[UCLAMP_MAX].bucket_id =
+				uclamp_bucket_id(upper_bound);
+		}
+	}
+
+	/*
+	 * On scheduling class change, reset to default clamps for tasks
+	 * without a task-specific value.
+	 */
+	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
+		unsigned int clamp_value = uclamp_none(clamp_id);
+		struct uclamp_se *uc_se = &p->uclamp[clamp_id];
+
+		if (uc_se->user_defined)
+			continue;
+
+		if (rt_task(p))
+			clamp_value = uclamp_none(UCLAMP_MAX);
+
+		uc_se->bucket_id = uclamp_bucket_id(clamp_value);
+		uc_se->value = clamp_value;
+	}
 }
 
 static void uclamp_fork(struct task_struct *p, bool reset)
@@ -1093,8 +1130,9 @@ static void uclamp_fork(struct task_struct *p, bool reset)
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
 		unsigned int clamp_value = uclamp_none(clamp_id);
 
-		p->uclamp[clamp_id].bucket_id = uclamp_bucket_id(clamp_value);
+		p->uclamp[clamp_id].user_defined = false;
 		p->uclamp[clamp_id].value = clamp_value;
+		p->uclamp[clamp_id].bucket_id = uclamp_bucket_id(clamp_value);
 	}
 }
 
@@ -1126,11 +1164,13 @@ static void __init init_uclamp(void)
 #else /* CONFIG_UCLAMP_TASK */
 static inline void uclamp_rq_inc(struct rq *rq, struct task_struct *p) { }
 static inline void uclamp_rq_dec(struct rq *rq, struct task_struct *p) { }
-static inline int __setscheduler_uclamp(struct task_struct *p,
-					const struct sched_attr *attr)
+static inline int uclamp_validate(struct task_struct *p,
+				  const struct sched_attr *attr)
 {
-	return -EINVAL;
+	return -ENODEV;
 }
+static void __setscheduler_uclamp(struct task_struct *p,
+				  const struct sched_attr *attr) { }
 static inline void uclamp_fork(struct task_struct *p, bool reset) { }
 static inline void init_uclamp(void) { }
 #endif /* CONFIG_UCLAMP_TASK */
@@ -4638,9 +4678,9 @@ recheck:
 			return retval;
 	}
 
-	/* Configure utilization clamps for the task */
+	/* Update task specific "requested" clamps */
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP) {
-		retval = __setscheduler_uclamp(p, attr);
+		retval = uclamp_validate(p, attr);
 		if (retval)
 			return retval;
 	}
@@ -4674,6 +4714,8 @@ recheck:
 			goto change;
 		if (dl_policy(policy) && dl_param_changed(p, attr))
 			goto change;
+		if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP)
+			goto change;
 
 		p->sched_reset_on_fork = reset_on_fork;
 		task_rq_unlock(rq, p, &rf);
@@ -4698,7 +4740,6 @@ change:
 		if (dl_bandwidth_enabled() && dl_policy(policy) &&
 				!(attr->sched_flags & SCHED_FLAG_SUGOV)) {
 			cpumask_t *span = rq->rd->span;
-
 			/*
 			 * Don't allow tasks with an affinity mask smaller than
 			 * the entire root_domain to become SCHED_DEADLINE. We
@@ -4755,6 +4796,7 @@ change:
 
 	prev_class = p->sched_class;
 	__setscheduler(rq, p, attr, pi);
+	__setscheduler_uclamp(p, attr);
 
 	if (queued) {
 		/*
