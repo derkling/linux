@@ -236,9 +236,14 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util,
 	unsigned long dl_util, irq;
 	struct rq *rq = cpu_rq(cpu);
 
+	/*
+	 * On CONFIG_UCLAMP_TASK we stil use the sched_feat here to better
+	 * support testing.
+	 */
 	if (sched_feat(SUGOV_RT_MAX_FREQ) && type == FREQUENCY_UTIL &&
-						rt_rq_is_runnable(&rq->rt))
+	    rt_rq_is_runnable(&rq->rt)) {
 		return max;
+	}
 
 	/*
 	 * Early check to see if IRQ/steal time saturates the CPU, can be
@@ -254,8 +259,15 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util,
 	 * sum) of RT and CFS signals, hence leaving the special case of DL
 	 * to be delt with. The exact way of doing things depend on the calling
 	 * context.
+	 *
+	 * CFS and RT utilization can be boosted or capped, depending on
+	 * utilization clamp constraints requested by currently RUNNABLE
+	 * tasks.
+	 * When there are no CFS RUNNABLE tasks, clamps are released and
+	 * frequency will be gracefully reduced with the utilization decay.
 	 */
-	dl_util = cpu_util_dl(rq);
+	if (type == FREQUENCY_UTIL)
+		util = uclamp_util(rq, util);
 
 	/*
 	 * For frequency selection we do not make cpu_util_dl() a permanent part
@@ -266,6 +278,7 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util,
 	 * NOTE: numerical errors or stop class might cause us to not quite hit
 	 * saturation when we should -- something for later.
 	 */
+	dl_util = cpu_util_dl(rq);
 	if (util + dl_util >= max)
 		return max;
 
