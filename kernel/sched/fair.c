@@ -5308,6 +5308,16 @@ struct energy_env {
 	} cap;
 };
 
+static unsigned long cpu_util_energy(int cpu)
+{
+#ifdef CONFIG_SCHED_WALT
+	if (!walt_disabled && sysctl_sched_use_walt_cpu_util)
+		return walt_cpu_util_cum(cpu);
+	else
+#endif
+		return cpu_util(cpu);
+}
+
 static unsigned long cpu_util_energy_wake(int cpu, int delta)
 {
 	unsigned long util = cpu_rq(cpu)->cfs.avg.util_avg;
@@ -7481,6 +7491,15 @@ int can_migrate_task(struct task_struct *p, struct lb_env *env)
 		return 0;
 	}
 
+	if (energy_aware() && !env->dst_rq->rd->overutilized &&
+	    env->idle == CPU_NEWLY_IDLE) {
+		unsigned long util = task_util(p);
+
+		if (cpu_util_energy(env->dst_cpu) + util >
+		    cpu_util_energy(env->src_cpu) - util)
+			return 0;
+	}
+
 	/* Record that we found atleast one task that could run on dst_cpu */
 	env->flags &= ~LBF_ALL_PINNED;
 
@@ -8713,8 +8732,36 @@ static struct sched_group *find_busiest_group(struct lb_env *env)
 	 */
 	update_sd_lb_stats(env, &sds);
 
-	if (energy_aware() && !env->dst_rq->rd->overutilized)
-		goto out_balanced;
+	if (energy_aware() && !env->dst_rq->rd->overutilized) {
+		unsigned long capacity_local, capacity_busiest;
+		int cpu_local, cpu_busiest;
+
+		if (env->idle != CPU_NEWLY_IDLE || !sds.local || !sds.busiest)
+			goto out_balanced;
+
+		cpu_local = group_first_cpu(sds.local);
+		cpu_busiest = group_first_cpu(sds.busiest);
+
+		capacity_local = capacity_orig_of(cpu_local);
+		capacity_busiest = capacity_orig_of(cpu_busiest);
+
+		if (capacity_local != capacity_busiest)
+			goto out_balanced;
+
+		if (cpu_rq(cpu_busiest)->nr_running < 2)
+			goto out_balanced;
+
+		if (cpu_util_energy(cpu_busiest) < cpu_util_energy(cpu_local))
+			goto out_balanced;
+
+		/*
+		 * Out here we know cpu_local
+		 *  1) Is out of low power mode.
+		 *  2) Doesn't have any load.
+		 *  3) Has less energy contribution than cpu_busiest.
+		 * Thus we're better to pull task from cpu_busiest.
+		 */
+	}
 
 	local = &sds.local_stat;
 	busiest = &sds.busiest_stat;
