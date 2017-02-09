@@ -225,7 +225,6 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 	 * to obtain the CPU's actual utilization.
 	 */
 	util = util_cfs;
-	util += cpu_util_rt(rq);
 
 	if (type == frequency_util) {
 		/*
@@ -239,6 +238,7 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 		 * to not quite hit saturation when we should --
 		 * something for later.
 		 */
+		util = uclamp_util(cpu, util);
 
 		if ((util + cpu_util_dl(rq)) >= max)
 			return max;
@@ -338,6 +338,7 @@ static void sugov_iowait_boost(struct sugov_cpu *sg_cpu, u64 time,
 			       unsigned int flags)
 {
 	bool set_iowait_boost = flags & SCHED_CPUFREQ_IOWAIT;
+	unsigned int max_boost;
 
 	/* Reset boost if the CPU appears to have been idle enough */
 	if (sg_cpu->iowait_boost &&
@@ -353,11 +354,22 @@ static void sugov_iowait_boost(struct sugov_cpu *sg_cpu, u64 time,
 		return;
 	sg_cpu->iowait_boost_pending = true;
 
+	/*
+	 * Boost FAIR tasks only up to the CPU clamped utilization.
+	 *
+	 * Since DL tasks have a much more advanced bandwidth control, it's
+	 * safe to assume that IO boost does not apply to those tasks.
+	 * Instead, since for RT tasks we are already going to max, we don't
+	 * rally care about clamping the IO boost max value for them too.
+	 */
+	max_boost = sg_cpu->iowait_boost_max;
+	max_boost = uclamp_util(sg_cpu->cpu, max_boost);
+
 	/* Double the boost at each request */
 	if (sg_cpu->iowait_boost) {
 		sg_cpu->iowait_boost <<= 1;
-		if (sg_cpu->iowait_boost > sg_cpu->iowait_boost_max)
-			sg_cpu->iowait_boost = sg_cpu->iowait_boost_max;
+		if (sg_cpu->iowait_boost > max_boost)
+			sg_cpu->iowait_boost = max_boost;
 		return;
 	}
 
