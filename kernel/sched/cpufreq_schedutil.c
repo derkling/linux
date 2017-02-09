@@ -222,8 +222,7 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 	 * utilization (PELT windows are synchronized) we can directly add them
 	 * to obtain the CPU's actual utilization.
 	 */
-	util = util_cfs;
-	util += cpu_util_rt(rq);
+	util = cpu_util_rt(rq);
 
 	if (type == FREQUENCY_UTIL) {
 		/*
@@ -236,8 +235,14 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 		 * NOTE: numerical errors or stop class might cause us
 		 * to not quite hit saturation when we should --
 		 * something for later.
+		 *
+		 * CFS utilization can be boosted or capped, depending on
+		 * utilization clamp constraints requested by currently
+		 * RUNNABLE tasks.  When there are no CFS RUNNABLE tasks,
+		 * clamps are released and OPPs will be gracefully reduced
+		 * with the utilization decay.
 		 */
-
+		util += uclamp_util(rq, util_cfs);
 		if ((util + cpu_util_dl(rq)) >= max)
 			return max;
 	} else {
@@ -245,6 +250,7 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 		 * OTOH, for energy computation we need the estimated
 		 * running time, so include util_dl and ignore dl_bw.
 		 */
+		util += util_cfs;
 		util += cpu_util_dl(rq);
 		if (util >= max)
 			return max;
@@ -337,6 +343,7 @@ static void sugov_iowait_boost(struct sugov_cpu *sg_cpu, u64 time,
 			       unsigned int flags)
 {
 	bool set_iowait_boost = flags & SCHED_CPUFREQ_IOWAIT;
+	unsigned int max_boost;
 
 	/* Reset boost if the CPU appears to have been idle enough */
 	if (sg_cpu->iowait_boost &&
@@ -352,11 +359,24 @@ static void sugov_iowait_boost(struct sugov_cpu *sg_cpu, u64 time,
 		return;
 	sg_cpu->iowait_boost_pending = true;
 
+	/*
+	 * Boost FAIR tasks only up to the CPU clamped utilization.
+	 *
+	 * Since DL tasks have a much more advanced bandwidth control, it's
+	 * safe to assume that IO boost does not apply to those tasks.
+	 * Instead, since RT tasks are not utiliation clamped, we don't want
+	 * to apply clamping on IO boost while there is blocked RT
+	 * utilization.
+	 */
+	max_boost = sg_cpu->iowait_boost_max;
+	if (!cpu_util_rt(cpu_rq(sg_cpu->cpu)))
+		max_boost = uclamp_util(cpu_rq(sg_cpu->cpu), max_boost);
+
 	/* Double the boost at each request */
 	if (sg_cpu->iowait_boost) {
 		sg_cpu->iowait_boost <<= 1;
-		if (sg_cpu->iowait_boost > sg_cpu->iowait_boost_max)
-			sg_cpu->iowait_boost = sg_cpu->iowait_boost_max;
+		if (sg_cpu->iowait_boost > max_boost)
+			sg_cpu->iowait_boost = max_boost;
 		return;
 	}
 
