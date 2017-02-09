@@ -3475,7 +3475,7 @@ int update_rt_rq_load_avg(u64 now, int cpu, struct rt_rq *rt_rq, int running)
 	return ret;
 }
 
-unsigned long sched_get_rt_rq_util(int cpu)
+unsigned long cpu_util_rt(int cpu)
 {
 	struct rt_rq *rt_rq = &(cpu_rq(cpu)->rt);
 	return rt_rq->avg.util_avg;
@@ -5172,11 +5172,9 @@ static inline void update_overutilized_status(struct rq *rq)
 	rcu_read_unlock();
 }
 
-unsigned long boosted_cpu_util(int cpu, unsigned long other_util);
 #else
 
 #define update_overutilized_status(rq) do {} while (0)
-#define boosted_cpu_util(cpu, other_util) cpu_util_freq(cpu)
 
 #endif /* CONFIG_SMP */
 
@@ -5907,7 +5905,7 @@ static inline unsigned long cpu_util(int cpu)
 	return min_t(unsigned long, util, capacity_orig_of(cpu));
 }
 
-static inline unsigned long cpu_util_freq(int cpu)
+unsigned long cpu_util_cfs(int cpu)
 {
 #ifdef CONFIG_SCHED_WALT
 	u64 walt_cpu_util;
@@ -6654,6 +6652,15 @@ long schedtune_task_margin(struct task_struct *task)
 	return margin;
 }
 
+unsigned int uclamp_util(struct rq *rq, unsigned int util)
+{
+	unsigned long margin = schedtune_cpu_margin(util, rq->cpu);
+
+	trace_sched_boost_cpu(rq->cpu, util, margin);
+
+	return util + margin;
+}
+
 #else /* CONFIG_SCHED_TUNE */
 
 static inline int
@@ -6663,17 +6670,6 @@ schedtune_cpu_margin(unsigned long util, int cpu)
 }
 
 #endif /* CONFIG_SCHED_TUNE */
-
-unsigned long
-boosted_cpu_util(int cpu, unsigned long other_util)
-{
-	unsigned long util = cpu_util_freq(cpu) + other_util;
-	long margin = schedtune_cpu_margin(util, cpu);
-
-	trace_sched_boost_cpu(cpu, util, margin);
-
-	return util + margin;
-}
 
 static unsigned long capacity_spare_wake(int cpu, struct task_struct *p)
 {
