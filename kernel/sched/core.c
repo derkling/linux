@@ -746,6 +746,7 @@ unsigned int sysctl_sched_uclamp_util_max = SCHED_CAPACITY_SCALE;
  * Tasks specific clamp values are required to be within this range
  */
 static struct uclamp_se uclamp_default[UCLAMP_CNT];
+static struct uclamp_se uclamp_default_perf[UCLAMP_CNT];
 
 /**
  * Reference count utilization clamp buckets
@@ -858,16 +859,23 @@ static inline void
 uclamp_effective_get(struct task_struct *p, unsigned int clamp_id,
 		     unsigned int *clamp_value, unsigned int *bucket_id)
 {
+	struct uclamp_se *default_clamp;
+
 	/* Task specific clamp value */
 	*clamp_value = p->uclamp[clamp_id].value;
 	*bucket_id = p->uclamp[clamp_id].bucket_id;
 
+	/* RT tasks have different default values */
+	default_clamp = task_has_rt_policy(p)
+		? uclamp_default_perf
+		: uclamp_default;
+
 	/* System default restriction */
-	if (unlikely(*clamp_value < uclamp_default[UCLAMP_MIN].value ||
-		     *clamp_value > uclamp_default[UCLAMP_MAX].value)) {
+	if (unlikely(*clamp_value < default_clamp[UCLAMP_MIN].value ||
+		     *clamp_value > default_clamp[UCLAMP_MAX].value)) {
 		/* Keep it simple: unconditionally enforce system defaults */
-		*clamp_value = uclamp_default[clamp_id].value;
-		*bucket_id = uclamp_default[clamp_id].bucket_id;
+		*clamp_value = default_clamp[clamp_id].value;
+		*bucket_id = default_clamp[clamp_id].bucket_id;
 	}
 }
 
@@ -1282,6 +1290,10 @@ static void __init init_uclamp(void)
 
 		uc_se = &uclamp_default[clamp_id];
 		uclamp_bucket_inc(NULL, uc_se, clamp_id, uclamp_none(clamp_id));
+
+		/* RT tasks by default will go to max frequency */
+		uc_se = &uclamp_default_perf[clamp_id];
+		uclamp_bucket_inc(NULL, uc_se, clamp_id, uclamp_none(UCLAMP_MAX));
 	}
 }
 
