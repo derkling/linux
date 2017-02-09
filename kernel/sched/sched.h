@@ -2282,6 +2282,34 @@ static inline unsigned int uclamp_none(int clamp_id)
 	return SCHED_CAPACITY_SCALE;
 }
 
+#ifdef CONFIG_UCLAMP_TASK
+/**
+ * clamp_util: clamp a utilization value for a specified CPU
+ * @rq: the CPU's RQ to get the clamp values from
+ * @util: the utilization signal to clamp
+ *
+ * Each CPU tracks util_{min,max} clamp values depending on the set of its
+ * currently RUNNABLE tasks. Given a utilization signal, i.e a signal in
+ * the [0..SCHED_CAPACITY_SCALE] range, this function returns a clamped
+ * utilization signal considering the current clamp values for the
+ * specified CPU.
+ *
+ * Return: a clamped utilization signal for a given CPU.
+ */
+static inline unsigned int uclamp_util(struct rq *rq, unsigned int util)
+{
+	unsigned int min_util = rq->uclamp.value[UCLAMP_MIN];
+	unsigned int max_util = rq->uclamp.value[UCLAMP_MAX];
+
+	return clamp(util, min_util, max_util);
+}
+#else /* CONFIG_UCLAMP_TASK */
+static inline unsigned int uclamp_util(struct rq *rq, unsigned int util)
+{
+	return util;
+}
+#endif /* CONFIG_UCLAMP_TASK */
+
 #ifdef arch_scale_freq_capacity
 # ifndef arch_scale_freq_invariant
 #  define arch_scale_freq_invariant()	true
