@@ -182,16 +182,21 @@ static void sugov_get_util(struct sugov_cpu *sg_cpu)
 
 static unsigned long sugov_aggregate_util(struct sugov_cpu *sg_cpu)
 {
+	unsigned long util = sg_cpu->util_dl;
 	struct rq *rq = cpu_rq(sg_cpu->cpu);
-	unsigned long util;
 
-	if (rq->rt.rt_nr_running) {
-		util = sg_cpu->max;
-	} else {
-		util = sg_cpu->util_dl;
-		if (rq->cfs.h_nr_running)
-			util += uclamp_util(sg_cpu->cpu, sg_cpu->util_cfs);
-	}
+	/*
+	 * RT and CFS utilization are clamped, according to the current CPU
+	 * constrains, only when they have RUNNABLE tasks.
+	 * Their utilization are individually clamped to ensure fairness across
+	 * classes, meaning that CFS always get (if possible) the (minimum)
+	 * required bandwidth on top of that required by higher priority
+	 * classes.
+	 */
+	if (rq->rt.rt_nr_running)
+		util += uclamp_util(sg_cpu->cpu, sg_cpu->max);
+	if (rq->cfs.h_nr_running)
+		util += uclamp_util(sg_cpu->cpu, sg_cpu->util_cfs);
 
 	/*
 	 * Ideally we would like to set util_dl as min/guaranteed freq and
@@ -235,12 +240,10 @@ static void sugov_set_iowait_boost(struct sugov_cpu *sg_cpu, unsigned int flags)
 	 *
 	 * Since DL tasks have a much more advanced bandwidth control, it's
 	 * safe to assume that IO boost does not apply to those tasks.
-	 * Instead, since for RT tasks we are going to max, we don't want to
-	 * clamp the IO boost max value.
+	 * Instead, for CFS and RT tasks we clamp the IO boost max value
+	 * considering the current constraints for the CPU.
 	 */
-	max_boost = sg_cpu->iowait_boost_max;
-	if (!cpu_rq(sg_cpu->cpu)->rt.rt_nr_running)
-		max_boost = uclamp_util(sg_cpu->cpu, max_boost);
+	max_boost = uclamp_util(sg_cpu->cpu, sg_cpu->iowait_boost_max);
 
 	/* Double the IO boost at each frequency increase */
 	sg_cpu->iowait_boost <<= 1;
