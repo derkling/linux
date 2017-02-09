@@ -190,7 +190,7 @@ static unsigned long sugov_aggregate_util(struct sugov_cpu *sg_cpu)
 	} else {
 		util = sg_cpu->util_dl;
 		if (rq->cfs.h_nr_running)
-			util += sg_cpu->util_cfs;
+			util += uclamp_util(sg_cpu->cpu, sg_cpu->util_cfs);
 	}
 
 	/*
@@ -213,6 +213,7 @@ static unsigned long sugov_aggregate_util(struct sugov_cpu *sg_cpu)
  */
 static void sugov_set_iowait_boost(struct sugov_cpu *sg_cpu, unsigned int flags)
 {
+	unsigned int max_boost;
 
 	/* Boost only tasks waking up after IO */
 	if (!(flags & SCHED_CPUFREQ_IOWAIT))
@@ -223,16 +224,28 @@ static void sugov_set_iowait_boost(struct sugov_cpu *sg_cpu, unsigned int flags)
 		return;
 	sg_cpu->iowait_boost_pending = true;
 
-	/* Double the IO boost at each frequency increase */
-	if (sg_cpu->iowait_boost) {
-		sg_cpu->iowait_boost <<= 1;
-		if (sg_cpu->iowait_boost > sg_cpu->iowait_boost_max)
-			sg_cpu->iowait_boost = sg_cpu->iowait_boost_max;
+	/* At first wakeup after IO, start with minimum boost */
+	if (!sg_cpu->iowait_boost) {
+		sg_cpu->iowait_boost = sg_cpu->sg_policy->policy->min;
 		return;
 	}
 
-	/* At first wakeup after IO, start with minimum boost */
-	sg_cpu->iowait_boost = sg_cpu->sg_policy->policy->min;
+	/*
+	 * Boost only up to the current max CPU clamped utilization.
+	 *
+	 * Since DL tasks have a much more advanced bandwidth control, it's
+	 * safe to assume that IO boost does not apply to those tasks.
+	 * Instead, since for RT tasks we are going to max, we don't want to
+	 * clamp the IO boost max value.
+	 */
+	max_boost = sg_cpu->iowait_boost_max;
+	if (!cpu_rq(sg_cpu->cpu)->rt.rt_nr_running)
+		max_boost = uclamp_util(sg_cpu->cpu, max_boost);
+
+	/* Double the IO boost at each frequency increase */
+	sg_cpu->iowait_boost <<= 1;
+	if (sg_cpu->iowait_boost > max_boost)
+		sg_cpu->iowait_boost = max_boost;
 }
 
 /**
