@@ -92,6 +92,9 @@ static void sugov_update_commit(struct sugov_policy *sg_policy, u64 time,
 {
 	struct cpufreq_policy *policy = sg_policy->policy;
 
+	trace_printk("sugov_update_commit: cpu=%d time=%llu next_freq=%u",
+		     smp_processor_id(), time, next_freq);
+
 	sg_policy->last_freq_update_time = time;
 
 	if (policy->fast_switch_enabled) {
@@ -110,6 +113,7 @@ static void sugov_update_commit(struct sugov_policy *sg_policy, u64 time,
 		sg_policy->next_freq = next_freq;
 		sg_policy->work_in_progress = true;
 		irq_work_queue(&sg_policy->irq_work);
+		trace_printk("sugov_update_commit: irq_work_queue");
 	}
 }
 
@@ -143,11 +147,15 @@ static unsigned int get_next_freq(struct sugov_cpu *sg_cpu, unsigned long util,
 	unsigned int freq = arch_scale_freq_invariant() ?
 				policy->cpuinfo.max_freq : policy->cur;
 
+	trace_printk("get_next_freq: util=%lu max=%lu freq=%u",
+			util, max, freq);
 	freq = (freq + (freq >> 2)) * util / max;
 
 	if (freq == sg_cpu->cached_raw_freq && sg_policy->next_freq != UINT_MAX)
 		return sg_policy->next_freq;
 	sg_cpu->cached_raw_freq = freq;
+	trace_printk("get_next_freq: util=%lu max=%lu freq=%u",
+			util, max, freq);
 	return cpufreq_driver_resolve_freq(policy, freq);
 }
 
@@ -280,7 +288,10 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu,
 	unsigned int cap_min = 0;
 	unsigned int j;
 
+	unsigned long util_orig = util;
+
 	sugov_iowait_boost(sg_cpu, &util, &max);
+	trace_printk("_next_freq: util_orig=%lu util=%lu max=%lu", util_orig, util, max);
 
 	/* Initialize clamping range based on caller CPU constraints */
 	cap_clamp_cpu_range(smp_processor_id(), &cap_min, &cap_max);
@@ -318,15 +329,29 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu,
 			max = j_max;
 		}
 
+		if (j_sg_cpu->flags & SCHED_CPUFREQ_RT_DL)
+			trace_printk("__next_freq: class=RTDL j=%u j_util=%lu j_max=%lu",
+				     j, j_util, j_max);
+		else
+			trace_printk("__next_freq: class=FAIR j=%u j_util=%lu j_max=%lu",
+				     j, j_util, j_max);
+
 		sugov_iowait_boost(j_sg_cpu, &util, &max);
 
 		/* Update clamping range based on this CPU constraints */
 		cap_clamp_cpu_range(j, &j_cap_min, &j_cap_max);
 		cap_clamp_compose(&cap_min, &cap_max, j_cap_min, j_cap_max);
+
+		trace_printk("_next_freq: util_orig=%lu util=%lu max=%lu", util_orig, util, max);
+
 	}
 
 	/* Clamp utilization on aggregated CPUs ranges */
+	util_orig = util;
 	util = cap_clamp_util_range(util, cap_min, cap_max);
+	trace_printk("cap_clamp_next_freq: cpu=%d util=%lu cc_min=%u cc_max=%u cc_util=%lu",
+		     smp_processor_id(), util_orig, cap_min, cap_max, util);
+
 	return get_next_freq(sg_cpu, util, max);
 }
 
@@ -345,6 +370,7 @@ static void sugov_update_shared(struct update_util_data *hook, u64 time,
 	sg_cpu->util = util;
 	sg_cpu->max = max;
 	sg_cpu->flags = flags;
+	trace_printk("cpu=%u flags=%u", smp_processor_id(), flags);
 
 	sugov_set_iowait_boost(sg_cpu, time, flags);
 	sg_cpu->last_update = time;
@@ -362,6 +388,7 @@ static void sugov_work(struct kthread_work *work)
 	struct sugov_policy *sg_policy = container_of(work, struct sugov_policy, work);
 
 	mutex_lock(&sg_policy->work_lock);
+	trace_printk("sugov_work: next_freq=%u", sg_policy->next_freq);
 	__cpufreq_driver_target(sg_policy->policy, sg_policy->next_freq,
 				CPUFREQ_RELATION_L);
 	mutex_unlock(&sg_policy->work_lock);
