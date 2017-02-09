@@ -272,7 +272,9 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 	busy = sugov_cpu_is_busy(sg_cpu);
 
 	if (flags & SCHED_CPUFREQ_RT_DL) {
-		next_f = policy->cpuinfo.max_freq;
+		util = cap_clamp_cpu_util(smp_processor_id(),
+					  SCHED_CAPACITY_SCALE);
+		next_f = get_next_freq(sg_cpu, util, policy->cpuinfo.max_freq);
 	} else {
 		sugov_get_util(&util, &max);
 		sugov_iowait_boost(sg_cpu, &util, &max);
@@ -316,9 +318,9 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 			continue;
 		}
 		if (j_sg_cpu->flags & SCHED_CPUFREQ_RT_DL)
-			return policy->cpuinfo.max_freq;
-
-		j_util = j_sg_cpu->util;
+			j_util = cap_clamp_cpu_util(j, SCHED_CAPACITY_SCALE);
+		else
+			j_util = j_sg_cpu->util;
 		j_max = j_sg_cpu->max;
 		if (j_util * max > j_max * util) {
 			util = j_util;
