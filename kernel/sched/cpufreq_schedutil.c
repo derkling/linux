@@ -204,9 +204,6 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 	unsigned long dl_util, util, irq;
 	struct rq *rq = cpu_rq(cpu);
 
-	if (type == FREQUENCY_UTIL && rt_rq_is_runnable(&rq->rt))
-		return max;
-
 	/*
 	 * Early check to see if IRQ/steal time saturates the CPU, can be
 	 * because of inaccuracies in how we track these -- see
@@ -222,15 +219,19 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 	 * utilization (PELT windows are synchronized) we can directly add them
 	 * to obtain the CPU's actual utilization.
 	 *
-	 * CFS utilization can be boosted or capped, depending on utilization
-	 * clamp constraints requested by currently RUNNABLE tasks.
+	 * CFS and RT utilization can be boosted or capped, depending on
+	 * utilization clamp constraints requested by currently RUNNABLE
+	 * tasks.
 	 * When there are no CFS RUNNABLE tasks, clamps are released and
 	 * frequency will be gracefully reduced with the utilization decay.
 	 */
-	util = (type == ENERGY_UTIL)
-		? util_cfs
-		: uclamp_util(rq, util_cfs);
-	util += cpu_util_rt(rq);
+	util = cpu_util_rt(rq);
+	if (type == FREQUENCY_UTIL) {
+		util += cpu_util_cfs(rq);
+		util  = uclamp_util(rq, util);
+	} else {
+		util += util_cfs;
+	}
 
 	dl_util = cpu_util_dl(rq);
 
@@ -358,13 +359,11 @@ static void sugov_iowait_boost(struct sugov_cpu *sg_cpu, u64 time,
 	 *
 	 * Since DL tasks have a much more advanced bandwidth control, it's
 	 * safe to assume that IO boost does not apply to those tasks.
-	 * Instead, since RT tasks are not utilization clamped, we don't want
-	 * to apply clamping on IO boost while there is blocked RT
-	 * utilization.
+	 * Instead, for CFS and RT tasks we clamp the IO boost max value
+	 * considering the current constraints for the CPU.
 	 */
 	max_boost = sg_cpu->iowait_boost_max;
-	if (!cpu_util_rt(cpu_rq(sg_cpu->cpu)))
-		max_boost = uclamp_util(cpu_rq(sg_cpu->cpu), max_boost);
+	max_boost = uclamp_util(cpu_rq(sg_cpu->cpu), max_boost);
 
 	/* Double the boost at each request */
 	if (sg_cpu->iowait_boost) {
