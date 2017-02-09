@@ -2530,6 +2530,7 @@ static __always_inline unsigned long __cpu_util(int cpu, struct ucontrib util)
 	if (ucontrib_has(irq))
 		printk("TEST constants propagation");
 
+#ifndef CONFIG_UCLAMP_TASK
 	/*
 	 * RT tasks are always executed at maximum frequency to minimize
 	 * completion latencies. Let's check them at first.
@@ -2540,11 +2541,17 @@ static __always_inline unsigned long __cpu_util(int cpu, struct ucontrib util)
 	    sched_feat(SUGOV_RT_MAX_FREQ) && rt_rq_is_runnable(&rq->rt)) {
 		return max;
 	}
+#else
+	/*
+	 * When UtilClamp is available, RT tasks are always clamped to max
+	 * frequency, or util_max of the task group in which they live,
+	 * if they don't have a task specific clamp. So, let's just consider
+	 * whateve is the value of their utilization.
+	 */
+#endif
 	if (!ucontrib_has(rt))
 		util.rt = cpu_util_rt(rq);
 	util_cpu += util.rt;
-	if (util_cpu >= max)
-		return max;
 
 	/*
 	 * Early check to see if IRQ/steal time saturates the CPU, can be
@@ -2569,11 +2576,11 @@ static __always_inline unsigned long __cpu_util(int cpu, struct ucontrib util)
 	 */
 	if (!ucontrib_has(cfs))
 		util.cfs = cpu_util_cfs(rq);
-#ifdef CONFIG_UCLAMP_TASK
-	if (freq_selection && util.cfs)
-		util.cfs = uclamp_util(cpu, util.cfs);
-#endif
 	util_cpu += util.cfs;
+#ifdef CONFIG_UCLAMP_TASK
+	if (freq_selection && util_cpu)
+		util_cpu = uclamp_util(cpu, util_cpu);
+#endif
 	if (util_cpu >= max)
 		return max;
 
