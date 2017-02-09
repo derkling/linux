@@ -746,6 +746,7 @@ unsigned int sysctl_sched_uclamp_util_max = SCHED_CAPACITY_SCALE;
  * Tasks's clamp values are required to be within this range
  */
 static struct uclamp_se uclamp_default[UCLAMP_CNT];
+static struct uclamp_se uclamp_default_perf[UCLAMP_CNT];
 
 /**
  * uclamp_map: reference count utilization clamp groups
@@ -896,6 +897,7 @@ static inline void uclamp_cpu_update(struct rq *rq, unsigned int clamp_id,
 static inline unsigned int uclamp_effective_group_id(struct task_struct *p,
 						     unsigned int clamp_id)
 {
+	struct uclamp_se *default_clamp;
 	unsigned int clamp_value;
 	unsigned int group_id;
 
@@ -907,15 +909,20 @@ static inline unsigned int uclamp_effective_group_id(struct task_struct *p,
 	clamp_value = p->uclamp[clamp_id].value;
 	group_id = p->uclamp[clamp_id].group_id;
 
+	/* RT tasks have different default values */
+	default_clamp = task_has_rt_policy(p)
+		? uclamp_default_perf
+		: uclamp_default;
+
 	/* System default restriction */
-	if (unlikely(clamp_value < uclamp_default[UCLAMP_MIN].value ||
-		     clamp_value > uclamp_default[UCLAMP_MAX].value)) {
+	if (unlikely(clamp_value < default_clamp[UCLAMP_MIN].value ||
+		     clamp_value > default_clamp[UCLAMP_MAX].value)) {
 		/*
 		 * Unconditionally enforce system defaults, which is a simpler
 		 * solution compared to a proper clamping.
 		 */
-		clamp_value = uclamp_default[clamp_id].value;
-		group_id = uclamp_default[clamp_id].group_id;
+		clamp_value = default_clamp[clamp_id].value;
+		group_id = default_clamp[clamp_id].group_id;
 	}
 
 	p->uclamp[clamp_id].effective.value = clamp_value;
@@ -1382,6 +1389,10 @@ static void __init init_uclamp(void)
 
 		uc_se = &uclamp_default[clamp_id];
 		uclamp_group_get(NULL, uc_se, clamp_id, uclamp_none(clamp_id));
+
+		/* RT tasks by default will go to max frequency */
+		uc_se = &uclamp_default_perf[clamp_id];
+		uclamp_group_get(NULL, uc_se, clamp_id, uclamp_none(UCLAMP_MAX));
 	}
 }
 
