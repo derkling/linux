@@ -236,14 +236,12 @@ static void sugov_set_iowait_boost(struct sugov_cpu *sg_cpu, u64 time,
 		 *
 		 * Since DL tasks have a much more advanced bandwidth control,
 		 * it's safe to assume that IO boost does not apply to those
-		 * tasks. Instead, since RT tasks are not utiliation clamped,
-		 * we don't want to apply clamping on IO boost while there is
-		 * blocked RT utilization.
+		 * tasks.
+		 * Instead, for CFS and RT tasks we clamp the IO boost max
+		 * value considering the current constraints for the CPU.
 		 */
 		max_boost = sg_cpu->iowait_boost_max;
-		if (!cpu_util_rt(sg_cpu->cpu))
-			max_boost = uclamp_util(cpu_rq(sg_cpu->cpu),
-					max_boost);
+		max_boost = uclamp_util(cpu_rq(sg_cpu->cpu), max_boost);
 
 		if (sg_cpu->iowait_boost) {
 			sg_cpu->iowait_boost <<= 1;
