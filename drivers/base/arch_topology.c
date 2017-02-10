@@ -16,6 +16,7 @@
 #include <linux/arch_topology.h>
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
+#include <linux/cpuset.h>
 #include <linux/device.h>
 #include <linux/of.h>
 #include <linux/slab.h>
@@ -25,14 +26,65 @@
 static DEFINE_MUTEX(cpu_scale_mutex);
 static DEFINE_PER_CPU(unsigned long, cpu_scale) = SCHED_CAPACITY_SCALE;
 
+static bool update_flags;
+static bool asym_cpucap;
+
+static void update_sched_flags(void)
+{
+	update_flags = true;
+	rebuild_sched_domains();
+	update_flags = false;
+	pr_debug("cpu_capacity: Rebuilt sched_domain hierarchy.\n");
+}
+
+/*
+ * This assumes that archs using CONFIG_GENERIC_ARCH_TOPOLOGY don't have their
+ * own arch_update_cpu_topology.
+ */
+int arch_update_cpu_topology(void)
+{
+	return update_flags ? 1 : 0;
+}
+
 unsigned long atd_scale_cpu_capacity(struct sched_domain *sd, int cpu)
 {
 	return per_cpu(cpu_scale, cpu);
 }
 
-void atd_set_capacity_scale(unsigned int cpu, unsigned long capacity)
+static void check_asym_cpucap(void)
+{
+	unsigned int i;
+	unsigned long capacity = atd_scale_cpu_capacity(NULL, 0);
+
+	for_each_possible_cpu(i) {
+		if (atd_scale_cpu_capacity(NULL, i) != capacity) {
+			asym_cpucap = true;
+			return;
+		}
+	}
+	asym_cpucap = false;
+}
+
+static void __set_capacity_scale(unsigned int cpu, unsigned long capacity)
 {
 	per_cpu(cpu_scale, cpu) = capacity;
+}
+
+void atd_set_capacity_scale(unsigned int cpu, unsigned long capacity)
+{
+	__set_capacity_scale(cpu, capacity);
+
+	check_asym_cpucap();
+}
+
+int atd_get_die_sd_flags(void)
+{
+	int die_flags = 0;
+
+	if (asym_cpucap)
+		die_flags |= SD_ASYM_CPUCAPACITY;
+
+	return die_flags;
 }
 
 static ssize_t cpu_capacity_show(struct device *dev,
@@ -56,19 +108,25 @@ static ssize_t cpu_capacity_store(struct device *dev,
 	unsigned long new_capacity;
 	ssize_t ret;
 
-	if (!count)
-		return 0;
+	if (count) {
+		bool asym = asym_cpucap;
 
-	ret = kstrtoul(buf, 0, &new_capacity);
-	if (ret)
-		return ret;
-	if (new_capacity > SCHED_CAPACITY_SCALE)
-		return -EINVAL;
+		ret = kstrtoul(buf, 0, &new_capacity);
+		if (ret)
+			return ret;
+		if (new_capacity > SCHED_CAPACITY_SCALE)
+			return -EINVAL;
 
-	mutex_lock(&cpu_scale_mutex);
-	for_each_cpu(i, &cpu_topology[this_cpu].core_sibling)
-		atd_set_capacity_scale(i, new_capacity);
-	mutex_unlock(&cpu_scale_mutex);
+		mutex_lock(&cpu_scale_mutex);
+		for_each_cpu(i, &cpu_topology[this_cpu].core_sibling)
+			__set_capacity_scale(i, new_capacity);
+		check_asym_cpucap();
+
+		if (asym != asym_cpucap)
+			update_sched_flags();
+
+		mutex_unlock(&cpu_scale_mutex);
+	}
 
 	return count;
 }
@@ -113,10 +171,12 @@ void atd_normalize_cpu_capacity(void)
 			 cpu, raw_capacity[cpu]);
 		capacity = (raw_capacity[cpu] << SCHED_CAPACITY_SHIFT)
 			/ capacity_scale;
-		atd_set_capacity_scale(cpu, capacity);
+		__set_capacity_scale(cpu, capacity);
 		pr_debug("cpu_capacity: CPU%d cpu_capacity=%lu\n",
 			cpu, atd_scale_cpu_capacity(NULL, cpu));
 	}
+	check_asym_cpucap();
+
 	mutex_unlock(&cpu_scale_mutex);
 }
 
@@ -174,6 +234,7 @@ init_cpu_capacity_callback(struct notifier_block *nb,
 {
 	struct cpufreq_policy *policy = data;
 	int cpu;
+	bool asym;
 
 	if (cap_parsing_done)
 		return 0;
@@ -196,14 +257,16 @@ init_cpu_capacity_callback(struct notifier_block *nb,
 		}
 		if (cpumask_empty(cpus_to_visit)) {
 			if (!cap_parsing_failed) {
+                                asym = asym_cpucap;
 				atd_normalize_cpu_capacity();
+                                if (asym != asym_cpucap)
+                                        update_sched_flags();
 				kfree(raw_capacity);
 				pr_debug("cpu_capacity: parsing done\n");
 			} else {
 				pr_debug("cpu_capacity: max frequency parsing done\n");
 			}
 
-			pr_debug("cpu_capacity: parsing done");
 			cap_parsing_done = true;
 			schedule_work(&parsing_done_work);
 		}
