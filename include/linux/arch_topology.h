@@ -18,4 +18,6 @@ unsigned long atd_scale_freq_capacity(struct sched_domain *sd, int cpu);
 
 void atd_set_capacity_scale(unsigned int cpu, unsigned long capacity);
 
+int atd_get_die_sd_flags(void);
+
 #endif /* _LINUX_ARCH_TOPOLOGY_H_ */
