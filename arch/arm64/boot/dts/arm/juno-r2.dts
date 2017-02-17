@@ -172,6 +172,15 @@
                 /include/ "juno_r2-sched-energy.dtsi"
 	};
 
+	fcm_l3_cache: fcm-l3-cache {
+		compatible = "arm,fcm-l3-cache";
+		portions = <4>;
+		size = <1024>; /* size in KB */
+		line-size = <64>;
+		polling = <10>; /* miliseconds */
+		connected-cpus = <0 1 3>; /*cpus that are pinned to that L3 cache */
+	};
+
 	pmu_a72 {
 		compatible = "arm,cortex-a72-pmu";
 		interrupts = <GIC_SPI 02 IRQ_TYPE_LEVEL_HIGH>,
