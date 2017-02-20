@@ -1970,6 +1970,8 @@ static void switched_from_dl(struct rq *rq, struct task_struct *p)
 	 */
 	if (task_on_rq_queued(p) && p->dl.dl_runtime)
 		task_non_contending(p);
+	else
+		sub_rq_bw(&p->dl, &rq->dl);
 
 	/*
 	 * We cannot use inactive_task_timer() to invoke sub_running_bw()
@@ -2000,8 +2002,11 @@ static void switched_to_dl(struct rq *rq, struct task_struct *p)
 		put_task_struct(p);
 
 	/* If p is not queued we will update its parameters at next wakeup. */
-	if (!task_on_rq_queued(p))
+	if (!task_on_rq_queued(p)) {
+		add_rq_bw(&p->dl, &rq->dl);
+
 		return;
+	}
 
 	/*
 	 * If p is boosted we already updated its params in
