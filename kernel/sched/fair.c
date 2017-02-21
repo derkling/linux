@@ -7817,7 +7817,7 @@ static inline enum fbq_type fbq_classify_rq(struct rq *rq)
  */
 static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sds)
 {
-	struct sched_domain *child = env->sd->child, *sd;
+	struct sched_domain *child = env->sd->child, *sd = env->sd;
 	struct sched_group *sg = env->sd->groups;
 	struct sg_lb_stats tmp_sgs;
 	int load_idx, prefer_sibling = 0;
@@ -7902,32 +7902,34 @@ next_group:
 	 * the cpu's in this sched_domain. In this case set the
 	 * overutilized flag at the parent sched_domain.
 	 */
-	if (misfit_task) {
+	while (sd = sd->parent, sd) {
 
-		sd = env->sd->parent;
+		/*
+		 * If the domain util is greater that domain capacity,
+		 * load balancing needs to be done at the next sched
+		 * domain level as well
+		 */
+		if ((sd->child == env->sd) &&
+		    (sds->total_capacity * 1024 <
+		     sds->total_util * capacity_margin)) {
+			set_sd_overutilized(sd);
+			if (sd->flags & SD_ASYM_CPUCAPACITY)
+				break;
+		}
 
 		/*
 		 * In case of a misfit task, load balance at the parent
-		 * sched domain level will make sense only if the the cpus
-		 * have a different capacity. If cpus at a domain level have
-		 * the same capacity, the misfit task cannot be well
-		 * accomodated	in any of the cpus and there in no point in
-		 * trying a load balance at this level
+		 * sched domain level will make sense only if the the
+		 * cpus have a different capacity. If cpus at a domain
+		 * level have the same capacity, the misfit task cannot
+		 * be well accomodated  in any of the cpus and there in
+		 * no point in trying a load balance at this level
 		 */
-		while (sd) {
-			if (sd->flags & SD_ASYM_CPUCAPACITY) {
-				set_sd_overutilized(sd);
-				break;
-			}
-			sd = sd->parent;
+		if (misfit_task && sd->flags & SD_ASYM_CPUCAPACITY) {
+			set_sd_overutilized(sd);
+			break;
 		}
 	}
-
-	/* If the domain util is greater that domain capacity, load balancing
-	 * needs to be done at the next sched domain level as well
-	 */
-	if (sds->total_capacity * 1024 < sds->total_util * capacity_margin)
-		set_sd_overutilized(env->sd->parent);
 }
 
 /**
