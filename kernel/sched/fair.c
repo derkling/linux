@@ -4383,27 +4383,22 @@ static void update_capacity_of(int cpu)
 }
 #endif
 
-static bool
-is_sd_overutilized(struct sched_domain *sd)
+static bool sd_overutilized(struct sched_domain *sd)
 {
-	if (sd)
-		return sd->shared->overutilized;
-	else
-		return false;
+	BUG_ON(!sd);
+	return sd->shared->overutilized;
 }
 
-static void
-set_sd_overutilized(struct sched_domain *sd)
+static void set_sd_overutilized(struct sched_domain *sd)
 {
-	if (sd)
-		sd->shared->overutilized = true;
+	BUG_ON(!sd);
+	sd->shared->overutilized = true;
 }
 
-static void
-clear_sd_overutilized(struct sched_domain *sd)
+static void clear_sd_overutilized(struct sched_domain *sd)
 {
-	if (sd)
-		sd->shared->overutilized = false;
+	BUG_ON(!sd);
+	sd->shared->overutilized = false;
 }
 
 /*
@@ -4491,7 +4486,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 		rcu_read_lock();
 		sd = rcu_dereference(rq->sd);
-		if (!task_new && !is_sd_overutilized(sd) &&
+		if (sd && !task_new && !sd_overutilized(sd) &&
 			cpu_overutilized(rq->cpu))
 				set_sd_overutilized(sd);
 		rcu_read_unlock();
@@ -6152,7 +6147,7 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 
 	rcu_read_lock();
 	sd = rcu_dereference(cpu_rq(prev_cpu)->sd);
-	if (energy_aware() && !is_sd_overutilized(sd)) {
+	if (sd && energy_aware() && !sd_overutilized(sd)) {
 		new_cpu = select_energy_cpu_brute(p, prev_cpu, sync);
 		goto unlock;
 	}
@@ -8152,7 +8147,7 @@ static struct sched_group *find_busiest_group(struct lb_env *env)
 	update_sd_lb_stats(env, &sds);
 
 	if (energy_aware()) {
-		if (!is_sd_overutilized(env->sd))
+		if (!sd_overutilized(env->sd))
 			goto out_balanced;
 	}
 
@@ -9063,7 +9058,7 @@ static void rebalance_domains(struct rq *rq, enum cpu_idle_type idle)
 	rcu_read_lock();
 	for_each_domain(cpu, sd) {
 		if (energy_aware()) {
-			if (!is_sd_overutilized(sd))
+			if (!sd_overutilized(sd))
 				continue;
 		}
 
@@ -9371,8 +9366,8 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 #ifdef CONFIG_SMP
 	rcu_read_lock();
 	sd = rcu_dereference(rq->sd);
-	if (!is_sd_overutilized(sd) && cpu_overutilized(task_cpu(curr)))
-			set_sd_overutilized(sd);
+	if (sd && !sd_overutilized(sd) && cpu_overutilized(task_cpu(curr)))
+		set_sd_overutilized(sd);
 	rcu_read_unlock();
 #endif
 }
