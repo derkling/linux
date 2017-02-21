@@ -196,10 +196,21 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 				unsigned int flags)
 {
 	struct sugov_cpu *sg_cpu = container_of(hook, struct sugov_cpu, update_util);
+	struct task_struct *curr = cpu_curr(smp_processor_id());
 	struct sugov_policy *sg_policy = sg_cpu->sg_policy;
 	struct cpufreq_policy *policy = sg_policy->policy;
 	unsigned long util, max;
 	unsigned int next_f;
+	bool rt_mode;
+
+	/*
+	 * While RT/DL tasks are running we do not want FAIR tasks to
+	 * overvrite this CPU's flags, still we can update utilization and
+	 * frequency (if required/possible) to be fair with these tasks.
+	 */
+	rt_mode = task_has_dl_policy(curr) ||
+		  task_has_rt_policy(curr) ||
+		  (flags & SCHED_CPUFREQ_RT_DL);
 
 	sugov_set_iowait_boost(sg_cpu, time, flags);
 	sg_cpu->last_update = time;
@@ -207,7 +218,7 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 	if (!sugov_should_update_freq(sg_policy, time))
 		return;
 
-	if (flags & SCHED_CPUFREQ_RT_DL) {
+	if (rt_mode) {
 		next_f = policy->cpuinfo.max_freq;
 	} else {
 		sugov_get_util(&util, &max);
@@ -278,6 +289,7 @@ static void sugov_update_shared(struct update_util_data *hook, u64 time,
 	struct task_struct *curr = cpu_curr(cpu);
 	unsigned long util, max;
 	unsigned int next_f;
+	bool rt_mode;
 
 	sugov_get_util(&util, &max);
 
@@ -293,15 +305,29 @@ static void sugov_update_shared(struct update_util_data *hook, u64 time,
 	if (curr == sg_policy->thread)
 		goto done;
 
+	/*
+	 * While RT/DL tasks are running we do not want FAIR tasks to
+	 * overwrite this CPU's flags, still we can update utilization and
+	 * frequency (if required/possible) to be fair with these tasks.
+	 */
+	rt_mode = task_has_dl_policy(curr) ||
+		  task_has_rt_policy(curr) ||
+		  (flags & SCHED_CPUFREQ_RT_DL);
+	if (rt_mode)
+		sg_cpu->flags |= flags;
+	else
+		sg_cpu->flags = flags;
+
 	sg_cpu->util = util;
 	sg_cpu->max = max;
-	sg_cpu->flags = flags;
 
 	sugov_set_iowait_boost(sg_cpu, time, flags);
 	sg_cpu->last_update = time;
 
 	if (sugov_should_update_freq(sg_policy, time)) {
-		next_f = sugov_next_freq_shared(sg_cpu, util, max, flags);
+		next_f = sg_policy->policy->cpuinfo.max_freq;
+		if (!rt_mode)
+			next_f = sugov_next_freq_shared(sg_cpu, util, max, flags);
 		sugov_update_commit(sg_policy, time, next_f);
 	}
 
