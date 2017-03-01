@@ -78,3 +78,10 @@ SCHED_FEAT(ENERGY_AWARE, true)
 #else
 SCHED_FEAT(ENERGY_AWARE, false)
 #endif
+
+#ifdef CONFIG_SCHED_WALT
+/*
+ * WALT Signal Calculation. Always calculate WALT signals even if not in use.
+ */
+SCHED_FEAT(CALC_WALT, true)
+#endif
