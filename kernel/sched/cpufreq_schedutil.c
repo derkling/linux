@@ -309,6 +309,10 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 	struct cpufreq_policy *policy = sg_policy->policy;
 	unsigned long util = 0, max = 1;
 	unsigned int j;
+	unsigned int ignore_cpu_thresh = TICK_NSEC;
+
+	if (!use_pelt())
+		ignore_cpu_thresh = walt_ravg_window;
 
 	for_each_cpu(j, policy->cpus) {
 		struct sugov_cpu *j_sg_cpu = &per_cpu(sugov_cpu, j);
@@ -323,7 +327,7 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 		 * idle now (and clear iowait_boost for it).
 		 */
 		delta_ns = time - j_sg_cpu->last_update;
-		if (delta_ns > TICK_NSEC) {
+		if (delta_ns > ignore_cpu_thresh) {
 			j_sg_cpu->iowait_boost = 0;
 			continue;
 		}
