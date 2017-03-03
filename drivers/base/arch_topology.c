@@ -78,6 +78,10 @@ void atd_set_capacity_scale(unsigned int cpu, unsigned long capacity)
 	check_asym_cpucap();
 }
 
+#ifndef SD_SHARE_CAP_STATES
+#define SD_SHARE_CAP_STATES	0x8000  /* Domain members share capacity state */
+#endif
+
 int atd_get_mc_sd_flags(void)
 {
 	int mc_flags = SD_SHARE_PKG_RESOURCES | SD_SHARE_POWERDOMAIN;
