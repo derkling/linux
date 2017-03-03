@@ -5880,6 +5880,16 @@ static int cpu_util_wake(int cpu, struct task_struct *p)
 {
 	unsigned long util, capacity;
 
+#ifdef CONFIG_SCHED_WALT
+	/*
+	 * WALT does not decay idle tasks in the same manner
+	 * as PELT, so it makes little sense to subtract task
+	 * utilization from cpu utilization. Instead just use
+	 * cpu_util for this case.
+	 */
+	if (!walt_disabled && sysctl_sched_use_walt_cpu_util)
+		return cpu_util(cpu);
+#endif
 	/* Task has no contribution or is new */
 	if (cpu != task_cpu(p) || !p->se.avg.last_update_time)
 		return cpu_util(cpu);
