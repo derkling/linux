@@ -299,6 +299,14 @@ static void __init reset_cpu_topology(void)
 	}
 }
 
+static struct sched_domain_topology_level arm64_topology[] = {
+#ifdef CONFIG_SCHED_MC
+       { cpu_coregroup_mask, atd_get_mc_sd_flags, SD_INIT_NAME(MC) },
+#endif
+       { cpu_cpu_mask, atd_get_die_sd_flags, SD_INIT_NAME(DIE) },
+       { NULL, }
+};
+
 void __init init_cpu_topology(void)
 {
 	reset_cpu_topology();
@@ -309,4 +317,6 @@ void __init init_cpu_topology(void)
 	 */
 	if (of_have_populated_dt() && parse_dt_topology())
 		reset_cpu_topology();
+	else
+		set_sched_topology(arm64_topology);
 }
