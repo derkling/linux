@@ -1036,9 +1036,50 @@ static int fcm_l3cache_cpu_notification_unregister(void)
 	return ret_cpufreq | ret_cpu_pm | ret_cpu_hotplug;
 }
 
+static int fcm_l3cache_reinit_device(struct fcm_devfreq *fcm)
+{
+	unsigned long portion_control = 0;
+	unsigned long portion_active;
+
+	/* clean the algorithm statistics and start from scrach */
+	memset(&fcm->alg, 0, sizeof(fcm->alg));
+	fcm->cur_num_portions = fcm->portion_max;
+	fcm->alg.last_update = jiffies_to_usecs(get_jiffies_64());
+
+	portion_active = ((1UL << fcm->portion_max) - 1) << PORTION_1;
+
+	SYS_REG_READ(S3_0_c15_c3_5, portion_control);
+
+	portion_control &= PORTION_MASK;
+	portion_control |= portion_active;
+
+	SYS_REG_WRITE(S3_0_c15_c3_5, portion_control);
+
+	return 0;
+}
+
+static int fcm_l3cache_shutdown_portions(struct fcm_devfreq *fcm)
+{
+	unsigned long portion_control = 0;
+	unsigned long portion_active;
+
+	portion_active = ((1UL << fcm->portion_min) - 1) << PORTION_1;
+
+	SYS_REG_READ(S3_0_c15_c3_5, portion_control);
+
+	portion_control &= PORTION_MASK;
+	portion_control |= portion_active;
+
+	SYS_REG_WRITE(S3_0_c15_c3_5, portion_control);
+
+	return 0;
+}
+
 static int fcm_l3cache_shutdown(struct platform_device *pdev)
 {
-	//TODO: shut down this device
+	struct fcm_devfreq *fcm = platform_get_drvdata(pdev);
+
+	fcm_l3cache_shutdown_portions(fcm);
 
 	return 0;
 }
@@ -1169,7 +1210,7 @@ static int fcm_l3cache_create_configuration(struct platform_device *pdev)
 	}
 
 	for (i = 0; i < fcm->portions; i++)
-		fcm->freq_table[i] = i;
+		fcm->freq_table[i] = i + 1;
 
 	/* Leakage (static power) for a single portion (in uW) */
 	fcm->cache_leakage = fcm->cache_leakage_per_mb;
@@ -1265,32 +1306,17 @@ static int fcm_l3cache_setup(struct platform_device *pdev)
 	return 0;
 }
 
+
 static int fcm_l3cache_init_device_state(struct platform_device *pdev)
 {
 	struct fcm_devfreq *fcm = platform_get_drvdata(pdev);
 
-	//TODO: poke the registers and set initial state,
-	//so there wouldn't be a need to update_devfreq()
-
 	mutex_lock(&fcm->devfreq->lock);
-	fcm->devfreq->min_freq = FCM_DEFAULT_MIN_FREQ;
-	fcm->devfreq->max_freq = fcm->portions - 1;
+	fcm->devfreq->min_freq = fcm->portion_min;
+	fcm->devfreq->max_freq = fcm->portion_max;
 	mutex_unlock(&fcm->devfreq->lock);
 
-
-	return 0;
-}
-
-static int fcm_l3cache_reinit_device(struct fcm_devfreq *fcm)
-{
-	unsigned int max_freq = fcm->freq_table[fcm->freq_table_len - 1];
-
-	/* clean the algorithm statistics and start from scrach */
-	memset(&fcm->alg, 0, sizeof(fcm->alg));
-	fcm->cur_num_portions = max_freq;
-	fcm->alg.last_update = jiffies_to_usecs(get_jiffies_64());
-
-	//TODO: poke registers so no need to update_devfreq() in this place
+	fcm_l3cache_reinit_device(fcm);
 
 	return 0;
 }
@@ -1306,7 +1332,7 @@ static int fcm_l3cache_suspend(struct device *dev)
 		return ret;
 	}
 
-	//TODO: call the function which saves the registers and turns off l3
+	fcm_l3cache_shutdown_portions(fcm);
 
 	return ret;
 }
@@ -1320,11 +1346,8 @@ static int fcm_l3cache_resume(struct device *dev)
 	fcm_l3cache_reinit_device(fcm);
 
 	ret = devfreq_resume_device(fcm->devfreq);
-	if (ret < 0) {
+	if (ret < 0)
 		dev_err(dev, "failed to resume devfreq device\n");
-		return ret;
-	}
-
 
 	return ret;
 }
