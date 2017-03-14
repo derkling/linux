@@ -232,13 +232,12 @@ struct fcm_devfreq {
 	u32 portion_max;
 	u32 cache_leakage_per_mb;
 	u32 dram_energy_per_mb;
+	bool resize_regulation_enabled;
 
 	unsigned int *freq_table;
 	int freq_table_len;
 
 	struct mutex lock;
-	struct list_head node;
-	struct cpumask pinned_cpus;
 
 	/* Leakage (static power) for a single portion (in uW) */
 	unsigned long		cache_leakage;
@@ -273,10 +272,6 @@ struct fcm_cpu_notification {
 	bool cpu_hotplug_notification;
 };
 
-
-/* Activate the cache resizer regulator to control unnecessary resizings */
-/* boolean */
-static const int resize_regulation_enabled = true;
 
 /* Minimum miss bandwidth to trigger the regulator (Bytes/s) */
 /* 1 MB/s */
@@ -555,7 +550,7 @@ static int fcm_l3cache_up_size_check(struct devfreq *df,
 	if (cache_miss_bw > pivot)
 		ret = 1;
 
-	if (resize_regulation_enabled)
+	if (fcm->resize_regulation_enabled)
 		ret = fcm_l3cache_regulator_upsize(df, ret);
 
 	fcm->alg.usec_up = 0;
@@ -657,7 +652,7 @@ static int fcm_l3cache_down_size_check(struct devfreq *df,
 		ret = -1;
 
 	/* Check whether regulator overrides the previous decision */
-	if (resize_regulation_enabled)
+	if (fcm->resize_regulation_enabled)
 		ret = fcm_l3cache_regulator_downsize(df, ret);
 
 	/* reset (to zero) the consumed counters */
@@ -820,33 +815,6 @@ static int fcm_l3cache_setup_devfreq_profile(struct platform_device *pdev)
 	return 0;
 }
 
-static void fcm_l3cache_parse_cpumask(struct platform_device *pdev)
-{
-	struct device_node *node = pdev->dev.of_node;
-	struct fcm_devfreq *fcm = platform_get_drvdata(pdev);
-	const struct property *prop;
-	const __be32 *prop_val;
-	int i, len;
-	u32 cpu;
-
-	prop = of_find_property(node, "connected-cpus", NULL);
-	if (!prop || !prop->value || !prop->length) {
-		dev_dbg(&pdev->dev, "All CPUs are pinned to this L3 cache\n");
-		cpumask_copy(&fcm->pinned_cpus, cpu_possible_mask);
-		return;
-	}
-
-	len = prop->length / sizeof(u32);
-	prop_val = prop->value;
-
-	for (i = 0; i < len; i++) {
-		cpu = be32_to_cpup(prop_val++);
-		cpumask_set_cpu(cpu, &fcm->pinned_cpus);
-		dev_dbg(&pdev->dev, "pin cpu%u\n", cpu);
-	}
-
-	return;
-}
 
 
 static int fcm_l3cache_parse_dt(struct platform_device *pdev)
@@ -899,7 +867,8 @@ static int fcm_l3cache_parse_dt(struct platform_device *pdev)
 	else
 		fcm->initial_freq = freq;
 
-	fcm_l3cache_parse_cpumask(pdev);
+	fcm->resize_regulation_enabled =
+		of_property_read_bool(node, "resize-regulation-enabled");
 
 	of_node_put(node);
 
