@@ -175,10 +175,14 @@
 	fcm_l3_cache: fcm-l3-cache {
 		compatible = "arm,fcm-l3-cache";
 		portions = <4>;
+		portion-min = <1>;
+		portion-max = <4>;
 		size = <1024>; /* size in KB */
 		line-size = <64>;
+		cache-leakage-per-mb = <10000>; /*uW/MB */
+		dram-energy-per-mb = <130>; /* uJ/MB */
 		polling = <10>; /* miliseconds */
-		connected-cpus = <0 1 3>; /*cpus that are pinned to that L3 cache */
+		resize-regulation-enabled;
 	};
 
 	pmu_a72 {
