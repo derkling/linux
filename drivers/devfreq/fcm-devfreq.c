@@ -79,8 +79,11 @@
 	/*********************************************************************/
 
 #define FCM_DEFAULT_PORTIONS 4
+#define FCM_DEFAULT_PORTION_MIN 1
+#define FCM_DEFAULT_PORTION_MAX 4
 #define FCM_DEFAULT_SIZE_KB 512
 #define FCM_DEFAULT_LINE_SIZE 64
+#define FCM_DEFAULT_CACHE_LEAKAGE 10000
 #define FCM_DEFAULT_POLLING_MS 100
 #define FCM_DEFAULT_FREQUENCY (FCM_DEFAULT_PORTIONS - 1)
 #define FCM_DEFAULT_MIN_FREQ 1
@@ -88,9 +91,29 @@
 #define FCM_PLATFORM_DEVICE_NAME	"fcm_l3cache"
 #define FCM_GOVERNOR_NAME		"fcm_governor"
 
-#define FCM_MIN_PORTIONS		1	/* absolute minimum number of portions */
-#define FCM_MAX_PORTIONS		4	/* absolute maximum number of portions */
 
+/* Miss rate variation threshold to trigger the regulator */
+/* 0.4 * SZ_1MB */
+#define MISSRATE_CHANGE_THRESHOLD (400 * (1ULL << 10))
+
+/*
+ * The following 2 thresholds should be considered as being
+ * real numbers in the range 0.0 to 1.0, which represent
+ * a fractional part of a whole single portion.
+ * However, we scale them by multiplying by one million, so we
+ * can effect integer arithmetic exclusively in the kernel.
+ */
+/* Portion threshold to use for down-sizing (Td) */
+/* between 0 and 1,000,000 */
+#define DOWNSIZE_PORTION_THRESHOLD 0
+
+/* Portion threshold to use for up-sizing (Tu) */
+/* between 0 and 1,000,000 */
+#define UPSIZE_PORTION_THRESHOLD 0
+
+/* Amount of energy used by the DRAM system per MB of transferred data (on average) */
+/* expressed in uJ/MB */
+#define FCM_DEFAULT_DRAM_ENERGY_PER_MB 130
 
 /*
  * We want to resize UP more aggressively than resizing DOWN.
@@ -106,16 +129,10 @@
  *
  * Where N is a whole number greater than or equal to one.
  */
-#define POLLING_UP_MS			10	/* resize UP interval (in ms) */
-#define POLLING_DOWN_MS			100	/* resize DOWN interval (in ms) */
-
-#if POLLING_UP_MS > POLLING_DOWN_MS
-#	error POLLING_DOWN_MS must not be greater than POLLING_UP_MS
-#endif
-#if POLLING_DOWN_MS % POLLING_UP_MS != 0
-#	error POLLING_DOWN_MS must be a multiple of POLLING_UP_MS
-#endif
-
+/* resize UP interval (in ms) */
+#define POLLING_UP_MS			10
+/* resize DOWN interval (in ms) */
+#define POLLING_DOWN_MS			100
 
 	/* bit-field positions for the CLUSTERPWRCTLR_EL1 register */
 #define PORTION_1		(4)		/* Ways  0-3	PACTIVE[16] */
@@ -123,21 +140,29 @@
 #define PORTION_3		(6)		/* Ways  8-11	PACTIVE[18] */
 #define PORTION_4		(7)		/* Ways 12-15	PACTIVE[19] */
 	/* bit-masks for the CLUSTERPWRCTLR_EL1 register */
-#define PORTION_BITS		( (1ul<<PORTION_1) |	\
-				  (1ul<<PORTION_2) |	\
-				  (1ul<<PORTION_3) |	\
-				  (1ul<<PORTION_4) )
+#define PORTION_BITS		( (1UL << PORTION_1) |	\
+				  (1UL << PORTION_2) |	\
+				  (1UL << PORTION_3) |	\
+				  (1UL << PORTION_4) )
 #define PORTION_MASK		(~(PORTION_BITS))
 
 #define FCM_NUMBER_CLUSTERS		1	/* the total number of FCM clusters present */
 
-	/*
-	 * A multiplier of 1 million - for convenience only.
-	 * To help with the conversion of the original floating-point
-	 * code to unsigned integer arithmetic.
-	 */
-#define MILLION		(1000000ull)		/* scale by 1 million */
+/*
+ * A multiplier of 1 million - for convenience only.
+ * To help with the conversion of the original floating-point
+ * code to unsigned integer arithmetic.
+ */
+/* scale by 1 million */
+#define SZ_1MB		(1ULL << 20)
 
+/* Number of periods to skip downsizing after regulator being triggered */
+#define DOWNSIZE_DEFER_SKIP 4
+
+/* Number of samples to consider after a resize to control unnecessary resizing */
+#define SENS_SAMPLING_WINDOW 6
+/* Number of samples threshold to tag a resizing operation as 'bad' */
+#define SENS_MISSRATE_SAMPLE_THRESHOLD 5
 
 #if defined(CONFIG_ARM64) && !defined(CONFIG_FCM_TESTING)
 /*
@@ -184,14 +209,13 @@ do {							\
 } while(0)
 
 #else
+
 #define SYS_REG_READ_THEN_CLEAR(sysreg, result)	do {} while(0)
 #define SYS_REG_READ(sysreg, result)	do {} while(0)
 #define SYS_REG_READ_THEN_CLEAR(sysreg, result)	do {} while(0)
 #define SYS_REG_WRITE(sysreg, result)	do {} while(0)
-#endif	/* CONFIG_ARM64 */
 
-
-	/*********************************************************************/
+#endif
 
 
 struct fcm_devfreq {
@@ -204,6 +228,10 @@ struct fcm_devfreq {
 	u32 line_size;
 	u32 polling_ms;
 	u32 initial_freq;
+	u32 portion_min;
+	u32 portion_max;
+	u32 cache_leakage_per_mb;
+	u32 dram_energy_per_mb;
 
 	unsigned int *freq_table;
 	int freq_table_len;
@@ -213,26 +241,27 @@ struct fcm_devfreq {
 	struct cpumask pinned_cpus;
 
 	/* Leakage (static power) for a single portion (in uW) */
-	unsigned long		cacheLeakage;
+	unsigned long		cache_leakage;
 	/* most recent update in fcm_devfreq_target() */
 	unsigned long		cur_num_portions;
 
+	/* Contains state for the algorithm. It is clean during resume */
 	struct {
 		/* miss and access rate used to make decisions */
-		unsigned long		accesses_up, misses_up;
-		unsigned long		accesses_down, misses_down;
-		/* delta time (in us) since last decision */
-		unsigned long		usec_up, usec_down;
-		/* last time-stamp (jiffies in us) */
+		unsigned long		accesses_up;
+		unsigned long		misses_up;
+		unsigned long		accesses_down;
+		unsigned long		misses_down;
+		unsigned long		usec_up;
+		unsigned long		usec_down;
 		unsigned int		last_update;
-		/* how many down-sizing polling do we skip ? */
 		unsigned int		poll_ratio;
 		/* Resizing regulator FSM state */
-		int			sens_checking;	/* boolean */
+		int			sens_checking;
 		int			sens_sample_counter;
 		int			sens_counter;
 		int			downsize_defer;
-		unsigned long		previous_missrate;
+		unsigned long		prev_missrate;
 		unsigned long		reference_missrate;
 	} alg;
 };
@@ -244,7 +273,14 @@ struct fcm_cpu_notification {
 	bool cpu_hotplug_notification;
 };
 
-	/*********************************************************************/
+
+/* Activate the cache resizer regulator to control unnecessary resizings */
+/* boolean */
+static const int resize_regulation_enabled = true;
+
+/* Minimum miss bandwidth to trigger the regulator (Bytes/s) */
+/* 1 MB/s */
+static const u64 marginal_bandwidth = SZ_1MB;
 
 static LIST_HEAD(fcm_device_list);
 static DEFINE_MUTEX(fcm_list_lock);
@@ -253,75 +289,22 @@ static struct fcm_cpu_notification fcm_cpu_notification = {
 	.counter = ATOMIC_INIT(0),
 };
 
-	/* Miss rate variation threshold to trigger the regulator */
-static const u32 missrate_change_threshold = 400*1000;	/* 0.4 * MILLION */
 
-	/*
-	 * The following 2 thresholds should be considered as being
-	 * real numbers in the range 0.0 to 1.0, which represent
-	 * a fractional part of a whole single portion.
-	 * However, we scale them by multiplying by one million, so we
-	 * can effect integer arithmetic exclusively in the kernel.
-	 */
-	/* Portion threshold to use for down-sizing (Td) */
-static const u32 downsize_portion_threshold = 0;	/* between 0 and 1,000,000 */
-	/* Portion threshold to use for up-sizing (Tu) */
-static const u32 upsizePortionThreshold = 0;	/* between 0 and 1,000,000 */
-
-	/* Total cache leakage (with 100% of the portions enabled) per MB */
-static const u32 cache_leakage_per_mb = 10*1000;		/* expressed in uW/MB */
-	/* Amount of energy used by the DRAM system per MB of transferred data (on average) */
-static const u32 dram_energy_per_mb = 130;		/* expressed in uJ/MB */
-
-	/* Activate the cache resizer regulator to control unnecessary resizings */
-static const int resize_regulation_enabled = true;	/* boolean */
-
-	/* Number of periods to skip downsizing after regulator being triggered */
-static const int downsize_deferSkip = 4;
-
-	/* Minimum miss bandwidth to trigger the regulator (Bytes/s) */
-static const u64 marginal_bandwidth = MILLION;	/* 1 MB/s */
-
-	/* Number of samples to consider after a resize to control unnecessary resizing */
-static const unsigned sens_sampling_window = 6;
-	/* Number of samples threshold to tag a resizing operation as 'bad' */
-static const unsigned sens_missrate_sample_threshold = 5;
-
-	/* QQQ obtain correctly/dynamically ??? */
-	//LLU: arch/arm64/include/asm/cache.h has function cache_line_size()
-	//worth to check
-static const unsigned cache_l3_line_size = 64;	/* in bytes */
-
-
-	/*********************************************************************/
-
-
-static int fcm_devfreq_target(struct device *dev, unsigned long *portions,
-			      u32 flags)
+static int fcm_l3cache_devfreq_target(struct device *dev,
+				      unsigned long *portions, u32 flags)
 {
 	struct fcm_devfreq *fcm = dev_get_drvdata(dev);
-#if defined(CONFIG_ARM64)
-	unsigned long or, oldPrwCtlr, newPrwCtlr;
-#endif
+	unsigned long portion_active;
+	unsigned long portion_control;
 
+	if (*portions < fcm->portion_min || *portions > fcm->portion_max) {
+		dev_warn(dev, "%s: Target of %lu-portions is outside range of %u..%u\n",
+			__func__, *portions, fcm->portion_min,
+			fcm->portion_max);
 
-	/*
-	 * It is possible to set min_freq and max_freq (in sysfs) to any value!
-	 * This function will return -EINVAL if the target number of portions is
-	 * outside the permitted range of FCM_MIN_PORTIONS..FCM_MAX_PORTIONS.
-	 * QQQ - is this really the best place for this test ???
-	 * QQQ - this should ideally be done in min_freq_store() and max_freq_store()!
-	 */
-	if (*portions<FCM_MIN_PORTIONS || *portions>FCM_MAX_PORTIONS) {
-		dev_err(dev, "%s: Target of %lu-portions is outside range of %u..%u\n",
-			__func__,
-			*portions,
-			FCM_MIN_PORTIONS,
-			FCM_MAX_PORTIONS);
-			return -EINVAL;
+		return -EINVAL;
 	}
 
-#if defined(CONFIG_ARM64)
 	/*
 	 * Set the number of portions in the FCM to *portions
 	 *
@@ -333,22 +316,21 @@ static int fcm_devfreq_target(struct device *dev, unsigned long *portions,
 	 *	1	PORTION_1
 	 *	0	<none>
 	 */
-	or = ((1ul<<(*portions))-1) << PORTION_1;
-	SYS_REG_READ(S3_0_c15_c3_5, oldPrwCtlr);	/* read CLUSTERPWRCTLR_EL1 */
-	newPrwCtlr = (oldPrwCtlr & PORTION_MASK) | or;	/* apply both the AND & OR masks */
-	SYS_REG_WRITE(S3_0_c15_c3_5, newPrwCtlr);	/* write CLUSTERPWRCTLR_EL1 */
-#elif defined(CONFIG_X86)
-	/* do nothing! */
-#else
-#error Unknown architecture for FCM driver!
-#endif
+	portion_active = ((1UL << (*portions)) - 1) << PORTION_1;
+
+	SYS_REG_READ(S3_0_c15_c3_5, portion_control);
+
+	portion_control &= PORTION_MASK;
+	portion_control |= portion_active;
+
+	SYS_REG_WRITE(S3_0_c15_c3_5, portion_control);
 
 	fcm->cur_num_portions = *portions;
 
 	return 0;
 }
 
-static int fcm_devfreq_get_dev_status(struct device *dev,
+static int fcm_l3cache_devfreq_get_dev_status(struct device *dev,
 				struct devfreq_dev_status *stat)
 {
 	struct fcm_devfreq *fcm = dev_get_drvdata(dev);
@@ -368,21 +350,11 @@ static int fcm_devfreq_get_dev_status(struct device *dev,
 
 	stat->current_frequency = fcm->cur_num_portions;
 
-#if defined(CONFIG_ARM64)
-	/* obtain the raw stats from the system H/W registers */
-	SYS_REG_READ_THEN_CLEAR(S3_0_c15_c4_5, hits);	/* read+zero CLUSTERL3HIT_EL1 */
-	SYS_REG_READ_THEN_CLEAR(S3_0_c15_c4_6, misses);	/* read+zero CLUSTERL3MISS_EL1 */
-	accesses = hits + misses;	/* total accesses */
-#elif defined(CONFIG_X86)
-	/* QQQ - bodge on x86, just use random hit rate! */
-	accesses = delta / 1000ul;	/* accesses = delta time in ms */
-	hits = (accesses * (get_random_int() % 101ul)) / 100ul; /* 0% .. 100% */
-	misses = accesses - hits;
-#else
-#error Unknown architecture for FCM driver!
-#endif
+	SYS_REG_READ_THEN_CLEAR(S3_0_c15_c4_5, hits);
+	SYS_REG_READ_THEN_CLEAR(S3_0_c15_c4_6, misses);
 
-	/* update counters in 'fcm' structure, used to make decisions */
+	accesses = hits + misses;
+
 	fcm->alg.accesses_up   += accesses;
 	fcm->alg.accesses_down += accesses;
 	fcm->alg.misses_up     += misses;
@@ -390,9 +362,8 @@ static int fcm_devfreq_get_dev_status(struct device *dev,
 	fcm->alg.usec_up       += delta;
 	fcm->alg.usec_down     += delta;
 
-	/* unlikely, but we do need to avoid divide-by-zero! */
 	if (!accesses)
-		accesses = 1;	/* assume just one access! */
+		accesses = 1;
 
 	/*
 	 * Also map into stat format used by struct devfreq_dev_status, in
@@ -400,15 +371,11 @@ static int fcm_devfreq_get_dev_status(struct device *dev,
 	 *	stat->total_time = delta time (in us)
 	 *	stat->busy_time  = busyness (total_time*hits/accesses)
 	 */
-	stat->total_time = delta;	/* time in us since last update */
-	stat->busy_time  = stat->total_time * hits / accesses;	/* pro rata busyness */
+	stat->total_time = delta;
+	stat->busy_time  = stat->total_time * hits / accesses;
 
 	return 0;
 }
-
-
-	/*********************************************************************/
-
 
 /*
  * This is a "regular" that is can be used to override the decision
@@ -421,60 +388,54 @@ static int fcm_devfreq_get_dev_status(struct device *dev,
  * On exit:
  *	'ret' is 0 (do not up-size), or +1 (do up-size by one portion)
  */
-static int regulatorUpsize(struct devfreq *devfreq, int up)
+static int fcm_l3cache_regulator_upsize(struct devfreq *devfreq, int up)
 {
 	int ret = up;
 	struct fcm_devfreq *fcm = dev_get_drvdata(devfreq->dev.parent);
-		/* time in micro-seconds */
-	const u64 usec = fcm->alg.usec_up;
-		/* bandwidth in Bytes/sec */
-	u64 cache_miss_bw = cache_l3_line_size * fcm->alg.misses_up;
-		/*
-		 * The "missrate" is scaled by a factor of 1 million,
-		 * Hence a missrate of 800,000 == 80% miss-rate
-		 * Note: the "+1" on the divisor to avoid divide by zero
-		 */
-	u64 missrate = fcm->alg.misses_up;
+	u64 cache_miss_bw;
+	u64 missrate;
 
-	missrate = missrate * MILLION / (fcm->alg.accesses_up + 1);
+	cache_miss_bw = fcm->line_size;
+	cache_miss_bw *= fcm->alg.misses_up;
+	cache_miss_bw *= SZ_1MB;
+	cache_miss_bw /= fcm->alg.usec_up;
 
-	cache_miss_bw *= MILLION;
-	cache_miss_bw /= usec;
+	missrate = fcm->alg.misses_up * SZ_1MB / (fcm->alg.accesses_up + 1);
 
-	/* avoid the possibility of divide by zero! */
-	if (!fcm->alg.previous_missrate)
-		fcm->alg.previous_missrate = 1;
+	if (!fcm->alg.prev_missrate)
+		fcm->alg.prev_missrate = 1;
 
-	/* To trigger or not to trigger */
-	if (!fcm->alg.sens_checking && cache_miss_bw >= marginal_bandwidth) {
-		long missrate_change = (missrate - fcm->alg.previous_missrate);
-			missrate_change /= fcm->alg.previous_missrate;
-		if (missrate_change >= missrate_change_threshold) {
-			fcm->alg.sens_checking = true;
-			fcm->alg.sens_counter = sens_sampling_window;
-			fcm->alg.sens_sample_counter = 0;
-			fcm->alg.reference_missrate = fcm->alg.previous_missrate;
-		}
-	}
-
-	fcm->alg.previous_missrate = missrate;
-
-	/* avoid the possibility of divide by zero! */
 	if (!fcm->alg.reference_missrate)
 		fcm->alg.reference_missrate = 1;
 
-	/* Sample missrate */
+	if (!fcm->alg.sens_checking && cache_miss_bw >= marginal_bandwidth) {
+		long missrate_change = missrate - fcm->alg.prev_missrate;
+
+		missrate_change /= fcm->alg.prev_missrate;
+
+		if (missrate_change >= MISSRATE_CHANGE_THRESHOLD) {
+			fcm->alg.sens_checking = true;
+			fcm->alg.sens_counter = SENS_SAMPLING_WINDOW;
+			fcm->alg.sens_sample_counter = 0;
+			fcm->alg.reference_missrate = fcm->alg.prev_missrate;
+		}
+	}
+
+	fcm->alg.prev_missrate = missrate;
+
 	if (fcm->alg.sens_checking) {
 		if (fcm->alg.sens_counter-- == 0) {
 			/* Compare the bad samples to the threshold */
-			if (fcm->alg.sens_sample_counter >= sens_missrate_sample_threshold) {
+			if (fcm->alg.sens_sample_counter >=
+			    SENS_MISSRATE_SAMPLE_THRESHOLD) {
 				ret = 1;
-				fcm->alg.downsize_defer = downsize_deferSkip;
+				fcm->alg.downsize_defer = DOWNSIZE_DEFER_SKIP;
 			}
 			fcm->alg.sens_checking = false;
 		}
-		else if ((missrate - fcm->alg.reference_missrate) /
-			 fcm->alg.reference_missrate > missrate_change_threshold) {
+		else if (((missrate - fcm->alg.reference_missrate) /
+			 fcm->alg.reference_missrate) >
+			 MISSRATE_CHANGE_THRESHOLD) {
 			fcm->alg.sens_sample_counter++;
 		}
 	}
@@ -493,28 +454,26 @@ static int regulatorUpsize(struct devfreq *devfreq, int up)
  * On exit:
  *	'ret' is 0 (do not down-size), or -1 (do down-size by one portion)
  */
-static int regulatorDownsize(struct devfreq *devfreq, int down)
+static int fcm_l3cache_regulator_downsize(struct devfreq *devfreq, int down)
 {
 	struct fcm_devfreq *fcm = dev_get_drvdata(devfreq->dev.parent);
-		/* time in micro-seconds */
-	const u64 usec = fcm->alg.usec_down;
-		/* bandwidth in Bytes/sec */
-	u64 cache_miss_bw = cache_l3_line_size * fcm->alg.misses_down;
+	u64 cache_miss_bw;
 
-	cache_miss_bw *= MILLION;
-	cache_miss_bw /= usec;
+	cache_miss_bw = fcm->line_size;
+	cache_miss_bw *= fcm->alg.misses_down;
+	cache_miss_bw *= SZ_1MB;
+	cache_miss_bw /= fcm->alg.usec_down;
 
-		/* May defer a downsize if appropriate */
 	if (fcm->alg.downsize_defer > 0) {
 		fcm->alg.downsize_defer--;
-		return 0;	/* defer downsizing */
+		return 0;
 	}
 
 	if (down != 0 && cache_miss_bw >= marginal_bandwidth) {
 		fcm->alg.sens_checking = true;
-		fcm->alg.sens_counter = sens_sampling_window;
+		fcm->alg.sens_counter = SENS_SAMPLING_WINDOW;
 		fcm->alg.sens_sample_counter = 0;
-		fcm->alg.reference_missrate = fcm->alg.previous_missrate;
+		fcm->alg.reference_missrate = fcm->alg.prev_missrate;
 	}
 
 	return down;
@@ -545,7 +504,7 @@ static int regulatorDownsize(struct devfreq *devfreq, int down)
  * L		      = Leakage (static power) for a single portion
  *			(expressed in uW == uJ/sec).
  *
- * L = cacheLeakage
+ * L = cache_leakage
  *
  * dram_energy_per_mb = Amount of energy used by the DRAM system per
  *			MB of transferred data (on average)
@@ -577,40 +536,36 @@ static int regulatorDownsize(struct devfreq *devfreq, int down)
  * only 80% of a portion, before we will enable an additional portion.
  * Hence a non-zero Tu will allow us to up-size prematurely (or aggressively!)
  */
-static int upSizeCheck(struct devfreq *devfreq,
-			const int num_active_portions)
+static int fcm_l3cache_up_size_check(struct devfreq *df,
+				     const int num_active_portions)
 {
-	int ret = 0;
-	struct fcm_devfreq *fcm = dev_get_drvdata(devfreq->dev.parent);
-		/* time in micro-seconds */
-	const u64 usec = fcm->alg.usec_up;
-		/* bandwidth in Bytes/sec */
-	u64 cache_miss_bw = cache_l3_line_size * fcm->alg.misses_up;
+	struct fcm_devfreq *fcm = dev_get_drvdata(df->dev.parent);
+	u64 cache_miss_bw;
 	u64 pivot;
+	int ret = 0;
 
-	cache_miss_bw *= MILLION;
-	cache_miss_bw /= usec;
+	if (num_active_portions >= fcm->portion_max)
+		return 0;
 
-	pivot = MILLION;			/* 1.0, scaled by 1 million */
-	pivot -= upsizePortionThreshold;	/* Tu (already pre-scaled) */
-	pivot *= fcm->cacheLeakage;		/* L */
-	pivot /= dram_energy_per_mb;	/* ED */
+	cache_miss_bw = fcm->line_size;
+	cache_miss_bw *= fcm->alg.misses_up;
+	cache_miss_bw *= SZ_1MB;
+	cache_miss_bw /= fcm->alg.usec_up;
 
-	if (cache_miss_bw > pivot)	/* if ( MBW > (1.0-Tu) * L / ED ) */
-		ret = 1;	/* increase by ONE portion */
+	pivot = SZ_1MB;
+	pivot -= UPSIZE_PORTION_THRESHOLD;
+	pivot *= fcm->cache_leakage;
+	pivot /= fcm->dram_energy_per_mb;
 
-	/* Check whether regulator overrides the previous decision */
+	if (cache_miss_bw > pivot)
+		ret = 1;
+
 	if (resize_regulation_enabled)
-		ret = regulatorUpsize(devfreq, ret);
+		ret = fcm_l3cache_regulator_upsize(df, ret);
 
-	/* reset (to zero) the consumed counters */
-	fcm->alg.usec_up = fcm->alg.misses_up = fcm->alg.accesses_up = 0;
-
-	/*
-	 * Note: there is no need to enforce a maximum number of active
-	 * portions here - the devfreq infrastructure will automatically do
-	 * that * for us, honouring the (dynamic) "max_freq" in sysfs.
-	 */
+	fcm->alg.usec_up = 0;
+	fcm->alg.misses_up = 0;
+	fcm->alg.accesses_up = 0;
 
 	return ret;
 }
@@ -636,7 +591,7 @@ static int upSizeCheck(struct devfreq *devfreq,
  * L		      = Leakage (static power) for a single portion
  *			(expressed in uW == uJ/sec).
  *
- * L = cacheLeakage
+ * L = cache_leakage
  *
  * dram_energy_per_mb = Amount of energy used by the DRAM system per
  *			MB of transferred data (on average)
@@ -671,44 +626,49 @@ static int upSizeCheck(struct devfreq *devfreq,
  *
  * Note: we need to ensure N-Td >= 0.0, which should only an issue when N<1
  */
-static int downSizeCheck(struct devfreq *devfreq,
-			const int num_active_portions)
+static int fcm_l3cache_down_size_check(struct devfreq *df,
+				       const int num_active_portions)
 {
 	int ret = 0;
-	struct fcm_devfreq *fcm = dev_get_drvdata(devfreq->dev.parent);
-		/* time in micro-seconds */
-	const u64 usec = fcm->alg.usec_down;
-		/* bandwidth in Bytes/sec */
-	u64 cach_bw = cache_l3_line_size * fcm->alg.accesses_down;
-	u64 cache_miss_bw = cache_l3_line_size * fcm->alg.misses_down;
-	u64 cache_hit_bw = cach_bw - cache_miss_bw;
+	struct fcm_devfreq *fcm = dev_get_drvdata(df->dev.parent);
+	u64 cache_bw;
+	u64 cache_miss_bw;
+	u64 cache_hit_bw;
 	u64 pivot;
 
-	cach_bw *= MILLION;
-	cach_bw /= usec;
+	if (num_active_portions < fcm->portion_min)
+		return 0;
 
-	cache_miss_bw *= MILLION;
-	cache_miss_bw /= usec;
+	cache_bw = fcm->line_size;
+	cache_bw *= fcm->alg.accesses_down;
+	cache_bw *= SZ_1MB;
+	cache_bw /= fcm->alg.usec_down;
 
-	if (num_active_portions < 1)
-		return 0;	/* do not even try and down-size! */
-	/* above "if" avoids the need for "assert(N-Td >= 0.0);" */
+	cache_miss_bw = fcm->line_size;
+	cache_miss_bw *= fcm->alg.misses_down;
+	cache_miss_bw *= SZ_1MB;
+	cache_miss_bw /= fcm->alg.usec_down;
 
-	pivot = num_active_portions;		/* N */
-	pivot *= MILLION;			/* scale by 1 million */
-	pivot -= downsize_portion_threshold;	/* Td (already pre-scaled) */
-	pivot *= fcm->cacheLeakage;		/* L */
-	pivot /= dram_energy_per_mb;	/* ED */
+	pivot = num_active_portions;
+	pivot *= SZ_1MB;
+	pivot -= DOWNSIZE_PORTION_THRESHOLD;
+	pivot *= fcm->cache_leakage;/* L */
+	pivot /= fcm->dram_energy_per_mb;/* ED */
 
-	if (cache_hit_bw < pivot) /* if ( HBW < (N-Td) * L / ED ) */
-		ret = -1;	/* decrease by ONE portion */
+	cache_hit_bw = cache_bw - cache_miss_bw;
+
+	/* check and decrease by 1 portion */
+	if (cache_hit_bw < pivot)
+		ret = -1;
 
 	/* Check whether regulator overrides the previous decision */
 	if (resize_regulation_enabled)
-		ret = regulatorDownsize(devfreq, ret);
+		ret = fcm_l3cache_regulator_downsize(df, ret);
 
 	/* reset (to zero) the consumed counters */
-	fcm->alg.usec_down = fcm->alg.misses_down = fcm->alg.accesses_down = 0;
+	fcm->alg.usec_down = 0;
+	fcm->alg.misses_down = 0;
+	fcm->alg.accesses_down = 0;
 
 	/*
 	 * Note: there is no need to enforce a minimum number of active
@@ -724,47 +684,39 @@ static int downSizeCheck(struct devfreq *devfreq,
 	return ret;
 }
 
-static int fcm_governor_get_target_portions(struct devfreq *devfreq,
+static int fcm_l3cache_governor_get_target_portions(struct devfreq *df,
 				unsigned long *portions)
 {
-	struct fcm_devfreq *fcm = dev_get_drvdata(devfreq->dev.parent);
+	struct fcm_devfreq *fcm = dev_get_drvdata(df->dev.parent);
 	int err;
 	int up = 0, down = 0;
 	int num_active_portions = fcm->cur_num_portions;
-	int new_active_portions = num_active_portions;
+	int new_active_portions = fcm->cur_num_portions;
 
-	/* Note: *portions is uninitialized by our caller! */
-
-	err = devfreq_update_stats(devfreq);
+	err = devfreq_update_stats(df);
 	if (err)
 		return err;
 
-	/* Trigger up-sizing / downsizing logic check */
-	/* check for up-sizing EVERY time we are polled */
-	up   = upSizeCheck(devfreq, num_active_portions);
-	/* but, check only every poll_ratio times for down-sizing */
-	if (++fcm->alg.poll_ratio == POLLING_DOWN_MS/POLLING_UP_MS) {
-		down = downSizeCheck(devfreq, num_active_portions);
+	up = fcm_l3cache_up_size_check(df, num_active_portions);
+
+	if (++fcm->alg.poll_ratio == (POLLING_DOWN_MS / POLLING_UP_MS)) {
+		down = fcm_l3cache_down_size_check(df, num_active_portions);
 		fcm->alg.poll_ratio = 0;
 	} else {
-		down = 0;	/* do not down-size */
+		down = 0;
 	}
 
-	/* Upsize or downsize (or do nothing at all) */
-	if (up > 0) {
+	if (up > 0)
 		new_active_portions = num_active_portions + up;
-	}
-	else if (down < 0) {
+	else if (down < 0)
 		new_active_portions = num_active_portions + down;
-	}
-	/* else do nothing! */
 
 	*portions = new_active_portions;
 
 	return 0;
 }
 
-static int fcm_governor_event_handler(struct devfreq *devfreq,
+static int fcm_l3cache_governor_event_handler(struct devfreq *devfreq,
 				unsigned int event, void *data)
 {
 	int ret = 0;
@@ -795,10 +747,10 @@ static int fcm_governor_event_handler(struct devfreq *devfreq,
 	return ret;
 }
 
-static struct devfreq_governor fcm_devfreq_governor = {
+static struct devfreq_governor fcm_l3cache_devfreq_governor = {
 	.name		 = FCM_GOVERNOR_NAME,
-	.get_target_freq = fcm_governor_get_target_portions,
-	.event_handler	 = fcm_governor_event_handler,
+	.get_target_freq = fcm_l3cache_governor_get_target_portions,
+	.event_handler	 = fcm_l3cache_governor_event_handler,
 };
 
 
@@ -1105,8 +1057,8 @@ static int fcm_l3cache_setup_devfreq_profile(struct platform_device *pdev)
 
 	df_profile = fcm->devfreq_profile;
 
-	df_profile->target = fcm_devfreq_target;
-	df_profile->get_dev_status = fcm_devfreq_get_dev_status;
+	df_profile->target = fcm_l3cache_devfreq_target;
+	df_profile->get_dev_status = fcm_l3cache_devfreq_get_dev_status;
 	df_profile->freq_table = fcm->freq_table;
 	df_profile->max_state = fcm->freq_table_len - 1;
 	df_profile->polling_ms = fcm->polling_ms;
@@ -1156,6 +1108,24 @@ static int fcm_l3cache_parse_dt(struct platform_device *pdev)
 	if (ret)
 		fcm->portions = FCM_DEFAULT_PORTIONS;
 
+	ret = of_property_read_u32(node, "portion-min", &fcm->portion_min);
+	if (ret)
+		fcm->portion_min = FCM_DEFAULT_PORTION_MIN;
+
+	ret = of_property_read_u32(node, "portion-max", &fcm->portion_max);
+	if (ret)
+		fcm->portion_max = FCM_DEFAULT_PORTION_MAX;
+
+	ret = of_property_read_u32(node, "cache-leakage-per-mb",
+				   &fcm->cache_leakage_per_mb);
+	if (ret)
+		fcm->cache_leakage_per_mb = FCM_DEFAULT_CACHE_LEAKAGE;
+
+	ret = of_property_read_u32(node, "dram-energy-per-mb",
+				   &fcm->dram_energy_per_mb);
+	if (ret)
+		fcm->dram_energy_per_mb = FCM_DEFAULT_DRAM_ENERGY_PER_MB;
+
 	/* size in KB */
 	ret = of_property_read_u32(node, "size", &fcm->size);
 	if (ret)
@@ -1202,9 +1172,10 @@ static int fcm_l3cache_create_configuration(struct platform_device *pdev)
 		fcm->freq_table[i] = i;
 
 	/* Leakage (static power) for a single portion (in uW) */
-	fcm->cacheLeakage = cache_leakage_per_mb;	/* uW/MB */
-	fcm->cacheLeakage *= fcm->size;		/* KiB */
-	fcm->cacheLeakage /= 1024ul * FCM_MAX_PORTIONS;
+	fcm->cache_leakage = fcm->cache_leakage_per_mb;
+	fcm->cache_leakage *= fcm->size;
+	fcm->cache_leakage /= 1024UL;
+	fcm->cache_leakage /= fcm->portions;
 
 	return 0;
 }
@@ -1361,7 +1332,7 @@ static int fcm_l3cache_resume(struct device *dev)
 static SIMPLE_DEV_PM_OPS(fcm_l3cache_pm, fcm_l3cache_suspend,
 			 fcm_l3cache_resume);
 
-static int fcm_devfreq_probe(struct platform_device *pdev)
+static int fcm_l3cache_devfreq_probe(struct platform_device *pdev)
 {
 	struct fcm_devfreq *fcm;
 	int ret;
@@ -1405,7 +1376,7 @@ failed:
 	return ret;
 }
 
-static int fcm_devfreq_remove(struct platform_device *pdev)
+static int fcm_l3cache_devfreq_remove(struct platform_device *pdev)
 {
 	struct fcm_devfreq *fcm = platform_get_drvdata(pdev);
 
@@ -1432,8 +1403,8 @@ static const struct of_device_id fcm_l3cache_devfreq_id[] = {
 MODULE_DEVICE_TABLE(of, fcm_l3cache_devfreq_id);
 
 static struct platform_driver fcm_l3cache_devfreq_driver = {
-	.probe	= fcm_devfreq_probe,
-	.remove = fcm_devfreq_remove,
+	.probe	= fcm_l3cache_devfreq_probe,
+	.remove = fcm_l3cache_devfreq_remove,
 	.driver = {
 		.name = FCM_PLATFORM_DEVICE_NAME,
 		.of_match_table = fcm_l3cache_devfreq_id,
@@ -1442,13 +1413,11 @@ static struct platform_driver fcm_l3cache_devfreq_driver = {
 	},
 };
 
-	/*********************************************************************/
-
-static int __init fcm_devfreq_init(void)
+static int __init fcm_l3cache_devfreq_init(void)
 {
 	int ret;
 
-	ret = devfreq_add_governor(&fcm_devfreq_governor);
+	ret = devfreq_add_governor(&fcm_l3cache_devfreq_governor);
 	if (ret) {
 		pr_err("%s: failed to add governor: %d\n", __func__, ret);
 		return ret;
@@ -1456,16 +1425,16 @@ static int __init fcm_devfreq_init(void)
 
 	ret = platform_driver_register(&fcm_l3cache_devfreq_driver);
 	if (ret)
-		devfreq_remove_governor(&fcm_devfreq_governor);
+		devfreq_remove_governor(&fcm_l3cache_devfreq_governor);
 
 	return ret;
 }
 
-static void __exit fcm_devfreq_exit(void)
+static void __exit fcm_l3cache_devfreq_exit(void)
 {
 	int ret;
 
-	ret = devfreq_remove_governor(&fcm_devfreq_governor);
+	ret = devfreq_remove_governor(&fcm_l3cache_devfreq_governor);
 	if (ret)
 		pr_err("%s: failed to remove governor: %d\n", __func__, ret);
 
@@ -1473,10 +1442,10 @@ static void __exit fcm_devfreq_exit(void)
 
 }
 
-module_init(fcm_devfreq_init)
-module_exit(fcm_devfreq_exit)
+module_init(fcm_l3cache_devfreq_init)
+module_exit(fcm_l3cache_devfreq_exit)
 
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("ARM FCM devfreq driver");
-MODULE_AUTHOR("Sean McGoogan <Sean.McGoogan@arm.com>");
-MODULE_AUTHOR("Lukasz Luba <lukasz.luba@arm.com>");
+MODULE_AUTHOR("ARM Ltd.");
+MODULE_VERSION("1.0");
