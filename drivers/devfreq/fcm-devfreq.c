@@ -836,7 +836,7 @@ static int fcm_l3cache_parse_dt(struct platform_device *pdev)
 
 	ret = of_property_read_u32(node, "portion-max", &fcm->portion_max);
 	if (ret)
-		fcm->portion_max = FCM_DEFAULT_PORTION_MAX;
+		fcm->portion_max = fcm->portions;
 
 	ret = of_property_read_u32(node, "cache-leakage-per-mb",
 				   &fcm->cache_leakage_per_mb);
