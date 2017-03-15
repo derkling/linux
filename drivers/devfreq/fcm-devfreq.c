@@ -19,43 +19,20 @@
  *		Sean McGoogan <Sean.McGoogan@arm.com>
  *		Lukasz Luba <lukasz.luba@arm.com>
  *		David Guillen Fandos, ARM Ltd.
- */
-
-/*
- * In the FCM, we can perform a partial power-down of some of the "ways".
- * So we have "active ways", which are the ways which are currently active, and
- * "deactivated ways", which are the ways which are currently deactivated, and
- * we have the "total ways", which is the total number of existing ways,
- * irrespective of their current active or deactivated status.
  *
- * Initially, it looks we can only power up 25%, 50%, 75% or 100% of the total ways.
- * For a 4-way cache, then these correspond to 1, 2, 3 or 4 active ways.
- * However, with a 16-way cache, these correspond instead to 4, 8, 12 or
- * 16 active ways (and only these numbers of ways).
+ * The L3 Cache in FCM supports partial power down, splitting the cache into an
+ * implementation-specific number of portions. This driver provides an
+ * energy-cost justified demand-driven policy for controlling the number of
+ * portions enabled.
  *
- * A new term is required to "group" these ways into a single unit that
- * can be enabled, we shall herein call these groups of ways "portions".
- * Hence, one "portion" means the smallest (non-zero) number of individual
- * ways that can be active. With two "portions" meaning a pair of two such
- * portions, and so on.
- * Thus, enabling one portion on a 4-way cache will only enable
- * one way, whereas on a 16-way cache, it will actually enable 4 ways.
+ * The policy maps the number of portions enabled to frequency (1 portion ==
+ * 1Hz) and provides usage statistics so that existing DevFreq governors can
+ * control the number of enabled portions. Specifically, using the
+ * simple_ondemand governor will implement the desired
+ * energy-cost-justification policy.
+ * DevFreq min/max/governor controls work as usual.
  *
- * This is important as we are using the "devfreq" infrastructure,
- * and egregiously mapping "Frequency" (in Hertz) to number of ways, but
- * crucially this is actually mapping one Hertz to one "portion" (and not
- * necessarily to one way).
- *
- * To be clear we now have:
- *	echo "1" > /sys/.../min_freq
- *	echo "4" > /sys/.../max_freq
- *
- * Which means to set the minimum number of ways to be one portion,
- * and to set the maximum number of ways to be four portions.
- * For the avoidance of doubt in the above echo commands, "1" and "4"
- * does not mean 1 and 4 ways, unless it is a 4-way cache!
- * Also, the aforementioned "1" and "4" does not mean frequency either!
- * The numbers echoed in, are purely in terms of "portions".
+ * There is no relation to actual frequency control of the cache device.
  */
 
 
@@ -76,44 +53,36 @@
 #include <trace/events/fcm_l3cache.h>
 
 
-	/*********************************************************************/
-
 #define FCM_DEFAULT_PORTIONS 4
 #define FCM_DEFAULT_PORTION_MIN 1
 #define FCM_DEFAULT_PORTION_MAX 4
-#define FCM_DEFAULT_SIZE_KB 512
+#define FCM_DEFAULT_SIZE_KB 1024
 #define FCM_DEFAULT_LINE_SIZE 64
 #define FCM_DEFAULT_CACHE_LEAKAGE 10000
-#define FCM_DEFAULT_POLLING_MS 100
+#define FCM_DEFAULT_POLLING_MS 10
 #define FCM_DEFAULT_FREQUENCY (FCM_DEFAULT_PORTIONS - 1)
 #define FCM_DEFAULT_MIN_FREQ 1
+/* Amount of energy used by the DRAM system per MB
+ * of transferred data (on average) expressed in uJ/MB */
+#define FCM_DEFAULT_DRAM_ENERGY_PER_MB 130
 
 #define FCM_PLATFORM_DEVICE_NAME	"fcm_l3cache"
 #define FCM_GOVERNOR_NAME		"fcm_governor"
 
 
-/* Miss rate variation threshold to trigger the regulator */
-/* 0.4 * SZ_1MB */
-#define MISSRATE_CHANGE_THRESHOLD (400 * (1ULL << 10))
+/* Miss rate variation threshold to trigger the regulator
+ * (0.4 * SZ_1MB) = 419KB */
+#define MISSRATE_CHANGE_THRESHOLD (419 * (1ULL << 10))
 
-/*
- * The following 2 thresholds should be considered as being
- * real numbers in the range 0.0 to 1.0, which represent
- * a fractional part of a whole single portion.
- * However, we scale them by multiplying by one million, so we
- * can effect integer arithmetic exclusively in the kernel.
- */
-/* Portion threshold to use for down-sizing (Td) */
-/* between 0 and 1,000,000 */
-#define DOWNSIZE_PORTION_THRESHOLD 0
+/* Portion threshold to use for down-sizing (Td)
+ * between 0 and 1MB
+ * 90% of 1MB is ~944KB */
+#define DOWNSIZE_PORTION_THRESHOLD (944 * (1ULL << 10))
 
-/* Portion threshold to use for up-sizing (Tu) */
-/* between 0 and 1,000,000 */
-#define UPSIZE_PORTION_THRESHOLD 0
-
-/* Amount of energy used by the DRAM system per MB of transferred data (on average) */
-/* expressed in uJ/MB */
-#define FCM_DEFAULT_DRAM_ENERGY_PER_MB 130
+/* Portion threshold to use for up-sizing (Tu)
+ * between 0 and 1MB
+ * 90% of 1MB is ~944KB */
+#define UPSIZE_PORTION_THRESHOLD (944 * (1ULL << 10))
 
 /*
  * We want to resize UP more aggressively than resizing DOWN.
@@ -128,37 +97,36 @@
  *		POLLING_DOWN_MS == POLLING_UP_MS * N
  *
  * Where N is a whole number greater than or equal to one.
+ *
+ * resize UP interval (in ms)
+ *
+ * Bias for bandwidth:
+ * Consider upsizing the portions every POLLING_PERIOD_MS.
+ * Only consider downsizing the portions every
+ * POLLING_PERIOD_MS * POLLING_DOWN_INTERVAL
  */
-/* resize UP interval (in ms) */
-#define POLLING_UP_MS			10
-/* resize DOWN interval (in ms) */
-#define POLLING_DOWN_MS			100
+#define POLLING_MS			10
+#define POLLING_DOWN_INTERVAL		10
 
-	/* bit-field positions for the CLUSTERPWRCTLR_EL1 register */
+/* bit-field positions for the CLUSTERPWRCTLR_EL1 register */
 #define PORTION_1		(4)		/* Ways  0-3	PACTIVE[16] */
 #define PORTION_2		(5)		/* Ways  4-7	PACTIVE[17] */
 #define PORTION_3		(6)		/* Ways  8-11	PACTIVE[18] */
 #define PORTION_4		(7)		/* Ways 12-15	PACTIVE[19] */
-	/* bit-masks for the CLUSTERPWRCTLR_EL1 register */
+/* bit-masks for the CLUSTERPWRCTLR_EL1 register */
 #define PORTION_BITS		( (1UL << PORTION_1) |	\
 				  (1UL << PORTION_2) |	\
 				  (1UL << PORTION_3) |	\
 				  (1UL << PORTION_4) )
 #define PORTION_MASK		(~(PORTION_BITS))
 
-#define FCM_NUMBER_CLUSTERS		1	/* the total number of FCM clusters present */
-
-/*
- * A multiplier of 1 million - for convenience only.
- * To help with the conversion of the original floating-point
- * code to unsigned integer arithmetic.
- */
-/* scale by 1 million */
 #define SZ_1MB		(1ULL << 20)
+/* Minimum miss bandwidth to trigger the regulator (Bytes/s)
+ * 1 MB/s */
+#define MARGINAL_BANDWIDTH SZ_1MB
 
 /* Number of periods to skip downsizing after regulator being triggered */
 #define DOWNSIZE_DEFER_SKIP 4
-
 /* Number of samples to consider after a resize to control unnecessary resizing */
 #define SENS_SAMPLING_WINDOW 6
 /* Number of samples threshold to tag a resizing operation as 'bad' */
@@ -240,13 +208,13 @@ struct fcm_devfreq {
 	struct mutex lock;
 
 	/* Leakage (static power) for a single portion (in uW) */
-	unsigned long		cache_leakage;
-	/* most recent update in fcm_devfreq_target() */
-	unsigned long		cur_num_portions;
+	unsigned long cache_leakage;
+	unsigned long downsize_threshold;
+	unsigned long upsize_threshold;
+	unsigned long cur_num_portions;
 
 	/* Contains state for the algorithm. It is clean during resume */
 	struct {
-		/* miss and access rate used to make decisions */
 		unsigned long		accesses_up;
 		unsigned long		misses_up;
 		unsigned long		accesses_down;
@@ -273,9 +241,6 @@ struct fcm_cpu_notification {
 };
 
 
-/* Minimum miss bandwidth to trigger the regulator (Bytes/s) */
-/* 1 MB/s */
-static const u64 marginal_bandwidth = SZ_1MB;
 
 static atomic_t fcm_device_id = ATOMIC_INIT(0);
 
@@ -331,10 +296,6 @@ static int fcm_l3cache_devfreq_get_dev_status(struct device *dev,
 	unsigned long misses = 0;
 	unsigned long accesses = 0;
 
-	/*
-	 * obtain the delta time since we last updated the time-stamp,
-	 * and also update the time-stamp in fcm.
-	 */
 	delta = usec - fcm->alg.last_update;
 	fcm->alg.last_update = usec;
 
@@ -390,7 +351,8 @@ static int fcm_l3cache_regulator_upsize(struct devfreq *devfreq, int up)
 	cache_miss_bw *= SZ_1MB;
 	cache_miss_bw /= fcm->alg.usec_up;
 
-	missrate = fcm->alg.misses_up * SZ_1MB / (fcm->alg.accesses_up + 1);
+	missrate = fcm->alg.misses_up * SZ_1MB;
+        missrate /= fcm->alg.accesses_up + 1;
 
 	if (!fcm->alg.prev_missrate)
 		fcm->alg.prev_missrate = 1;
@@ -398,7 +360,7 @@ static int fcm_l3cache_regulator_upsize(struct devfreq *devfreq, int up)
 	if (!fcm->alg.reference_missrate)
 		fcm->alg.reference_missrate = 1;
 
-	if (!fcm->alg.sens_checking && cache_miss_bw >= marginal_bandwidth) {
+	if (!fcm->alg.sens_checking && cache_miss_bw >= MARGINAL_BANDWIDTH) {
 		long missrate_change = missrate - fcm->alg.prev_missrate;
 
 		missrate_change /= fcm->alg.prev_missrate;
@@ -459,7 +421,7 @@ static int fcm_l3cache_regulator_downsize(struct devfreq *devfreq, int down)
 		return 0;
 	}
 
-	if (down != 0 && cache_miss_bw >= marginal_bandwidth) {
+	if (down != 0 && cache_miss_bw >= MARGINAL_BANDWIDTH) {
 		fcm->alg.sens_checking = true;
 		fcm->alg.sens_counter = SENS_SAMPLING_WINDOW;
 		fcm->alg.sens_sample_counter = 0;
@@ -531,7 +493,6 @@ static int fcm_l3cache_up_size_check(struct devfreq *df,
 {
 	struct fcm_devfreq *fcm = dev_get_drvdata(df->dev.parent);
 	u64 cache_miss_bw;
-	u64 pivot;
 	int ret = 0;
 
 	if (num_active_portions >= fcm->portion_max)
@@ -542,12 +503,7 @@ static int fcm_l3cache_up_size_check(struct devfreq *df,
 	cache_miss_bw *= SZ_1MB;
 	cache_miss_bw /= fcm->alg.usec_up;
 
-	pivot = SZ_1MB;
-	pivot -= UPSIZE_PORTION_THRESHOLD;
-	pivot *= fcm->cache_leakage;
-	pivot /= fcm->dram_energy_per_mb;
-
-	if (cache_miss_bw > pivot)
+	if (cache_miss_bw > fcm->upsize_threshold)
 		ret = 1;
 
 	if (fcm->resize_regulation_enabled)
@@ -616,17 +572,15 @@ static int fcm_l3cache_up_size_check(struct devfreq *df,
  *
  * Note: we need to ensure N-Td >= 0.0, which should only an issue when N<1
  */
-static int fcm_l3cache_down_size_check(struct devfreq *df,
-				       const int num_active_portions)
+static int fcm_l3cache_down_size_check(struct devfreq *df, int portions)
 {
 	int ret = 0;
 	struct fcm_devfreq *fcm = dev_get_drvdata(df->dev.parent);
 	u64 cache_bw;
 	u64 cache_miss_bw;
 	u64 cache_hit_bw;
-	u64 pivot;
 
-	if (num_active_portions < fcm->portion_min)
+	if (portions < fcm->portion_min)
 		return 0;
 
 	cache_bw = fcm->line_size;
@@ -639,16 +593,10 @@ static int fcm_l3cache_down_size_check(struct devfreq *df,
 	cache_miss_bw *= SZ_1MB;
 	cache_miss_bw /= fcm->alg.usec_down;
 
-	pivot = num_active_portions;
-	pivot *= SZ_1MB;
-	pivot -= DOWNSIZE_PORTION_THRESHOLD;
-	pivot *= fcm->cache_leakage;/* L */
-	pivot /= fcm->dram_energy_per_mb;/* ED */
-
 	cache_hit_bw = cache_bw - cache_miss_bw;
 
 	/* check and decrease by 1 portion */
-	if (cache_hit_bw < pivot)
+	if (cache_hit_bw < (fcm->downsize_threshold * portions))
 		ret = -1;
 
 	/* Check whether regulator overrides the previous decision */
@@ -668,8 +616,8 @@ static int fcm_l3cache_down_size_check(struct devfreq *df,
 	 * just in case there is some horrible wrapping issue lurking!
 	 * i.e.		assert(num_active_portions + ret >= 0);
 	 */
-	if (num_active_portions + ret < 0)
-		ret = -num_active_portions;
+	if (portions + ret < 0)
+		ret = -portions;
 
 	return ret;
 }
@@ -680,26 +628,25 @@ static int fcm_l3cache_governor_get_target_portions(struct devfreq *df,
 	struct fcm_devfreq *fcm = dev_get_drvdata(df->dev.parent);
 	int err;
 	int up = 0, down = 0;
-	int num_active_portions = fcm->cur_num_portions;
 	int new_active_portions = fcm->cur_num_portions;
 
 	err = devfreq_update_stats(df);
 	if (err)
 		return err;
 
-	up = fcm_l3cache_up_size_check(df, num_active_portions);
+	up = fcm_l3cache_up_size_check(df, fcm->cur_num_portions);
 
-	if (++fcm->alg.poll_ratio == (POLLING_DOWN_MS / POLLING_UP_MS)) {
-		down = fcm_l3cache_down_size_check(df, num_active_portions);
+	if (++fcm->alg.poll_ratio == POLLING_DOWN_INTERVAL) {
+		down = fcm_l3cache_down_size_check(df, fcm->cur_num_portions);
 		fcm->alg.poll_ratio = 0;
 	} else {
 		down = 0;
 	}
 
 	if (up > 0)
-		new_active_portions = num_active_portions + up;
+		new_active_portions = fcm->cur_num_portions + up;
 	else if (down < 0)
-		new_active_portions = num_active_portions + down;
+		new_active_portions = fcm->cur_num_portions + down;
 
 	*portions = new_active_portions;
 
@@ -729,8 +676,7 @@ static int fcm_l3cache_governor_event_handler(struct devfreq *devfreq,
 		break;
 
 	case DEVFREQ_GOV_INTERVAL:
-		devfreq_interval_update(devfreq,
-				(unsigned int *)data);
+		devfreq_interval_update(devfreq, (unsigned int *)data);
 		break;
 	}
 
@@ -848,7 +794,6 @@ static int fcm_l3cache_parse_dt(struct platform_device *pdev)
 	if (ret)
 		fcm->dram_energy_per_mb = FCM_DEFAULT_DRAM_ENERGY_PER_MB;
 
-	/* size in KB */
 	ret = of_property_read_u32(node, "size", &fcm->size);
 	if (ret)
 		fcm->size = FCM_DEFAULT_SIZE_KB;
@@ -899,6 +844,16 @@ static int fcm_l3cache_create_configuration(struct platform_device *pdev)
 	fcm->cache_leakage *= fcm->size;
 	fcm->cache_leakage /= 1024UL;
 	fcm->cache_leakage /= fcm->portions;
+
+	fcm->downsize_threshold = SZ_1MB;
+	fcm->downsize_threshold -= DOWNSIZE_PORTION_THRESHOLD;
+	fcm->downsize_threshold *= fcm->cache_leakage;
+	fcm->downsize_threshold /= fcm->dram_energy_per_mb;
+
+	fcm->upsize_threshold = SZ_1MB;
+	fcm->upsize_threshold -= UPSIZE_PORTION_THRESHOLD;
+	fcm->upsize_threshold *= fcm->cache_leakage;
+	fcm->upsize_threshold /= fcm->dram_energy_per_mb;
 
 	return 0;
 }
