@@ -182,7 +182,6 @@
 		cache-leakage-per-mb = <10000>; /*uW/MB */
 		dram-energy-per-mb = <130>; /* uJ/MB */
 		polling = <10>; /* miliseconds */
-		resize-regulation-enabled;
 	};
 
 	pmu_a72 {
