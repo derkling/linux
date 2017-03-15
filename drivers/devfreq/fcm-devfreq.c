@@ -60,8 +60,8 @@
 #define FCM_DEFAULT_LINE_SIZE 64
 #define FCM_DEFAULT_CACHE_LEAKAGE 10000
 #define FCM_DEFAULT_POLLING_MS 10
-#define FCM_DEFAULT_FREQUENCY FCM_DEFAULT_PORTIONS
-#define FCM_DEFAULT_MIN_FREQ 1
+#define POLLING_DOWN_INTERVAL		10
+
 /* Amount of energy used by the DRAM system per MB
  * of transferred data (on average) expressed in uJ/MB */
 #define FCM_DEFAULT_DRAM_ENERGY_PER_MB 130
@@ -84,29 +84,6 @@
  * 90% of 1MB is ~944KB */
 #define UPSIZE_PORTION_THRESHOLD (944 * (1ULL << 10))
 
-/*
- * We want to resize UP more aggressively than resizing DOWN.
- * Hence, we want to check to resize up EVERY polling interval,
- * and only check to resize down SOME of the times.
- *
- * This means we want to set the polling interval to POLLING_UP_MS,
- * and only check to resize down every N times.
- *
- * Essentially, we want:
- *
- *		POLLING_DOWN_MS == POLLING_UP_MS * N
- *
- * Where N is a whole number greater than or equal to one.
- *
- * resize UP interval (in ms)
- *
- * Bias for bandwidth:
- * Consider upsizing the portions every POLLING_PERIOD_MS.
- * Only consider downsizing the portions every
- * POLLING_PERIOD_MS * POLLING_DOWN_INTERVAL
- */
-#define POLLING_MS			10
-#define POLLING_DOWN_INTERVAL		10
 
 /* bit-field positions for the CLUSTERPWRCTLR_EL1 register */
 #define PORTION_1		(4)		/* Ways  0-3	PACTIVE[16] */
@@ -596,14 +573,6 @@ static int fcm_l3cache_down_size_check(struct devfreq *df, int portions)
 	fcm->alg.misses_down = 0;
 	fcm->alg.accesses_down = 0;
 
-	/*
-	 * Note: there is no need to enforce a minimum number of active
-	 * portions here - the devfreq infrastructure will automatically do
-	 * that for us, honouring the (dynamic) "min_freq" in sysfs.
-	 * However, we will make sure we never try and go negative,
-	 * just in case there is some horrible wrapping issue lurking!
-	 * i.e.		assert(num_active_portions + ret >= 0);
-	 */
 	if (portions + ret < 0)
 		ret = -portions;
 
