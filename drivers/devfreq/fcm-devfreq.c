@@ -60,7 +60,7 @@
 #define FCM_DEFAULT_LINE_SIZE 64
 #define FCM_DEFAULT_CACHE_LEAKAGE 10000
 #define FCM_DEFAULT_POLLING_MS 10
-#define FCM_DEFAULT_FREQUENCY (FCM_DEFAULT_PORTIONS - 1)
+#define FCM_DEFAULT_FREQUENCY FCM_DEFAULT_PORTIONS
 #define FCM_DEFAULT_MIN_FREQ 1
 /* Amount of energy used by the DRAM system per MB
  * of transferred data (on average) expressed in uJ/MB */
@@ -120,6 +120,7 @@
 				  (1UL << PORTION_4) )
 #define PORTION_MASK		(~(PORTION_BITS))
 
+#define SZ_1KB		(1ULL << 10)
 #define SZ_1MB		(1ULL << 20)
 /* Minimum miss bandwidth to trigger the regulator (Bytes/s)
  * 1 MB/s */
@@ -240,8 +241,6 @@ struct fcm_cpu_notification {
 	bool cpu_hotplug_notification;
 };
 
-
-
 static atomic_t fcm_device_id = ATOMIC_INIT(0);
 
 
@@ -346,9 +345,7 @@ static int fcm_l3cache_regulator_upsize(struct devfreq *devfreq, int up)
 	u64 cache_miss_bw;
 	u64 missrate;
 
-	cache_miss_bw = fcm->line_size;
-	cache_miss_bw *= fcm->alg.misses_up;
-	cache_miss_bw *= SZ_1MB;
+	cache_miss_bw = fcm->line_size * SZ_1MB * fcm->alg.misses_up;
 	cache_miss_bw /= fcm->alg.usec_up;
 
 	missrate = fcm->alg.misses_up * SZ_1MB;
@@ -411,9 +408,7 @@ static int fcm_l3cache_regulator_downsize(struct devfreq *devfreq, int down)
 	struct fcm_devfreq *fcm = dev_get_drvdata(devfreq->dev.parent);
 	u64 cache_miss_bw;
 
-	cache_miss_bw = fcm->line_size;
-	cache_miss_bw *= fcm->alg.misses_down;
-	cache_miss_bw *= SZ_1MB;
+	cache_miss_bw = fcm->line_size * SZ_1MB * fcm->alg.misses_down;
 	cache_miss_bw /= fcm->alg.usec_down;
 
 	if (fcm->alg.downsize_defer > 0) {
@@ -498,9 +493,7 @@ static int fcm_l3cache_up_size_check(struct devfreq *df,
 	if (num_active_portions >= fcm->portion_max)
 		return 0;
 
-	cache_miss_bw = fcm->line_size;
-	cache_miss_bw *= fcm->alg.misses_up;
-	cache_miss_bw *= SZ_1MB;
+	cache_miss_bw = fcm->line_size * SZ_1MB * fcm->alg.misses_up;
 	cache_miss_bw /= fcm->alg.usec_up;
 
 	if (cache_miss_bw > fcm->upsize_threshold)
@@ -583,14 +576,10 @@ static int fcm_l3cache_down_size_check(struct devfreq *df, int portions)
 	if (portions < fcm->portion_min)
 		return 0;
 
-	cache_bw = fcm->line_size;
-	cache_bw *= fcm->alg.accesses_down;
-	cache_bw *= SZ_1MB;
+	cache_bw = fcm->line_size * SZ_1MB * fcm->alg.accesses_down;
 	cache_bw /= fcm->alg.usec_down;
 
-	cache_miss_bw = fcm->line_size;
-	cache_miss_bw *= fcm->alg.misses_down;
-	cache_miss_bw *= SZ_1MB;
+	cache_miss_bw = fcm->line_size * SZ_1MB * fcm->alg.misses_down;
 	cache_miss_bw /= fcm->alg.usec_down;
 
 	cache_hit_bw = cache_bw - cache_miss_bw;
@@ -603,7 +592,6 @@ static int fcm_l3cache_down_size_check(struct devfreq *df, int portions)
 	if (fcm->resize_regulation_enabled)
 		ret = fcm_l3cache_regulator_downsize(df, ret);
 
-	/* reset (to zero) the consumed counters */
 	fcm->alg.usec_down = 0;
 	fcm->alg.misses_down = 0;
 	fcm->alg.accesses_down = 0;
@@ -755,8 +743,9 @@ static int fcm_l3cache_setup_devfreq_profile(struct platform_device *pdev)
 	df_profile->target = fcm_l3cache_devfreq_target;
 	df_profile->get_dev_status = fcm_l3cache_devfreq_get_dev_status;
 	df_profile->freq_table = fcm->freq_table;
-	df_profile->max_state = fcm->freq_table_len - 1;
+	df_profile->max_state = fcm->freq_table_len;
 	df_profile->polling_ms = fcm->polling_ms;
+	df_profile->initial_freq = fcm->initial_freq;
 
 	return 0;
 }
@@ -808,7 +797,7 @@ static int fcm_l3cache_parse_dt(struct platform_device *pdev)
 
 	ret = of_property_read_u32(node, "initial-freq", &freq);
 	if (ret)
-		fcm->initial_freq = FCM_DEFAULT_FREQUENCY;
+		fcm->initial_freq = fcm->portion_max;
 	else
 		fcm->initial_freq = freq;
 
@@ -840,18 +829,14 @@ static int fcm_l3cache_create_configuration(struct platform_device *pdev)
 		fcm->freq_table[i] = i + 1;
 
 	/* Leakage (static power) for a single portion (in uW) */
-	fcm->cache_leakage = fcm->cache_leakage_per_mb;
-	fcm->cache_leakage *= fcm->size;
-	fcm->cache_leakage /= 1024UL;
+	fcm->cache_leakage = fcm->cache_leakage_per_mb * fcm->size / SZ_1KB;
 	fcm->cache_leakage /= fcm->portions;
 
-	fcm->downsize_threshold = SZ_1MB;
-	fcm->downsize_threshold -= DOWNSIZE_PORTION_THRESHOLD;
+	fcm->downsize_threshold = SZ_1MB - DOWNSIZE_PORTION_THRESHOLD;
 	fcm->downsize_threshold *= fcm->cache_leakage;
 	fcm->downsize_threshold /= fcm->dram_energy_per_mb;
 
-	fcm->upsize_threshold = SZ_1MB;
-	fcm->upsize_threshold -= UPSIZE_PORTION_THRESHOLD;
+	fcm->upsize_threshold = SZ_1MB - UPSIZE_PORTION_THRESHOLD;
 	fcm->upsize_threshold *= fcm->cache_leakage;
 	fcm->upsize_threshold /= fcm->dram_energy_per_mb;
 
