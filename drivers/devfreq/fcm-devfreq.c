@@ -221,9 +221,9 @@ static int fcm_l3cache_devfreq_target(struct device *dev,
 	unsigned long portion_control;
 
 	if (*portions < fcm->portion_min || *portions > fcm->portion_max) {
-		dev_warn(dev, "%s: Target of %lu-portions is outside range of %u..%u\n",
-			__func__, *portions, fcm->portion_min,
-			fcm->portion_max);
+		dev_warn(dev, "%s: Target of %lu-portions is "
+			 "outside range of %u..%u\n",__func__, *portions,
+			 fcm->portion_min, fcm->portion_max);
 
 		return -EINVAL;
 	}
@@ -296,63 +296,6 @@ static int fcm_l3cache_devfreq_get_dev_status(struct device *dev,
 	return 0;
 }
 
-/*
- * This is the function that calculates if we should up-size or not.
- *
- * On entry:
- *	'num_active_portions' is the number of currently active portions
- *
- * On exit:
- *	'ret' is 0 (do not up-size), or +1 (do up-size by one portion)
- *
- * To check if we want to enable one more portion, we need to weigh
- * the additional cost in energy (due to static leakage) when we enable
- * an additional portion, against the potential savings in energy we
- * can achieve by decreasing the (dynamic) cost of accessing the DRAM,
- * due to the decrease in miss-rate we expect to realize.
- *
- * We use the Miss Bandwidth (MBW) as an indicator that performance
- * and energy *might* be impacted.  MBW is used as an *indicative*
- * metric because the conversion, of hits to misses, on up-sizing
- * is unknown. The method assumes a best case of 100% conversion.
- * With this assumption, then we can readily evaluate the best-case
- * dynamic energy savings, and compare it to the incremental static costs.
- *
- * L		      = Leakage (static power) for a single portion
- *			(expressed in uW == uJ/sec).
- *
- * L = cache_leakage
- *
- * dram_energy_per_mb = Amount of energy used by the DRAM system per
- *			MB of transferred data (on average)
- *			(expressed in uJ/MB)
- *
- * ED = dram_energy_per_mb
- *
- * Let "pivot" be the Miss Bandwidth (MBW) where the expenditure
- * of the additional static power to enable another portion is
- * balanced out with the savings of dynamic energy by reducing
- * the accesses to the DRAM by converting all those misses to hits.
- *
- * Thus we have:
- *
- * pivot = L / ED	== (uW)/(uJ/MB) == (uJ/sec)/(uJ/MB) = MB/sec
- *
- * Hence, if (MBW < pivot) up-sizing will increase energy consumption.
- * Conversely, if (MBW > pivot) then up-sizing *might* decrease energy
- * consumption, and it *might* be worth enabling one additional portion.
- *
- * We also add an up-sizing threshold Tu, hence we have:
- *
- *	if ( MBW > (1.0-Tu) * pivot ) then UP-size by one portion
- *
- * With Tu in the range 0.0 to 1.0
- * A value of Tu == 0.0, means we need to justify the energy for a
- * single whole portion, before we will enable an additional portion.
- * A value of Tu == 0.2, means we need to justify the energy for
- * only 80% of a portion, before we will enable an additional portion.
- * Hence a non-zero Tu will allow us to up-size prematurely (or aggressively!)
- */
 static int fcm_l3cache_up_size_check(struct devfreq *df,
 				     const int num_active_portions)
 {
@@ -376,62 +319,6 @@ static int fcm_l3cache_up_size_check(struct devfreq *df,
 	return ret;
 }
 
-/*
- * This is the function that calculates if we should down-size or not.
- *
- * On entry:
- *	'num_active_portions' is the number of currently active portions
- *
- * On exit:
- *	'ret' is 0 (do not down-size), or -1 (do down-size by one portion)
- *
- * From a first order energy trade-off perspective; to justify a cache
- * portion to be powered ON requires a hit bandwidth that PAYS for its
- * leakage. The trade-off between the equivalent DRAM (dynamic) traffic
- * and the portion's (static) leakage must be evaluated in time.
- *
- * To check if we want to reduce the number of active portions, we
- * use the Hit Bandwidth (HBW) to evaluate the comparative costs
- * and energy that might be impacted.
- *
- * L		      = Leakage (static power) for a single portion
- *			(expressed in uW == uJ/sec).
- *
- * L = cache_leakage
- *
- * dram_energy_per_mb = Amount of energy used by the DRAM system per
- *			MB of transferred data (on average)
- *			(expressed in uJ/MB)
- *
- * ED = dram_energy_per_mb
- *
- * N		      = Number of active portions
- *			(in range FCM_MIN_PORTIONS...FCM_MAX_PORTIONS)
- *
- * N = num_active_portions
- *
- * Then the break-even point in any one second is:
- *
- * N * L = ED * HBW
- * -->	(uW) * (k) == (uJ/MB) * (MB/sec)
- * -->	(uJ/sec)   == (uJ/sec)
- *
- * Hence, The cache is then justified when: HBW > N * L / ED
- *
- * And so if (HBW < N * L / ED) then consider downsizing to N-1 banks
- *
- * We also add a down-sizing threshold Td, hence we have:
- *
- *	if ( HBW < (N-Td) * L / ED ) then DOWN-size by one portion
- *
- * With Td in the range 0.0 to 1.0
- * A value of Td == 0.0, means we compare the energy for all N portions
- * A value of Td == 0.2, means we ignore 20% of the cost of one portion
- * when evaluating to down-size by one portion
- * Hence a non-zero Td will allow us to down-size prematurely (or aggressively!)
- *
- * Note: we need to ensure N-Td >= 0.0, which should only an issue when N<1
- */
 static int fcm_l3cache_down_size_check(struct devfreq *df, int portions)
 {
 	int ret = 0;
@@ -440,7 +327,7 @@ static int fcm_l3cache_down_size_check(struct devfreq *df, int portions)
 	u64 cache_miss_bw;
 	u64 cache_hit_bw;
 
-	if (portions < fcm->portion_min)
+	if (portions <= fcm->portion_min)
 		return 0;
 
 	cache_bw = fcm->line_size * SZ_1MB * fcm->alg.accesses_down;
@@ -451,16 +338,12 @@ static int fcm_l3cache_down_size_check(struct devfreq *df, int portions)
 
 	cache_hit_bw = cache_bw - cache_miss_bw;
 
-	/* check and decrease by 1 portion */
 	if (cache_hit_bw < (fcm->downsize_threshold * portions))
-		ret = -1;
+		ret = 1;
 
 	fcm->alg.usec_down = 0;
 	fcm->alg.misses_down = 0;
 	fcm->alg.accesses_down = 0;
-
-	if (portions + ret < 0)
-		return 0;
 
 	return ret;
 }
@@ -471,27 +354,26 @@ static int fcm_l3cache_governor_get_target_portions(struct devfreq *df,
 	struct fcm_devfreq *fcm = dev_get_drvdata(df->dev.parent);
 	int err;
 	int up = 0, down = 0;
-	int new_active_portions = fcm->cur_num_portions;
 
 	err = devfreq_update_stats(df);
 	if (err)
 		return err;
 
+	*portions = fcm->cur_num_portions;
+
 	up = fcm_l3cache_up_size_check(df, fcm->cur_num_portions);
+	if (up > 0) {
+		*portions = fcm->cur_num_portions + up;
+		return 0;
+	}
 
 	if (++fcm->alg.poll_ratio == POLLING_DOWN_INTERVAL) {
 		down = fcm_l3cache_down_size_check(df, fcm->cur_num_portions);
+		if (down > 0)
+			*portions = fcm->cur_num_portions - down;
+
 		fcm->alg.poll_ratio = 0;
-	} else {
-		down = 0;
 	}
-
-	if (up > 0)
-		new_active_portions = fcm->cur_num_portions + up;
-	else if (down < 0)
-		new_active_portions = fcm->cur_num_portions + down;
-
-	*portions = new_active_portions;
 
 	return 0;
 }
@@ -540,10 +422,10 @@ static int fcm_l3cache_reinit_device(struct fcm_devfreq *fcm)
 
 	/* clean the algorithm statistics and start from scrach */
 	memset(&fcm->alg, 0, sizeof(fcm->alg));
-	fcm->cur_num_portions = fcm->portion_max;
+	fcm->cur_num_portions = fcm->initial_freq;
 	fcm->alg.last_update = jiffies_to_usecs(get_jiffies_64());
 
-	portion_active = ((1UL << fcm->portion_max) - 1) << PORTION_1;
+	portion_active = ((1UL << fcm->initial_freq) - 1) << PORTION_1;
 
 	SYS_REG_READ(S3_0_c15_c3_5, portion_control);
 
