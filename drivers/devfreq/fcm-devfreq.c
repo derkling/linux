@@ -262,7 +262,7 @@ static int fcm_l3cache_devfreq_get_dev_status(struct device *dev,
 	unsigned int delta;
 	unsigned long hits = 0;
 	unsigned long misses = 0;
-	unsigned long accesses = 0;
+	unsigned long accesses;
 
 	delta = usec - fcm->alg.last_update;
 	fcm->alg.last_update = usec;
@@ -319,7 +319,8 @@ static int fcm_l3cache_up_size_check(struct devfreq *df,
 	return ret;
 }
 
-static int fcm_l3cache_down_size_check(struct devfreq *df, int portions)
+static int fcm_l3cache_down_size_check(struct devfreq *df,
+				       int num_active_portions)
 {
 	int ret = 0;
 	struct fcm_devfreq *fcm = dev_get_drvdata(df->dev.parent);
@@ -327,7 +328,7 @@ static int fcm_l3cache_down_size_check(struct devfreq *df, int portions)
 	u64 cache_miss_bw;
 	u64 cache_hit_bw;
 
-	if (portions <= fcm->portion_min)
+	if (num_active_portions <= fcm->portion_min)
 		return 0;
 
 	cache_bw = fcm->line_size * SZ_1MB * fcm->alg.accesses_down;
@@ -338,7 +339,7 @@ static int fcm_l3cache_down_size_check(struct devfreq *df, int portions)
 
 	cache_hit_bw = cache_bw - cache_miss_bw;
 
-	if (cache_hit_bw < (fcm->downsize_threshold * portions))
+	if (cache_hit_bw < (fcm->downsize_threshold * num_active_portions))
 		ret = 1;
 
 	fcm->alg.usec_down = 0;
