@@ -178,7 +178,6 @@ struct fcm_devfreq {
 	u32 portion_max;
 	u32 cache_leakage_per_mb;
 	u32 dram_energy_per_mb;
-	bool resize_regulation_enabled;
 
 	unsigned int *freq_table;
 	int freq_table_len;
@@ -201,13 +200,6 @@ struct fcm_devfreq {
 		unsigned long		usec_down;
 		unsigned int		last_update;
 		unsigned int		poll_ratio;
-		/* Resizing regulator FSM state */
-		int			sens_checking;
-		int			sens_sample_counter;
-		int			sens_counter;
-		int			downsize_defer;
-		unsigned long		prev_missrate;
-		unsigned long		reference_missrate;
 	} alg;
 };
 
@@ -305,105 +297,6 @@ static int fcm_l3cache_devfreq_get_dev_status(struct device *dev,
 }
 
 /*
- * This is a "regular" that is can be used to override the decision
- * to up-size taken in the function upSizeCheck() - our caller.
- * This function is only called if resize_regulation_enabled is true.
- *
- * On entry:
- *	'up' is 0 (do not up-size), or +1 (do up-size by one portion)
- *
- * On exit:
- *	'ret' is 0 (do not up-size), or +1 (do up-size by one portion)
- */
-static int fcm_l3cache_regulator_upsize(struct devfreq *devfreq, int up)
-{
-	int ret = up;
-	struct fcm_devfreq *fcm = dev_get_drvdata(devfreq->dev.parent);
-	u64 cache_miss_bw;
-	u64 missrate;
-
-	cache_miss_bw = fcm->line_size * SZ_1MB * fcm->alg.misses_up;
-	cache_miss_bw /= fcm->alg.usec_up;
-
-	missrate = fcm->alg.misses_up * SZ_1MB;
-        missrate /= fcm->alg.accesses_up + 1;
-
-	if (!fcm->alg.prev_missrate)
-		fcm->alg.prev_missrate = 1;
-
-	if (!fcm->alg.reference_missrate)
-		fcm->alg.reference_missrate = 1;
-
-	if (!fcm->alg.sens_checking && cache_miss_bw >= MARGINAL_BANDWIDTH) {
-		long missrate_change = missrate - fcm->alg.prev_missrate;
-
-		missrate_change /= fcm->alg.prev_missrate;
-
-		if (missrate_change >= MISSRATE_CHANGE_THRESHOLD) {
-			fcm->alg.sens_checking = true;
-			fcm->alg.sens_counter = SENS_SAMPLING_WINDOW;
-			fcm->alg.sens_sample_counter = 0;
-			fcm->alg.reference_missrate = fcm->alg.prev_missrate;
-		}
-	}
-
-	fcm->alg.prev_missrate = missrate;
-
-	if (fcm->alg.sens_checking) {
-		if (fcm->alg.sens_counter-- == 0) {
-			/* Compare the bad samples to the threshold */
-			if (fcm->alg.sens_sample_counter >=
-			    SENS_MISSRATE_SAMPLE_THRESHOLD) {
-				ret = 1;
-				fcm->alg.downsize_defer = DOWNSIZE_DEFER_SKIP;
-			}
-			fcm->alg.sens_checking = false;
-		}
-		else if (((missrate - fcm->alg.reference_missrate) /
-			 fcm->alg.reference_missrate) >
-			 MISSRATE_CHANGE_THRESHOLD) {
-			fcm->alg.sens_sample_counter++;
-		}
-	}
-
-	return ret;
-}
-
-/*
- * This is a "regular" that is can be used to override the decision
- * to down-size taken in the function downSizeCheck() - our caller.
- * This function is only called if resize_regulation_enabled is true.
- *
- * On entry:
- *	'down' is 0 (do not down-size), or -1 (do down-size by one portion)
- *
- * On exit:
- *	'ret' is 0 (do not down-size), or -1 (do down-size by one portion)
- */
-static int fcm_l3cache_regulator_downsize(struct devfreq *devfreq, int down)
-{
-	struct fcm_devfreq *fcm = dev_get_drvdata(devfreq->dev.parent);
-	u64 cache_miss_bw;
-
-	cache_miss_bw = fcm->line_size * SZ_1MB * fcm->alg.misses_down;
-	cache_miss_bw /= fcm->alg.usec_down;
-
-	if (fcm->alg.downsize_defer > 0) {
-		fcm->alg.downsize_defer--;
-		return 0;
-	}
-
-	if (down != 0 && cache_miss_bw >= MARGINAL_BANDWIDTH) {
-		fcm->alg.sens_checking = true;
-		fcm->alg.sens_counter = SENS_SAMPLING_WINDOW;
-		fcm->alg.sens_sample_counter = 0;
-		fcm->alg.reference_missrate = fcm->alg.prev_missrate;
-	}
-
-	return down;
-}
-
-/*
  * This is the function that calculates if we should up-size or not.
  *
  * On entry:
@@ -475,9 +368,6 @@ static int fcm_l3cache_up_size_check(struct devfreq *df,
 
 	if (cache_miss_bw > fcm->upsize_threshold)
 		ret = 1;
-
-	if (fcm->resize_regulation_enabled)
-		ret = fcm_l3cache_regulator_upsize(df, ret);
 
 	fcm->alg.usec_up = 0;
 	fcm->alg.misses_up = 0;
@@ -565,16 +455,12 @@ static int fcm_l3cache_down_size_check(struct devfreq *df, int portions)
 	if (cache_hit_bw < (fcm->downsize_threshold * portions))
 		ret = -1;
 
-	/* Check whether regulator overrides the previous decision */
-	if (fcm->resize_regulation_enabled)
-		ret = fcm_l3cache_regulator_downsize(df, ret);
-
 	fcm->alg.usec_down = 0;
 	fcm->alg.misses_down = 0;
 	fcm->alg.accesses_down = 0;
 
 	if (portions + ret < 0)
-		ret = -portions;
+		return 0;
 
 	return ret;
 }
@@ -769,9 +655,6 @@ static int fcm_l3cache_parse_dt(struct platform_device *pdev)
 		fcm->initial_freq = fcm->portion_max;
 	else
 		fcm->initial_freq = freq;
-
-	fcm->resize_regulation_enabled =
-		of_property_read_bool(node, "resize-regulation-enabled");
 
 	of_node_put(node);
 
