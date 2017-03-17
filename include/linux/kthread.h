@@ -75,6 +75,7 @@ struct kthread_work {
 	struct list_head	node;
 	kthread_work_func_t	func;
 	struct kthread_worker	*worker;
+	unsigned int canceling;
 };
 
 #define KTHREAD_WORKER_INIT(worker)	{				\
@@ -85,6 +86,7 @@ struct kthread_work {
 #define KTHREAD_WORK_INIT(work, fn)	{				\
 	.node = LIST_HEAD_INIT((work).node),				\
 	.func = (fn),							\
+	.canceling = 0,							\
 	}
 
 #define DEFINE_KTHREAD_WORKER(worker)					\

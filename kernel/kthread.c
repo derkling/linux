@@ -630,7 +630,7 @@ bool queue_kthread_work(struct kthread_worker *worker,
 	unsigned long flags;
 
 	spin_lock_irqsave(&worker->lock, flags);
-	if (list_empty(&work->node)) {
+	if (list_empty(&work->node) && !work->canceling) {
 		insert_kthread_work(worker, work, &worker->work_list);
 		ret = true;
 	}
