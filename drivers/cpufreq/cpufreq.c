@@ -607,13 +607,14 @@ EXPORT_SYMBOL_GPL(cpufreq_disable_fast_switch);
 unsigned int cpufreq_driver_resolve_freq(struct cpufreq_policy *policy,
 					 unsigned int target_freq)
 {
+	int resolved_idx = policy->cached_resolved_idx;
 	target_freq = clamp_val(target_freq, policy->min, policy->max);
 	policy->cached_target_freq = target_freq;
 	if (cpufreq_driver->resolve_freq)
 		return cpufreq_driver->resolve_freq(policy, target_freq);
-	policy->cached_resolved_idx =
-		cpufreq_frequency_table_target(policy, target_freq,
-					       CPUFREQ_RELATION_L);
+	if(!cpufreq_frequency_table_target(policy, policy->freq_table,
+						target_freq, CPUFREQ_RELATION_L, &resolved_idx))
+		policy->cached_resolved_idx = resolved_idx;
 	return policy->freq_table[policy->cached_resolved_idx].frequency;
 }
 
