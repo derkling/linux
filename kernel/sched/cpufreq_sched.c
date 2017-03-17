@@ -322,7 +322,7 @@ err:
 	return -ENOMEM;
 }
 
-static int cpufreq_sched_policy_exit(struct cpufreq_policy *policy)
+static void cpufreq_sched_policy_exit(struct cpufreq_policy *policy)
 {
 	struct gov_data *gd = policy->governor_data;
 
@@ -337,7 +337,6 @@ static int cpufreq_sched_policy_exit(struct cpufreq_policy *policy)
 	policy->governor_data = NULL;
 
 	kfree(gd);
-	return 0;
 }
 
 static int cpufreq_sched_start(struct cpufreq_policy *policy)
@@ -365,33 +364,12 @@ static void cpufreq_sched_limits(struct cpufreq_policy *policy)
 		__cpufreq_driver_target(policy, clamp_freq, CPUFREQ_RELATION_L);
 }
 
-static int cpufreq_sched_stop(struct cpufreq_policy *policy)
+static void cpufreq_sched_stop(struct cpufreq_policy *policy)
 {
 	int cpu;
 
 	for_each_cpu(cpu, policy->cpus)
 		per_cpu(enabled, cpu) = 0;
-
-	return 0;
-}
-
-static int cpufreq_sched_setup(struct cpufreq_policy *policy,
-			       unsigned int event)
-{
-	switch (event) {
-	case CPUFREQ_GOV_POLICY_INIT:
-		return cpufreq_sched_policy_init(policy);
-	case CPUFREQ_GOV_POLICY_EXIT:
-		return cpufreq_sched_policy_exit(policy);
-	case CPUFREQ_GOV_START:
-		return cpufreq_sched_start(policy);
-	case CPUFREQ_GOV_STOP:
-		return cpufreq_sched_stop(policy);
-	case CPUFREQ_GOV_LIMITS:
-		cpufreq_sched_limits(policy);
-		break;
-	}
-	return 0;
 }
 
 /* Tunables */
@@ -482,7 +460,11 @@ static
 #endif
 struct cpufreq_governor cpufreq_gov_sched = {
 	.name			= "sched",
-	.governor		= cpufreq_sched_setup,
+	.init			= cpufreq_sched_policy_init,
+	.exit			= cpufreq_sched_policy_exit,
+	.start			= cpufreq_sched_start,
+	.stop			= cpufreq_sched_stop,
+	.limits			= cpufreq_sched_limits,
 	.owner			= THIS_MODULE,
 };
 
