@@ -3317,6 +3317,8 @@ __update_load_avg_se(u64 now, int cpu, struct cfs_rq *cfs_rq, struct sched_entit
 				     uclamp_value(cpu, UCLAMP_MIN),
 				     uclamp_value(cpu, UCLAMP_MAX));
 
+		trace_sched_load_se(se);
+
 		return 1;
 	}
 
@@ -3613,6 +3615,7 @@ static inline int propagate_entity_load_avg(struct sched_entity *se)
 	update_tg_cfs_runnable(cfs_rq, se, gcfs_rq);
 
 	trace_sched_load_cfs_rq(cfs_rq);
+	trace_sched_load_se(se);
 
 	return 1;
 }
