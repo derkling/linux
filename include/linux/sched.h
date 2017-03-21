@@ -428,6 +428,16 @@ struct sched_entity {
 #endif
 };
 
+/* cfs_rq "owned" by this sched_entity */
+static inline struct cfs_rq *group_cfs_rq(struct sched_entity *se)
+{
+#ifdef CONFIG_FAIR_GROUP_SCHED
+	return se->my_q;
+#else
+	return NULL;
+#endif
+}
+
 struct sched_rt_entity {
 	struct list_head		run_list;
 	unsigned long			timeout;

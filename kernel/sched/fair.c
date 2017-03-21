@@ -292,12 +292,6 @@ static inline struct cfs_rq *cfs_rq_of(struct sched_entity *se)
 	return se->cfs_rq;
 }
 
-/* runqueue "owned" by this group */
-static inline struct cfs_rq *group_cfs_rq(struct sched_entity *grp)
-{
-	return grp->my_q;
-}
-
 static inline void list_add_leaf_cfs_rq(struct cfs_rq *cfs_rq)
 {
 	if (!cfs_rq->on_list) {
@@ -447,12 +441,6 @@ static inline struct cfs_rq *cfs_rq_of(struct sched_entity *se)
 	struct rq *rq = task_rq(p);
 
 	return &rq->cfs;
-}
-
-/* runqueue "owned" by this group */
-static inline struct cfs_rq *group_cfs_rq(struct sched_entity *grp)
-{
-	return NULL;
 }
 
 static inline void list_add_leaf_cfs_rq(struct cfs_rq *cfs_rq)
