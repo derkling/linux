@@ -81,11 +81,9 @@ static int register_cpu_capacity_sysctl(void)
 
 	for_each_possible_cpu(i) {
 		cpu = get_cpu_device(i);
-		if (!cpu) {
-			pr_err("%s: too early to get CPU%d device!\n",
-			       __func__, i);
+		if (!cpu)
 			continue;
-		}
+
 		device_create_file(cpu, &dev_attr_cpu_capacity);
 	}
 
