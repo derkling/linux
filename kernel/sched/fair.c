@@ -5998,16 +5998,26 @@ static inline int task_util_last(struct task_struct *p)
 /*
  * cpu_util_wake: Compute cpu utilization with any contributions from
  * the waking task p removed.
+ *
  */
 static int cpu_util_wake(int cpu, struct task_struct *p)
 {
-	unsigned long util, capacity;
+	unsigned long capacity = capacity_orig_of(cpu);
+	unsigned long util;
+
+	/*
+	 * Estimated utilization tracks only tasks alreay enqueued thus
+	 * we do not need to remove any contribution for the specified task.
+	 */
+	if (sched_feat(UTIL_EST)) {
+		util = cpu_util_est(cpu);
+		return (util >= capacity) ? capacity : util;
+	}
 
 	/* Task has no contribution or is new */
 	if (cpu != task_cpu(p) || !p->se.avg.last_update_time)
 		return cpu_util(cpu);
 
-	capacity = capacity_orig_of(cpu);
 	util = max_t(long, cpu_rq(cpu)->cfs.avg.util_avg - task_util(p), 0);
 
 	return (util >= capacity) ? capacity : util;
@@ -7495,7 +7505,10 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 			load = source_load(i, load_idx);
 
 		sgs->group_load += load;
-		sgs->group_util += cpu_util(i);
+		if (sched_feat(UTIL_EST))
+			sgs->group_util += cpu_util_est(i);
+		else
+			sgs->group_util += cpu_util(i);
 		sgs->sum_nr_running += rq->cfs.h_nr_running;
 
 		nr_running = rq->nr_running;
