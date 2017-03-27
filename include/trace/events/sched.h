@@ -620,6 +620,8 @@ TRACE_EVENT(sched_load_cfs_rq,
 		__field(	int,		id			)
 		__field(	unsigned long,	load			)
 		__field(	unsigned long,	util			)
+		__field(	unsigned long,	ewma			)
+		__field(	unsigned long,	last			)
 	),
 
 	TP_fast_assign(
@@ -629,10 +631,13 @@ TRACE_EVENT(sched_load_cfs_rq,
 		__entry->id	= __trace_sched_id(cfs_rq);
 		__entry->load	= cfs_rq->runnable_load_avg;
 		__entry->util	= cfs_rq->avg.util_avg;
+		__entry->ewma	= cfs_rq->avg.util_est.ewma;
+		__entry->last	= cfs_rq->avg.util_est.last;
 	),
 
-	TP_printk("cpu=%d path=%s id=%d load=%lu util=%lu",  __entry->cpu,
-		  __get_str(path), __entry->id, __entry->load, __entry->util)
+	TP_printk("cpu=%d path=%s id=%d load=%lu util=%lu ewma=%lu last=%lu",
+		  __entry->cpu, __get_str(path), __entry->id, __entry->load,
+		  __entry->util, __entry->ewma, __entry->last)
 );
 
 /*
@@ -653,6 +658,8 @@ TRACE_EVENT(sched_load_se,
 		__field(	pid_t,		pid			      )
 		__field(	unsigned long,	load			      )
 		__field(	unsigned long,	util			      )
+		__field(	unsigned long,	ewma			      )
+		__field(	unsigned long,	last			      )
 	),
 
 	TP_fast_assign(
@@ -667,12 +674,14 @@ TRACE_EVENT(sched_load_se,
 		       : p->comm, TASK_COMM_LEN);
 		__entry->pid = group_cfs_rq(se) ? -1 : p->pid;
 		__entry->load = se->avg.load_avg;
-		__entry->util = se->avg.util_avg;
+		__entry->ewma = se->avg.util_est.ewma;
+		__entry->last = se->avg.util_est.last;
 	),
 
-	TP_printk("cpu=%d path=%s id=%d comm=%s pid=%d load=%lu util=%lu",
+	TP_printk("cpu=%d path=%s id=%d comm=%s pid=%d load=%lu util=%lu ewma=%lu last=%lu",
 		  __entry->cpu, __get_str(path), __entry->id, __entry->comm,
-		  __entry->pid, __entry->load, __entry->util)
+		  __entry->pid, __entry->load, __entry->util,
+		  __entry->ewma, __entry->last)
 );
 
 /*
