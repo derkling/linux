@@ -5563,6 +5563,7 @@ static inline bool cpu_in_sg(struct sched_group *sg, int cpu)
 	return cpu != -1 && cpumask_test_cpu(cpu, sched_group_cpus(sg));
 }
 
+#ifdef CONFIG_SCHED_TUNE
 static inline int normalize_energy(int energy_diff);
 
 #define eenv_before(__X) eenv->before.__X
@@ -5610,7 +5611,7 @@ __update_perf_energy_deltas(struct energy_env *eenv)
 	eenv->nrg_delta = normalize_energy(eenv_delta(energy));
 
 }
-
+#endif
 /*
  * energy_diff(): Estimate the energy impact of changing the utilization
  * distribution. eenv specifies the change: utilisation amount, source, and
@@ -5657,11 +5658,12 @@ static inline int __energy_diff(struct energy_env *eenv)
 	if (abs(eenv->nrg_delta) < margin)
 		eenv->nrg_delta = 0;
 
+#ifdef CONFIG_SCHED_TUNE
 	/*
 	 * Normalize E and P variations
 	 */
 	__update_perf_energy_deltas(eenv);
-
+#endif
 	return eenv->nrg_delta;
 }
 
