@@ -1053,6 +1053,29 @@ DEFINE_EVENT(perf_cl_peak_timer_status, perf_cl_peak_exit_timer_stop,
 		timer_rate, mode)
 );
 
+
+TRACE_EVENT(sugov_util_update,
+	    TP_PROTO(int cpu,
+		     unsigned long util, unsigned long max_cap,
+		     unsigned int flags),
+	    TP_ARGS(cpu, util, max_cap, flags),
+	    TP_STRUCT__entry(
+		    __field(	int,		cpu)
+		    __field(	unsigned long,	util)
+		    __field(	unsigned long,	max_cap)
+		    __field(	unsigned int,	flags)
+	    ),
+	    TP_fast_assign(
+		    __entry->cpu = cpu;
+		    __entry->util = util;
+		    __entry->max_cap = max_cap;
+		    __entry->flags = flags;
+	    ),
+	    TP_printk("cpu=%d util=%lu max_cap=%lu flags=%x",
+		      __entry->cpu, __entry->util, __entry->max_cap,
+		      __entry->flags)
+);
+
 #endif /* _TRACE_POWER_H */
 
 /* This part must be outside protection */
