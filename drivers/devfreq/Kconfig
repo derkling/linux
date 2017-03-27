@@ -112,6 +112,21 @@ config ARM_RK3399_DMC_DEVFREQ
           It sets the frequency for the memory controller and reads the usage counts
           from hardware.
 
+config ARM64_DSU_PCTRL_DEVFREQ
+	tristate "ARM DSU Cache Portion Control DEVFREQ Driver"
+	depends on ARM64
+	select PM_OPP
+	help
+	  This adds the DevFreq driver for energy-cost-justified demand-driven
+	  portion control of the ARM DSU cache.
+	  This driver does not control frequency.
+
+	  It uses architecture specific instructions which might cause
+	  fault when some ARM64 platform does not support it.
+	  Make sure this driver works with your ARM64 platform.
+
+	  If unsure, say N.
+
 source "drivers/devfreq/event/Kconfig"
 
 endif # PM_DEVFREQ
