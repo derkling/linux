@@ -6278,14 +6278,13 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 	int target_cpu = -1;
 	unsigned long target_util = prefer_idle ? ULONG_MAX : 0;
 	unsigned long backup_capacity = ULONG_MAX;
-	int best_idle_cpu = -1;
-	int best_idle_cstate = INT_MAX;
 	int backup_cpu = -1;
 	unsigned long min_util = boosted_task_util(p);
 	unsigned long min_wake_util = ULONG_MAX;
 	struct sched_domain *sd;
 	struct sched_group *sg;
 	int cpu = start_cpu(boosted);
+	struct cpumask energy_candidates;
 
 	schedstat_inc(p, se.statistics.nr_wakeups_fbt_attempts);
 	schedstat_inc(this_rq(), eas_stats.fbt_attempts);
@@ -6305,6 +6304,7 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 	}
 
 	sg = sd->groups;
+	cpumask_clear(&energy_candidates);
 
 	do {
 		int i;
@@ -6368,16 +6368,8 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 						target_util = new_util;
 						target_cpu = i;
 					}
-				} else if (!prefer_idle) {
-					int idle_idx = idle_get_state_idx(cpu_rq(i));
-
-					if (best_idle_cpu < 0 ||
-						(sysctl_sched_cstate_aware &&
-							best_idle_cstate > idle_idx)) {
-						best_idle_cstate = idle_idx;
-						best_idle_cpu = i;
-					}
-				}
+				} else if (!prefer_idle)
+					cpumask_set_cpu(i, &energy_candidates);
 			} else if (backup_capacity > cur_capacity) {
 				/* Find a backup cpu with least capacity. */
 				backup_capacity = cur_capacity;
@@ -6386,8 +6378,25 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 		}
 	} while (sg = sg->next, sg != sd->groups);
 
-	if (target_cpu < 0)
-		target_cpu = best_idle_cpu >= 0 ? best_idle_cpu : backup_cpu;
+	if (target_cpu < 0) {
+		int nrg_diff = 0, tmp, i;
+		//target_cpu = best_idle_cpu >= 0 ? best_idle_cpu : backup_cpu;
+		for_each_cpu(i, &energy_candidates) {
+			struct energy_env eenv = {
+				.util_delta     = task_util(p),
+				.src_cpu        = task_cpu(p),
+				.dst_cpu        = target_cpu,
+				.task           = p,
+			};
+			tmp = energy_diff(&eenv);
+			if (tmp < nrg_diff) {
+				target_cpu = i;
+				nrg_diff = tmp;
+			}
+		}
+		if (target_cpu < 0)
+			target_cpu = backup_cpu;
+	}
 
 	if (target_cpu >= 0) {
 		schedstat_inc(p, se.statistics.nr_wakeups_fbt_count);
