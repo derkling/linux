@@ -26,6 +26,7 @@
 #include <linux/signal_types.h>
 #include <linux/mm_types_task.h>
 #include <linux/task_io_accounting.h>
+#include <linux/average.h>
 
 /* task_struct member predeclarations (sorted alphabetically): */
 struct audit_context;
@@ -260,6 +261,12 @@ struct load_weight {
 };
 
 /*
+ * Support functions to track the Exponential Weighted Moving
+ * Average (EWMA) estimation for SEs and RQs utilization.
+ */
+DECLARE_EWMA(util, 0, 4);
+
+/*
  * The load_avg/util_avg accumulates an infinite geometric series
  * (see __update_load_avg() in kernel/sched/fair.c).
  *
@@ -318,7 +325,30 @@ struct sched_avg {
 	u32				period_contrib;
 	unsigned long			load_avg;
 	unsigned long			util_avg;
+
+	/* Utilization estimation */
+	struct ewma_util		util_ewma;
+	struct {
+		unsigned long ewma;
+		unsigned long last;
+	} 				util_est;
 };
+
+#define UTIL_EST_MAX_EWMA_LAST	0 /* max(sa->util_est.ema, sa->util_est.last) */
+#define UTIL_EST_EWMA		1 /* sa->util_est.ewma */
+#define UTIL_EST_LAST		2 /* sa->util_est.last */
+
+#define UTIL_EST_POLICY	UTIL_EST_MAX_EWMA_LAST
+
+static inline unsigned long
+util_est(struct sched_avg *sa, int policy)
+{
+	if (likely(policy) == UTIL_EST_MAX_EWMA_LAST)
+		return max(sa->util_est.ewma, sa->util_est.last);
+	if (policy == UTIL_EST_EWMA)
+		return sa->util_est.ewma;
+	return sa->util_est.last;
+}
 
 struct sched_statistics {
 #ifdef CONFIG_SCHEDSTATS

@@ -756,6 +756,10 @@ void init_entity_runnable_average(struct sched_entity *se)
 	sa->util_avg = 0;
 	sa->util_sum = 0;
 	/* when this task enqueue'ed, it will contribute to its cfs_rq's load_avg */
+
+	ewma_util_init(&sa->util_ewma);
+	sa->util_est.ewma = 0;
+	sa->util_est.last = 0;
 }
 
 static inline u64 cfs_rq_clock_task(struct cfs_rq *cfs_rq);
@@ -4782,6 +4786,9 @@ static inline void hrtick_update(struct rq *rq)
 }
 #endif
 
+static inline int task_util(struct task_struct *p);
+static inline int task_util_est(struct task_struct *p);
+
 /*
  * The enqueue_task method is called before nr_running is
  * increased. Here we update the fair scheduling stats and
@@ -4833,6 +4840,14 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 	if (!se)
 		add_nr_running(rq, 1);
+
+	/*
+	 * Update (top level CFS) RQ estimated utilization.
+	 * NOTE: the following code assume that we never change the
+	 *       utilization estimation policy at run-time.
+	 */
+	cfs_rq = &(task_rq(p)->cfs);
+	cfs_rq->avg.util_est.last += task_util_est(p);
 
 	hrtick_update(rq);
 }
@@ -4892,6 +4907,24 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 	if (!se)
 		sub_nr_running(rq, 1);
+
+	/*
+	 * Update (top level CFS) RQ estimated utilization
+	 * NOTE: for RQs we alwasy use util_est.last since we do not track an
+	 *       EWMA, which is tracked only for Tasks.
+	 */
+	cfs_rq = &(task_rq(p)->cfs);
+	cfs_rq->avg.util_est.last = max_t(long,
+			cfs_rq->avg.util_est.last - task_util_est(p), 0);
+
+	/* Update Task's estimated utilization */
+	if (task_sleep) {
+		/* Keep track of the utilization for the last activation */
+		p->se.avg.util_est.last = task_util(p);
+		/* Update EWMA for Task utilization */
+		ewma_util_add(&p->se.avg.util_ewma, task_util(p));
+		p->se.avg.util_est.ewma = ewma_util_read(&p->se.avg.util_ewma);
+	}
 
 	hrtick_update(rq);
 }
@@ -5455,7 +5488,6 @@ static int wake_affine(struct sched_domain *sd, struct task_struct *p,
 	return 1;
 }
 
-static inline int task_util(struct task_struct *p);
 static int cpu_util_wake(int cpu, struct task_struct *p);
 
 static unsigned long capacity_spare_wake(int cpu, struct task_struct *p)
@@ -5924,6 +5956,13 @@ static int cpu_util(int cpu)
 static inline int task_util(struct task_struct *p)
 {
 	return p->se.avg.util_avg;
+}
+
+static inline int task_util_est(struct task_struct *p)
+{
+	struct sched_avg *sa = &p->se.avg;
+
+	return util_est(sa, UTIL_EST_POLICY);
 }
 
 /*
