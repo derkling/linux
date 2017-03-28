@@ -5478,7 +5478,8 @@ struct energy_env {
 	struct sched_group	*sg;
 };
 
-static int cpu_util_wake(int cpu, struct task_struct *p);
+static unsigned long cpu_util_wake(int cpu, struct task_struct *p);
+
 
 /*
  * __cpu_norm_util() returns the cpu util relative to a specific capacity,
@@ -6674,7 +6675,7 @@ done:
  * rq->curr. For that case we should return cpu util with contributions from
  * currently running task p removed.
  */
-static int cpu_util_wake(int cpu, struct task_struct *p)
+static unsigned long cpu_util_wake(int cpu, struct task_struct *p)
 {
 	unsigned long util, capacity;
 
