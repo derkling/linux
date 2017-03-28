@@ -2849,7 +2849,7 @@ static u32 __compute_runnable_contrib(u64 n)
  *            = u_0 + u_1*y + u_2*y^2 + ... [re-labeling u_i --> u_{i+1}]
  */
 static __always_inline int
-__update_load_avg(u64 now, int cpu, struct sched_avg *sa,
+___update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		  unsigned long weight, int running, struct cfs_rq *cfs_rq)
 {
 	u64 delta, scaled_delta, periods;
@@ -2953,6 +2953,26 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 	return decayed;
 }
 
+static int
+__update_load_avg_blocked_se(u64 now, int cpu, struct sched_avg *sa)
+{
+	return ___update_load_avg(now, cpu, sa, 0, 0, NULL);
+}
+
+static int
+__update_load_avg_se(u64 now, int cpu, struct sched_avg *sa,
+		     unsigned long weight, int running)
+{
+	return ___update_load_avg(now, cpu, sa, weight, running, NULL);
+}
+
+static int
+__update_load_avg(u64 now, int cpu, struct sched_avg *sa,
+		  unsigned long weight, int running, struct cfs_rq *cfs_rq)
+{
+	return ___update_load_avg(now, cpu, sa, weight, running, cfs_rq);
+}
+
 /*
  * Signed add and clamp on underflow.
  *
@@ -3014,6 +3034,9 @@ static inline void update_tg_load_avg(struct cfs_rq *cfs_rq, int force)
 void set_task_rq_fair(struct sched_entity *se,
 		      struct cfs_rq *prev, struct cfs_rq *next)
 {
+	u64 p_last_update_time;
+	u64 n_last_update_time;
+
 	if (!sched_feat(ATTACH_AGE_LOAD))
 		return;
 
@@ -3024,11 +3047,11 @@ void set_task_rq_fair(struct sched_entity *se,
 	 * time. This will result in the wakee task is less decayed, but giving
 	 * the wakee more load sounds not bad.
 	 */
-	if (se->avg.last_update_time && prev) {
-		u64 p_last_update_time;
-		u64 n_last_update_time;
+	if (!(se->avg.last_update_time && prev))
+		return;
 
 #ifndef CONFIG_64BIT
+	{
 		u64 p_last_update_time_copy;
 		u64 n_last_update_time_copy;
 
@@ -3043,14 +3066,15 @@ void set_task_rq_fair(struct sched_entity *se,
 
 		} while (p_last_update_time != p_last_update_time_copy ||
 			 n_last_update_time != n_last_update_time_copy);
-#else
-		p_last_update_time = prev->avg.last_update_time;
-		n_last_update_time = next->avg.last_update_time;
-#endif
-		__update_load_avg(p_last_update_time, cpu_of(rq_of(prev)),
-				  &se->avg, 0, 0, NULL);
-		se->avg.last_update_time = n_last_update_time;
 	}
+#else
+	p_last_update_time = prev->avg.last_update_time;
+	n_last_update_time = next->avg.last_update_time;
+#endif
+	__update_load_avg_blocked_se(p_last_update_time,
+				     cpu_of(rq_of(prev)),
+				     &se->avg);
+	se->avg.last_update_time = n_last_update_time;
 }
 
 /* Take into account change of utilization of a child task group */
@@ -3329,9 +3353,9 @@ static inline void update_load_avg(struct sched_entity *se, int flags)
 	 * track group sched_entity load average for task_h_load calc in migration
 	 */
 	if (se->avg.last_update_time && !(flags & SKIP_AGE_LOAD)) {
-		__update_load_avg(now, cpu, &se->avg,
+		__update_load_avg_se(now, cpu, &se->avg,
 			  se->on_rq * scale_load_down(se->load.weight),
-			  cfs_rq->curr == se, NULL);
+			  cfs_rq->curr == se);
 	}
 
 	decayed  = update_cfs_rq_load_avg(now, cfs_rq, true);
@@ -3437,7 +3461,7 @@ void sync_entity_load_avg(struct sched_entity *se)
 	u64 last_update_time;
 
 	last_update_time = cfs_rq_last_update_time(cfs_rq);
-	__update_load_avg(last_update_time, cpu_of(rq_of(cfs_rq)), &se->avg, 0, 0, NULL);
+	__update_load_avg_blocked_se(last_update_time, cpu_of(rq_of(cfs_rq)), &se->avg);
 }
 
 /*
