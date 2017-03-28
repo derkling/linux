@@ -26,6 +26,7 @@
 #include <linux/signal_types.h>
 #include <linux/mm_types_task.h>
 #include <linux/task_io_accounting.h>
+#include <linux/average.h>
 
 /* task_struct member predeclarations (sorted alphabetically): */
 struct audit_context;
@@ -277,6 +278,16 @@ struct load_weight {
 	u32				inv_weight;
 };
 
+/**
+ * Utilizaton's Exponential Weighted Moving Average (EWMA)
+ *
+ * Support functions to track an EWMA for the utilization of SEs and RQs. New
+ * samples will be added to the moving average each time a task completes an
+ * activation. Thus the weight is chosen so that the EWMA wil be relatively
+ * insensitive to transient changes to the task's workload.
+ */
+DECLARE_EWMA(util, 0, 4);
+
 /*
  * The load_avg/util_avg accumulates an infinite geometric series
  * (see __update_load_avg() in kernel/sched/fair.c).
@@ -336,7 +347,44 @@ struct sched_avg {
 	u32				period_contrib;
 	unsigned long			load_avg;
 	unsigned long			util_avg;
+
+	/* Utilization estimation */
+	struct ewma_util		util_ewma;
+	struct util_est {
+		unsigned long ewma;
+		unsigned long last;
+	} util_est;
 };
+
+/* Utilization estimation policies */
+#define UTIL_EST_MAX_EWMA_LAST	0 /* max(sa->util_est.ema, sa->util_est.last) */
+#define UTIL_EST_EWMA		1 /* sa->util_est.ewma */
+#define UTIL_EST_LAST		2 /* sa->util_est.last */
+
+/* Default policy used by utilization estimation */
+#define UTIL_EST_POLICY	UTIL_EST_MAX_EWMA_LAST
+
+/**
+ * util_est: estimated utilization for a given entity (i.e. SE or RQ)
+ *
+ * Depending on the selected utlization estimation policy, the estimated
+ * utilization of a SE or RQ is returned by this function.
+ * Supported policies are:
+ * UTIL_EST_LAST: the value of the PELT signal the last time a SE has
+ *                completed an activation, i.e. it has been dequeued because
+ *                of a sleep
+ * UTIL_EST_EWMA: the exponential weighted moving average of all the past
+ *                UTIL_EST_LAST samples
+ * UTIL_EST_MAX_EWMA_LAST: the maximum among the previous two metrics
+ */
+static inline unsigned long util_est(struct sched_avg *sa, int policy)
+{
+	if (likely(policy == UTIL_EST_MAX_EWMA_LAST))
+		return max(sa->util_est.ewma, sa->util_est.last);
+	if (policy == UTIL_EST_EWMA)
+		return sa->util_est.ewma;
+	return sa->util_est.last;
+}
 
 struct sched_statistics {
 #ifdef CONFIG_SCHEDSTATS

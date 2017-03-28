@@ -751,6 +751,10 @@ void init_entity_runnable_average(struct sched_entity *se)
 	sa->util_avg = 0;
 	sa->util_sum = 0;
 	/* when this task enqueue'ed, it will contribute to its cfs_rq's load_avg */
+
+	ewma_util_init(&sa->util_ewma);
+	sa->util_est.ewma = 0;
+	sa->util_est.last = 0;
 }
 
 static inline u64 cfs_rq_clock_task(struct cfs_rq *cfs_rq);
@@ -4880,6 +4884,21 @@ static inline void hrtick_update(struct rq *rq)
 }
 #endif
 
+static inline int task_util(struct task_struct *p);
+static inline int task_util_est(struct task_struct *p);
+
+static inline void util_est_enqueue(struct task_struct *p)
+{
+	struct cfs_rq *cfs_rq = &task_rq(p)->cfs;
+
+	/*
+	 * Update (top level CFS) RQ estimated utilization.
+	 * NOTE: here we assumes that we never change the
+	 *       utilization estimation policy at run-time.
+	 */
+	cfs_rq->avg.util_est.last += task_util_est(p);
+}
+
 /*
  * The enqueue_task method is called before nr_running is
  * increased. Here we update the fair scheduling stats and
@@ -4932,7 +4951,47 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	if (!se)
 		add_nr_running(rq, 1);
 
+	util_est_enqueue(p);
 	hrtick_update(rq);
+}
+
+static inline void util_est_dequeue(struct task_struct *p, int flags)
+{
+	struct cfs_rq *cfs_rq = &task_rq(p)->cfs;
+	int task_sleep = flags & DEQUEUE_SLEEP;
+	long util_est;
+
+	/*
+	 * Update (top level CFS) RQ estimated utilization
+	 *
+	 * When *p is the last FAIR task then the RQ's estimated utilization
+	 * is 0 by its definition.
+	 *
+	 * Otherwise, in removing *p's util_est from the current RQ's util_est
+	 * we should account for cases where this last activation of *p was
+	 * longher then the previous ones. In these cases as well we set to 0
+	 * the new estimated utilization for the CPU.
+	 */
+	util_est = (cfs_rq->nr_running > 1)
+		? cfs_rq->avg.util_est.last - task_util_est(p)
+		: 0;
+	if (util_est < 0)
+		util_est = 0;
+	cfs_rq->avg.util_est.last = util_est;
+
+	/*
+	 * Update Task's estimated utilization
+	 *
+	 * When *p completes an activation we can consolidate another sample
+	 * about the task size. This is done by storing the last PELT value
+	 * for this task and using this value to load another sample in the
+	 * EMWA for the task.
+	 */
+	if (task_sleep) {
+		p->se.avg.util_est.last = task_util(p);
+		ewma_util_add(&p->se.avg.util_ewma, task_util(p));
+		p->se.avg.util_est.ewma = ewma_util_read(&p->se.avg.util_ewma);
+	}
 }
 
 static void set_next_buddy(struct sched_entity *se);
@@ -4991,6 +5050,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	if (!se)
 		sub_nr_running(rq, 1);
 
+	util_est_dequeue(p, flags);
 	hrtick_update(rq);
 }
 
@@ -5486,7 +5546,6 @@ static int wake_affine(struct sched_domain *sd, struct task_struct *p,
 	return affine;
 }
 
-static inline int task_util(struct task_struct *p);
 static int cpu_util_wake(int cpu, struct task_struct *p);
 
 static unsigned long capacity_spare_wake(int cpu, struct task_struct *p)
@@ -5929,6 +5988,13 @@ static int cpu_util(int cpu)
 static inline int task_util(struct task_struct *p)
 {
 	return p->se.avg.util_avg;
+}
+
+static inline int task_util_est(struct task_struct *p)
+{
+	struct sched_avg *sa = &p->se.avg;
+
+	return util_est(sa, UTIL_EST_POLICY);
 }
 
 /*
