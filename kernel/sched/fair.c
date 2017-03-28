@@ -5916,7 +5916,7 @@ boosted_task_util(struct task_struct *task)
 	return util + margin;
 }
 
-static int cpu_util_wake(int cpu, struct task_struct *p);
+static unsigned long cpu_util_wake(int cpu, struct task_struct *p);
 
 static unsigned long capacity_spare_wake(int cpu, struct task_struct *p)
 {
@@ -6164,7 +6164,7 @@ done:
  * cpu_util_wake: Compute cpu utilization with any contributions from
  * the waking task p removed.
  */
-static int cpu_util_wake(int cpu, struct task_struct *p)
+static unsigned long cpu_util_wake(int cpu, struct task_struct *p)
 {
 	unsigned long util, capacity;
 
