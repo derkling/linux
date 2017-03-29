@@ -2953,24 +2953,27 @@ ___update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 	return decayed;
 }
 
-static int
-__update_load_avg_blocked_se(u64 now, int cpu, struct sched_avg *sa)
+static inline int
+__update_load_avg_blocked_se(u64 now, int cpu, struct sched_entity *se)
 {
-	return ___update_load_avg(now, cpu, sa, 0, 0, NULL);
+	return ___update_load_avg(now, cpu, &se->avg, 0, 0, NULL);
 }
 
-static int
-__update_load_avg_se(u64 now, int cpu, struct sched_avg *sa,
-		     unsigned long weight, int running)
+static inline int
+__update_load_avg_se(u64 now, int cpu, struct sched_entity *se)
 {
-	return ___update_load_avg(now, cpu, sa, weight, running, NULL);
+	return ___update_load_avg(now, cpu, &se->avg,
+				  se->on_rq * scale_load_down(se->load.weight),
+				  cfs_rq_of(se)->curr == se, NULL);
 }
 
-static int
-__update_load_avg(u64 now, int cpu, struct sched_avg *sa,
-		  unsigned long weight, int running, struct cfs_rq *cfs_rq)
+__attribute__((nonnull(3)))
+static inline int
+__update_load_avg_cfs_rq(u64 now, int cpu, struct cfs_rq *cfs_rq)
 {
-	return ___update_load_avg(now, cpu, sa, weight, running, cfs_rq);
+	return ___update_load_avg(now, cpu, &cfs_rq->avg,
+				  scale_load_down(cfs_rq->load.weight),
+				  cfs_rq->curr != NULL, cfs_rq);
 }
 
 /*
@@ -3073,7 +3076,7 @@ void set_task_rq_fair(struct sched_entity *se,
 #endif
 	__update_load_avg_blocked_se(p_last_update_time,
 				     cpu_of(rq_of(prev)),
-				     &se->avg);
+				     se);
 	se->avg.last_update_time = n_last_update_time;
 }
 
@@ -3319,8 +3322,7 @@ update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq, bool update_freq)
 		set_tg_cfs_propagate(cfs_rq);
 	}
 
-	decayed = __update_load_avg(now, cpu_of(rq_of(cfs_rq)), sa,
-		scale_load_down(cfs_rq->load.weight), cfs_rq->curr != NULL, cfs_rq);
+	decayed = __update_load_avg_cfs_rq(now, cpu_of(rq_of(cfs_rq)), cfs_rq);
 
 #ifndef CONFIG_64BIT
 	smp_wmb();
@@ -3352,11 +3354,8 @@ static inline void update_load_avg(struct sched_entity *se, int flags)
 	 * Track task load average for carrying it to new CPU after migrated, and
 	 * track group sched_entity load average for task_h_load calc in migration
 	 */
-	if (se->avg.last_update_time && !(flags & SKIP_AGE_LOAD)) {
-		__update_load_avg_se(now, cpu, &se->avg,
-			  se->on_rq * scale_load_down(se->load.weight),
-			  cfs_rq->curr == se);
-	}
+	if (se->avg.last_update_time && !(flags & SKIP_AGE_LOAD))
+		__update_load_avg_se(now, cpu, se);
 
 	decayed  = update_cfs_rq_load_avg(now, cfs_rq, true);
 	decayed |= propagate_entity_load_avg(se);
@@ -3458,10 +3457,10 @@ static inline u64 cfs_rq_last_update_time(struct cfs_rq *cfs_rq)
 void sync_entity_load_avg(struct sched_entity *se)
 {
 	struct cfs_rq *cfs_rq = cfs_rq_of(se);
-	u64 last_update_time;
 
-	last_update_time = cfs_rq_last_update_time(cfs_rq);
-	__update_load_avg_blocked_se(last_update_time, cpu_of(rq_of(cfs_rq)), &se->avg);
+	__update_load_avg_blocked_se(cfs_rq_last_update_time(cfs_rq),
+				     cpu_of(rq_of(cfs_rq)),
+				     se);
 }
 
 /*
