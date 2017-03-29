@@ -6206,9 +6206,10 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 		int i;
 
 		for_each_cpu_and(i, tsk_cpus_allowed(p), sched_group_cpus(sg)) {
-			unsigned long cur_capacity, new_util, wake_util;
+			unsigned long cur_capacity, cap_orig, new_util, wake_util;
 			unsigned long backup_capacity = ULONG_MAX;
 			unsigned long min_wake_util = ULONG_MAX;
+			unsigned long min_cap_orig = ULONG_MAX;
 
 			if (!cpu_online(i))
 				continue;
@@ -6247,7 +6248,7 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 			}
 
 			cur_capacity = capacity_curr_of(i);
-
+			cap_orig = capacity_orig_of(i);
 
 			/* Find a backup cpu with least capacity. */
 			if (new_util > cur_capacity &&
@@ -6293,9 +6294,16 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 			if (!prefer_idle) {
 				int idle_idx = idle_get_state_idx(cpu_rq(i));
 
-				if (best_idle_cpu < 0 ||
-					(sysctl_sched_cstate_aware &&
-						best_idle_cstate > idle_idx)) {
+				/* Select only idle CPU with lower cap_orig */
+				if (cap_orig > min_cap_orig)
+					continue;
+
+				/* Skip CPUs in deeper idle_state */
+				if (sysctl_sched_cstate_aware &&
+				    best_idle_cstate < idle_idx)
+					continue;
+
+				if (best_idle_cpu < 0) {
 					best_idle_cstate = idle_idx;
 					best_idle_cpu = i;
 				}
