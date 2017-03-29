@@ -6183,6 +6183,8 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 	struct sched_group *sg;
 	int cpu = start_cpu(boosted);
 
+	trace_printk("FBT");
+
 	schedstat_inc(p, se.statistics.nr_wakeups_fbt_attempts);
 	schedstat_inc(this_rq(), eas_stats.fbt_attempts);
 
@@ -6210,6 +6212,8 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 			unsigned long backup_capacity = ULONG_MAX;
 			unsigned long min_wake_util = ULONG_MAX;
 			unsigned long min_cap_orig = ULONG_MAX;
+
+			trace_printk("scan cpu=%d", i);
 
 			if (!cpu_online(i))
 				continue;
@@ -6244,6 +6248,7 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 			if (prefer_idle && idle_cpu(i)) {
 				schedstat_inc(p, se.statistics.nr_wakeups_fbt_pref_idle);
 				schedstat_inc(this_rq(), eas_stats.fbt_pref_idle);
+				trace_printk("found idle/preferred");
 				return i;
 			}
 
@@ -6255,6 +6260,7 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 			    backup_capacity > cur_capacity) {
 				backup_capacity = cur_capacity;
 				backup_cpu = i;
+				trace_printk("update backup cpu=%d", i);
 				continue;
 			}
 
@@ -6269,6 +6275,13 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 				if (new_util > target_util ||
 				    wake_util > min_wake_util) {
 
+					/* For prefer_idle:
+					 * target_util is initialized
+					 * ULONG_MAX... we never match
+					 * the first condition
+					 */
+
+					trace_printk("skip non-idle cpu=%d", i);
 					continue;
 				}
 
@@ -6300,6 +6313,7 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 				if (best_idle_cpu < 0) {
 					best_idle_cstate = idle_idx;
 					best_idle_cpu = i;
+					trace_printk("update best_idle cpu=%d", i);
 				}
 
 				continue;
@@ -6314,6 +6328,8 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 			    target_util < new_util) {
 				target_util = new_util;
 				target_cpu = i;
+
+				trace_printk("update higher-util cpu=%d", i);
 				continue;
 			}
 
@@ -6327,6 +6343,8 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 		schedstat_inc(p, se.statistics.nr_wakeups_fbt_count);
 		schedstat_inc(this_rq(), eas_stats.fbt_count);
 	}
+
+	trace_printk("found cpu=%d", target_cpu);
 
 	return target_cpu;
 }
@@ -6360,6 +6378,8 @@ static int select_energy_cpu_brute(struct task_struct *p, int prev_cpu, int sync
 	struct sched_domain *sd;
 	int target_cpu = prev_cpu, tmp_target;
 	bool boosted, prefer_idle;
+
+	trace_printk("EA wakeup");
 
 	schedstat_inc(p, se.statistics.nr_wakeups_secb_attempts);
 	schedstat_inc(this_rq(), eas_stats.secb_attempts);
