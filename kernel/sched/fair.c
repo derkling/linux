@@ -6226,7 +6226,7 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 			 * Unconditionally favoring tasks that prefer idle cpus to
 			 * improve latency.
 			 */
-			if (idle_cpu(i) && prefer_idle) {
+			if (prefer_idle && idle_cpu(i)) {
 				schedstat_inc(p, se.statistics.nr_wakeups_fbt_pref_idle);
 				schedstat_inc(this_rq(), eas_stats.fbt_pref_idle);
 				return i;
@@ -6257,8 +6257,7 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 			 *     i.e. prefer LITTLE CPUs
 			 * - maximum spare capacity
 			 */
-
-			if (cpu_rq(i)->nr_running) {
+			if (!idle_cpu(i)) {
 
 				/*
 				 * Find a target cpu with the lowest utilization
