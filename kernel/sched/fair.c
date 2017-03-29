@@ -6238,8 +6238,8 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 #endif
 
 			/*
-			 * Unconditionally favoring tasks that prefer idle cpus to
-			 * improve latency.
+			 * For prefer_idle task on idle CPUs:
+			 * - unconditionally prefer idle cpus to improve latency
 			 */
 			if (prefer_idle && idle_cpu(i)) {
 				schedstat_inc(p, se.statistics.nr_wakeups_fbt_pref_idle);
@@ -6250,7 +6250,7 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 			cur_capacity = capacity_curr_of(i);
 			cap_orig = capacity_orig_of(i);
 
-			/* Find a backup cpu with least capacity. */
+			/* Track a backup cpu with minimum capacity */
 			if (new_util > cur_capacity &&
 			    backup_capacity > cur_capacity) {
 				backup_capacity = cur_capacity;
@@ -6259,39 +6259,33 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 			}
 
 			/*
-			 * At lower (or same) cur_capacity we look for:
-			 * - minimum capacity origin
+			 * For prefer_idle task on non idle CPUs:
+			 * - lowest utilization
 			 * - maximum spare capacity
 			 */
-			if (!idle_cpu(i)) {
+			if (prefer_idle && !idle_cpu(i)) {
 
-				/*
-				 * Find a target cpu with the lowest utilization
-				 */
-				if (prefer_idle) {
+				/* Favor the CPU that last ran the task */
+				if (new_util > target_util ||
+				    wake_util > min_wake_util) {
 
-					/* Favor the CPU that last ran the task */
-					if (new_util > target_util ||
-					    wake_util > min_wake_util)
-						continue;
-					min_wake_util = wake_util;
-					target_util = new_util;
-					target_cpu = i;
 					continue;
 				}
 
-				/*
-				 * Find a target cpu with the highest utilization
-				 */
-				if (target_util < new_util) {
-					target_util = new_util;
-					target_cpu = i;
-					continue;
-				}
+				min_wake_util = wake_util;
+				target_util = new_util;
+				target_cpu = i;
 
+				trace_printk("update lower-util cpu=%d", i);
+				continue;
 			}
 
-			if (!prefer_idle) {
+			/*
+			 * For non prefer_idle tasks on idle CPUs:
+			 * - smallest cap_orig
+			 * - shallowest idle state
+			 */
+			if (idle_cpu(i)) {
 				int idle_idx = idle_get_state_idx(cpu_rq(i));
 
 				/* Select only idle CPU with lower cap_orig */
@@ -6310,6 +6304,19 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 
 				continue;
 			}
+
+			/*
+			 * For non prefer_idle tasks on non idle CPUs:
+			 * - smallest cap_orig
+			 * - shallowest idle state
+			 */
+			if (new_util < cur_capacity &&
+			    target_util < new_util) {
+				target_util = new_util;
+				target_cpu = i;
+				continue;
+			}
+
 		}
 	} while (sg = sg->next, sg != sd->groups);
 
