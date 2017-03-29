@@ -6175,7 +6175,6 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 {
 	int target_cpu = -1;
 	unsigned long target_util = prefer_idle ? ULONG_MAX : 0;
-	unsigned long backup_capacity = ULONG_MAX;
 	int best_idle_cpu = -1;
 	int best_idle_cstate = INT_MAX;
 	int backup_cpu = -1;
@@ -6208,6 +6207,7 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 
 		for_each_cpu_and(i, tsk_cpus_allowed(p), sched_group_cpus(sg)) {
 			unsigned long cur_capacity, new_util, wake_util;
+			unsigned long backup_capacity = ULONG_MAX;
 			unsigned long min_wake_util = ULONG_MAX;
 
 			if (!cpu_online(i))
@@ -6248,6 +6248,15 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 
 			cur_capacity = capacity_curr_of(i);
 
+
+			/* Find a backup cpu with least capacity. */
+			if (new_util > cur_capacity &&
+			    backup_capacity > cur_capacity) {
+				backup_capacity = cur_capacity;
+				backup_cpu = i;
+				continue;
+			}
+
 			if (new_util < cur_capacity) {
 				if (cpu_rq(i)->nr_running) {
 					/*
@@ -6276,10 +6285,6 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 						best_idle_cpu = i;
 					}
 				}
-			} else if (backup_capacity > cur_capacity) {
-				/* Find a backup cpu with least capacity. */
-				backup_capacity = cur_capacity;
-				backup_cpu = i;
 			}
 		}
 	} while (sg = sg->next, sg != sd->groups);
