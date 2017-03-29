@@ -255,6 +255,13 @@ static enum pin_config_param pcs_bias[] = {
 };
 
 /*
+ * This lock class tells lockdep that irqchip core that this single
+ * pinctrl can be in a different category than its parents, so it won't
+ * report false recursion.
+ */
+static struct lock_class_key pcs_lock_class;
+
+/*
  * REVISIT: Reads and writes could eventually use regmap or something
  * generic. But at least on omaps, some mux registers are performance
  * critical as they may need to be remuxed every time before and after
@@ -1618,12 +1625,14 @@ static void pcs_irq_unmask(struct irq_data *d)
  */
 static int pcs_irq_set_wake(struct irq_data *d, unsigned int state)
 {
+	struct pcs_soc_data *pcs_soc = irq_data_get_irq_chip_data(d);
+
 	if (state)
 		pcs_irq_unmask(d);
 	else
 		pcs_irq_mask(d);
 
-	return 0;
+	return irq_set_irq_wake(pcs_soc->irq, state);
 }
 
 /**
@@ -1719,6 +1728,7 @@ static int pcs_irqdomain_map(struct irq_domain *d, unsigned int irq,
 	irq_set_chip_data(irq, pcs_soc);
 	irq_set_chip_and_handler(irq, &pcs->chip,
 				 handle_level_irq);
+	irq_set_lockdep_class(irq, &pcs_lock_class);
 	irq_set_noprobe(irq);
 
 	return 0;
@@ -1758,8 +1768,7 @@ static int pcs_irq_init_chained_handler(struct pcs_device *pcs,
 		int res;
 
 		res = request_irq(pcs_soc->irq, pcs_irq_handler,
-				  IRQF_SHARED | IRQF_NO_SUSPEND |
-				  IRQF_NO_THREAD,
+				  IRQF_SHARED | IRQF_NO_THREAD,
 				  name, pcs_soc);
 		if (res) {
 			pcs_soc->irq = -1;
