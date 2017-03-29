@@ -6257,34 +6257,51 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 				continue;
 			}
 
-			if (new_util < cur_capacity) {
-				if (cpu_rq(i)->nr_running) {
-					/*
-					 * Find a target cpu with the lowest/highest
-					 * utilization if prefer_idle/!prefer_idle.
-					 */
-					if (prefer_idle) {
-						/* Favor the CPU that last ran the task */
-						if (new_util > target_util ||
-						    wake_util > min_wake_util)
-							continue;
-						min_wake_util = wake_util;
-						target_util = new_util;
-						target_cpu = i;
-					} else if (target_util < new_util) {
-						target_util = new_util;
-						target_cpu = i;
-					}
-				} else if (!prefer_idle) {
-					int idle_idx = idle_get_state_idx(cpu_rq(i));
+			/*
+			 * At lower (or same) cur_capacity we look for:
+			 * - minimum capacity origin
+			 * - maximum spare capacity
+			 */
 
-					if (best_idle_cpu < 0 ||
-						(sysctl_sched_cstate_aware &&
-							best_idle_cstate > idle_idx)) {
-						best_idle_cstate = idle_idx;
-						best_idle_cpu = i;
-					}
+			if (cpu_rq(i)->nr_running) {
+
+				/*
+				 * Find a target cpu with the lowest utilization
+				 */
+				if (prefer_idle) {
+
+					/* Favor the CPU that last ran the task */
+					if (new_util > target_util ||
+					    wake_util > min_wake_util)
+						continue;
+					min_wake_util = wake_util;
+					target_util = new_util;
+					target_cpu = i;
+					continue;
 				}
+
+				/*
+				 * Find a target cpu with the highest utilization
+				 */
+				if (target_util < new_util) {
+					target_util = new_util;
+					target_cpu = i;
+					continue;
+				}
+
+			}
+
+			if (!prefer_idle) {
+				int idle_idx = idle_get_state_idx(cpu_rq(i));
+
+				if (best_idle_cpu < 0 ||
+					(sysctl_sched_cstate_aware &&
+						best_idle_cstate > idle_idx)) {
+					best_idle_cstate = idle_idx;
+					best_idle_cpu = i;
+				}
+
+				continue;
 			}
 		}
 	} while (sg = sg->next, sg != sd->groups);
