@@ -8,5 +8,5 @@
 
 /dts-v1/;
 
-#include "juno-r2.dtsi"
-#include "juno-t62x.dtsi"
+#include "juno-r0.dtsi"
+#include "juno-bifrost.dtsi"

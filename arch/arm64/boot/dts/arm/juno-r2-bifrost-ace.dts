@@ -9,4 +9,10 @@
 /dts-v1/;
 
 #include "juno-r2.dtsi"
-#include "juno-t62x.dtsi"
+#include "juno-bifrost.dtsi"
+
+&gpu {
+	system-coherency = <1>;
+	snoop_enable_smc=<0x8200ff04>;
+	snoop_disable_smc = <0x8200ff05>;
+};

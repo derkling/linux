@@ -8,5 +8,9 @@
 
 /dts-v1/;
 
-#include "juno-r2.dtsi"
-#include "juno-t62x.dtsi"
+#include "juno-r1.dtsi"
+#include "juno-midgard.dtsi"
+
+&gpu {
+	system-coherency = <0>;
+};
