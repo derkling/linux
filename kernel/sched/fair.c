@@ -6077,7 +6077,7 @@ static int select_energy_cpu_brute(struct task_struct *p, int prev_cpu, int sync
 	}
 
 #ifdef CONFIG_CGROUP_SCHEDTUNE
-	boosted = schedtune_task_boost(p) > 0;
+	boosted = 0;
 	prefer_idle = schedtune_prefer_idle(p) > 0;
 #else
 	boosted = get_sysctl_sched_cfs_boost() > 0;
