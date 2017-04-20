@@ -1051,20 +1051,22 @@ TRACE_EVENT(sched_tune_filter,
  */
 TRACE_EVENT(sched_overutilized,
 
-	TP_PROTO(bool overutilized),
+	TP_PROTO(bool overutilized, int reason),
 
-	TP_ARGS(overutilized),
+	TP_ARGS(overutilized, reason),
 
 	TP_STRUCT__entry(
 		__field( bool,	overutilized	)
+		__field( int,	reason			)
 	),
 
 	TP_fast_assign(
 		__entry->overutilized	= overutilized;
+		__entry->reason	= reason;
 	),
 
-	TP_printk("overutilized=%d",
-		__entry->overutilized ? 1 : 0)
+	TP_printk("overutilized=%d reason=%d",
+		__entry->overutilized ? 1 : 0, __entry->reason)
 );
 #ifdef CONFIG_SCHED_WALT
 struct rq;
