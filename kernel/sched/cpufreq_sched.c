@@ -196,15 +196,9 @@ static void update_fdomain_capacity_request(int cpu)
 	/* find max capacity requested by cpus in this policy */
 	for_each_cpu(cpu_tmp, policy->cpus) {
 		struct sched_capacity_reqs *scr;
-		unsigned long tmp_cap;
 
 		scr = &per_cpu(cpu_sched_capacity_reqs, cpu_tmp);
-		/* unscale the capacity request so that we can select
-		 * the right frequency on cpus with lower maximum capacity.
-		 * tmp_cap = (target_cap * max_cap_possible_in_system) / max_cap_possible_on_this_cpu
-		 */
-		tmp_cap = (scr->total << SCHED_CAPACITY_SHIFT) / arch_scale_cpu_capacity(0, cpu_tmp);
-		capacity = max(capacity, tmp_cap);
+		capacity = max(capacity, scr->total);
 	}
 
 	/* Convert the new maximum capacity request into a cpu frequency */
