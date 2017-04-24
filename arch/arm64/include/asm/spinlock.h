@@ -85,7 +85,7 @@ static inline void arch_spin_lock(arch_spinlock_t *lock)
 	 * unlock before the exclusive load.
 	 */
 "	sevl\n"
-"2:	wfe\n"
+"2:	nop\n"
 "	ldaxrh	%w2, %4\n"
 "	eor	%w1, %w2, %w0, lsr #16\n"
 "	cbnz	%w1, 2b\n"
@@ -179,7 +179,7 @@ static inline void arch_write_lock(arch_rwlock_t *rw)
 	asm volatile(ARM64_LSE_ATOMIC_INSN(
 	/* LL/SC */
 	"	sevl\n"
-	"1:	wfe\n"
+	"1:	nop\n"
 	"2:	ldaxr	%w0, %1\n"
 	"	cbnz	%w0, 1b\n"
 	"	stxr	%w0, %w2, %1\n"
@@ -191,7 +191,7 @@ static inline void arch_write_lock(arch_rwlock_t *rw)
 	"	cbz	%w0, 3f\n"
 	"	ldxr	%w0, %1\n"
 	"	cbz	%w0, 2b\n"
-	"	wfe\n"
+	"	nop\n"
 	"	b	1b\n"
 	"3:")
 	: "=&r" (tmp), "+Q" (rw->lock)
@@ -257,7 +257,7 @@ static inline void arch_read_lock(arch_rwlock_t *rw)
 	"	sevl\n"
 	ARM64_LSE_ATOMIC_INSN(
 	/* LL/SC */
-	"1:	wfe\n"
+	"1:	nop\n"
 	"2:	ldaxr	%w0, %2\n"
 	"	add	%w0, %w0, #1\n"
 	"	tbnz	%w0, #31, 1b\n"
@@ -265,7 +265,7 @@ static inline void arch_read_lock(arch_rwlock_t *rw)
 	"	nop\n"
 	"	cbnz	%w1, 2b",
 	/* LSE atomics */
-	"1:	wfe\n"
+	"1:	nop\n"
 	"2:	ldxr	%w0, %2\n"
 	"	adds	%w1, %w0, #1\n"
 	"	tbnz	%w1, #31, 1b\n"
