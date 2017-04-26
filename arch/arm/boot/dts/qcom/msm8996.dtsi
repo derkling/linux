@@ -56,6 +56,8 @@
 			qcom,ea = <&ea0>;
 			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_0>;
 			next-level-cache = <&L2_0>;
+			#cooling-cells = <2>;
+			dynamic-power-coefficient = <420>;
 			L2_0: l2-cache {
 			      compatible = "arm,arch-cache";
 			      cache-level = <2>;
@@ -79,6 +81,8 @@
 			qcom,ea = <&ea1>;
 			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_0>;
 			next-level-cache = <&L2_0>;
+			#cooling-cells = <2>;
+			dynamic-power-coefficient = <420>;
 			L1_D_1: l1-dcache {
 				compatible = "arm,arch-cache";
 				qcom,dump-size = <0x7800>;
@@ -97,6 +101,8 @@
 			qcom,ea = <&ea2>;
 			sched-energy-costs = <&CPU_COST_1 &CLUSTER_COST_1>;
 			next-level-cache = <&L2_1>;
+			#cooling-cells = <2>;
+			dynamic-power-coefficient = <570>;
 			L2_1: l2-cache {
 			      compatible = "arm,arch-cache";
 			      cache-level = <2>;
@@ -120,6 +126,8 @@
 			qcom,ea = <&ea3>;
 			sched-energy-costs = <&CPU_COST_1 &CLUSTER_COST_1>;
 			next-level-cache = <&L2_1>;
+			#cooling-cells = <2>;
+			dynamic-power-coefficient = <570>;
 			L1_D_101: l1-dcache {
 				compatible = "arm,arch-cache";
 				qcom,dump-size = <0x7800>;
@@ -270,6 +278,110 @@
 		};
 
 	};
+
+	thermal-zones {
+
+		soc_thermal {
+			polling-delay = <1000>;
+			polling-delay-passive = <100>;
+			thermal-sensors = <&tsens0 0>;
+			sustainable-power = <3500>;
+
+			trips {
+                                sthreshold: sthreshold {
+                                        temperature = <500>;
+                                        hysteresis = <1000>;
+                                        type = "passive";
+                                };
+                                starget: starget {
+                                        temperature = <700>;
+                                        hysteresis = <1000>;
+                                        type = "passive";
+                                };
+                        };
+
+                        cooling-maps {
+                                map0 {
+                                        trip = <&starget>;
+                                        cooling-device = <&CPU0 (~0) (~0)>;
+                                        contribution = <2048>;
+                                };
+                                map1 {
+                                        trip = <&starget>;
+                                        cooling-device = <&CPU2 (~0) (~0)>;
+                                        contribution = <1024>;
+                                };
+                                map2 {
+                                        trip = <&starget>;
+                                        cooling-device = <&msm_gpu (~0) (~0)>;
+                                        contribution = <1024>;
+                                };
+                        };
+                };
+
+		cpu_thermal {
+			polling-delay = <1000>;
+			polling-delay-passive = <100>;
+			thermal-sensors = <&tsens0 4>;
+			sustainable-power = <3000>;
+
+			trips {
+                                cthreshold: cthreshold {
+                                        temperature = <500>;
+                                        hysteresis = <1000>;
+                                        type = "passive";
+                                };
+                                ctarget: ctarget {
+                                        temperature = <850>;
+                                        hysteresis = <1000>;
+                                        type = "passive";
+                                };
+                        };
+
+                        cooling-maps {
+                                map0 {
+                                        trip = <&ctarget>;
+                                        cooling-device = <&CPU0 (~0) (~0)>;
+                                        contribution = <2048>;
+                                };
+                                map1 {
+                                        trip = <&ctarget>;
+                                        cooling-device = <&CPU2 (~0) (~0)>;
+                                        contribution = <1024>;
+                                };
+                        };
+                };
+
+                big_cluster_thermal {
+			polling-delay = <1000>;
+			polling-delay-passive = <100>;
+			thermal-sensors = <&tsens0 9>;
+			sustainable-power = <2000>;
+
+			trips {
+                                threshold: threshold {
+                                        temperature = <500>;
+                                        hysteresis = <1000>;
+                                        type = "passive";
+                                };
+                                target: target {
+                                        temperature = <850>;
+                                        hysteresis = <1000>;
+                                        type = "passive";
+                                };
+                        };
+
+                        cooling-maps {
+                                map0 {
+                                        trip = <&target>;
+                                        cooling-device = <&CPU2 (~0) (~0)>;
+                                        contribution = <1024>;
+                                };
+
+                        };
+                };
+	};
+
 
 	soc: soc { };
 
@@ -2491,6 +2603,7 @@
 		interrupts = <0 184 0>, <0 430 0>;
 		interrupt-names = "tsens-upper-lower", "tsens-critical";
 		qcom,sensors = <16>;
+		#thermal-sensor-cells = <1>;
 		qcom,slope = <2901 2846 3200 3200 3200 3200 3200 3200 3200 3200 3200 3200 3200 3200 3200 3200>;
 	};
 
@@ -2858,51 +2971,6 @@
 		qcom,hotplug-mitigation-enable;
 	};
 
-	qcom,msm-thermal {
-		compatible = "qcom,msm-thermal";
-		reg = <0x70000 0x1000>;
-		qcom,sensor-id = <11>;
-		qcom,poll-ms = <250>;
-		qcom,limit-temp = <60>;
-		qcom,temp-hysteresis = <10>;
-		qcom,therm-reset-temp = <115>;
-		qcom,freq-step = <4>;
-		qcom,core-limit-temp = <80>;
-		qcom,core-temp-hysteresis = <10>;
-		qcom,hotplug-temp = <105>;
-		qcom,hotplug-temp-hysteresis = <40>;
-		qcom,freq-mitigation-temp = <95>;
-		qcom,freq-mitigation-temp-hysteresis = <10>;
-		qcom,freq-mitigation-value = <576000>;
-		qcom,online-hotplug-core;
-		qcom,synchronous-cluster-id = <0 1>;
-		qcom,synchronous-cluster-map = <0 2 &CPU0 &CPU1>,
-			<1 2 &CPU2 &CPU3>;
-
-		qcom,vdd-restriction-temp = <5>;
-		qcom,vdd-restriction-temp-hysteresis = <10>;
-
-		vdd-dig-supply = <&pm8994_s1_floor_corner>;
-		vdd-gfx-supply = <&gfx_vreg>;
-
-		qcom,vdd-dig-rstr{
-			qcom,vdd-rstr-reg = "vdd-dig";
-			qcom,levels = <5 7 7>; /* Nominal, Super Turbo, Super Turbo */
-			qcom,min-level = <1>; /* No Request */
-		};
-
-		qcom,vdd-gfx-rstr{
-			qcom,vdd-rstr-reg = "vdd-gfx";
-			qcom,levels = <4 7 7>; /* Nominal, Turbo, Turbo */
-			qcom,min-level = <1>; /* No Request */
-		};
-
-		msm_thermal_freq: qcom,vdd-apps-rstr{
-			qcom,vdd-rstr-reg = "vdd-apps";
-			qcom,levels = <576000 600000 600000>;
-			qcom,freq-req;
-		};
-	};
 
 	qcom,bcl {
 		compatible = "qcom,bcl";
