@@ -20,4 +20,11 @@
 		compatible = "arm,mali_fpga_sysctl";
 		reg = <0x0 0x6f020000 0x0 0x000000CC>;
 	};
+
+	fpga_ram@0x60000000 {
+		compatible = "ion,dma_heap";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		reg = <0x0 0x60000000 0x0 0x08000000>;
+	};
 };
