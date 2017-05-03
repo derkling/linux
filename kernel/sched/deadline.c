@@ -990,7 +990,7 @@ static void update_curr_dl(struct rq *rq)
 	 *	delta_exec = grub_reclaim(delta_exec, rq, curr->dl.dl_bw);
 	 * dl_se->runtime -= delta_exec;
 	 */
-	scale_freq = arch_scale_freq_capacity(NULL, cpu);
+	scale_freq = arch_scale_freq_capacity(cpu);
 	scale_cpu = arch_scale_cpu_capacity(NULL, cpu);
 
 	scaled_delta_exec = cap_scale(delta_exec, scale_freq);
