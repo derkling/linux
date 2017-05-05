@@ -83,13 +83,22 @@ struct sugov_cpu {
 
 static DEFINE_PER_CPU(struct sugov_cpu, sugov_cpu);
 
+static inline bool use_pelt(void)
+{
+#ifdef CONFIG_SCHED_WALT
+	return (!sysctl_sched_use_walt_cpu_util || walt_disabled);
+#else
+	return true;
+#endif
+}
+
 /************************ Governor internals ***********************/
 
 static bool sugov_should_update_freq(struct sugov_policy *sg_policy, u64 time)
 {
 	s64 delta_ns;
 
-	if (sg_policy->work_in_progress)
+	if (use_pelt() && sg_policy->work_in_progress)
 		return false;
 
 	if (unlikely(sg_policy->need_freq_update)) {
@@ -188,15 +197,6 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
 		return sg_policy->next_freq;
 	sg_policy->cached_raw_freq = freq;
 	return cpufreq_driver_resolve_freq(policy, freq);
-}
-
-static inline bool use_pelt(void)
-{
-#ifdef CONFIG_SCHED_WALT
-	return (!sysctl_sched_use_walt_cpu_util || walt_disabled);
-#else
-	return true;
-#endif
 }
 
 static void
