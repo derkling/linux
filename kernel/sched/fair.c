@@ -2951,6 +2951,9 @@ __update_load_avg_cfs_rq(u64 now, int cpu, struct cfs_rq *cfs_rq)
 void update_load_avg_rt_se(u64 now, int cpu, struct sched_rt_entity *rt_se, int running)
 {
 	___update_load_avg(now, cpu, &rt_se->avg, 0, running, NULL);
+	trace_printk("sched_load_rt_se: pid=%d util=%lu",
+		     task_pid_nr(rt_task_of(rt_se)),
+		     rt_se->avg.util_avg);
 }
 
 int update_rt_rq_load_avg(u64 now, int cpu, struct rt_rq *rt_rq, int running)
@@ -2958,7 +2961,7 @@ int update_rt_rq_load_avg(u64 now, int cpu, struct rt_rq *rt_rq, int running)
 	int ret;
 
 	ret = ___update_load_avg(now, cpu, &rt_rq->avg, 0, running, NULL);
-	trace_printk("sched_rt: cpu=%d util=%lu", cpu, rt_rq->avg.util_avg);
+	trace_printk("sched_load_rt_rq: cpu=%d util=%lu", cpu, rt_rq->avg.util_avg);
 
 
 	return ret;
