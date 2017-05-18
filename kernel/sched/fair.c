@@ -2954,6 +2954,9 @@ __update_load_avg_blocked_rt_se(u64 now, int cpu, struct sched_rt_entity *rt_se)
 	int ret;
 
 	ret = ___update_load_avg(now, cpu, &rt_se->avg, 0, 0, NULL);
+	trace_printk("sched_load_rt_se: pid=%d util=%lu",
+		     task_pid_nr(rt_task_of(rt_se)),
+		     rt_se->avg.util_avg);
 
 	return ret;
 }

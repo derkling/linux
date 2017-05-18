@@ -1229,6 +1229,8 @@ attach_rt_entity_load_avg(struct rt_rq *rt_rq, struct sched_rt_entity *rt_se)
 	rt_rq->avg.util_avg += rt_se->avg.util_avg;
 	rt_rq->avg.util_sum += rt_se->avg.util_sum;
 
+	trace_printk("sched_load_rt_rq: cpu=%d util=%lu",
+			cpu_of(rq_of_rt_rq(rt_rq)), rt_rq->avg.util_avg);
 }
 
 /**
@@ -1247,6 +1249,8 @@ static void detach_entity_load_avg(struct rt_rq *rt_rq, struct sched_rt_entity *
 	sub_positive(&rt_rq->avg.util_avg, rt_se->avg.util_avg);
 	sub_positive(&rt_rq->avg.util_sum, rt_se->avg.util_sum);
 
+	trace_printk("sched_load_rt_rq: cpu=%d util=%lu",
+			cpu_of(rq_of_rt_rq(rt_rq)), rt_rq->avg.util_avg);
 }
 
 static void __enqueue_rt_entity(struct sched_rt_entity *rt_se, unsigned int flags)
@@ -1512,6 +1516,10 @@ static void remove_entity_load_avg(struct sched_rt_entity *rt_se)
 	 */
 
 	sync_entity_load_avg(rt_se);
+	trace_printk("removing %d (util=%lu) from cpu %d",
+			task_pid_nr(rt_task_of(rt_se)),
+			rt_se->avg.util_avg,
+			task_cpu(rt_task_of(rt_se)));
 	atomic_long_add(rt_se->avg.util_avg, &rt_rq->removed_util_avg);
 }
 
