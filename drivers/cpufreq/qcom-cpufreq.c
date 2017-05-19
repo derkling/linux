@@ -21,6 +21,7 @@
 #include <linux/module.h>
 #include <linux/cpufreq.h>
 #include <linux/cpu.h>
+#include <linux/cpu_cooling.h>
 #include <linux/cpumask.h>
 #include <linux/suspend.h>
 #include <linux/clk.h>
@@ -295,6 +296,83 @@ static int msm_cpufreq_pm_event(struct notifier_block *this,
 	}
 }
 
+/*
+ * Register a cooling device for each of the clusters.
+ * We know to have two clusters and we're using the value
+ * directly.
+ */
+#define CLUSTER_MAX 2
+static struct thermal_cooling_device *cooling_dev[CLUSTER_MAX];
+static struct cpufreq_policy *cluster_policy[CLUSTER_MAX];
+static atomic_t cpufreq_policy;
+
+static void msm_cpufreq_ready(struct cpufreq_policy *policy)
+{
+       struct device *cpu_dev = get_cpu_device(policy->cpu);
+       struct device_node *np;
+
+       if (atomic_read(&cpufreq_policy) >= CLUSTER_MAX) {
+               pr_warn("cpufreq: too many clients for being cluster cooling dev.\n");
+               return;
+       }
+       cluster_policy[atomic_read(&cpufreq_policy)] = policy;
+       atomic_inc(&cpufreq_policy);
+
+       np = of_node_get(cpu_dev->of_node);
+       if (!np)
+               return;
+
+       of_node_put(np);
+
+       return;
+}
+
+static int msm_cpufreq_exit(struct cpufreq_policy *policy)
+{
+	int i;
+
+	/* Unregister CPU cooling devices */
+	for (i = 0; i < CLUSTER_MAX; i++) {
+		cpufreq_cooling_unregister(cooling_dev[i]);
+		cooling_dev[i] = NULL;
+	}
+
+	return 0;
+}
+
+static void msm_cpufreq_cooling_add(void)
+{
+	struct device *cpu_dev;
+	struct device_node *np;
+	struct cpufreq_policy *policy;
+	int cpu;
+	u32 coeff;
+	int i;
+
+	for (i = 0; i < CLUSTER_MAX; i++) {
+
+		/* Take one CPU for each of the clusters */
+		policy = cluster_policy[i];
+		cpu_dev = get_cpu_device(policy->cpu);
+		cpu = policy->cpu;
+
+		/* Obtain dynamic power coefficient from DT */
+		np = of_node_get(cpu_dev->of_node);
+		if (!np)
+			return;
+		of_property_read_u32(np, "dynamic-power-coefficient", &coeff);
+
+		/* Register cooling device for cluster */
+		cooling_dev[i] = of_cpufreq_power_cooling_register(np,
+					policy->related_cpus, coeff, NULL);
+		if (!cooling_dev[i])
+			pr_warn("cpufreq: cannot register cooling dev to cpu %d.\n",
+				cpu);
+
+		of_node_put(cpu_dev->of_node);
+	}
+}
+
 static struct notifier_block msm_cpufreq_pm_notifier = {
 	.notifier_call = msm_cpufreq_pm_event,
 };
@@ -313,6 +391,8 @@ static struct cpufreq_driver msm_cpufreq_driver = {
 	.get		= msm_cpufreq_get_freq,
 	.name		= "msm",
 	.attr		= msm_freq_attr,
+	.ready		= msm_cpufreq_ready,
+	.exit		= msm_cpufreq_exit,
 };
 
 static struct cpufreq_frequency_table *cpufreq_parse_dt(struct device *dev,
@@ -498,3 +578,12 @@ static int __init msm_cpufreq_early_register(void)
 	return register_hotcpu_notifier(&msm_cpufreq_cpu_notifier);
 }
 core_initcall(msm_cpufreq_early_register);
+
+static int __init msm_cpu_cooling_register(void)
+{
+
+	msm_cpufreq_cooling_add();
+
+	return 0;
+}
+module_init(msm_cpu_cooling_register);
