@@ -1609,7 +1609,7 @@ static inline int32_t get_target_pstate_use_cpu_load(struct cpudata *cpu)
 {
 	struct sample *sample = &cpu->sample;
 	int32_t busy_frac, boost;
-	int target, avg_pstate;
+	int max_pstate, target, avg_pstate;
 
 	if (cpu->policy == CPUFREQ_POLICY_PERFORMANCE)
 		return cpu->pstate.turbo_pstate;
@@ -1624,10 +1624,9 @@ static inline int32_t get_target_pstate_use_cpu_load(struct cpudata *cpu)
 
 	sample->busy_scaled = busy_frac * 100;
 
-	target = global.no_turbo || global.turbo_disabled ?
+	max_pstate = global.no_turbo || global.turbo_disabled ?
 			cpu->pstate.max_pstate : cpu->pstate.turbo_pstate;
-	target += target >> 2;
-	target = mul_fp(target, busy_frac);
+	target = mul_fp(max_pstate + (max_pstate >> 2), busy_frac);
 	if (target < cpu->pstate.min_pstate)
 		target = cpu->pstate.min_pstate;
 
@@ -1641,6 +1640,8 @@ static inline int32_t get_target_pstate_use_cpu_load(struct cpudata *cpu)
 	avg_pstate = get_avg_pstate(cpu);
 	if (avg_pstate > target)
 		target += (avg_pstate - target) >> 1;
+	else if (avg_pstate < target)
+		target = (max_pstate + target) >> 1;
 
 	return target;
 }
