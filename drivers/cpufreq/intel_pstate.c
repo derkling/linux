@@ -2375,24 +2375,6 @@ static int __init intel_pstate_msrs_not_valid(void)
 	return 0;
 }
 
-#ifdef CONFIG_ACPI
-static void intel_pstate_use_acpi_profile(void)
-{
-	switch (acpi_gbl_FADT.preferred_profile) {
-	case PM_MOBILE:
-	case PM_TABLET:
-	case PM_APPLIANCE_PC:
-	case PM_DESKTOP:
-	case PM_WORKSTATION:
-		pstate_funcs.update_util = intel_pstate_update_util;
-	}
-}
-#else
-static void intel_pstate_use_acpi_profile(void)
-{
-}
-#endif
-
 static void __init copy_cpu_funcs(struct pstate_funcs *funcs)
 {
 	pstate_funcs.get_max   = funcs->get_max;
@@ -2402,9 +2384,7 @@ static void __init copy_cpu_funcs(struct pstate_funcs *funcs)
 	pstate_funcs.get_scaling = funcs->get_scaling;
 	pstate_funcs.get_val   = funcs->get_val;
 	pstate_funcs.get_vid   = funcs->get_vid;
-	pstate_funcs.update_util = funcs->update_util;
-
-	intel_pstate_use_acpi_profile();
+	pstate_funcs.update_util = intel_pstate_update_util;
 }
 
 #ifdef CONFIG_ACPI
