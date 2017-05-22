@@ -199,8 +199,10 @@ void acpi_ec_remove_query_handler(struct acpi_ec *ec, u8 query_bit);
   -------------------------------------------------------------------------- */
 #ifdef CONFIG_ACPI_SYSTEM_POWER_STATES_SUPPORT
 extern int acpi_sleep_init(void);
+bool acpi_sleep_ec_gpe_may_wakeup(void);
 #else
 static inline int acpi_sleep_init(void) { return -ENXIO; }
+static inline bool acpi_sleep_ec_gpe_may_wakeup(void) { return false; }
 #endif
 
 #ifdef CONFIG_ACPI_SLEEP
