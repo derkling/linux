@@ -1491,31 +1491,16 @@ static void check_preempt_curr_rt(struct rq *rq, struct task_struct *p, int flag
 #ifdef CONFIG_SMP
 static void sched_rt_update_capacity_req(struct rq *rq)
 {
-	u64 total, used, age_stamp, avg;
-	s64 delta;
+	unsigned long used;
 
 	if (!sched_freq())
 		return;
 
-	sched_avg_update(rq);
-	/*
-	 * Since we're reading these variables without serialization make sure
-	 * we read them once before doing sanity checks on them.
-	 */
-	age_stamp = READ_ONCE(rq->age_stamp);
-	avg = READ_ONCE(rq->rt_avg);
-	delta = rq_clock(rq) - age_stamp;
-
-	if (unlikely(delta < 0))
-		delta = 0;
-
-	total = sched_avg_period() + delta;
-
-	used = div_u64(avg, total);
+	used = rq->rt.avg.util_avg;
 	if (unlikely(used > SCHED_CAPACITY_SCALE))
 		used = SCHED_CAPACITY_SCALE;
 
-	set_rt_cpu_capacity(rq->cpu, 1, (unsigned long)(used));
+	set_rt_cpu_capacity(rq->cpu, 1, used);
 }
 #else
 static inline void sched_rt_update_capacity_req(struct rq *rq)
