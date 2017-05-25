@@ -6288,12 +6288,14 @@ static inline int find_best_target(struct task_struct *p, bool boosted, bool pre
 			if (!prefer_idle) {
 				int idle_idx = idle_get_state_idx(cpu_rq(i));
 
-				if (best_idle_cpu < 0 ||
-					(sysctl_sched_cstate_aware &&
-						best_idle_cstate > idle_idx)) {
-					best_idle_cstate = idle_idx;
-					best_idle_cpu = i;
-				}
+				/* Skip CPUs in deeper idle_state */
+				if (sysctl_sched_cstate_aware &&
+				    best_idle_cstate <= idle_idx)
+					continue;
+
+				/* Keep track of best idle CPU */
+				best_idle_cstate = idle_idx;
+				best_idle_cpu = i;
 
 				continue;
 			}
