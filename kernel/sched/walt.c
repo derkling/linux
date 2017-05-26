@@ -31,8 +31,6 @@
 #define WINDOW_STATS_AVG		3
 #define WINDOW_STATS_INVALID_POLICY	4
 
-#define EXITING_TASK_MARKER	0xdeaddead
-
 static __read_mostly unsigned int walt_ravg_hist_size = 5;
 static __read_mostly unsigned int walt_window_stats_policy =
 	WINDOW_STATS_MAX_RECENT_AVG;
@@ -167,8 +165,8 @@ void walt_dec_cfs_cumulative_runnable_avg(struct cfs_rq *cfs_rq,
 static int exiting_task(struct task_struct *p)
 {
 	if (p->flags & PF_EXITING) {
-		if (p->ravg.sum_history[0] != EXITING_TASK_MARKER) {
-			p->ravg.sum_history[0] = EXITING_TASK_MARKER;
+		if (p->ravg.sum_history[0] != WALT_EXITING_TASK_MARKER) {
+			p->ravg.sum_history[0] = WALT_EXITING_TASK_MARKER;
 		}
 		return 1;
 	}
@@ -773,12 +771,12 @@ void walt_init_cpu_efficiency(void)
 		min_possible_efficiency = min;
 }
 
-static void reset_task_stats(struct task_struct *p)
+void reset_task_stats(struct task_struct *p)
 {
 	u32 sum = 0;
 
 	if (exiting_task(p))
-		sum = EXITING_TASK_MARKER;
+		sum = WALT_EXITING_TASK_MARKER;
 
 	memset(&p->ravg, 0, sizeof(struct ravg));
 	/* Retain EXITING_TASK marker */

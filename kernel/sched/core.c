@@ -9041,3 +9041,37 @@ void dump_cpu_task(int cpu)
 	pr_info("Task dump for CPU %d:\n", cpu);
 	sched_show_task(cpu_curr(cpu));
 }
+
+#ifdef CONFIG_SCHED_WALT
+/*
+ * walt_exit_task() - Set WALT_EXITING_TASK_MARKER in task's ravg.demand field
+ *
+ * Stop accounting (exiting) task's future cpu usage
+ *
+ * We need this so that reset_all_windows_stats() can function correctly.
+ * reset_all_window_stats() depends on do_each_thread/for_each_thread task
+ * iterators to reset *all* task's statistics. Exiting tasks however become
+ * invisible to those iterators. sched_exit() is called on a exiting task prior
+ * to being removed from task_list, which will let reset_all_window_stats()
+ * function correctly.
+ */
+void walt_exit_task(struct task_struct *p)
+{
+	unsigned long flags;
+	struct rq *rq;
+	u64 wallclock;
+
+	rq = task_rq_lock(p, &flags);
+
+	/* rq->curr == p */
+	wallclock = walt_ktime_clock();
+	walt_update_task_ravg(rq->curr, rq, TASK_UPDATE, wallclock, 0);
+	dequeue_task(rq, p, 0);
+	reset_task_stats(p);
+	p->ravg.mark_start = wallclock;
+	p->ravg.sum_history[0] = WALT_EXITING_TASK_MARKER;
+
+	enqueue_task(rq, p, 0);
+	task_rq_unlock(rq, p, &flags);
+}
+#endif

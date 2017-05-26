@@ -35,6 +35,12 @@ extern void update_cpu_load_active(struct rq *this_rq);
 static inline void update_cpu_load_active(struct rq *this_rq) { }
 #endif
 
+#ifdef CONFIG_SCHED_WALT
+extern void walt_exit_task(struct task_struct *p);
+#else
+static inline void walt_exit_task(struct task_struct *p) { }
+#endif
+
 /*
  * Helpers for converting nanosecond timing to jiffy resolution
  */
