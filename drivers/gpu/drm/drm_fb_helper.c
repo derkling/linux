@@ -1654,7 +1654,7 @@ void drm_fb_helper_fill_var(struct fb_info *info, struct drm_fb_helper *fb_helpe
 	struct drm_framebuffer *fb = fb_helper->fb;
 	info->pseudo_palette = fb_helper->pseudo_palette;
 	info->var.xres_virtual = fb->width;
-	info->var.yres_virtual = fb->height;
+	info->var.yres_virtual = fb->height * CONFIG_DRM_FB_MULTIPLE_BUFFERING;
 	info->var.bits_per_pixel = fb->bits_per_pixel;
 	info->var.accel_flags = FB_ACCELF_TEXT;
 	info->var.xoffset = 0;

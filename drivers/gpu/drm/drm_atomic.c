@@ -901,7 +901,8 @@ static int drm_atomic_plane_check(struct drm_plane *plane,
 	}
 
 	fb_width = state->fb->width << 16;
-	fb_height = state->fb->height << 16;
+	fb_height = state->fb->height * CONFIG_DRM_FB_MULTIPLE_BUFFERING;
+	fb_height = fb_height << 16;
 
 	/* Make sure source coordinates are inside the fb. */
 	if (state->src_w > fb_width ||
