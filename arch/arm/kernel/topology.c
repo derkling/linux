@@ -111,7 +111,7 @@ static void __init parse_dt_topology(void)
 			continue;
 		}
 
-		if (atd_parse_cpu_capacity(cn, cpu)) {
+		if (topology_parse_cpu_capacity(cn, cpu)) {
 			of_node_put(cn);
 			continue;
 		}
@@ -160,7 +160,7 @@ static void __init parse_dt_topology(void)
 				>> (SCHED_CAPACITY_SHIFT-1)) + 1;
 
 	if (cap_from_dt)
-		atd_normalize_cpu_capacity();
+		topology_normalize_cpu_capacity();
 }
 
 /*
@@ -173,10 +173,10 @@ static void update_cpu_capacity(unsigned int cpu)
 	if (!cpu_capacity(cpu) || cap_from_dt)
 		return;
 
-	atd_set_capacity_scale(cpu, cpu_capacity(cpu) / middle_capacity);
+	topology_set_capacity_scale(cpu, cpu_capacity(cpu) / middle_capacity);
 
 	pr_info("CPU%u: update cpu_capacity %lu\n",
-		cpu, atd_scale_cpu_capacity(NULL, cpu));
+		cpu, topology_scale_cpu_capacity(NULL, cpu));
 }
 
 #else
