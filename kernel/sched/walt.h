@@ -16,6 +16,8 @@
 
 #ifdef CONFIG_SCHED_WALT
 
+#define WALT_EXITING_TASK_MARKER	0xdeaddead
+
 void walt_update_task_ravg(struct task_struct *p, struct rq *rq, int event,
 		u64 wallclock, u64 irqtime);
 void walt_inc_cumulative_runnable_avg(struct rq *rq, struct task_struct *p);
@@ -36,6 +38,7 @@ void walt_account_irqtime(int cpu, struct task_struct *curr, u64 delta,
 
 u64 walt_irqload(int cpu);
 int walt_cpu_high_irqload(int cpu);
+void reset_task_stats(struct task_struct *p);
 
 #else /* CONFIG_SCHED_WALT */
 
@@ -54,6 +57,7 @@ static inline void walt_set_window_start(struct rq *rq) { }
 static inline void walt_migrate_sync_cpu(int cpu) { }
 static inline void walt_init_cpu_efficiency(void) { }
 static inline u64 walt_ktime_clock(void) { return 0; }
+static inline void reset_task_stats(struct task_struct *p) { }
 
 #define walt_cpu_high_irqload(cpu) false
 
