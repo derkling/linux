@@ -751,6 +751,32 @@ struct thermal_cooling_device
 	return of_devfreq_cooling_register_power(dev->of_node, df, dfc);
 };
 
+static void kgsl_bind_cdev_tz(struct work_struct *work)
+{
+	struct delayed_work *delayed_work = to_delayed_work(work);
+	struct kgsl_pwrscale *pwrscale = container_of(delayed_work,
+						      struct kgsl_pwrscale,
+						      bind_cdev_tz);
+
+	pr_info("MSM: adreno: trying to pin tz<-->cdev.\n");
+
+	if (!IS_ERR_OR_NULL(thermal_bind_cdev_tz(pwrscale->cdev, "gpu_thermal0")))
+		pr_info("MSM: adreno: devfreq cooling pinned to tz %s.\n",
+			"gpu_thermal0");
+	if (!IS_ERR_OR_NULL(thermal_bind_cdev_tz(pwrscale->cdev, "gpu_thermal1")))
+		pr_info("MSM: adreno: devfreq cooling pinned to tz %s.\n",
+			"gpu_thermal1");
+	if (!IS_ERR_OR_NULL(thermal_bind_cdev_tz(pwrscale->cdev, "gpu_thermal2")))
+		pr_info("MSM: adreno: devfreq cooling pinned to tz %s.\n",
+			"gpu_thermal2");
+	if (!IS_ERR_OR_NULL(thermal_bind_cdev_tz(pwrscale->cdev, "gpu_thermal3")))
+		pr_info("MSM: adreno: devfreq cooling pinned to tz %s.\n",
+			"gpu_thermal3");
+	if (!IS_ERR_OR_NULL(thermal_bind_cdev_tz(pwrscale->cdev, "soc_thermal0")))
+		pr_info("MSM: adreno: devfreq cooling pinned to tz %s.\n",
+			"soc_thermal0");
+}
+
 /*
  * kgsl_pwrscale_init - Initialize pwrscale.
  * @dev: The device
@@ -856,11 +882,15 @@ int kgsl_pwrscale_init(struct device *dev, const char *governor)
 		return PTR_ERR(devfreq);
 	}
 
+	INIT_DELAYED_WORK(&pwrscale->bind_cdev_tz, kgsl_bind_cdev_tz);
 	pr_info("MSM: adreno: devfreq gpu added\n");
 	pwrscale->cdev = kgsl_register_cooling(dev, devfreq);
-	if (IS_ERR_OR_NULL(pwrscale->cdev))
+	if (IS_ERR_OR_NULL(pwrscale->cdev)) {
 		pr_warn("msm: adreno: devfreq cooling not added\n");
-	else
+		/* schedule_delayed_work(&pwrscale->bind_cdev_tz,
+				      msecs_to_jiffies(20000));
+		*/
+	} else
 		pr_info("msm: adreno: devfreq cooling added\n");
 
 	pwrscale->devfreqptr = devfreq;

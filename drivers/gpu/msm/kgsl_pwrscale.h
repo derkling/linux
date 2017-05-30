@@ -93,8 +93,9 @@ struct kgsl_pwr_history {
  * @popp_state - Control state for POPP, on/off, recently pushed, etc
  */
 struct kgsl_pwrscale {
-	struct devfreq *devfreqptr;
 	struct thermal_cooling_device *cdev;
+	struct thermal_zone_device *tz;
+	struct devfreq *devfreqptr;
 	struct msm_adreno_extended_profile gpu_profile;
 	struct msm_busmon_extended_profile bus_profile;
 	unsigned int freq_table[KGSL_MAX_PWRLEVELS];
@@ -109,6 +110,7 @@ struct kgsl_pwrscale {
 	struct work_struct devfreq_suspend_ws;
 	struct work_struct devfreq_resume_ws;
 	struct work_struct devfreq_notify_ws;
+	struct delayed_work bind_cdev_tz;
 	ktime_t next_governor_call;
 	struct kgsl_pwr_history history[KGSL_PWREVENT_MAX];
 	int popp_level;

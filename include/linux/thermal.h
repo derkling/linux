@@ -434,6 +434,9 @@ struct thermal_zone_device *thermal_zone_device_register(const char *, int, int,
 		struct thermal_zone_params *, int, int);
 void thermal_zone_device_unregister(struct thermal_zone_device *);
 
+struct thermal_zone_device
+*thermal_bind_cdev_tz(struct thermal_cooling_device *cdev, const char *name);
+
 int thermal_zone_bind_cooling_device(struct thermal_zone_device *, int,
 				     struct thermal_cooling_device *,
 				     unsigned long, unsigned long,
