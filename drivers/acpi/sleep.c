@@ -160,6 +160,14 @@ static int __init init_nvs_nosave(const struct dmi_system_id *d)
 	return 0;
 }
 
+static bool ec_gpe_wakeup;
+
+static int __init init_ec_gpe_wakeup(const struct dmi_system_id *d)
+{
+	ec_gpe_wakeup = true;
+	return 0;
+}
+
 static struct dmi_system_id acpisleep_dmi_table[] __initdata = {
 	{
 	.callback = init_old_suspend_ordering,
@@ -343,6 +351,26 @@ static struct dmi_system_id acpisleep_dmi_table[] __initdata = {
 		DMI_MATCH(DMI_PRODUCT_NAME, "80E3"),
 		},
 	},
+	/*
+	 * Enable the EC to wake up the system from suspend-to-idle to allow
+	 * power button events to it wake up.
+	 */
+	{
+	 .callback = init_ec_gpe_wakeup,
+	 .ident = "Dell XPS 13 9360",
+	 .matches = {
+		DMI_MATCH(DMI_SYS_VENDOR, "Dell Inc."),
+		DMI_MATCH(DMI_PRODUCT_NAME, "XPS 13 9360"),
+		},
+	},
+	{
+	 .callback = init_ec_gpe_wakeup,
+	 .ident = "Dell XPS 13 9365",
+	 .matches = {
+		DMI_MATCH(DMI_SYS_VENDOR, "Dell Inc."),
+		DMI_MATCH(DMI_PRODUCT_NAME, "XPS 13 9365"),
+		},
+	},
 	{},
 };
 
@@ -485,6 +513,7 @@ static void acpi_pm_end(void)
 }
 #else /* !CONFIG_ACPI_SLEEP */
 #define acpi_target_sleep_state	ACPI_STATE_S0
+#define ec_gpe_wakeup		false
 static inline void acpi_sleep_dmi_check(void) {}
 #endif /* CONFIG_ACPI_SLEEP */
 
@@ -730,6 +759,11 @@ static void acpi_sleep_suspend_setup(void)
 #else /* !CONFIG_SUSPEND */
 static inline void acpi_sleep_suspend_setup(void) {}
 #endif /* !CONFIG_SUSPEND */
+
+bool acpi_sleep_ec_gpe_may_wakeup(void)
+{
+	return ec_gpe_wakeup;
+}
 
 #ifdef CONFIG_PM_SLEEP
 static u32 saved_bm_rld;

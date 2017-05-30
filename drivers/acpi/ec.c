@@ -40,6 +40,7 @@
 #include <linux/slab.h>
 #include <linux/acpi.h>
 #include <linux/dmi.h>
+#include <linux/suspend.h>
 #include <asm/io.h>
 
 #include "internal.h"
@@ -1493,6 +1494,16 @@ static int acpi_ec_setup(struct acpi_ec *ec, bool handle_events)
 	acpi_handle_info(ec->handle,
 			 "GPE=0x%lx, EC_CMD/EC_SC=0x%lx, EC_DATA=0x%lx\n",
 			 ec->gpe, ec->command_addr, ec->data_addr);
+
+	/*
+	 * On some platforms the EC GPE is used for waking up the system from
+	 * suspend-to-idle, so mark it as a wakeup one.
+	 *
+	 * This can be done unconditionally, as the setting does not matter
+	 * until acpi_set_gpe_wake_mask() is called for the GPE.
+	 */
+	acpi_mark_gpe_for_wake(NULL, ec->gpe);
+
 	return ret;
 }
 
@@ -1835,8 +1846,11 @@ static int acpi_ec_suspend(struct device *dev)
 	struct acpi_ec *ec =
 		acpi_driver_data(to_acpi_device(dev));
 
-	if (ec_freeze_events)
+	if (!pm_suspend_via_firmware() && acpi_sleep_ec_gpe_may_wakeup())
+		acpi_set_gpe_wake_mask(NULL, ec->gpe, ACPI_GPE_ENABLE);
+	else if (ec_freeze_events)
 		acpi_ec_disable_event(ec);
+
 	return 0;
 }
 
@@ -1846,6 +1860,9 @@ static int acpi_ec_resume(struct device *dev)
 		acpi_driver_data(to_acpi_device(dev));
 
 	acpi_ec_enable_event(ec);
+	if (!pm_resume_via_firmware() && acpi_sleep_ec_gpe_may_wakeup())
+		acpi_set_gpe_wake_mask(NULL, ec->gpe, ACPI_GPE_DISABLE);
+
 	return 0;
 }
 #endif
