@@ -439,12 +439,15 @@ EXPORT_SYMBOL(thermal_sensor_trip);
 int sensor_get_temp(uint32_t sensor_id, long *temp)
 {
 	struct sensor_info *sensor = get_sensor(sensor_id);
+	struct thermal_zone_device *tz = sensor->tz;
 	int ret = 0;
 
-	if (!sensor)
+	if (!sensor || !tz || !tz->ops->get_temp)
 		return -ENODEV;
 
+	mutex_lock(&tz->lock);
 	ret = sensor->tz->ops->get_temp(sensor->tz, temp);
+	mutex_unlock(&tz->lock);
 
 	return ret;
 }

@@ -873,6 +873,13 @@ struct tsens_tm_device {
 	struct tsens_tm_device_sensor	sensor[0];
 };
 
+struct msm_sensor_zone {
+	struct thermal_zone_device *tzd;
+	uint32_t sensor_id;
+	struct list_head node;
+};
+
+static LIST_HEAD(msm_zone_list);
 LIST_HEAD(tsens_device_list);
 
 static char dbg_buff[1024];
@@ -2406,6 +2413,24 @@ int tsens_get_mtc_zone_history(unsigned int zone , void *zone_hist)
 	return 0;
 }
 EXPORT_SYMBOL(tsens_get_mtc_zone_history);
+
+static int tsens_tz_of_get_temp(void *data, long *temp)
+{
+	struct msm_sensor_zone *msm_zone = data;
+	unsigned long t = 0;
+	int ret;
+
+	ret = msm_tsens_get_temp(msm_zone->sensor_id, &t);
+	if (ret < 0)
+		return -EINVAL;
+	*temp = t;
+
+	return 0;
+}
+
+static struct thermal_zone_of_device_ops tsens_of_ops = {
+	.get_temp = tsens_tz_of_get_temp,
+};
 
 static struct thermal_zone_device_ops tsens_thermal_zone_ops = {
 	.get_temp = tsens_tz_get_temp,
@@ -5965,6 +5990,50 @@ fail:
 	return rc;
 }
 
+/*
+ * Register additional thermal zones for CPU sensors, based on information
+ * from device tree.
+ */
+static uint32_t dt_sensors_id[] = {4, 9};
+
+static int tsens_of_register_thermal(void)
+{
+	int i;
+	int32_t id;
+	struct tsens_tm_device *tmdev;
+	struct device *dev;
+	struct msm_sensor_zone *msm_zone;
+
+	list_for_each_entry(tmdev, &tsens_device_list, list) {
+		id = -EINVAL;
+		dev = &tmdev->pdev->dev;
+		if (!dev)
+			continue;
+
+		for (i = 0; i < ARRAY_SIZE(dt_sensors_id); i++) {
+			id = get_tsens_sensor_for_client_id(tmdev,
+					dt_sensors_id[i]);
+			if (id < 0)
+				continue;
+
+			msm_zone = devm_kzalloc(dev,
+				   sizeof(struct msm_sensor_zone), GFP_KERNEL);
+			if (!msm_zone)
+				return -ENOMEM;
+			msm_zone->sensor_id = id;
+			msm_zone->tzd = thermal_zone_of_sensor_register(dev, id,
+					msm_zone, &tsens_of_ops);
+			if (IS_ERR(msm_zone->tzd)) {
+				pr_info("msm-thermal: sensor zone not added.\n");
+				continue;
+			}
+			list_add(&msm_zone->node, &msm_zone_list);
+		}
+	}
+
+	return 0;
+}
+
 static int _tsens_register_thermal(void)
 {
 	struct tsens_tm_device *tmdev = NULL;
@@ -6027,7 +6096,15 @@ arch_initcall(tsens_tm_init_driver);
 
 static int __init tsens_thermal_register(void)
 {
-	return _tsens_register_thermal();
+	int ret;
+
+	ret = _tsens_register_thermal();
+	if (ret < 0)
+		return ret;
+
+	ret = tsens_of_register_thermal();
+
+	return ret;
 }
 module_init(tsens_thermal_register);
 
