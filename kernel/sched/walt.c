@@ -827,6 +827,25 @@ void walt_fixup_busy_time(struct task_struct *p, int new_cpu)
 	trace_walt_migration_update_sum(src_rq, p);
 	trace_walt_migration_update_sum(dest_rq, p);
 
+	/*
+	 * Update cpufreq with load changes due to this migration. However, do
+	 * this only if we're shifting load between different clock domains.
+	 * That is a rarer occurence and is likely more urgent for either perf
+	 * or power. We assume here that different max capacities implies
+	 * different clock domains.
+	 *
+	 * We skip this report for the same domain because unless
+	 * we are actually packing more load onto one cpu, the aggregated
+	 * frequency should remain the same. The cpu-cycles overhead
+	 * given the number of potential same-cluster migrations with load
+	 * balancing kills of the benefit of an immediate freq update.
+	 *
+	 */
+	if (capacity_orig_of(task_cpu(p)) != capacity_orig_of(new_cpu)) {
+                cpufreq_update_util(dest_rq, SCHED_CPUFREQ_INTERCLUSTER_MIG);
+                cpufreq_update_util(src_rq, SCHED_CPUFREQ_INTERCLUSTER_MIG);
+	}
+
 	if (p->state == TASK_WAKING)
 		double_rq_unlock(src_rq, dest_rq);
 }
