@@ -689,6 +689,7 @@ struct rq {
 	u64 avg_irqload;
 	u64 irqload_ts;
 	u64 cum_window_demand;
+	u64 load_reported_window;
 #endif /* CONFIG_SCHED_WALT */
 
 
@@ -2133,6 +2134,20 @@ DECLARE_PER_CPU(struct update_util_data *, cpufreq_update_util_data);
 static inline void cpufreq_update_util(struct rq *rq, unsigned int flags)
 {
         struct update_util_data *data;
+
+#ifdef CONFIG_SCHED_WALT
+	if (!walt_disabled && sysctl_sched_use_walt_cpu_util) {
+		/*
+		 * When using WALT cpu load, don't update cpufreq more than once
+		 * per window, except if this update is caused by an intercluster
+		 * migration.
+		 */
+		if (rq->window_start == rq->load_reported_window &&
+				!(flags & SCHED_CPUFREQ_INTERCLUSTER_MIG))
+			return;
+		rq->load_reported_window = rq->window_start;
+	}
+#endif
 
         data = rcu_dereference_sched(*this_cpu_ptr(&cpufreq_update_util_data));
         if (data)
