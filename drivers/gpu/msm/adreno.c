@@ -1001,7 +1001,7 @@ static int adreno_probe(struct platform_device *pdev)
 
 	adreno_sysfs_init(adreno_dev);
 
-	kgsl_pwrscale_init(&pdev->dev, CONFIG_MSM_ADRENO_DEFAULT_GOVERNOR);
+	kgsl_pwrscale_init(&pdev->dev, "simple_ondemand");
 
 	/* Initialize coresight for the target */
 	adreno_coresight_init(adreno_dev);
