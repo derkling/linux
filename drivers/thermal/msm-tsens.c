@@ -1826,6 +1826,9 @@ static int tsens_tm_get_trip_temp(struct thermal_zone_device *thermal,
 
 	*temp = reg_cntl;
 
+	pr_info("msm-tsens: tzm trip %d type=%d val %lu\n",
+		tm_sensor->sensor_hw_num, trip, *temp);
+
 	return 0;
 }
 
@@ -1866,6 +1869,9 @@ static int tsens_tz_get_trip_temp(struct thermal_zone_device *thermal,
 		return rc;
 	}
 	*temp = tsens_tz_code_to_degc(reg, sensor_sw_id, tmdev);
+
+	pr_info("msm-tsens: tz trip %d type=%d val %lu\n",
+		tm_sensor->sensor_hw_num, trip, *temp);
 
 	return 0;
 }
@@ -2424,6 +2430,10 @@ static int tsens_tz_of_get_temp(void *data, long *temp)
 	if (ret < 0)
 		return -EINVAL;
 	*temp = t;
+
+	/*
+	 * pr_info("msm-tsens: get_temp %d: %lu.\n", msm_zone->sensor_id, *temp);
+	 */
 
 	return 0;
 }
@@ -5890,13 +5900,19 @@ static int tsens_thermal_zone_register(struct tsens_tm_device *tmdev)
 
 	for (i = 0; i < tmdev->tsens_num_sensor; i++) {
 		char name[18];
+		int hw_sw_type = 0;
 		if ((!strcmp(id->compatible, "qcom,mdm9640-tsens")) ||
-			(!strcmp(id->compatible, "qcom,mdm9640v2-tsens")))
+			(!strcmp(id->compatible, "qcom,mdm9640v2-tsens"))) {
 			snprintf(name, sizeof(name), "tsens_tz_sensor%d",
 					tmdev->sensor[i].sensor_hw_num);
-		else
+			hw_sw_type = 1;
+		} else {
 			snprintf(name, sizeof(name), "tsens_tz_sensor%d",
 					tsens_sensor_sw_idx);
+			hw_sw_type = 2;
+		}
+
+		pr_info("msm-tsens: tz name %s+%d\n", name, hw_sw_type);
 
 		tmdev->sensor[i].mode = THERMAL_DEVICE_ENABLED;
 		tmdev->sensor[i].tm = tmdev;
@@ -6005,18 +6021,30 @@ static int tsens_of_register_thermal(void)
 	struct device *dev;
 	struct msm_sensor_zone *msm_zone;
 
+	pr_info("msm-tsens: register sensors..\n");
+
 	list_for_each_entry(tmdev, &tsens_device_list, list) {
 		id = -EINVAL;
 		dev = &tmdev->pdev->dev;
 		if (!dev)
 			continue;
 
+        pr_info("msm-tsens: num_sensors for device %u.\n",
+			tmdev->tsens_num_sensor);
+		for (i = 0; i < tmdev->tsens_num_sensor; i++) {
+			pr_info("msm-tsens: sensor info %d: hw=%u, sw=%u\n",
+				i,
+				tmdev->sensor[i].sensor_hw_num,
+				tmdev->sensor[i].sensor_sw_id);
+		}
 		for (i = 0; i < ARRAY_SIZE(dt_sensors_id); i++) {
 			id = get_tsens_sensor_for_client_id(tmdev,
 					dt_sensors_id[i]);
 			if (id < 0)
 				continue;
 
+			pr_info("msm-tsens: sens id %d: %d.\n",
+				dt_sensors_id[i], id);
 			msm_zone = devm_kzalloc(dev,
 				   sizeof(struct msm_sensor_zone), GFP_KERNEL);
 			if (!msm_zone)

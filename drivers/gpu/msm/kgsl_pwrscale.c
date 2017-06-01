@@ -743,7 +743,10 @@ struct thermal_cooling_device
 	dfc = devm_kzalloc(dev, sizeof(*dfc), GFP_KERNEL);
 	if (!dfc)
 		return ERR_PTR(-ENOMEM);
+
 	dfc->dyn_power_coeff = 300;
+
+	pr_info("MSM: adreno: dev name %s\n", dev->of_node->full_name);
 
 	return of_devfreq_cooling_register_power(dev->of_node, df, dfc);
 };
@@ -853,9 +856,12 @@ int kgsl_pwrscale_init(struct device *dev, const char *governor)
 		return PTR_ERR(devfreq);
 	}
 
+	pr_info("MSM: adreno: devfreq gpu added\n");
 	pwrscale->cdev = kgsl_register_cooling(dev, devfreq);
 	if (IS_ERR_OR_NULL(pwrscale->cdev))
 		pr_warn("msm: adreno: devfreq cooling not added\n");
+	else
+		pr_info("msm: adreno: devfreq cooling added\n");
 
 	pwrscale->devfreqptr = devfreq;
 

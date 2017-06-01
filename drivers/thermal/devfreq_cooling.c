@@ -217,6 +217,7 @@ get_static_power(struct devfreq_cooling_device *dfc, unsigned long freq)
 	struct device *dev = df->dev.parent;
 	unsigned long voltage;
 	struct dev_pm_opp *opp;
+	u64 power;
 
 	if (!dfc->power_ops->get_static_power)
 		return 0;
@@ -238,7 +239,12 @@ get_static_power(struct devfreq_cooling_device *dfc, unsigned long freq)
 		return 0;
 	}
 
-	return dfc->power_ops->get_static_power(df, voltage);
+	power = dfc->power_ops->get_static_power(df, voltage);
+
+	pr_info("devfreq-cooling: static power: %lu - %llu.\n",
+		voltage, power);
+
+	return power;
 }
 
 /**
@@ -268,6 +274,9 @@ get_dynamic_power(struct devfreq_cooling_device *dfc, unsigned long freq,
 	freq_mhz = freq / 1000000;
 	power = (u64)dfc_power->dyn_power_coeff * freq_mhz * voltage * voltage;
 	do_div(power, 1000000000);
+
+	pr_info("devfreq-cooling: dynamic power: %llu %llu.\n",
+		(u64)dfc_power->dyn_power_coeff, power);
 
 	return power;
 }
@@ -435,6 +444,9 @@ static int devfreq_cooling_gen_tables(struct devfreq_cooling_device *dfc)
 		}
 
 		freq_table[i] = freq;
+
+		pr_info("devfreq-cooling: df freq=%lu, voltage=%lu\n", freq,
+			voltage);
 	}
 
 	if (dfc->power_ops)

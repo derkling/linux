@@ -4375,6 +4375,10 @@ static int convert_to_zone_id(struct threshold_info *thresh_inp)
 			goto convert_to_exit;
 		}
 		thresh_array[i].sensor_id = zone_id;
+
+		pr_info("msm-thermal: zone %d sensor %d.\n", zone_id,
+			thresh_array[i].sensor_id);
+
 		thresh_array[i].id_type = THERM_ZONE_ID;
 	}
 

@@ -310,6 +310,12 @@ static int build_dyn_power_table(struct cpufreq_cooling_device *cpufreq_device,
 		power = (u64)capacitance * freq_mhz * voltage_mv * voltage_mv;
 		do_div(power, 1000000000);
 
+		pr_info("cpufreq-cooling: df freq=%lu, voltage=%u\n", freq,
+			voltage_mv);
+
+		pr_info("cpufreq-cooling: dynamic power: %llu %llu.\n",
+			(u64)capacitance, power);
+
 		/* frequency is stored in power_table in KHz */
 		power_table[i].frequency = freq / 1000;
 

@@ -309,7 +309,12 @@ static atomic_t cpufreq_policy;
 static void msm_cpufreq_ready(struct cpufreq_policy *policy)
 {
        struct device *cpu_dev = get_cpu_device(policy->cpu);
+       int cpu = policy->cpu;
        struct device_node *np;
+
+       pr_info("cpufreq: mainly ready for %d.\n", cpu);
+       for_each_cpu(cpu, policy->related_cpus)
+               pr_info("cpufreq: also ready for %d.\n", cpu);
 
        if (atomic_read(&cpufreq_policy) >= CLUSTER_MAX) {
                pr_warn("cpufreq: too many clients for being cluster cooling dev.\n");
@@ -581,6 +586,8 @@ core_initcall(msm_cpufreq_early_register);
 
 static int __init msm_cpu_cooling_register(void)
 {
+
+	pr_info("cpufreq: registering cooling platform driver.\n");
 
 	msm_cpufreq_cooling_add();
 

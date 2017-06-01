@@ -405,8 +405,10 @@ thermal_zone_of_add_sensor(struct device_node *zone,
 	struct __thermal_zone *tz;
 
 	tzd = thermal_zone_get_zone_by_name(zone->name);
-	if (IS_ERR(tzd))
+	if (IS_ERR(tzd)) {
+		pr_info("of-thermal: get_zone_by_name failed!\n");
 		return ERR_PTR(-EPROBE_DEFER);
+	}
 
 	tz = tzd->devdata;
 
@@ -483,6 +485,8 @@ thermal_zone_of_sensor_register(struct device *dev, int sensor_id, void *data,
 		if (!of_device_is_available(child))
 			continue;
 
+		pr_info("of-thermal: handle thermal zone %s\n", child->name);
+
 		/* For now, thermal framework supports only 1 sensor per zone */
 		ret = of_parse_phandle_with_args(child, "thermal-sensors",
 						 "#thermal-sensor-cells",
@@ -499,12 +503,15 @@ thermal_zone_of_sensor_register(struct device *dev, int sensor_id, void *data,
 			id = 0;
 		}
 
+		pr_info("of-thermal: #thermal-sensor-cells found, id %d\n", id);
+
 		if (sensor_specs.np == sensor_np && id == sensor_id) {
 			tzd = thermal_zone_of_add_sensor(child, sensor_np,
 							 data, ops);
-			if (!IS_ERR(tzd))
+			if (!IS_ERR(tzd)) {
+				pr_info("of-thermal: Sensor added succesfully.\n");
 				tzd->ops->set_mode(tzd, THERMAL_DEVICE_ENABLED);
-
+			}
 			of_node_put(sensor_specs.np);
 			of_node_put(child);
 			goto exit;
@@ -921,6 +928,8 @@ int __init of_parse_thermal_zones(void)
 		/* these two are left for temperature drivers to use */
 		tzp->slope = tz->slope;
 		tzp->offset = tz->offset;
+
+		pr_info("of-thermal: zone added: %s\n", child->name);
 
 		zone = thermal_zone_device_register(child->name, tz->ntrips,
 						    mask, tz,
