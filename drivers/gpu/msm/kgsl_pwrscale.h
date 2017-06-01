@@ -16,6 +16,7 @@
 
 #include <linux/devfreq.h>
 #include <linux/msm_adreno_devfreq.h>
+#include <linux/thermal.h>
 #include "kgsl_pwrctrl.h"
 
 /* devfreq governor call window in usec */
@@ -93,6 +94,7 @@ struct kgsl_pwr_history {
  */
 struct kgsl_pwrscale {
 	struct devfreq *devfreqptr;
+	struct thermal_cooling_device *cdev;
 	struct msm_adreno_extended_profile gpu_profile;
 	struct msm_busmon_extended_profile bus_profile;
 	unsigned int freq_table[KGSL_MAX_PWRLEVELS];

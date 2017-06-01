@@ -11,6 +11,7 @@
  *
  */
 
+#include <linux/devfreq_cooling.h>
 #include <linux/export.h>
 #include <linux/kernel.h>
 
@@ -734,6 +735,18 @@ int kgsl_busmon_get_cur_freq(struct device *dev, unsigned long *freq)
 	return 0;
 }
 
+struct thermal_cooling_device
+*kgsl_register_cooling(struct device *dev, struct devfreq *df)
+{
+	struct devfreq_cooling_power *dfc;
+
+	dfc = devm_kzalloc(dev, sizeof(*dfc), GFP_KERNEL);
+	if (!dfc)
+		return ERR_PTR(-ENOMEM);
+	dfc->dyn_power_coeff = 300;
+
+	return of_devfreq_cooling_register_power(dev->of_node, df, dfc);
+};
 
 /*
  * kgsl_pwrscale_init - Initialize pwrscale.
@@ -840,6 +853,10 @@ int kgsl_pwrscale_init(struct device *dev, const char *governor)
 		return PTR_ERR(devfreq);
 	}
 
+	pwrscale->cdev = kgsl_register_cooling(dev, devfreq);
+	if (IS_ERR_OR_NULL(pwrscale->cdev))
+		pr_warn("msm: adreno: devfreq cooling not added\n");
+
 	pwrscale->devfreqptr = devfreq;
 
 	pwrscale->gpu_profile.bus_devfreq = NULL;
@@ -896,6 +913,11 @@ void kgsl_pwrscale_close(struct kgsl_device *device)
 		return;
 	flush_workqueue(pwrscale->devfreq_wq);
 	destroy_workqueue(pwrscale->devfreq_wq);
+
+	/* Unregister cooling device */
+	if (pwrscale->cdev)
+		devfreq_cooling_unregister(pwrscale->cdev);
+
 	devfreq_remove_device(device->pwrscale.devfreqptr);
 	device->pwrscale.devfreqptr = NULL;
 	srcu_cleanup_notifier_head(&device->pwrscale.nh);
@@ -903,6 +925,7 @@ void kgsl_pwrscale_close(struct kgsl_device *device)
 		kfree(pwrscale->history[i].events);
 }
 EXPORT_SYMBOL(kgsl_pwrscale_close);
+
 
 static void do_devfreq_suspend(struct work_struct *work)
 {
