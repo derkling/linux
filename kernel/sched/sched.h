@@ -972,6 +972,7 @@ struct energy_env {
 
 	int			src_cpu;
 	int			dst_cpu;
+	int			trg_cpu;
 	int			util_delta;
 	struct task_struct	*task;
 
