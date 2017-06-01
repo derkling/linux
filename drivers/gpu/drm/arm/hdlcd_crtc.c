@@ -40,6 +40,7 @@ static void hdlcd_crtc_cleanup(struct drm_crtc *crtc)
 	/* stop the controller on cleanup */
 	hdlcd_write(hdlcd, HDLCD_REG_COMMAND, 0);
 	drm_crtc_cleanup(crtc);
+	of_node_put(crtc->port);
 }
 
 static const struct drm_crtc_funcs hdlcd_crtc_funcs = {
@@ -298,6 +299,7 @@ int hdlcd_setup_crtc(struct drm_device *drm)
 {
 	struct hdlcd_drm_private *hdlcd = drm->dev_private;
 	struct drm_plane *primary;
+	struct device_node *ep;
 	int ret;
 
 	primary = hdlcd_plane_init(drm);
@@ -306,12 +308,21 @@ int hdlcd_setup_crtc(struct drm_device *drm)
 
 	ret = drm_crtc_init_with_planes(drm, &hdlcd->crtc, primary, NULL,
 					&hdlcd_crtc_funcs, NULL);
-	if (ret) {
-		hdlcd_plane_destroy(primary);
-		devm_kfree(drm->dev, primary);
-		return ret;
+	if (ret)
+		goto err;
+
+	ep = of_graph_get_next_endpoint(drm->dev->of_node, NULL);
+	if (!ep) {
+		ret = -EINVAL;
+		goto err;
 	}
+	hdlcd->crtc.port = of_get_next_parent(ep);
 
 	drm_crtc_helper_add(&hdlcd->crtc, &hdlcd_crtc_helper_funcs);
 	return 0;
+
+err:
+	hdlcd_plane_destroy(primary);
+	devm_kfree(drm->dev, primary);
+	return ret;
 }
