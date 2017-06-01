@@ -5993,8 +5993,9 @@ fail:
 /*
  * Register additional thermal zones for CPU sensors, based on information
  * from device tree.
+ * Register additional thermal zone for SOC sensor.
  */
-static uint32_t dt_sensors_id[] = {4, 9};
+static uint32_t dt_sensors_id[] = {4, 9, 0};
 
 static int tsens_of_register_thermal(void)
 {
