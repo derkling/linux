@@ -16,11 +16,50 @@
 #include <linux/arch_topology.h>
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
+#include <linux/cpuset.h>
 #include <linux/device.h>
 #include <linux/of.h>
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/sched/topology.h>
+
+static int topology_update;
+static int topology_hmp;
+
+int arch_update_cpu_topology(void)
+{
+	return topology_update;
+}
+
+static void rebuild_sds_workfn(struct work_struct *work)
+{
+	topology_update = 1;
+	rebuild_sched_domains();
+	topology_update = 0;
+}
+
+static DECLARE_WORK(rebuild_sds_work, rebuild_sds_workfn);
+
+static void check_rebuild_sched_domains(void)
+{
+	unsigned long cpu_scale;
+	int i, hmp = 0;
+
+	i = cpumask_first(cpu_possible_mask);
+	cpu_scale = topology_get_cpu_scale(NULL, i);
+
+	while ((i = cpumask_next(i, cpu_possible_mask)) < nr_cpu_ids) {
+		if (cpu_scale != topology_get_cpu_scale(NULL, i)) {
+			hmp = 1;
+			break;
+		}
+	}
+
+	if (topology_hmp != hmp) {
+		topology_hmp = hmp;
+		schedule_work(&rebuild_sds_work);
+	}
+}
 
 DEFINE_PER_CPU(unsigned long, freq_scale) = SCHED_CAPACITY_SCALE;
 
@@ -77,6 +116,8 @@ static ssize_t cpu_capacity_store(struct device *dev,
 	mutex_lock(&cpu_scale_mutex);
 	for_each_cpu(i, &cpu_topology[this_cpu].core_sibling)
 		topology_set_cpu_scale(i, new_capacity);
+
+	check_rebuild_sched_domains();
 	mutex_unlock(&cpu_scale_mutex);
 
 	return count;
@@ -126,6 +167,7 @@ void topology_normalize_cpu_scale(void)
 		pr_debug("cpu_capacity: CPU%d cpu_capacity=%lu\n",
 			cpu, topology_get_cpu_scale(NULL, cpu));
 	}
+	check_rebuild_sched_domains();
 	mutex_unlock(&cpu_scale_mutex);
 }
 
