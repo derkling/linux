@@ -1136,8 +1136,8 @@
 
 			cls0: cls0 {
 				polling-delay = <1000>;
-				polling-delay-passive = <100>;
-				sustainable-power = <4500>;
+				polling-delay-passive = <25>;
+				sustainable-power = <4000>;
 
 				/* sensor ID */
 				thermal-sensors = <&tsensor 1>;
@@ -1166,6 +1166,11 @@
 						trip = <&target>;
 						contribution = <512>;
 						cooling-device = <&cpu4 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+					};
+					map2 {
+						trip = <&target>;
+						contribution = <1024>;
+						cooling-device = <&gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
 					};
 				};
 			};
