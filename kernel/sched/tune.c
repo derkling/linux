@@ -52,18 +52,23 @@ threshold_gains[] = {
 };
 
 static int
-__schedtune_accept_deltas(int nrg_delta, int cap_delta,
+__schedtune_accept_deltas(struct energy_env *eenv,
 			  int perf_boost_idx, int perf_constrain_idx)
 {
+	int nrg_delta = eenv->nrg_delta;
+	int prf_delta = eenv->prf_delta;
 	int payoff = -INT_MAX;
 	int gain_idx = -1;
 
 	/* Performance Boost (B) region */
-	if (nrg_delta >= 0 && cap_delta > 0)
+	if (nrg_delta >= 0 && prf_delta > 0) {
 		gain_idx = perf_boost_idx;
+	}
+
 	/* Performance Constraint (C) region */
-	else if (nrg_delta < 0 && cap_delta <= 0)
+	else if (nrg_delta < 0 && prf_delta <= 0) {
 		gain_idx = perf_constrain_idx;
+	}
 
 	/* Default: reject schedule candidate */
 	if (gain_idx == -1)
@@ -74,31 +79,31 @@ __schedtune_accept_deltas(int nrg_delta, int cap_delta,
 	 *
 	 * - Performance Boost (B) region
 	 *
-	 *   Condition: nrg_delta > 0 && cap_delta > 0
+	 *   Condition: nrg_delta > 0 && prf_delta > 0
 	 *   Payoff criteria:
-	 *     cap_gain / nrg_gain  < cap_delta / nrg_delta =
-	 *     cap_gain * nrg_delta < cap_delta * nrg_gain
+	 *     cap_gain / nrg_gain  < prf_delta / nrg_delta =
+	 *     cap_gain * nrg_delta < prf_delta * nrg_gain
 	 *   Note that since both nrg_gain and nrg_delta are positive, the
 	 *   inequality does not change. Thus:
 	 *
-	 *     payoff = (cap_delta * nrg_gain) - (cap_gain * nrg_delta)
+	 *     payoff = (prf_delta * nrg_gain) - (cap_gain * nrg_delta)
 	 *
 	 * - Performance Constraint (C) region
 	 *
-	 *   Condition: nrg_delta < 0 && cap_delta < 0
+	 *   Condition: nrg_delta < 0 && prf_delta < 0
 	 *   payoff criteria:
-	 *     cap_gain / nrg_gain  > cap_delta / nrg_delta =
-	 *     cap_gain * nrg_delta < cap_delta * nrg_gain
+	 *     cap_gain / nrg_gain  > prf_delta / nrg_delta =
+	 *     cap_gain * nrg_delta < prf_delta * nrg_gain
 	 *   Note that since nrg_gain > 0 while nrg_delta < 0, the
 	 *   inequality change. Thus:
 	 *
-	 *     payoff = (cap_delta * nrg_gain) - (cap_gain * nrg_delta)
+	 *     payoff = (prf_delta * nrg_gain) - (cap_gain * nrg_delta)
 	 *
 	 * This means that, in case of same positive defined {cap,nrg}_gain
 	 * for both the B and C regions, we can use the same payoff formula
 	 * where a positive value represents the accept condition.
 	 */
-	payoff  = cap_delta * threshold_gains[gain_idx].nrg_gain;
+	payoff  = prf_delta * threshold_gains[gain_idx].nrg_gain;
 	payoff -= nrg_delta * threshold_gains[gain_idx].cap_gain;
 
 	return payoff;
@@ -165,34 +170,35 @@ root_schedtune = {
 };
 
 int
-schedtune_accept_deltas(int nrg_delta, int cap_delta,
-			struct task_struct *task)
+schedtune_accept_deltas(struct energy_env *eenv)
 {
+	int nrg_delta = eenv->nrg_delta;
+	int prf_delta = eenv->prf_delta;
 	struct schedtune *ct;
 	int perf_boost_idx;
 	int perf_constrain_idx;
 
 	/* Optimal (O) region */
-	if (nrg_delta < 0 && cap_delta > 0) {
-		trace_sched_tune_filter(nrg_delta, cap_delta, 0, 0, 1, 0);
+	if (nrg_delta < 0 && prf_delta > 0) {
+		trace_sched_tune_filter(nrg_delta, prf_delta, 0, 0, 1, 0);
 		return INT_MAX;
 	}
 
 	/* Suboptimal (S) region */
-	if (nrg_delta > 0 && cap_delta < 0) {
-		trace_sched_tune_filter(nrg_delta, cap_delta, 0, 0, -1, 5);
+	if (nrg_delta > 0 && prf_delta < 0) {
+		trace_sched_tune_filter(nrg_delta, prf_delta, 0, 0, -1, 5);
 		return -INT_MAX;
 	}
 
 	/* Get task specific perf Boost/Constraints indexes */
 	rcu_read_lock();
-	ct = task_schedtune(task);
+	ct = task_schedtune(eenv->task);
 	perf_boost_idx = ct->perf_boost_idx;
 	perf_constrain_idx = ct->perf_constrain_idx;
 	rcu_read_unlock();
 
-	return __schedtune_accept_deltas(nrg_delta, cap_delta,
-			perf_boost_idx, perf_constrain_idx);
+	return __schedtune_accept_deltas(eenv, perf_boost_idx,
+					 perf_constrain_idx);
 }
 
 /*
@@ -745,23 +751,25 @@ schedtune_init_cgroups(void)
 #else /* CONFIG_CGROUP_SCHEDTUNE */
 
 int
-schedtune_accept_deltas(int nrg_delta, int cap_delta,
-			struct task_struct *task)
+schedtune_accept_deltas(struct energy_env *eenv)
 {
+	int nrg_delta = eenv->nrg_delta;
+	int prf_delta = eenv->prf_delta;
+
 	/* Optimal (O) region */
-	if (nrg_delta < 0 && cap_delta > 0) {
-		trace_sched_tune_filter(nrg_delta, cap_delta, 0, 0, 1, 0);
+	if (nrg_delta < 0 && prf_delta > 0) {
+		trace_sched_tune_filter(nrg_delta, prf_delta, 0, 0, 1, 0);
 		return INT_MAX;
 	}
 
 	/* Suboptimal (S) region */
-	if (nrg_delta > 0 && cap_delta < 0) {
-		trace_sched_tune_filter(nrg_delta, cap_delta, 0, 0, -1, 5);
+	if (nrg_delta > 0 && prf_delta < 0) {
+		trace_sched_tune_filter(nrg_delta, prf_delta, 0, 0, -1, 5);
 		return -INT_MAX;
 	}
 
-	return __schedtune_accept_deltas(nrg_delta, cap_delta,
-			perf_boost_idx, perf_constrain_idx);
+	return __schedtune_accept_deltas(eenv, perf_boost_idx,
+					 perf_constrain_idx);
 }
 
 #endif /* CONFIG_CGROUP_SCHEDTUNE */

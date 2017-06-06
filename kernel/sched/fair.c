@@ -5845,10 +5845,7 @@ energy_diff(struct energy_env *eenv)
 		goto out;
 	}
 
-	eenv->payoff = schedtune_accept_deltas(
-			eenv->nrg_delta,
-			eenv->prf_delta,
-			eenv->task);
+	eenv->payoff = schedtune_accept_deltas(eenv);
 
 out:
 
