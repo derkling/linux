@@ -87,6 +87,15 @@ SCHED_FEAT(ENERGY_AWARE, false)
 SCHED_FEAT(ENERGY_FILTER, true)
 
 /*
+ * SchedTune. Use system-wide energy normalization for PE filtering.
+ * When this feature is enabled, SchedTune evaluates energy differences in
+ * absolute terms, i.e. how much they impact with respect to the overall
+ * power consumed when all the CPUs have 100% utilization.
+ */
+SCHED_FEAT(ENERGY_NORMALIZE, false)
+
+
+/*
  * UtilEstimation. Use estimated utilization to filter PELT reported CPU and
  * TASKs utilization.
  */

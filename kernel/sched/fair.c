@@ -5607,6 +5607,11 @@ static inline bool cpu_in_sg(struct sched_group *sg, int cpu)
 
 #ifdef CONFIG_SCHED_TUNE
 static inline int normalize_energy(int energy_diff);
+static inline int relative_energy(unsigned int nrg_before, unsigned nrg_after);
+static inline bool nrg_normalize(void)
+{
+	return sched_feat(ENERGY_NORMALIZE);
+}
 
 #define eenv_before(__X) eenv->before.__X
 #define eenv_after(__X)  eenv->after.__X
@@ -5662,7 +5667,11 @@ __update_perf_energy_deltas(struct energy_env *eenv)
 
 	/* Performance and Energy (percentage) variations */
 	eenv->prf_delta = eenv_delta(perf_idx);
-	eenv->nrg_delta = normalize_energy(eenv_delta(energy));
+	if (nrg_normalize())
+		eenv->nrg_delta = normalize_energy(eenv_delta(energy));
+	else
+		eenv->nrg_delta = relative_energy(eenv_before(energy),
+						  eenv_after(energy));
 
 }
 #endif
@@ -5739,6 +5748,40 @@ static inline int __energy_diff(struct energy_env *eenv)
 
 struct target_nrg schedtune_target_nrg;
 extern bool schedtune_initialized;
+
+static inline int
+relative_energy(unsigned int nrg_before, unsigned nrg_after)
+{
+	/*
+	 * Relative energy normalization is defined as:
+	 *
+	 *    (nrg_after - nrg_before) / max(nrg_before, nrg_after)
+	 *
+	 * representing an index of energy variation which is:
+	 *  - positive: if energy is increasing
+	 *  - negative: if energy is decreasing
+	 * with a magnitude which is proportional to how much energy is
+	 * changing given the relative maximum.
+	 *
+	 * For example:
+	 *
+	 * nrg_before   nrg_after   nrg_index
+	 *        100          50       -512  we will spend 50% less energy
+	 *         50         100        512  we will spend 2 times more energy
+	 *        100          90       -102  we will save 10% energy
+	 *         10         100        921  we will spend 10 times more energy
+	 */
+	int value = SCHED_CAPACITY_SHIFT;
+
+	value *= abs((int)nrg_after - (int)nrg_before);
+	value /= max(nrg_before, nrg_after);
+
+	if (nrg_after < nrg_before)
+		return -value;
+
+	return value;
+}
+
 /*
  * System energy normalization
  * Returns the normalized value, in the range [0..SCHED_CAPACITY_SCALE],
