@@ -1049,8 +1049,15 @@ TRACE_EVENT(sched_energy_perf_deltas,
 );
 
 /*
- * Tracepoint for schedtune_tasks_update
+ * Tracepoint for sched_tune_filter
  */
+#define schedtune_region_symbolic(region) \
+       __print_symbolic(region, \
+               { EENV_FILTER_OPTIMAL,		"Optimal" }, \
+               { EENV_FILTER_BOOST,		"Boost" }, \
+               { EENV_FILTER_SUBOPTIMAL,	"Suboptimal" }, \
+               { EENV_FILTER_CONSTRAIN,		"Constraint" })
+
 TRACE_EVENT(sched_tune_filter,
 
 	TP_PROTO(int nrg_delta, int cap_delta,
@@ -1077,10 +1084,12 @@ TRACE_EVENT(sched_tune_filter,
 		__entry->region		= region;
 	),
 
-	TP_printk("nrg_delta=%d cap_delta=%d nrg_gain=%d cap_gain=%d payoff=%d region=%d",
+	TP_printk("nrg_delta=%d cap_delta=%d nrg_gain=%d cap_gain=%d payoff=%d region=%s",
 		__entry->nrg_delta, __entry->cap_delta,
 		__entry->nrg_gain, __entry->cap_gain,
-		__entry->payoff, __entry->region)
+		__entry->payoff,
+		schedtune_region_symbolic(__entry->region) \
+	)
 );
 
 /*

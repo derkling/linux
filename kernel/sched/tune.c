@@ -108,6 +108,11 @@ __schedtune_accept_deltas(struct energy_env *eenv,
 	payoff  = prf_delta * threshold_gains[gain_idx].nrg_gain;
 	payoff -= nrg_delta * threshold_gains[gain_idx].cap_gain;
 
+	trace_sched_tune_filter(nrg_delta, prf_delta,
+		threshold_gains[gain_idx].nrg_gain,
+		threshold_gains[gain_idx].cap_gain,
+		payoff, eenv->reason);
+
 	return payoff;
 }
 
@@ -183,14 +188,16 @@ schedtune_accept_deltas(struct energy_env *eenv)
 	/* Optimal (O) region */
 	if (nrg_delta < 0 && prf_delta > 0) {
 		eenv->reason = EENV_FILTER_OPTIMAL;
-		trace_sched_tune_filter(nrg_delta, prf_delta, 0, 0, 1, 0);
+		trace_sched_tune_filter(nrg_delta, prf_delta, 0, 0,
+					SCHED_CAPACITY_SCALE, eenv->reason);
 		return INT_MAX;
 	}
 
 	/* Suboptimal (S) region */
 	if (nrg_delta > 0 && prf_delta < 0) {
 		eenv->reason = EENV_FILTER_SUBOPTIMAL;
-		trace_sched_tune_filter(nrg_delta, prf_delta, 0, 0, -1, 5);
+		trace_sched_tune_filter(nrg_delta, prf_delta, 0, 0,
+					-SCHED_CAPACITY_SCALE, eenv->reason);
 		return -INT_MAX;
 	}
 
@@ -763,14 +770,16 @@ schedtune_accept_deltas(struct energy_env *eenv)
 	/* Optimal (O) region */
 	if (nrg_delta < 0 && prf_delta > 0) {
 		eenv->reason = EENV_FILTER_OPTIMAL;
-		trace_sched_tune_filter(nrg_delta, prf_delta, 0, 0, 1, 0);
+		trace_sched_tune_filter(nrg_delta, prf_delta, 0, 0,
+					SCHED_CAPACITY_SCALE, eenv->reason);
 		return INT_MAX;
 	}
 
 	/* Suboptimal (S) region */
 	if (nrg_delta > 0 && prf_delta < 0) {
 		eenv->reason = EENV_FILTER_SUBOPTIMAL;
-		trace_sched_tune_filter(nrg_delta, prf_delta, 0, 0, -1, 5);
+		trace_sched_tune_filter(nrg_delta, prf_delta, 0, 0,
+					-SCHED_CAPACITY_SCALE, eenv->reason);
 		return -INT_MAX;
 	}
 
