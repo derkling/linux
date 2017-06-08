@@ -30,4 +30,6 @@ unsigned long topology_get_freq_scale(struct sched_domain *sd, int cpu)
 	return per_cpu(freq_scale, cpu);
 }
 
+int topology_cpu_flags(void);
+
 #endif /* _LINUX_ARCH_TOPOLOGY_H_ */
