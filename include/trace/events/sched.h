@@ -886,6 +886,15 @@ TRACE_EVENT(sched_boost_task,
 		  __entry->margin)
 );
 
+#define energy_diff_reason_symbolic(reason) \
+       __print_symbolic(reason, \
+               { EENV_NO_FILTER,		"No Filter" }, \
+               { EENV_NO_BOOST,			"No Boost" }, \
+               { EENV_FILTER_OPTIMAL,		"Optimal Accept" }, \
+               { EENV_FILTER_BOOST,		"Boost Filter" }, \
+               { EENV_FILTER_SUBOPTIMAL,	"Suboptimal Filter" }, \
+               { EENV_FILTER_CONSTRAIN,		"Constraint Reject" })
+
 /*
  * Tracepoint for accounting sched group energy
  */
@@ -916,6 +925,7 @@ TRACE_EVENT(sched_energy_diff,
 		__field( int,		prf_d	)
 
 		__field( int,		payoff	)
+		__field( int,		reason	)
 	),
 
 	TP_fast_assign(
@@ -939,13 +949,14 @@ TRACE_EVENT(sched_energy_diff,
 		__entry->prf_d	= eenv->prf_delta;
 
 		__entry->payoff	= eenv->payoff;
+		__entry->reason	= eenv->reason;
 	),
 
 	TP_printk("pid=%d comm=%s cpu_src=%d cpu_dst=%d utl_dlt=%d "
 		  "sgu_bfr=%u sgu_aft=%u "
 		  "cap_bfr=%u cap_aft=%u "
 		  "prf_dlt=%d nrg_dlt=%d "
-		  "payoff=%d",
+		  "payoff=%d reason=%s",
 		__entry->pid,   __entry->comm,
 		__entry->cpu_s, __entry->cpu_d,
 		__entry->utl_d,
@@ -953,7 +964,9 @@ TRACE_EVENT(sched_energy_diff,
 		__entry->cap_b, __entry->cap_a,
 		__entry->prf_d,
 		__entry->nrg_d,
-		__entry->payoff)
+		__entry->payoff,
+		energy_diff_reason_symbolic(__entry->reason)
+	)
 
 );
 

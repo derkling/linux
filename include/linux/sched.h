@@ -1198,6 +1198,35 @@ typedef int (*sched_domain_flags_f)(void);
 typedef
 const struct sched_group_energy * const(*sched_domain_energy_f)(int cpu);
 
+enum payoff_reason {
+
+	/* SchedTune Filtering Disabled */
+
+	/*
+	 * Use only energy diff: optimize for energy minimization
+	 * i.e. standard EAS behaviors
+	 */
+	EENV_NO_FILTER			= 0x00,
+
+	/* SchedTune Filtering Enabled, not boosted task */
+
+	/*
+	 * Vertical PESpace cut: standard EAS behaviors
+	 */
+	EENV_NO_BOOST,
+
+	/* SchedTune Filtering Enabled, boosted task */
+
+	/* Scheule candaite on "O" subspace */
+	EENV_FILTER_OPTIMAL		= 0x10,
+	/* Scheule candaite on "B" subspace */
+	EENV_FILTER_BOOST,
+	/* Scheule candaite on "S" subspace */
+	EENV_FILTER_SUBOPTIMAL,
+	/* Scheule candaite on "C" subspace */
+	EENV_FILTER_CONSTRAIN,
+};
+
 #define SDTL_OVERLAP	0x01
 
 struct sd_data {

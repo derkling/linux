@@ -5834,6 +5834,7 @@ energy_diff(struct energy_env *eenv)
 	/* Conpute "absolute" energy diff */
 	__energy_diff(eenv);
 	if (!filter_energy()) {
+		eenv->reason = EENV_NO_FILTER;
 		ret = eenv->nrg_delta;
 		goto out;
 	}
@@ -5841,6 +5842,7 @@ energy_diff(struct energy_env *eenv)
 	/* Return energy diff when boost margin is 0 */
 	boost = schedtune_task_boost(eenv->task);
 	if (boost == 0) {
+		eenv->reason = EENV_NO_BOOST;
 		eenv->payoff = -eenv->nrg_delta;
 		goto out;
 	}

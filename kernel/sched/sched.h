@@ -978,6 +978,7 @@ struct energy_env {
 
 	int			cap_idx;
 	int			payoff;
+	enum payoff_reason	reason;
 
 	int nrg_delta;
 	int prf_delta;

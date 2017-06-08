@@ -63,11 +63,13 @@ __schedtune_accept_deltas(struct energy_env *eenv,
 	/* Performance Boost (B) region */
 	if (nrg_delta >= 0 && prf_delta > 0) {
 		gain_idx = perf_boost_idx;
+		eenv->reason = EENV_FILTER_BOOST;
 	}
 
 	/* Performance Constraint (C) region */
 	else if (nrg_delta < 0 && prf_delta <= 0) {
 		gain_idx = perf_constrain_idx;
+		eenv->reason = EENV_FILTER_CONSTRAIN;
 	}
 
 	/* Default: reject schedule candidate */
@@ -180,12 +182,14 @@ schedtune_accept_deltas(struct energy_env *eenv)
 
 	/* Optimal (O) region */
 	if (nrg_delta < 0 && prf_delta > 0) {
+		eenv->reason = EENV_FILTER_OPTIMAL;
 		trace_sched_tune_filter(nrg_delta, prf_delta, 0, 0, 1, 0);
 		return INT_MAX;
 	}
 
 	/* Suboptimal (S) region */
 	if (nrg_delta > 0 && prf_delta < 0) {
+		eenv->reason = EENV_FILTER_SUBOPTIMAL;
 		trace_sched_tune_filter(nrg_delta, prf_delta, 0, 0, -1, 5);
 		return -INT_MAX;
 	}
@@ -758,12 +762,14 @@ schedtune_accept_deltas(struct energy_env *eenv)
 
 	/* Optimal (O) region */
 	if (nrg_delta < 0 && prf_delta > 0) {
+		eenv->reason = EENV_FILTER_OPTIMAL;
 		trace_sched_tune_filter(nrg_delta, prf_delta, 0, 0, 1, 0);
 		return INT_MAX;
 	}
 
 	/* Suboptimal (S) region */
 	if (nrg_delta > 0 && prf_delta < 0) {
+		eenv->reason = EENV_FILTER_SUBOPTIMAL;
 		trace_sched_tune_filter(nrg_delta, prf_delta, 0, 0, -1, 5);
 		return -INT_MAX;
 	}
