@@ -61,6 +61,11 @@ static void check_rebuild_sched_domains(void)
 	}
 }
 
+int topology_cpu_flags(void)
+{
+	return topology_hmp ? SD_ASYM_CPUCAPACITY : 0;
+}
+
 DEFINE_PER_CPU(unsigned long, freq_scale) = SCHED_CAPACITY_SCALE;
 
 void arch_set_freq_scale(struct cpumask *cpus, unsigned long cur_freq,
