@@ -624,6 +624,7 @@ static int download_firmware(struct ll_device *lldev)
 			skb = __hci_cmd_sync(lldev->hu.hdev, cmd->opcode, cmd->plen, &cmd->speed, HCI_INIT_TIMEOUT);
 			if (IS_ERR(skb)) {
 				bt_dev_err(lldev->hu.hdev, "send command failed\n");
+				err = PTR_ERR(skb);
 				goto out_rel_fw;
 			}
 			kfree_skb(skb);
@@ -707,6 +708,7 @@ static int hci_ti_probe(struct serdev_device *serdev)
 	struct hci_uart *hu;
 	struct ll_device *lldev;
 	u32 max_speed = 3000000;
+	int err;
 
 	lldev = devm_kzalloc(&serdev->dev, sizeof(struct ll_device), GFP_KERNEL);
 	if (!lldev)
@@ -719,6 +721,12 @@ static int hci_ti_probe(struct serdev_device *serdev)
 	lldev->enable_gpio = devm_gpiod_get_optional(&serdev->dev, "enable", GPIOD_OUT_LOW);
 	if (IS_ERR(lldev->enable_gpio))
 		return PTR_ERR(lldev->enable_gpio);
+
+	err = gpiod_direction_output(lldev->enable_gpio, 0);
+	if (unlikely(err)) {
+		bt_dev_err(hu->hdev, "unable to configure enable-gpio");
+		return err;
+	}
 
 	of_property_read_u32(serdev->dev.of_node, "max-speed", &max_speed);
 	hci_uart_set_speeds(hu, 115200, max_speed);
