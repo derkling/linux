@@ -1268,6 +1268,10 @@ drm_do_probe_ddc_edid(void *data, u8 *buf, unsigned int block, size_t len)
 	return ret == xfers ? 0 : -1;
 }
 
+static int edid_retry = CONFIG_DRM_EDID_RETRY;
+module_param_named(edid_retry, edid_retry, int, 0600);
+MODULE_PARM_DESC(edid_retry, "Maximum number of EDID query retries");
+
 /**
  * drm_do_get_edid - get EDID data using a custom EDID block read function
  * @connector: connector we're probing
@@ -1292,7 +1296,9 @@ struct edid *drm_do_get_edid(struct drm_connector *connector,
 	int i, j = 0, valid_extensions = 0;
 	u8 *block, *new;
 	bool print_bad_edid = !connector->bad_edid_counter || (drm_debug & DRM_UT_KMS);
+	int retry = edid_retry;
 
+retry:
 	if ((block = kmalloc(EDID_LENGTH, GFP_KERNEL)) == NULL)
 		return NULL;
 
@@ -1364,6 +1370,13 @@ carp:
 
 out:
 	kfree(block);
+
+	if (retry--) {
+		dev_warn(connector->dev->dev, "%s: EDID retry\n",
+			 connector->name);
+		goto retry;
+	}
+
 	return NULL;
 }
 EXPORT_SYMBOL_GPL(drm_do_get_edid);

@@ -74,6 +74,10 @@ config DRM_FB_MULTIPLE_BUFFERING
 	int "Set multiple buffering for FB helper compatible drivers"
 	default 2
 
+config DRM_EDID_RETRY
+	int "Maximum number of EDID query retries"
+	default 5
+
 config DRM_LOAD_EDID_FIRMWARE
 	bool "Allow to specify an EDID data set instead of probing for it"
 	depends on DRM_KMS_HELPER
