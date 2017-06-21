@@ -448,6 +448,8 @@ static int sugov_kthread_create(struct sugov_policy *sg_policy)
 	}
 
 	sg_policy->thread = thread;
+	if (cpumask_first(policy->related_cpus) == 1)
+		cpumask_clear_cpu(2, policy->related_cpus);
 	kthread_bind_mask(thread, policy->related_cpus);
 	init_irq_work(&sg_policy->irq_work, sugov_irq_work);
 	mutex_init(&sg_policy->work_lock);
