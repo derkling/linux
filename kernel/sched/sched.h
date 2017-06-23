@@ -657,9 +657,6 @@ struct root_domain {
 	 */
 	bool should_idle_balance;
 
-	/* Indicate one or more cpus over-utilized (tipping point) */
-	bool overutilized;
-
 	/*
 	 * The bit corresponding to a CPU gets set here if such CPU has more
 	 * than one runnable -deadline task (as it is below for RT tasks).
