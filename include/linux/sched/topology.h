@@ -96,6 +96,8 @@ struct sched_domain_shared {
 	unsigned long	nr_running;
 	unsigned long	load;
 	unsigned long	capacity;
+
+	bool            overutilized;
 };
 
 struct sched_domain {
