@@ -26,6 +26,14 @@
 #include <asm/topology.h>
 
 /*
+ * In case cpufreq is not compiled in, freq_scale has to be provided by the
+ * ARCH instead of drivers/cpufreq/cpufreq.c.
+ */
+#ifndef CONFIG_CPU_FREQ
+DEFINE_PER_CPU(unsigned long, freq_scale) = SCHED_CAPACITY_SCALE;
+#endif
+
+/*
  * cpu capacity scale management
  */
 
