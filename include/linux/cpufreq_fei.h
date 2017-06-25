@@ -9,6 +9,7 @@
 #define _LINUX_CPUFREQ_FEI_H
 
 DECLARE_PER_CPU(unsigned long, freq_scale);
+DECLARE_PER_CPU(unsigned long, max_freq_scale);
 
 struct sched_domain;
 
@@ -18,6 +19,9 @@ unsigned long cpufreq_scale_freq_capacity(struct sched_domain *sd, int cpu)
 	return per_cpu(freq_scale, cpu);
 }
 
-unsigned long cpufreq_scale_max_freq_capacity(int cpu);
+static inline unsigned long cpufreq_scale_max_freq_capacity(int cpu)
+{
+	return per_cpu(max_freq_scale, cpu);
+}
 
 #endif /* _LINUX_CPUFREQ_FEI_H */
