@@ -3,8 +3,8 @@
 
 #ifdef CONFIG_ARM_CPU_TOPOLOGY
 
-#include <linux/cpufreq.h>
 #include <linux/cpumask.h>
+#include <linux/cpufreq_fei.h>
 
 struct cputopo_arm {
 	int thread_id;
