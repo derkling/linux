@@ -25,9 +25,8 @@ const struct cpumask *cpu_coregroup_mask(int cpu);
 
 DECLARE_PER_CPU(unsigned long, cpu_scale);
 
-struct sched_domain;
 static inline
-unsigned long scale_cpu_capacity(struct sched_domain *sd, int cpu)
+unsigned long scale_cpu_capacity(void __always_unused *sd, int cpu)
 {
 #ifdef CONFIG_CPU_FREQ
 	unsigned long max_cap_scale = cpufreq_scale_max_freq_capacity(cpu);
