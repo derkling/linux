@@ -28,7 +28,6 @@ DECLARE_PER_CPU(unsigned long, cpu_scale);
 static inline
 unsigned long scale_cpu_capacity(void __always_unused *sd, int cpu)
 {
-#ifdef CONFIG_CPU_FREQ
 	unsigned long max_cap_scale = cpufreq_scale_max_freq_capacity(cpu);
 
 	/*
@@ -36,14 +35,9 @@ unsigned long scale_cpu_capacity(void __always_unused *sd, int cpu)
 	 * include linux/sched.h here.
 	 */
 	return per_cpu(cpu_scale, cpu) * max_cap_scale >> 10;
-#else
-	return per_cpu(cpu_scale, cpu);
-#endif
 }
 
-#ifdef CONFIG_CPU_FREQ
 #define arch_scale_freq_capacity cpufreq_scale_freq_capacity
-#endif
 #define arch_scale_cpu_capacity scale_cpu_capacity
 
 #include <asm-generic/topology.h>
