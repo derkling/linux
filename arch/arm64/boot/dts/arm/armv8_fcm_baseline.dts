@@ -170,6 +170,77 @@
 		reg = <0x0 0x80000000 0x4 0x0>;
 	};
 
+	CORTEX_A55_L2: l2-cache0 {
+		compatible = "cache";
+	};
+
+	CORTEX_A75_L2: l2-cache1 {
+		compatible = "cache";
+	};
+
+	energy-costs {
+		CPU_COST_CORTEX_A55: core-cost0 {
+			busy-cost-data = <
+				276    37
+				388    48
+				501    59
+				547    88
+				593   117
+			>;
+			idle-cost-data = <
+			      33
+			      33
+			      0
+			      0
+			>;
+		};
+		CPU_COST_CORTEX_A75: core-cost1 {
+			busy-cost-data = <
+				501   174
+				675   259
+				849   344
+				937   435
+			       1024   526
+			>;
+			idle-cost-data = <
+			      48
+			      48
+			       0
+			       0
+			>;
+		};
+		CLUSTER_COST_CORTEX_A55: cluster-cost0 {
+			busy-cost-data = <
+				276    41
+				388    64
+				501    86
+				547    97
+				593   107
+			>;
+			idle-cost-data = <
+				41
+				41
+				41
+				14
+			>;
+		};
+		CLUSTER_COST_CORTEX_A75: cluster-cost1 {
+			busy-cost-data = <
+				501    48
+				675    61
+				849    73
+				937    90
+			       1024   107
+			>;
+			idle-cost-data = <
+				 48
+				 48
+				 48
+				 18
+			>;
+		};
+	};
+
 	cpus {
 		#address-cells = <0x1>;
 		#size-cells = <0x0>;
@@ -218,6 +289,9 @@
 			reg = <0x0>;
 			enable-method = "spin-table";
 			cpu-release-addr = <0x0 0x8000fff8>;
+			next-level-cache = <&CORTEX_A55_L2>;
+			sched-energy-costs = <&CPU_COST_CORTEX_A55 &CLUSTER_COST_CORTEX_A55>;
+
 		};
 
 		cpu1: cpu@1 {
@@ -226,6 +300,8 @@
 			reg = <0x1>;
 			enable-method = "spin-table";
 			cpu-release-addr = <0x0 0x8000fff8>;
+			next-level-cache = <&CORTEX_A55_L2>;
+			sched-energy-costs = <&CPU_COST_CORTEX_A55 &CLUSTER_COST_CORTEX_A55>;
 		};
 
 		cpu2: cpu@2 {
@@ -234,6 +310,8 @@
 			reg = <0x2>;
 			enable-method = "spin-table";
 			cpu-release-addr = <0x0 0x8000fff8>;
+			next-level-cache = <&CORTEX_A55_L2>;
+			sched-energy-costs = <&CPU_COST_CORTEX_A55 &CLUSTER_COST_CORTEX_A55>;
 		};
 
 		cpu3: cpu@3 {
@@ -242,6 +320,8 @@
 			reg = <0x3>;
 			enable-method = "spin-table";
 			cpu-release-addr = <0x0 0x8000fff8>;
+			next-level-cache = <&CORTEX_A55_L2>;
+			sched-energy-costs = <&CPU_COST_CORTEX_A55 &CLUSTER_COST_CORTEX_A55>;
 		};
 
 		cpu4: cpu@104 {
@@ -250,6 +330,8 @@
 			reg = <0x104>;
 			enable-method = "spin-table";
 			cpu-release-addr = <0x0 0x8000fff8>;
+			next-level-cache = <&CORTEX_A75_L2>;
+			sched-energy-costs = <&CPU_COST_CORTEX_A75 &CLUSTER_COST_CORTEX_A75>;
 		};
 
 		cpu5: cpu@105 {
@@ -258,6 +340,8 @@
 			reg = <0x105>;
 			enable-method = "spin-table";
 			cpu-release-addr = <0x0 0x8000fff8>;
+			next-level-cache = <&CORTEX_A75_L2>;
+			sched-energy-costs = <&CPU_COST_CORTEX_A75 &CLUSTER_COST_CORTEX_A75>;
 		};
 
 		cpu6: cpu@106 {
@@ -266,6 +350,8 @@
 			reg = <0x106>;
 			enable-method = "spin-table";
 			cpu-release-addr = <0x0 0x8000fff8>;
+			next-level-cache = <&CORTEX_A75_L2>;
+			sched-energy-costs = <&CPU_COST_CORTEX_A75 &CLUSTER_COST_CORTEX_A75>;
 		};
 
 		cpu7: cpu@107 {
@@ -274,6 +360,8 @@
 			reg = <0x107>;
 			enable-method = "spin-table";
 			cpu-release-addr = <0x0 0x8000fff8>;
+			next-level-cache = <&CORTEX_A75_L2>;
+			sched-energy-costs = <&CPU_COST_CORTEX_A75 &CLUSTER_COST_CORTEX_A75>;
 		};
 	};
 
