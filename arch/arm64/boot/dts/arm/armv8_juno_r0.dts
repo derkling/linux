@@ -281,7 +281,6 @@
 			reg = <0x0>;
 			enable-method = "spin-table";
 			next-level-cache = <&A53_L2>;
-			/* cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>; */
 			sched-energy-costs = <&CPU_COST_A53 &CLUSTER_COST_A53>;
 			cpu-release-addr = <0x0 0x8000fff8>;
 		};
@@ -292,7 +291,6 @@
 			reg = <0x1>;
 			enable-method = "spin-table";
 			next-level-cache = <&A53_L2>;
-			/* cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>; */
 			sched-energy-costs = <&CPU_COST_A53 &CLUSTER_COST_A53>;
 			cpu-release-addr = <0x0 0x8000fff8>;
 		};
@@ -303,7 +301,6 @@
 			reg = <0x2>;
 			enable-method = "spin-table";
 			next-level-cache = <&A53_L2>;
-			/* cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>; */
 			sched-energy-costs = <&CPU_COST_A53 &CLUSTER_COST_A53>;
 			cpu-release-addr = <0x0 0x8000fff8>;
 		};
@@ -314,7 +311,6 @@
 			reg = <0x3>;
 			enable-method = "spin-table";
 			next-level-cache = <&A53_L2>;
-			/* cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>; */
 			sched-energy-costs = <&CPU_COST_A53 &CLUSTER_COST_A53>;
 			cpu-release-addr = <0x0 0x8000fff8>;
 		};
@@ -326,7 +322,6 @@
 			reg = <0x104>;
 			enable-method = "spin-table";
 			next-level-cache = <&A57_L2>;
-			/* cpu-idle-states = <&CPU_SLEEP_1 &CLUSTER_SLEEP_1>; */
 			sched-energy-costs = <&CPU_COST_A57 &CLUSTER_COST_A57>;
 			cpu-release-addr = <0x0 0x8000fff8>;
 		};
@@ -337,7 +332,6 @@
 			reg = <0x105>;
 			enable-method = "spin-table";
 			next-level-cache = <&A57_L2>;
-			/* cpu-idle-states = <&CPU_SLEEP_1 &CLUSTER_SLEEP_1>; */
 			sched-energy-costs = <&CPU_COST_A57 &CLUSTER_COST_A57>;
 			cpu-release-addr = <0x0 0x8000fff8>;
 		};
