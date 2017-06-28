@@ -5285,37 +5285,6 @@ static inline bool energy_aware(void)
 }
 
 /*
- * energy_diff - support the computation of the estimated energy impact in
- * moving a "task"'s "util_delta" from "src_cpu" to "dst_cpu".
- */
-struct energy_env {
-	struct sched_group	*sg_top;
-	struct sched_group	*sg_cap;
-	struct sched_group 	*sg;
-
-	struct task_struct	*task;
-
-	int			util_delta;
-	int			src_cpu;
-	int			dst_cpu;
-
-	int			cap_idx;
-	int			payoff;
-
-	int nrg_delta;
-	int prf_delta;
-	struct {
-		unsigned int energy;
-		unsigned int capacity;
-		unsigned int group_util;
-
-		int speedup_idx;
-		int delay_idx;
-		int perf_idx;
-	} before, after;
-};
-
-/*
  * __cpu_norm_util() returns the cpu util relative to a specific capacity,
  * i.e. it's busy ratio, in the range [0..SCHED_LOAD_SCALE] which is useful for
  * energy calculations. Using the scale-invariant util returned by
@@ -5715,7 +5684,18 @@ static inline int __energy_diff(struct energy_env *eenv)
 	 * Normalize E and P variations
 	 */
 	__update_perf_energy_deltas(eenv);
+#else
+	/*
+	 * When SCHED_TUNE is enabled, we trace this elsewhere
+	 * to get more information about performance indices.
+	 * Thus, without SCHED_TUNE, the payoff is reported to be
+	 * undefined, which means task placement decisions will be
+	 * based purely on energy_diff.
+	 */
+	eenv->payoff = 0;
+	trace_sched_energy_diff(eenv);
 #endif
+
 	return eenv->nrg_delta;
 }
 
@@ -5770,21 +5750,28 @@ static inline int
 energy_diff(struct energy_env *eenv)
 {
 	int boost;
+	int ret;
 
 	/* Conpute "absolute" energy diff */
 	__energy_diff(eenv);
-	if (!filter_energy())
-		return eenv->nrg_delta;
+	if (!filter_energy()) {
+		ret = eenv->nrg_delta;
+		goto out;
+	}
 
 	/* Return energy diff when boost margin is 0 */
 	boost = schedtune_task_boost(eenv->task);
-	if (boost == 0)
-		return eenv->nrg_delta;
+	if (boost == 0) {
+		eenv->payoff = -eenv->nrg_delta;
+		goto out;
+	}
 
 	eenv->payoff = schedtune_accept_deltas(
 			eenv->nrg_delta,
 			eenv->prf_delta,
 			eenv->task);
+
+out:
 
 	/*
 	 * When SchedTune is enabled, the energy_diff() function will return
@@ -5794,7 +5781,11 @@ energy_diff(struct energy_env *eenv)
 	 * positive payoff, which is the condition for the acceptance of
 	 * a scheduling decision
 	 */
-	return -eenv->payoff;
+	ret = -eenv->payoff;
+
+	trace_sched_energy_diff(eenv);
+
+	return ret;
 }
 #else /* CONFIG_SCHED_TUNE */
 #define energy_diff(eenv) __energy_diff(eenv)

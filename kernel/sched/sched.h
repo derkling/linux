@@ -961,6 +961,36 @@ static inline unsigned int group_first_cpu(struct sched_group *group)
 
 extern int group_balance_cpu(struct sched_group *sg);
 
+/*
+ * energy_diff - support the computation of the estimated energy impact in
+ * moving a "task"'s "util_delta" from "src_cpu" to "dst_cpu".
+ */
+struct energy_env {
+	struct sched_group	*sg_top;
+	struct sched_group	*sg_cap;
+	struct sched_group 	*sg;
+
+	int			src_cpu;
+	int			dst_cpu;
+	int			util_delta;
+	struct task_struct	*task;
+
+	int			cap_idx;
+	int			payoff;
+
+	int nrg_delta;
+	int prf_delta;
+	struct {
+		unsigned int energy;
+		unsigned int capacity;
+		unsigned int group_util;
+
+		int speedup_idx;
+		int delay_idx;
+		int perf_idx;
+	} before, after;
+};
+
 #else
 
 static inline void sched_ttwu_pending(void) { }
