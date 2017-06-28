@@ -5284,27 +5284,29 @@ static inline bool energy_aware(void)
 	return sched_feat(ENERGY_AWARE);
 }
 
+/*
+ * energy_diff - support the computation of the estimated energy impact in
+ * moving a "task"'s "util_delta" from "src_cpu" to "dst_cpu".
+ */
 struct energy_env {
 	struct sched_group	*sg_top;
 	struct sched_group	*sg_cap;
-	int			cap_idx;
+	struct sched_group 	*sg;
+
+	struct task_struct	*task;
+
 	int			util_delta;
 	int			src_cpu;
 	int			dst_cpu;
-	int			energy;
+
+	int			cap_idx;
 	int			payoff;
-	struct task_struct	*task;
+
+	int nrg_delta;
+	int prf_delta;
 	struct {
-		int before;
-		int after;
-		int delta;
-		int diff;
-	} nrg;
-	struct {
-		int before;
-		int after;
-		int delta;
-	} cap;
+		unsigned int energy;
+	} before, after;
 };
 
 /*
@@ -5364,10 +5366,11 @@ unsigned long group_max_util(struct energy_env *eenv)
  * estimate (more busy).
  */
 static unsigned
-long group_norm_util(struct energy_env *eenv, struct sched_group *sg)
+long group_norm_util(struct energy_env *eenv)
 {
 	int i, delta;
 	unsigned long util_sum = 0;
+	struct sched_group *sg = eenv->sg;
 	unsigned long capacity = sg->sge->cap_states[eenv->cap_idx].cap;
 
 	for_each_cpu(i, sched_group_cpus(sg)) {
@@ -5380,20 +5383,20 @@ long group_norm_util(struct energy_env *eenv, struct sched_group *sg)
 	return util_sum;
 }
 
-static int find_new_capacity(struct energy_env *eenv,
-	const struct sched_group_energy * const sge)
+static int find_new_capacity(struct energy_env *eenv)
 {
-	int idx;
+	const struct sched_group_energy const *sge = eenv->sg->sge;
 	unsigned long util = group_max_util(eenv);
+	int idx;
 
 	for (idx = 0; idx < sge->nr_cap_states; idx++) {
 		if (sge->cap_states[idx].cap >= util)
 			break;
 	}
-
+	/* Keep track of SG's capacity index */
 	eenv->cap_idx = idx;
 
-	return idx;
+	return eenv->cap_idx;
 }
 
 static int group_idle_state(struct sched_group *sg)
@@ -5411,21 +5414,76 @@ static int group_idle_state(struct sched_group *sg)
 }
 
 /*
- * sched_group_energy(): Computes the absolute energy consumption of cpus
- * belonging to the sched_group including shared resources shared only by
- * members of the group. Iterates over all cpus in the hierarchy below the
- * sched_group starting from the bottom working it's way up before going to
- * the next cpu until all cpus are covered at all levels. The current
- * implementation is likely to gather the same util statistics multiple times.
- * This can probably be done in a faster but more complex way.
- * Note: sched_group_energy() may fail when racing with sched_domain updates.
+ * Compute energy for the eenv's SG (i.e. eenv->sg).
+ *
+ * This works in two iterations:
+ * first iteration, before moving the utilization, i.e.
+ *   util_delta == 0
+ * second iteration, after moving the utilization, i.e.
+ *   util_delta != 0
  */
-static int sched_group_energy(struct energy_env *eenv)
+static void before_after_energy(struct energy_env *eenv)
+{
+
+	int sg_busy_energy, sg_idle_energy;
+	struct sched_group *sg = eenv->sg;
+	unsigned long util_delta;
+	unsigned long group_util;
+	int cap_idx, idle_idx;
+	int total_energy = 0;
+	unsigned int cap;
+	bool after;
+
+	util_delta = eenv->util_delta;
+	eenv->util_delta = 0;
+	after = false;
+
+compute_after:
+
+	idle_idx = group_idle_state(sg);
+
+	cap_idx = find_new_capacity(eenv);
+	group_util = group_norm_util(eenv);
+	cap = sg->sge->cap_states[cap_idx].cap;
+
+	sg_busy_energy   = group_util * sg->sge->cap_states[cap_idx].power;
+	sg_busy_energy >>= SCHED_CAPACITY_SHIFT;
+
+	sg_idle_energy   = SCHED_CAPACITY_SCALE - group_util;
+	sg_idle_energy  *= sg->sge->idle_states[idle_idx].power;
+	sg_idle_energy >>= SCHED_CAPACITY_SHIFT;
+
+	total_energy = sg_busy_energy + sg_idle_energy;
+
+	/* Account for "after" metrics */
+	if (after) {
+		eenv->after.energy += total_energy;
+		return;
+	}
+
+	/* Account for "before" metrics */
+	eenv->before.energy += total_energy;
+
+	/* Setup eenv for the "after" case */
+	eenv->util_delta = util_delta;
+	after = true;
+
+	goto compute_after;
+
+}
+
+/*
+ * compute_energy() computes the absolute variation in energy consumption by
+ * moving eenv.util_delta from eenv.src_cpu to eenv.dst_cpu.
+ *
+ * Note: compute_energy() may fail when racing with sched_domain updates.
+ */
+static int compute_energy(struct energy_env *eenv)
 {
 	struct sched_domain *sd;
-	int cpu, total_energy = 0;
 	struct cpumask visit_cpus;
 	struct sched_group *sg;
+	int cpu;
 
 	WARN_ON(!eenv->sg_top->sge);
 
@@ -5441,7 +5499,6 @@ static int sched_group_energy(struct energy_env *eenv)
 		 * sched_group?
 		 */
 		sd = rcu_dereference(per_cpu(sd_scs, cpu));
-
 		if (sd && sd->parent)
 			sg_shared_cap = sd->parent->groups;
 
@@ -5453,41 +5510,12 @@ static int sched_group_energy(struct energy_env *eenv)
 				break;
 
 			do {
-				unsigned long group_util;
-				int sg_busy_energy, sg_idle_energy;
-				int cap_idx, idle_idx;
-
+				eenv->sg_cap = sg;
 				if (sg_shared_cap && sg_shared_cap->group_weight >= sg->group_weight)
 					eenv->sg_cap = sg_shared_cap;
-				else
-					eenv->sg_cap = sg;
 
-				cap_idx = find_new_capacity(eenv, sg->sge);
-
-				if (sg->group_weight == 1) {
-					/* Remove capacity of src CPU (before task move) */
-					if (eenv->util_delta == 0 &&
-					    cpumask_test_cpu(eenv->src_cpu, sched_group_cpus(sg))) {
-						eenv->cap.before = sg->sge->cap_states[cap_idx].cap;
-						eenv->cap.delta -= eenv->cap.before;
-					}
-					/* Add capacity of dst CPU  (after task move) */
-					if (eenv->util_delta != 0 &&
-					    cpumask_test_cpu(eenv->dst_cpu, sched_group_cpus(sg))) {
-						eenv->cap.after = sg->sge->cap_states[cap_idx].cap;
-						eenv->cap.delta += eenv->cap.after;
-					}
-				}
-
-				idle_idx = group_idle_state(sg);
-				group_util = group_norm_util(eenv, sg);
-				sg_busy_energy = (group_util * sg->sge->cap_states[cap_idx].power)
-								>> SCHED_CAPACITY_SHIFT;
-				sg_idle_energy = ((SCHED_LOAD_SCALE-group_util)
-								* sg->sge->idle_states[idle_idx].power)
-								>> SCHED_CAPACITY_SHIFT;
-
-				total_energy += sg_busy_energy + sg_idle_energy;
+				eenv->sg = sg;
+				before_after_energy(eenv);
 
 				if (!sd->child)
 					cpumask_xor(&visit_cpus, &visit_cpus, sched_group_cpus(sg));
@@ -5510,7 +5538,6 @@ next_cpu:
 		continue;
 	}
 
-	eenv->energy = total_energy;
 	return 0;
 }
 
@@ -5530,61 +5557,39 @@ static inline int __energy_diff(struct energy_env *eenv)
 {
 	struct sched_domain *sd;
 	struct sched_group *sg;
-	int sd_cpu = -1, energy_before = 0, energy_after = 0;
-	int diff, margin;
-
-	struct energy_env eenv_before = {
-		.util_delta	= 0,
-		.src_cpu	= eenv->src_cpu,
-		.dst_cpu	= eenv->dst_cpu,
-		.nrg		= { 0, 0, 0, 0},
-		.cap		= { 0, 0, 0 },
-	};
+	int sd_cpu = -1;
+	int margin;
 
 	if (eenv->src_cpu == eenv->dst_cpu)
 		return 0;
 
 	sd_cpu = (eenv->src_cpu != -1) ? eenv->src_cpu : eenv->dst_cpu;
 	sd = rcu_dereference(per_cpu(sd_ea, sd_cpu));
-
 	if (!sd)
 		return 0; /* Error */
 
 	sg = sd->groups;
-
 	do {
-		if (cpu_in_sg(sg, eenv->src_cpu) || cpu_in_sg(sg, eenv->dst_cpu)) {
-			eenv_before.sg_top = eenv->sg_top = sg;
+		if (!cpu_in_sg(sg, eenv->src_cpu) &&
+		    !cpu_in_sg(sg, eenv->dst_cpu))
+			continue;
 
-			if (sched_group_energy(&eenv_before))
-				return 0; /* Invalid result abort */
-			energy_before += eenv_before.energy;
+		eenv->sg_top = sg;
+		if (compute_energy(eenv))
+			return 0; /* Invalid result abort */
 
-			/* Keep track of SRC cpu (before) capacity */
-			eenv->cap.before = eenv_before.cap.before;
-			eenv->cap.delta = eenv_before.cap.delta;
-
-			if (sched_group_energy(eenv))
-				return 0; /* Invalid result abort */
-			energy_after += eenv->energy;
-		}
 	} while (sg = sg->next, sg != sd->groups);
 
-	eenv->nrg.before = energy_before;
-	eenv->nrg.after = energy_after;
-	eenv->nrg.diff = eenv->nrg.after - eenv->nrg.before;
-	eenv->payoff = 0;
+	eenv->nrg_delta = eenv->after.energy - eenv->before.energy;
+
 	/*
 	 * Dead-zone margin preventing too many migrations.
 	 */
+	margin = eenv->before.energy >> 6; /* ~1.56% */
+	if (abs(eenv->nrg_delta) < margin)
+		eenv->nrg_delta = 0;
 
-	margin = eenv->nrg.before >> 6; /* ~1.56% */
-
-	diff = eenv->nrg.after - eenv->nrg.before;
-
-	eenv->nrg.diff = (abs(diff) < margin) ? 0 : eenv->nrg.diff;
-
-	return eenv->nrg.diff;
+	return eenv->nrg_delta;
 }
 
 #ifdef CONFIG_SCHED_TUNE
@@ -5633,22 +5638,17 @@ static inline int
 energy_diff(struct energy_env *eenv)
 {
 	int boost = schedtune_task_boost(eenv->task);
-	int nrg_delta;
 
 	/* Conpute "absolute" energy diff */
 	__energy_diff(eenv);
 
 	/* Return energy diff when boost margin is 0 */
 	if (boost == 0)
-		return eenv->nrg.diff;
-
-	/* Compute normalized energy diff */
-	nrg_delta = normalize_energy(eenv->nrg.diff);
-	eenv->nrg.delta = nrg_delta;
+		return eenv->nrg_delta;
 
 	eenv->payoff = schedtune_accept_deltas(
-			eenv->nrg.delta,
-			eenv->cap.delta,
+			eenv->nrg_delta,
+			eenv->prf_delta,
 			eenv->task);
 
 	/*
