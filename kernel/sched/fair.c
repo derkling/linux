@@ -5761,15 +5761,23 @@ normalize_energy(int energy_diff)
 	return (energy_diff < 0) ? -normalized_nrg : normalized_nrg;
 }
 
+static inline bool filter_energy(void)
+{
+	return sched_feat(ENERGY_FILTER);
+}
+
 static inline int
 energy_diff(struct energy_env *eenv)
 {
-	int boost = schedtune_task_boost(eenv->task);
+	int boost;
 
 	/* Conpute "absolute" energy diff */
 	__energy_diff(eenv);
+	if (!filter_energy())
+		return eenv->nrg_delta;
 
 	/* Return energy diff when boost margin is 0 */
+	boost = schedtune_task_boost(eenv->task);
 	if (boost == 0)
 		return eenv->nrg_delta;
 
