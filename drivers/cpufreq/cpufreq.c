@@ -347,6 +347,28 @@ static void __cpufreq_notify_transition(struct cpufreq_policy *policy,
 	}
 }
 
+/*********************************************************************
+ *           FREQUENCY INVARIANT CPU CAPACITY SUPPORT                *
+ *********************************************************************/
+
+#ifndef arch_set_freq_scale
+static void arch_set_freq_scale(struct cpumask *cpus, unsigned long cur_freq,
+				unsigned long max_freq)
+{}
+#endif
+
+static void cpufreq_set_freq_scale(struct cpufreq_policy *policy,
+				   struct cpufreq_freqs *freqs)
+{
+	unsigned long cur_freq = freqs ? freqs->new : policy->cur;
+	unsigned long max_freq = policy->cpuinfo.max_freq;
+
+	pr_debug("cpus %*pbl cur/cur max freq %lu/%lu kHz\n",
+		 cpumask_pr_args(policy->related_cpus), cur_freq, max_freq);
+
+	arch_set_freq_scale(policy->related_cpus, cur_freq, max_freq);
+}
+
 /**
  * cpufreq_notify_transition - call notifier chain and adjust_jiffies
  * on frequency transition.
@@ -404,6 +426,8 @@ wait:
 	policy->transition_task = current;
 
 	spin_unlock(&policy->transition_lock);
+
+	cpufreq_set_freq_scale(policy, freqs);
 
 	cpufreq_notify_transition(policy, freqs, CPUFREQ_PRECHANGE);
 }
@@ -2202,6 +2226,8 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
 	/* notification of the new policy */
 	blocking_notifier_call_chain(&cpufreq_policy_notifier_list,
 			CPUFREQ_NOTIFY, new_policy);
+
+	cpufreq_set_freq_scale(new_policy, NULL);
 
 	policy->min = new_policy->min;
 	policy->max = new_policy->max;
