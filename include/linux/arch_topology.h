@@ -4,6 +4,8 @@
 #ifndef _LINUX_ARCH_TOPOLOGY_H_
 #define _LINUX_ARCH_TOPOLOGY_H_
 
+#include <linux/cpumask.h>
+
 void topology_normalize_cpu_scale(void);
 
 struct device_node;
@@ -13,5 +15,10 @@ struct sched_domain;
 unsigned long topology_get_cpu_scale(struct sched_domain *sd, int cpu);
 
 void topology_set_cpu_scale(unsigned int cpu, unsigned long capacity);
+
+unsigned long topology_get_freq_scale(struct sched_domain *sd, int cpu);
+
+void topology_set_freq_scale(struct cpumask *cpus, unsigned long cur_freq,
+			     unsigned long max_freq);
 
 #endif /* _LINUX_ARCH_TOPOLOGY_H_ */
