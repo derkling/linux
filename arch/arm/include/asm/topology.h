@@ -24,6 +24,11 @@ void init_cpu_topology(void);
 void store_cpu_topology(unsigned int cpuid);
 const struct cpumask *cpu_coregroup_mask(int cpu);
 
+#include <linux/arch_topology.h>
+
+/* Subscribe for input data for frequency-invariant load-tracking */
+#define arch_set_freq_scale topology_set_freq_scale
+
 #else
 
 static inline void init_cpu_topology(void) { }
