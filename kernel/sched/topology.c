@@ -1147,10 +1147,14 @@ sd_init(struct sched_domain_topology_level *tl,
 	 */
 
 	if (sd->flags & SD_ASYM_CPUCAPACITY) {
-		struct sched_domain *t = sd;
+		struct sched_domain *t = sd->child;
 
-		for_each_lower_domain(t)
+		sd->flags |= SD_BALANCE_WAKE;
+
+		for_each_lower_domain(t) {
 			t->flags |= SD_BALANCE_WAKE;
+			t->flags &= ~SD_ASYM_CPUCAPACITY;
+		}
 	}
 
 	if (sd->flags & SD_SHARE_CPUCAPACITY) {
