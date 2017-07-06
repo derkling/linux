@@ -50,9 +50,33 @@ static void check_rebuild_sched_domains(void)
 	}
 }
 
-int topology_flags(void)
+int topology_flags(const struct cpumask *mask)
 {
-	return topology_hmp ? SD_ASYM_CPUCAPACITY : 0;
+	unsigned long cpu_scale;
+	int i, flags = 0;
+
+	i = cpumask_first(mask);
+	cpu_scale = topology_get_cpu_scale(NULL, i);
+
+	while ((i = cpumask_next(i, mask)) < nr_cpu_ids) {
+		if (cpu_scale != topology_get_cpu_scale(NULL, i)) {
+			flags |= SD_ASYM_CPUCAPACITY;
+			break;
+		}
+	}
+
+	return flags;
+}
+
+int topology_cpu_flags(void)
+{
+	/*
+	 * The cpumask of any cpu can be used here since the scheduler
+	 * requires symmetric setups.
+	 */
+	const struct cpumask *mask = cpu_cpu_mask(smp_processor_id());
+
+	return topology_flags(mask);
 }
 
 DEFINE_PER_CPU(unsigned long, freq_scale) = SCHED_CAPACITY_SCALE;
