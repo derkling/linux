@@ -25,6 +25,7 @@
 
 static int topology_update;
 static int topology_hmp;
+static int topology_cpufreq;
 
 int arch_update_cpu_topology(void)
 {
@@ -43,30 +44,40 @@ static DECLARE_WORK(rebuild_sds_work, rebuild_sds_workfn);
 static void check_rebuild_sched_domains(void)
 {
 	unsigned long cpu_scale;
-	int i, hmp = 0;
+	int i, hmp = 0, cpufreq = 1;
 
 	i = cpumask_first(cpu_possible_mask);
 	cpu_scale = topology_get_cpu_scale(NULL, i);
 
 	while ((i = cpumask_next(i, cpu_possible_mask)) < nr_cpu_ids) {
-		if (cpu_scale != topology_get_cpu_scale(NULL, i)) {
+		struct cpufreq_policy *policy = cpufreq_cpu_get(i);
+
+		if (!policy)
+			cpufreq = 0;
+
+		if (cpu_scale != topology_get_cpu_scale(NULL, i))
 			hmp = 1;
-			break;
-		}
 	}
 
-	if (topology_hmp != hmp) {
+	if (topology_hmp != hmp || !topology_cpufreq) {
 		topology_hmp = hmp;
+		topology_cpufreq = cpufreq;
 		schedule_work(&rebuild_sds_work);
 	}
 }
 
 int topology_flags(const struct cpumask *mask)
 {
+	struct cpufreq_policy *policy;
 	unsigned long cpu_scale;
 	int i, flags = 0;
 
 	i = cpumask_first(mask);
+	policy = cpufreq_cpu_get(i);
+
+	if (policy && cpumask_equal(mask, policy->related_cpus))
+		flags |= SD_SHARE_CAP_STATES;
+
 	cpu_scale = topology_get_cpu_scale(NULL, i);
 
 	while ((i = cpumask_next(i, mask)) < nr_cpu_ids) {
@@ -78,6 +89,19 @@ int topology_flags(const struct cpumask *mask)
 
 	return flags;
 }
+
+#ifdef CONFIG_SCHED_MC
+int topology_core_flags(void)
+{
+	/*
+	 * The cpumask of any cpu can be used here since the scheduler
+	 * requires symmetric setups.
+	 */
+	const struct cpumask *mask = cpu_coregroup_mask(smp_processor_id());
+
+	return cpu_core_flags() | topology_flags(mask);
+}
+#endif
 
 int topology_cpu_flags(void)
 {

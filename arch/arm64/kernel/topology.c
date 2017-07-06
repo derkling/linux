@@ -287,7 +287,7 @@ static struct sched_domain_topology_level arm64_topology[] = {
 	{ cpu_smt_mask, cpu_smt_flags, SD_INIT_NAME(SMT) },
 #endif
 #ifdef CONFIG_SCHED_MC
-	{ cpu_coregroup_mask, cpu_core_flags, SD_INIT_NAME(MC) },
+	{ cpu_coregroup_mask, topology_core_flags, SD_INIT_NAME(MC) },
 #endif
 	{ cpu_cpu_mask, topology_cpu_flags, SD_INIT_NAME(DIE) },
 	{ NULL, }
