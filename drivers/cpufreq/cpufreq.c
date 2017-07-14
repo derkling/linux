@@ -395,8 +395,8 @@ unsigned long cpufreq_scale_freq_capacity(struct sched_domain *sd, int cpu)
 	return per_cpu(freq_scale, cpu);
 }
 
-static void
-scale_max_freq_capacity(const cpumask_t *cpus, unsigned long policy_max_freq)
+void
+cpufreq_set_scale_max_freq_capacity(const cpumask_t *cpus, unsigned long policy_max_freq)
 {
 	unsigned long scale, max_freq;
 	int cpu = cpumask_first(cpus);
