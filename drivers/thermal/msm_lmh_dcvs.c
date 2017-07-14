@@ -27,6 +27,7 @@
 #include <linux/cpu_cooling.h>
 #include <linux/bitmap.h>
 #include <linux/msm_thermal.h>
+#include <linux/cpufreq.h>
 
 #include <asm/smp_plat.h>
 #include <asm/cacheflush.h>
@@ -146,6 +147,7 @@ static uint32_t msm_lmh_mitigation_notify(struct msm_lmh_dcvs_hw *hw)
 	rcu_read_unlock();
 	max_limit = FREQ_HZ_TO_KHZ(freq_val);
 
+	cpufreq_set_scale_max_freq_capacity(&hw->core_map, max_limit);
 	trace_lmh_dcvs_freq(cpumask_first(&hw->core_map), max_limit);
 
 notify_exit:
