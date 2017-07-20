@@ -26,6 +26,7 @@
  */
 
 #include <linux/bitmap.h>
+#include <linux/delay.h>
 #include <linux/export.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
@@ -370,6 +371,19 @@ void scmi_one_xfer_put(const struct scmi_handle *handle, struct scmi_xfer *xfer)
 	up(&minfo->sem_xfer_count);
 }
 
+static bool
+scmi_xfer_poll_done(const struct scmi_info *info, struct scmi_xfer *xfer)
+{
+	struct scmi_shared_mem *mem = info->tx_payload;
+	u16 xfer_id = MSG_XTRACT_TOKEN(mem->msg_header);
+
+	if (xfer->hdr.seq != xfer_id)
+		return false;
+
+	return mem->channel_status & (SCMI_SHMEM_CHAN_STAT_CHANNEL_ERROR |
+		SCMI_SHMEM_CHAN_STAT_CHANNEL_FREE);
+}
+
 /**
  * scmi_do_xfer() - Do one transfer
  *
@@ -396,14 +410,24 @@ int scmi_do_xfer(const struct scmi_handle *handle, struct scmi_xfer *xfer)
 	/* mbox_send_message returns non-negative value on success, so reset */
 	ret = 0;
 
-	/* And we wait for the response. */
-	timeout = msecs_to_jiffies(info->desc->max_rx_timeout_ms);
-	if (!wait_for_completion_timeout(&xfer->done, timeout)) {
-		dev_err(dev, "mbox timed out in resp(caller: %pF)\n",
-			(void *)_RET_IP_);
-		ret = -ETIMEDOUT;
-	} else if (xfer->hdr.status) {
-		ret = scmi_to_linux_errno(xfer->hdr.status);
+	if (xfer->hdr.poll_completion) {
+		timeout = info->desc->max_rx_timeout_ms * 100;
+		while (!scmi_xfer_poll_done(info, xfer) && timeout--)
+			udelay(10);
+		if (timeout)
+			scmi_fetch_response(xfer, info->tx_payload);
+		else
+			ret = -ETIMEDOUT;
+	} else {
+		/* And we wait for the response. */
+		timeout = msecs_to_jiffies(info->desc->max_rx_timeout_ms);
+		if (!wait_for_completion_timeout(&xfer->done, timeout)) {
+			dev_err(dev, "mbox timed out in resp(caller: %pF)\n",
+				(void *)_RET_IP_);
+			ret = -ETIMEDOUT;
+		} else if (xfer->hdr.status) {
+			ret = scmi_to_linux_errno(xfer->hdr.status);
+		}
 	}
 	/*
 	 * NOTE: we might prefer not to need the mailbox ticker to manage the
