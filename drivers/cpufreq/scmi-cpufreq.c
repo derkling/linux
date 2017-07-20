@@ -65,6 +65,19 @@ scmi_cpufreq_set_target(struct cpufreq_policy *policy, unsigned int index)
 	return perf_ops->freq_set(priv->handle, priv->domain_id, freq, false);
 }
 
+static unsigned int scmi_cpufreq_fast_switch(struct cpufreq_policy *policy,
+					     unsigned int target_freq)
+{
+	struct scmi_data *priv = policy->driver_data;
+	struct scmi_perf_ops *perf_ops = priv->handle->perf_ops;
+
+	if (!perf_ops->freq_set(priv->handle, priv->domain_id,
+				target_freq * 1000, true))
+		return target_freq;
+
+	return __scmi_cpufreq_get_rate(policy, true);
+}
+
 static int
 scmi_get_sharing_cpus(struct device *cpu_dev, struct cpumask *cpumask)
 {
@@ -168,6 +181,7 @@ static int scmi_cpufreq_init(struct cpufreq_policy *policy)
 
 	policy->cpuinfo.transition_latency = latency;
 
+	policy->fast_switch_possible = true;
 	return 0;
 
 out_free_cpufreq_table:
@@ -184,6 +198,7 @@ static int scmi_cpufreq_exit(struct cpufreq_policy *policy)
 {
 	struct scmi_data *priv = policy->driver_data;
 
+	policy->fast_switch_possible = false;
 	cpufreq_cooling_unregister(priv->cdev);
 	dev_pm_opp_free_cpufreq_table(priv->cpu_dev, &policy->freq_table);
 	dev_pm_opp_cpumask_remove_table(policy->related_cpus);
@@ -232,6 +247,7 @@ static struct cpufreq_driver scmi_cpufreq_driver = {
 	.init			= scmi_cpufreq_init,
 	.exit			= scmi_cpufreq_exit,
 	.ready			= scmi_cpufreq_ready,
+	.fast_switch		= scmi_cpufreq_fast_switch,
 };
 
 static int scmi_cpufreq_probe(struct platform_device *pdev)
