@@ -5329,7 +5329,7 @@ static unsigned long __cpu_norm_util(int cpu, unsigned long capacity, int delta)
 	if (util >= capacity)
 		return SCHED_CAPACITY_SCALE;
 
-	return (util << SCHED_CAPACITY_SHIFT)/capacity;
+	return DIV_ROUND_UP(util << SCHED_CAPACITY_SHIFT, capacity);
 }
 
 static int calc_util_delta(struct energy_env *eenv, int cpu)
