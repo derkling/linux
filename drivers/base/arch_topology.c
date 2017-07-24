@@ -29,8 +29,12 @@ void arch_set_freq_scale(struct cpumask *cpus, unsigned long cur_freq,
 {
 	unsigned long scale;
 	int i;
+	char buf[16];
 
 	scale = (cur_freq << SCHED_CAPACITY_SHIFT) / max_freq;
+	scnprintf(buf, sizeof(buf), "%*pbl", cpumask_pr_args(cpus));
+	trace_printk("cpus=%s cur_freq=%lu max_freq=%lu scale=%lu",
+			buf, cur_freq, max_freq, scale);
 
 	for_each_cpu(i, cpus)
 		per_cpu(freq_scale, i) = scale;
