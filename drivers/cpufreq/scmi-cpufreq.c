@@ -72,8 +72,11 @@ static unsigned int scmi_cpufreq_fast_switch(struct cpufreq_policy *policy,
 	struct scmi_perf_ops *perf_ops = priv->handle->perf_ops;
 
 	if (!perf_ops->freq_set(priv->handle, priv->domain_id,
-				target_freq * 1000, true))
+				target_freq * 1000, true)) {
+		arch_set_freq_scale(policy->related_cpus, target_freq,
+				    policy->cpuinfo.max_freq);
 		return target_freq;
+	}
 
 	return __scmi_cpufreq_get_rate(policy, true);
 }
