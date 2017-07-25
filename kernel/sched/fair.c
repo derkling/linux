@@ -5449,7 +5449,7 @@ struct energy_env {
 	int			dst_cpu;
 	int			energy;
 	int			payoff;
-	struct task_struct	*task;
+	struct task_struct	*p;
 	struct {
 		int before;
 		int after;
@@ -5778,7 +5778,7 @@ static inline int __energy_diff(struct energy_env *eenv)
 	eenv->nrg.diff = eenv->nrg.after - eenv->nrg.before;
 	eenv->payoff = 0;
 #ifndef CONFIG_SCHED_TUNE
-	trace_sched_energy_diff(eenv->task,
+	trace_sched_energy_diff(eenv->p,
 			eenv->src_cpu, eenv->dst_cpu, eenv->util_delta,
 			eenv->nrg.before, eenv->nrg.after, eenv->nrg.diff,
 			eenv->cap.before, eenv->cap.after, eenv->cap.delta,
@@ -5842,7 +5842,7 @@ normalize_energy(int energy_diff)
 static inline int
 energy_diff(struct energy_env *eenv)
 {
-	int boost = schedtune_task_boost(eenv->task);
+	int boost = schedtune_task_boost(eenv->p);
 	int nrg_delta;
 
 	/* Conpute "absolute" energy diff */
@@ -5850,7 +5850,7 @@ energy_diff(struct energy_env *eenv)
 
 	/* Return energy diff when boost margin is 0 */
 	if (boost == 0) {
-		trace_sched_energy_diff(eenv->task,
+		trace_sched_energy_diff(eenv->p,
 				eenv->src_cpu, eenv->dst_cpu, eenv->util_delta,
 				eenv->nrg.before, eenv->nrg.after, eenv->nrg.diff,
 				eenv->cap.before, eenv->cap.after, eenv->cap.delta,
@@ -5865,9 +5865,9 @@ energy_diff(struct energy_env *eenv)
 	eenv->payoff = schedtune_accept_deltas(
 			eenv->nrg.delta,
 			eenv->cap.delta,
-			eenv->task);
+			eenv->p);
 
-	trace_sched_energy_diff(eenv->task,
+	trace_sched_energy_diff(eenv->p,
 			eenv->src_cpu, eenv->dst_cpu, eenv->util_delta,
 			eenv->nrg.before, eenv->nrg.after, eenv->nrg.diff,
 			eenv->cap.before, eenv->cap.after, eenv->cap.delta,
@@ -5999,7 +5999,7 @@ static inline unsigned long task_util_est(struct task_struct *p)
 	return util_est(sa, UTIL_EST_POLICY);
 }
 
-static inline unsigned long boosted_task_util(struct task_struct *task);
+static inline unsigned long boosted_task_util(struct task_struct *p);
 
 static inline bool __task_fits(struct task_struct *p, int cpu, int util)
 {
@@ -6076,16 +6076,16 @@ schedtune_cpu_margin(unsigned long util, int cpu)
 }
 
 static inline long
-schedtune_task_margin(struct task_struct *task)
+schedtune_task_margin(struct task_struct *p)
 {
-	int boost = schedtune_task_boost(task);
+	int boost = schedtune_task_boost(p);
 	unsigned long util;
 	long margin;
 
 	if (boost == 0)
 		return 0;
 
-	util = task_util(task);
+	util = task_util(p);
 	margin = schedtune_margin(util, boost);
 
 	return margin;
@@ -6100,7 +6100,7 @@ schedtune_cpu_margin(unsigned long util, int cpu)
 }
 
 static inline int
-schedtune_task_margin(struct task_struct *task)
+schedtune_task_margin(struct task_struct *p)
 {
 	return 0;
 }
@@ -6119,12 +6119,12 @@ boosted_cpu_util(int cpu)
 }
 
 static inline unsigned long
-boosted_task_util(struct task_struct *task)
+boosted_task_util(struct task_struct *p)
 {
-	unsigned long util = task_util(task);
-	long margin = schedtune_task_margin(task);
+	unsigned long util = task_util(p);
+	long margin = schedtune_task_margin(p);
 
-	trace_sched_boost_task(task, util, margin);
+	trace_sched_boost_task(p, util, margin);
 
 	return util + margin;
 }
@@ -6849,7 +6849,7 @@ static int select_energy_cpu_brute(struct task_struct *p, int prev_cpu, int sync
 			.util_delta     = task_util(p),
 			.src_cpu        = prev_cpu,
 			.dst_cpu        = target_cpu,
-			.task           = p,
+			.p              = p,
 		};
 
 
