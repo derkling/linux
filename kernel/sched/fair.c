@@ -5308,6 +5308,21 @@ struct energy_env {
 	} cap;
 };
 
+static unsigned long cpu_util_energy_wake(int cpu, int delta)
+{
+	unsigned long util = cpu_rq(cpu)->cfs.avg.util_avg;
+	unsigned long capacity = capacity_orig_of(cpu);
+
+#ifdef CONFIG_SCHED_WALT
+	if (!walt_disabled && sysctl_sched_use_walt_cpu_util)
+		util = walt_cpu_util_cum(cpu);
+#endif
+	delta += util;
+	if (delta < 0)
+		return 0;
+
+	return (delta >= capacity) ? capacity : delta;
+}
 /*
  * __cpu_norm_util() returns the cpu util relative to a specific capacity,
  * i.e. it's busy ratio, in the range [0..SCHED_LOAD_SCALE] which is useful for
@@ -5324,7 +5339,7 @@ struct energy_env {
  */
 static unsigned long __cpu_norm_util(int cpu, unsigned long capacity, int delta)
 {
-	int util = __cpu_util(cpu, delta);
+	int util = cpu_util_energy_wake(cpu, delta);
 
 	if (util >= capacity)
 		return SCHED_CAPACITY_SCALE;
@@ -5334,8 +5349,43 @@ static unsigned long __cpu_norm_util(int cpu, unsigned long capacity, int delta)
 
 static int calc_util_delta(struct energy_env *eenv, int cpu)
 {
+#ifdef CONFIG_SCHED_WALT
+	if (cpu == eenv->src_cpu) {
+		if (!walt_disabled && sysctl_sched_use_walt_task_util &&
+		    !walt_task_in_cum_window_demand(cpu_rq(cpu), eenv->task)) {
+			if (eenv->util_delta == 0)
+				/*
+				 * energy before - calculate energy cost when
+				 * the new task is placed onto src_cpu.  The
+				 * task is not on a runqueue so its util is not
+				 * in the WALT's cr_avg as it's discounted when
+				 * it slept last time.  Hence return task's util
+				 * as delta to calculate energy cost of src_cpu
+				 * as if the new task on it.
+				 */
+				return task_util(eenv->task);
+			/*
+			 * energy after - WALT's cr_avg already doesn't have the
+			 * new task's util accounted in.  Thus return 0 delta to
+			 * calculate energy cost of the src_cpu without the
+			 * task's util.
+			 */
+			return 0;
+		}
+		/*
+		 * Task is already on a runqueue for example while load
+		 * balancing.  WALT's cpu util already accounted the task's
+		 * util.  return 0 delta for energy before so energy calculation
+		 * to be done with the task's util accounted, return -task_util
+		 * for energy after so the calculation to be doen with
+		 * discounted task's util.
+		 */
+		return -eenv->util_delta;
+	}
+#else
 	if (cpu == eenv->src_cpu)
 		return -eenv->util_delta;
+#endif
 	if (cpu == eenv->dst_cpu)
 		return eenv->util_delta;
 	return 0;
@@ -5349,7 +5399,7 @@ unsigned long group_max_util(struct energy_env *eenv)
 
 	for_each_cpu(i, sched_group_cpus(eenv->sg_cap)) {
 		delta = calc_util_delta(eenv, i);
-		max_util = max(max_util, __cpu_util(i, delta));
+		max_util = max(max_util, cpu_util_energy_wake(i, delta));
 	}
 
 	return max_util;
@@ -5587,6 +5637,7 @@ static inline int __energy_diff(struct energy_env *eenv)
 		.dst_cpu	= eenv->dst_cpu,
 		.nrg		= { 0, 0, 0, 0},
 		.cap		= { 0, 0, 0 },
+		.task           = eenv->task,
 	};
 
 	if (eenv->src_cpu == eenv->dst_cpu)

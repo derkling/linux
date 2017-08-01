@@ -39,6 +39,11 @@ void walt_account_irqtime(int cpu, struct task_struct *curr, u64 delta,
 u64 walt_irqload(int cpu);
 int walt_cpu_high_irqload(int cpu);
 void reset_task_stats(struct task_struct *p);
+static inline u64 walt_cpu_util_cum(int cpu)
+{
+	return div64_u64(cpu_rq(cpu)->cum_window_demand,
+			 walt_ravg_window >> SCHED_CAPACITY_SHIFT);
+}
 
 #else /* CONFIG_SCHED_WALT */
 
