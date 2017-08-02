@@ -280,6 +280,7 @@ void store_cpu_topology(unsigned int cpuid)
 
 topology_populated:
 	update_siblings_masks(cpuid);
+	topology_detect_flags();
 }
 
 static void __init reset_cpu_topology(void)

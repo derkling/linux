@@ -7,6 +7,7 @@
 #include <linux/percpu.h>
 
 void topology_normalize_cpu_scale(void);
+int topology_detect_flags(void);
 
 struct device_node;
 int topology_parse_cpu_capacity(struct device_node *cpu_node, int cpu);
