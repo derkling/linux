@@ -53,6 +53,8 @@ static ssize_t cpu_capacity_show(struct device *dev,
 	return sprintf(buf, "%lu\n", topology_get_cpu_scale(NULL, cpu->dev.id));
 }
 
+static void update_topology_flags(void);
+
 static ssize_t cpu_capacity_store(struct device *dev,
 				  struct device_attribute *attr,
 				  const char *buf,
@@ -78,6 +80,9 @@ static ssize_t cpu_capacity_store(struct device *dev,
 		topology_set_cpu_scale(i, new_capacity);
 	mutex_unlock(&cpu_scale_mutex);
 
+	if (topology_detect_flags())
+		update_topology_flags();
+
 	return count;
 }
 
@@ -101,6 +106,86 @@ static int register_cpu_capacity_sysctl(void)
 	return 0;
 }
 subsys_initcall(register_cpu_capacity_sysctl);
+
+enum asym_cpucap_type { no_asym , asym_thread, asym_core, asym_die };
+static enum asym_cpucap_type asym_cpucap = no_asym;
+
+/*
+ * Walk cpu topology to determine sched_domain flags.
+ */
+int topology_detect_flags(void)
+{
+	unsigned long max_capacity, capacity;
+	enum asym_cpucap_type asym_level = no_asym;
+	int cpu, die_cpu, core, thread, flags_changed = 0;
+
+	for_each_possible_cpu(cpu) {
+		max_capacity = 0;
+
+		if (asym_level >= asym_thread)
+			goto check_core;
+
+		for_each_cpu(thread, topology_sibling_cpumask(cpu)) {
+			capacity = topology_get_cpu_scale(NULL, thread);
+
+			if (capacity > max_capacity) {
+				if (max_capacity != 0)
+					asym_level = asym_thread;
+
+				max_capacity = capacity;
+			}
+		}
+
+check_core:
+		if (asym_level >= asym_core)
+			goto check_die;
+
+		for_each_cpu(core, topology_core_cpumask(cpu)) {
+			capacity = topology_get_cpu_scale(NULL, core);
+
+			if (capacity > max_capacity) {
+				if (max_capacity != 0)
+					asym_level = asym_core;
+
+				max_capacity = capacity;
+			}
+		}
+check_die:
+		for_each_possible_cpu(die_cpu) {
+			capacity = topology_get_cpu_scale(NULL, die_cpu);
+
+			if (capacity > max_capacity) {
+				if (max_capacity != 0) {
+					asym_level = asym_die;
+					goto done;
+				}
+			}
+		}
+	}
+done:
+	/* Debug code */
+	switch (asym_level) {
+	case no_asym:
+		pr_info("asym_cpucap = no_asym\n");
+		break;
+	case asym_thread:
+		pr_info("asym_cpucap = asym_thread\n");
+		break;
+	case asym_core:
+		pr_info("asym_cpucap = asym_core\n");
+		break;
+	case asym_die:
+		pr_info("asym_cpucap = asym_die\n");
+		break;
+	}
+
+	if (asym_cpucap != asym_level) {
+		asym_cpucap = asym_level;
+		flags_changed = 1;
+	}
+
+	return flags_changed;
+}
 
 static u32 capacity_scale;
 static u32 *raw_capacity;
@@ -207,6 +292,8 @@ init_cpu_capacity_callback(struct notifier_block *nb,
 
 	if (cpumask_empty(cpus_to_visit)) {
 		topology_normalize_cpu_scale();
+		if (topology_detect_flags())
+			update_topology_flags();
 		free_raw_capacity();
 		pr_debug("cpu_capacity: parsing done\n");
 		schedule_work(&parsing_done_work);
