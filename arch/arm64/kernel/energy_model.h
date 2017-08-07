@@ -243,7 +243,23 @@ struct sched_group_energy *energy(int cpu, struct sched_group_energy **sge)
 static inline
 const struct sched_group_energy * const cpu_core_energy(int cpu)
 {
-	return core_energy ? energy(cpu, core_energy) : NULL;
+	struct sched_group_energy *sge = NULL;
+
+	if (core_energy) {
+		unsigned long capacity;
+		int max_cap_idx;
+
+		sge = energy(cpu, core_energy);
+		max_cap_idx = sge->nr_cap_states - 1;
+		capacity = sge->cap_states[max_cap_idx].cap;
+
+		printk_deferred("cpu=%d set cpu scale %lu from energy model\n",
+				cpu, capacity);
+
+		topology_set_cpu_scale(cpu, capacity);
+	}
+
+	return sge;
 }
 
 static inline
