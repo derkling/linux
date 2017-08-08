@@ -291,10 +291,26 @@ static void __init parse_dt_topology(void)
  */
 static void update_cpu_capacity(unsigned int cpu)
 {
-	if (!cpu_capacity(cpu) || cap_from_dt)
-		return;
+	const struct sched_group_energy *sge;
+	unsigned long capacity;
 
-	topology_set_cpu_scale(cpu, cpu_capacity(cpu) / middle_capacity);
+	sge = cpu_core_energy(cpu);
+
+	if (sge) {
+		int max_cap_idx;
+
+		max_cap_idx = sge->nr_cap_states - 1;
+		capacity = sge->cap_states[max_cap_idx].cap;
+
+		printk_deferred("cpu=%d set cpu scale %lu from energy model\n",
+				cpu, capacity);
+	} else {
+		if (!cpu_capacity(cpu) || cap_from_dt)
+			return;
+		capacity = cpu_capacity(cpu) / middle_capacity;
+	}
+
+	topology_set_cpu_scale(cpu, capacity);
 
 	pr_info("CPU%u: update cpu_capacity %lu\n",
 		cpu, topology_get_cpu_scale(NULL, cpu));
