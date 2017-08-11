@@ -63,6 +63,6 @@ static inline void reset_task_stats(struct task_struct *p) { }
 
 #endif /* CONFIG_SCHED_WALT */
 
-extern unsigned int walt_disabled;
+extern bool walt_disabled;
 
 #endif
