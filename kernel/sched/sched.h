@@ -1810,9 +1810,12 @@ static inline int cpu_util_est(int cpu)
 	return max(util, util_est(sa, UTIL_EST_LAST));
 }
 
+unsigned long boosted_cpu_util(int cpu);
+
 #else /* CONFIG_SMP */
 #define task_util_est(p) task_util(p)
 #define cpu_util_est(cpu) cpu_util(cpu)
+#define boosted_cpu_util(cpu) cpu_util(cpu)
 #endif
 
 #ifdef CONFIG_CPU_FREQ_GOV_SCHED
