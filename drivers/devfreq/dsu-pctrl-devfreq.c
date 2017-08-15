@@ -688,7 +688,7 @@ static int dsu_pctrl_setup(struct platform_device *pdev)
 
 	dsu->devfreq = devm_devfreq_add_device(&pdev->dev,
 					       dsu->devfreq_profile,
-					       DSU_PCTRL_GOVERNOR_NAME, NULL);
+					       "performance", NULL);
 
 	if (IS_ERR(dsu->devfreq)) {
 		dev_err(&pdev->dev, "registering to devfreq failed.\n");
