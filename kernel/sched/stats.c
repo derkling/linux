@@ -131,9 +131,29 @@ static const struct file_operations proc_schedstat_operations = {
 	.release = seq_release,
 };
 
+
+
+//---------------------------8<-----------------------------
+extern void printk_cpu_report(void);
+static int uclamp_open(struct inode *inode, struct file *file)
+{
+#ifdef CONFIG_UTIL_CLAMP
+	printk_cpu_report();
+#endif /* CONFIG_UTIL_CLAMP */
+	return 0;
+}
+
+static const struct file_operations proc_uclamp_operations = {
+	.open    = uclamp_open,
+};
+//---------------------------8<-----------------------------
+
+
+
 static int __init proc_schedstat_init(void)
 {
 	proc_create("schedstat", 0, NULL, &proc_schedstat_operations);
+	proc_create("uclamp", 0, NULL, &proc_uclamp_operations);
 	return 0;
 }
 subsys_initcall(proc_schedstat_init);
