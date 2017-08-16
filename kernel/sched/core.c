@@ -718,25 +718,83 @@ static void set_load_weight(struct task_struct *p, bool update_load)
 }
 
 #ifdef CONFIG_UCLAMP_TASK
+#define UCLAMP_BUCKET_DELTA (SCHED_CAPACITY_SCALE / CONFIG_UCLAMP_BUCKETS_COUNT)
+#define UCLAMP_BUCKET_UPPER (UCLAMP_BUCKET_DELTA  * CONFIG_UCLAMP_BUCKETS_COUNT)
+
+static inline unsigned int uclamp_bucket_id(unsigned int clamp_value)
+{
+	if (clamp_value >= UCLAMP_BUCKET_UPPER)
+		return UCLAMP_BUCKETS;
+	return clamp_value / UCLAMP_BUCKET_DELTA;
+}
+
+static inline unsigned int uclamp_bucket_value(unsigned int clamp_value)
+{
+	return UCLAMP_BUCKET_DELTA * uclamp_bucket_id(clamp_value);
+}
+
 static int __setscheduler_uclamp(struct task_struct *p,
 				 const struct sched_attr *attr)
 {
-	if (attr->sched_util_min > attr->sched_util_max)
-		return -EINVAL;
-	if (attr->sched_util_max > SCHED_CAPACITY_SCALE)
+	unsigned int lower_bound = p->uclamp[UCLAMP_MIN].value;
+	unsigned int upper_bound = p->uclamp[UCLAMP_MAX].value;
+
+	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN)
+		lower_bound = attr->sched_util_min;
+
+	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX)
+		upper_bound = attr->sched_util_max;
+
+	if (lower_bound > upper_bound ||
+	    upper_bound > SCHED_CAPACITY_SCALE)
 		return -EINVAL;
 
-	p->uclamp[UCLAMP_MIN] = attr->sched_util_min;
-	p->uclamp[UCLAMP_MAX] = attr->sched_util_max;
+	p->uclamp[UCLAMP_MIN].bucket_id = uclamp_bucket_id(lower_bound);
+	p->uclamp[UCLAMP_MAX].bucket_id = uclamp_bucket_id(upper_bound);
+	p->uclamp[UCLAMP_MIN].value = lower_bound;
+	p->uclamp[UCLAMP_MAX].value = upper_bound;
 
 	return 0;
 }
+
+static void uclamp_fork(struct task_struct *p, bool reset)
+{
+	unsigned int clamp_id;
+
+	if (unlikely(!p->sched_class->uclamp_enabled))
+		return;
+	if (likely(!reset))
+		return;
+
+	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
+		unsigned int clamp_value = uclamp_none(clamp_id);
+
+		p->uclamp[clamp_id].bucket_id = uclamp_bucket_id(clamp_value);
+		p->uclamp[clamp_id].value = clamp_value;
+	}
+}
+
+static void __init init_uclamp(void)
+{
+	unsigned int clamp_id;
+
+	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
+		struct uclamp_se *uc_se = &init_task.uclamp[clamp_id];
+		unsigned int clamp_value = uclamp_none(clamp_id);
+
+		uc_se->bucket_id = uclamp_bucket_id(clamp_value);
+		uc_se->value = clamp_value;
+	}
+}
+
 #else /* CONFIG_UCLAMP_TASK */
 static inline int __setscheduler_uclamp(struct task_struct *p,
 					const struct sched_attr *attr)
 {
 	return -EINVAL;
 }
+static inline void uclamp_fork(struct task_struct *p, bool reset) { }
+static inline void init_uclamp(void) { }
 #endif /* CONFIG_UCLAMP_TASK */
 
 static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
@@ -2320,6 +2378,7 @@ static inline void init_schedstats(void) {}
 int sched_fork(unsigned long clone_flags, struct task_struct *p)
 {
 	unsigned long flags;
+	bool reset;
 
 	__sched_fork(clone_flags, p);
 	/*
@@ -2337,7 +2396,8 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	/*
 	 * Revert to default priority/policy on fork if requested.
 	 */
-	if (unlikely(p->sched_reset_on_fork)) {
+	reset = p->sched_reset_on_fork;
+	if (unlikely(reset)) {
 		if (task_has_dl_policy(p) || task_has_rt_policy(p)) {
 			p->policy = SCHED_NORMAL;
 			p->static_prio = NICE_TO_PRIO(0);
@@ -2347,11 +2407,6 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 
 		p->prio = p->normal_prio = __normal_prio(p);
 		set_load_weight(p, false);
-
-#ifdef CONFIG_UCLAMP_TASK
-		p->uclamp[UCLAMP_MIN] = 0;
-		p->uclamp[UCLAMP_MAX] = SCHED_CAPACITY_SCALE;
-#endif
 
 		/*
 		 * We don't need the reset flag anymore after the fork. It has
@@ -2368,6 +2423,8 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 		p->sched_class = &fair_sched_class;
 
 	init_entity_runnable_average(&p->se);
+
+	uclamp_fork(p, reset);
 
 	/*
 	 * The child is not yet in the pid-hash so no cgroup attach races,
@@ -4613,9 +4670,14 @@ SYSCALL_DEFINE3(sched_setattr, pid_t, pid, struct sched_attr __user *, uattr,
 	rcu_read_lock();
 	retval = -ESRCH;
 	p = find_process_by_pid(pid);
-	if (p != NULL)
-		retval = sched_setattr(p, &attr);
+	if (likely(p))
+		get_task_struct(p);
 	rcu_read_unlock();
+
+	if (likely(p)) {
+		retval = sched_setattr(p, &attr);
+		put_task_struct(p);
+	}
 
 	return retval;
 }
@@ -4768,8 +4830,8 @@ SYSCALL_DEFINE4(sched_getattr, pid_t, pid, struct sched_attr __user *, uattr,
 		attr.sched_nice = task_nice(p);
 
 #ifdef CONFIG_UCLAMP_TASK
-	attr.sched_util_min = p->uclamp[UCLAMP_MIN];
-	attr.sched_util_max = p->uclamp[UCLAMP_MAX];
+	attr.sched_util_min = p->uclamp[UCLAMP_MIN].value;
+	attr.sched_util_max = p->uclamp[UCLAMP_MAX].value;
 #endif
 
 	rcu_read_unlock();
@@ -6124,6 +6186,8 @@ void __init sched_init(void)
 	init_schedstats();
 
 	psi_init();
+
+	init_uclamp();
 
 	scheduler_running = 1;
 }
