@@ -719,6 +719,156 @@ static void set_load_weight(struct task_struct *p, bool update_load)
 	}
 }
 
+#ifdef CONFIG_UCLAMP_TASK
+
+/* Integer ceil-rounded range for each bucket */
+#define UCLAMP_BUCKET_DELTA DIV_ROUND_CLOSEST(SCHED_CAPACITY_SCALE, UCLAMP_BUCKETS)
+
+static inline unsigned int uclamp_bucket_id(unsigned int clamp_value)
+{
+	return clamp_value / UCLAMP_BUCKET_DELTA;
+}
+
+static inline unsigned int uclamp_bucket_base_value(unsigned int clamp_value)
+{
+	return UCLAMP_BUCKET_DELTA * uclamp_bucket_id(clamp_value);
+}
+
+static inline unsigned int uclamp_none(int clamp_id)
+{
+	if (clamp_id == UCLAMP_MIN)
+		return 0;
+	return SCHED_CAPACITY_SCALE;
+}
+
+static inline
+unsigned int uclamp_rq_max_value(struct rq *rq, unsigned int clamp_id)
+{
+	struct uclamp_bucket *bucket = rq->uclamp[clamp_id].bucket;
+	int bucket_id = UCLAMP_BUCKETS - 1;
+
+	/*
+	 * Since both min and max clamps are max aggregated, find the
+	 * top most bucket with tasks in.
+	 */
+	for ( ; bucket_id >= 0; bucket_id--) {
+		if (!bucket[bucket_id].tasks)
+			continue;
+		return bucket[bucket_id].value;
+	}
+
+	/* No tasks -- default clamp values */
+	return uclamp_none(clamp_id);
+}
+
+/*
+ * When a task is enqueued on a rq, the clamp bucket currently defined by the
+ * task's uclamp::bucket_id is reference counted on that rq. This also
+ * immediately updates the rq's clamp value if required.
+ */
+static inline void uclamp_rq_inc_id(struct task_struct *p, struct rq *rq,
+				    unsigned int clamp_id)
+{
+	struct uclamp_rq *uc_rq = &rq->uclamp[clamp_id];
+	struct uclamp_se *uc_se = &p->uclamp[clamp_id];
+	struct uclamp_bucket *bucket;
+
+	bucket = &uc_rq->bucket[uc_se->bucket_id];
+	bucket->tasks++;
+
+	/*
+	 * Bucket values are 0 initialized at start, cache their base value
+	 * the first time a task is enqueued.
+	 * This code can be reused to implement "local bucket aggregation".
+	 */
+	if (unlikely(uc_se->value > bucket->value))
+		bucket->value = uclamp_bucket_base_value(uc_se->value);
+
+	if (uc_se->value > READ_ONCE(uc_rq->value))
+		WRITE_ONCE(uc_rq->value, uc_se->value);
+}
+
+/*
+ * When a task is dequeued from a rq, the clamp bucket reference counted by
+ * the task is released. If this is the last task reference counting the rq's
+ * max active clamp value, then the rq's clamp value is updated.
+ *
+ * Both the tasks reference counter and the rq's cached clamp values are
+ * expected to be always valid. If we detect they are not, as defensive
+ * programming, enforce the expected state and warn.
+ */
+static inline void uclamp_rq_dec_id(struct task_struct *p, struct rq *rq,
+				    unsigned int clamp_id)
+{
+	struct uclamp_rq *uc_rq = &rq->uclamp[clamp_id];
+	struct uclamp_se *uc_se = &p->uclamp[clamp_id];
+	struct uclamp_bucket *bucket;
+	unsigned int rq_clamp;
+
+	bucket = &uc_rq->bucket[uc_se->bucket_id];
+	SCHED_WARN_ON(!bucket->tasks);
+	if (likely(bucket->tasks))
+		bucket->tasks--;
+
+	if (likely(bucket->tasks))
+		return;
+
+	rq_clamp = READ_ONCE(uc_rq->value);
+	SCHED_WARN_ON(bucket->value > rq_clamp);
+	if (bucket->value >= rq_clamp)
+		WRITE_ONCE(uc_rq->value, uclamp_rq_max_value(rq, clamp_id));
+}
+
+static inline void uclamp_rq_inc(struct rq *rq, struct task_struct *p)
+{
+	unsigned int clamp_id;
+
+	if (unlikely(!p->sched_class->uclamp_enabled))
+		return;
+
+	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id)
+		uclamp_rq_inc_id(p, rq, clamp_id);
+}
+
+static inline void uclamp_rq_dec(struct rq *rq, struct task_struct *p)
+{
+	unsigned int clamp_id;
+
+	if (unlikely(!p->sched_class->uclamp_enabled))
+		return;
+
+	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id)
+		uclamp_rq_dec_id(p, rq, clamp_id);
+}
+
+static void __init init_uclamp(void)
+{
+
+	struct uclamp_se *uc_se;
+	unsigned int bucket_id;
+	unsigned int clamp_id;
+	unsigned int value;
+	int cpu;
+
+	for_each_possible_cpu(cpu)
+		memset(&cpu_rq(cpu)->uclamp, 0, sizeof(struct uclamp_rq));
+
+	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
+		value = uclamp_none(clamp_id);
+		bucket_id = uclamp_bucket_id(value);
+
+		uc_se = &init_task.uclamp[clamp_id];
+		uc_se->bucket_id = bucket_id;
+		uc_se->value = value;
+	}
+}
+
+#else /* CONFIG_UCLAMP_TASK */
+static inline void uclamp_rq_inc(struct rq *rq, struct task_struct *p) { }
+static inline void uclamp_rq_dec(struct rq *rq, struct task_struct *p) { }
+static inline void init_uclamp(void) { }
+#endif /* CONFIG_UCLAMP_TASK */
+
 static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	if (!(flags & ENQUEUE_NOCLOCK))
@@ -729,6 +879,7 @@ static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 		psi_enqueue(p, flags & ENQUEUE_WAKEUP);
 	}
 
+	uclamp_rq_inc(rq, p);
 	p->sched_class->enqueue_task(rq, p, flags);
 }
 
@@ -742,6 +893,7 @@ static inline void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 		psi_dequeue(p, flags & DEQUEUE_SLEEP);
 	}
 
+	uclamp_rq_dec(rq, p);
 	p->sched_class->dequeue_task(rq, p, flags);
 }
 
@@ -6074,6 +6226,8 @@ void __init sched_init(void)
 	init_schedstats();
 
 	psi_init();
+
+	init_uclamp();
 
 	scheduler_running = 1;
 }
