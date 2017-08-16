@@ -174,7 +174,22 @@ void sched_autogroup_create_attach(struct task_struct *p)
 {
 	struct autogroup *ag = autogroup_create();
 
+	printk("sched_autogroup_create_attach: pid=%d comm=%s id=%lu pmg=%d pMg=%d tmg=%d tMg=%d\n",
+			p->pid, p->comm, ag->id,
+			p->uclamp_group_id[UCLAMP_MIN],
+			p->uclamp_group_id[UCLAMP_MAX],
+			ag->tg->uclamp[UCLAMP_MIN].group_id,
+			ag->tg->uclamp[UCLAMP_MAX].group_id);
+
 	autogroup_move_group(p, ag);
+
+	printk("sched_autogroup_create_attach: pid=%d comm=%s id=%lu pmg=%d pMg=%d tmg=%d tMg=%d\n",
+			p->pid, p->comm, ag->id,
+			p->uclamp_group_id[UCLAMP_MIN],
+			p->uclamp_group_id[UCLAMP_MAX],
+			ag->tg->uclamp[UCLAMP_MIN].group_id,
+			ag->tg->uclamp[UCLAMP_MAX].group_id);
+
 	/* drop extra reference added by autogroup_create() */
 	autogroup_kref_put(ag);
 }
