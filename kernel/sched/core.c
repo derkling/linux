@@ -751,6 +751,11 @@ static void set_load_weight(struct task_struct *p)
 	load->inv_weight = sched_prio_to_wmult[prio];
 }
 
+
+//---------------------------8<-----------------------------
+extern void printk_cpu_report(void);
+//---------------------------8<-----------------------------
+
 #ifdef CONFIG_UTIL_CLAMP
 /**
  * uclamp_cpus: tracks clamp values based on CPU's active tasks
@@ -842,6 +847,9 @@ static inline void uclamp_group_init(int clamp_id, int group_id,
 	struct uclamp_cpu *cpu_cc;
 	int cpu;
 
+	printk("uclamp_group_init: clamp_id=%d group_id=%d clamp_value=%d\n",
+	       clamp_id, group_id, clamp_value);
+
 	/* Set clamp group map  */
 	uc_map[group_id].value = clamp_value;
 
@@ -850,6 +858,8 @@ static inline void uclamp_group_init(int clamp_id, int group_id,
 		cpu_cc = &per_cpu(uclamp_cpus[clamp_id], cpu);
 		cpu_cc->group[group_id].value = clamp_value;
 		cpu_cc->group[group_id].tasks = 0;
+		cpu_cc->group[group_id].eq_count = 0;
+		cpu_cc->group[group_id].dq_count = 0;
 		cpu_cc->value = uclamp_none(clamp_id);
 	}
 }
@@ -864,6 +874,8 @@ static inline void uclamp_group_init(int clamp_id, int group_id,
  */
 static inline void uclamp_group_reset(int clamp_id, int group_id)
 {
+	printk("uclamp_group_reset: clamp_id=%d group_id=%d\n",
+			clamp_id, group_id);
 	uclamp_group_init(clamp_id, group_id, UCLAMP_NONE);
 }
 
@@ -886,6 +898,12 @@ uclamp_group_find(int clamp_id, unsigned int clamp_value)
 	struct uclamp_map *uc_map = &uclamp_maps[clamp_id][0];
 	int free_group_id = UCLAMP_NONE;
 	unsigned int group_id = 0;
+
+	BUG_ON(clamp_id >= UCLAMP_CNT);
+
+	printk("uclamp_group_find: clamp_id=%d clamp_value=%d\n",
+		clamp_id, clamp_value);
+	printk_cpu_report();
 
 	for ( ; group_id <= CONFIG_UCLAMP_GROUPS; ++group_id) {
 		/* Keep track of first free clamp group */
@@ -964,9 +982,13 @@ static inline void uclamp_cpu_get(struct task_struct *p, int cpu, int clamp_id)
 	struct uclamp_cpu *cpu_cc = &per_cpu(uclamp_cpus[clamp_id], cpu);
 	int group_id;
 
+	BUG_ON(p->uclamp_group_id[clamp_id] != UCLAMP_NONE);
+	BUG_ON(task_group(p)->uclamp[clamp_id].group_id == UCLAMP_NONE);
+
 	/* Increment the current TG's group_id */
 	group_id = task_group(p)->uclamp[clamp_id].group_id;
 	cpu_cc->group[group_id].tasks += 1;
+	cpu_cc->group[group_id].eq_count += 1;
 
 	/* Mark task as enqueued for this clamp IDX */
 	p->uclamp_group_id[clamp_id] = group_id;
@@ -977,6 +999,14 @@ static inline void uclamp_cpu_get(struct task_struct *p, int cpu, int clamp_id)
 	 */
 	if (cpu_cc->value < clamp_value)
 		cpu_cc->value = clamp_value;
+
+	trace_printk("cpu_get: pid=%d comm=%s cpu=%d clamp_id=%d clamp_cpu=%d "
+		     "group_id=%d clamp_value=%d tasks=%d eqc=%d dqc=%d",
+			p->pid, p->comm, cpu, clamp_id, cpu_cc->value, group_id, clamp_value,
+			cpu_cc->group[group_id].tasks,
+			cpu_cc->group[group_id].eq_count,
+			cpu_cc->group[group_id].dq_count);
+
 }
 
 /**
@@ -994,16 +1024,24 @@ static inline void uclamp_cpu_put(struct task_struct *p, int cpu, int clamp_id)
 	unsigned int clamp_value;
 	int group_id;
 
+	BUG_ON(p->uclamp_group_id[clamp_id] == UCLAMP_NONE);
+
 	/* Decrement the task's reference counted group index */
 	group_id = p->uclamp_group_id[clamp_id];
+
+	BUG_ON(cpu_cc->group[group_id].tasks == 0);
+
 	cpu_cc->group[group_id].tasks -= 1;
+	cpu_cc->group[group_id].dq_count += 1;
 
 	/* Mark task as dequeued for this clamp IDX */
 	p->uclamp_group_id[clamp_id] = UCLAMP_NONE;
 
 	/* If this is not the last task, no updates are required */
-	if (cpu_cc->group[group_id].tasks > 0)
-		return;
+	if (cpu_cc->group[group_id].tasks > 0) {
+		clamp_value = cpu_cc->group[group_id].value;
+		goto done;
+	}
 
 	/*
 	 * Update the CPU only if this was the last task of the group
@@ -1012,6 +1050,16 @@ static inline void uclamp_cpu_put(struct task_struct *p, int cpu, int clamp_id)
 	clamp_value = cpu_cc->group[group_id].value;
 	if (clamp_value >= cpu_cc->value)
 		uclamp_update_cpu(cpu, clamp_id);
+
+done:
+	trace_printk("cpu_put: pid=%d comm=%s cpu=%d clamp_id=%d clamp_cpu=%d "
+		     "group_id=%d clamp_value=%d tasks=%d eqc=%d dqc=%d",
+			p->pid, p->comm, cpu, clamp_id,
+			cpu_cc->value, group_id, clamp_value,
+			cpu_cc->group[group_id].tasks,
+			cpu_cc->group[group_id].eq_count,
+			cpu_cc->group[group_id].dq_count);
+
 }
 
 /**
@@ -1026,7 +1074,7 @@ static inline void uclamp_cpu_put(struct task_struct *p, int cpu, int clamp_id)
  * enqueued with the proper clamp group at their next activation.
  */
 static inline void
-uclamp_update_active_tasks(struct task_struct *p, int clamp_id, int group_id)
+uclamp_update_active_tasks(struct task_struct *p, int clamp_id)
 {
 	struct rq_flags rf;
 	struct rq *rq;
@@ -1049,6 +1097,9 @@ uclamp_update_active_tasks(struct task_struct *p, int clamp_id, int group_id)
 	 */
 	if (!uclamp_task_active(p))
 		goto done;
+
+	printk("uclamp_update_active_tasks: clamp_id=%d pid=%d comm=%s\n",
+		clamp_id, p->pid, p->comm);
 
 	/* Release p's currently referenced clamp group */
 	uclamp_cpu_put(p, task_cpu(p), clamp_id);
@@ -1085,6 +1136,9 @@ static inline void uclamp_group_put(int clamp_id, struct uclamp_tg *uc_tg)
 	INIT_LIST_HEAD(&uc_tg->tg_node);
 	uc_map[group_id].tg_count -= 1;
 	raw_spin_unlock(&uc_map[group_id].tg_list_lock);
+
+	printk("uclamp_group_put: clamp_id=%d group_id=%d tg_count=%d\n",
+		clamp_id, group_id, uc_map[group_id].tg_count);
 }
 
 /**
@@ -1135,6 +1189,9 @@ static inline int uclamp_group_get(struct cgroup_subsys_state *css,
 	uc_map[group_id].tg_count += 1;
 	raw_spin_unlock(&uc_map[group_id].tg_list_lock);
 
+	printk("uclamp_group_get: clamp_id=%d group_id=%d tg_count=%d\n",
+		clamp_id, group_id, uc_map[group_id].tg_count);
+
 	/* Newly created TG don't have tasks assigned */
 	if (css == NULL)
 		return 0;
@@ -1142,8 +1199,10 @@ static inline int uclamp_group_get(struct cgroup_subsys_state *css,
 	/* Update clamp groups for RUNNABLE tasks in this TG */
 	css_task_iter_start(css, &it);
 	while ((p = css_task_iter_next(&it)))
-		uclamp_update_active_tasks(p, clamp_id, group_id);
+		uclamp_update_active_tasks(p, clamp_id);
 	css_task_iter_end(&it);
+
+	printk_cpu_report();
 
 	return 0;
 }
@@ -1178,6 +1237,27 @@ static inline void uclamp_update_task(struct rq *rq, struct task_struct *p)
 		else
 			uclamp_cpu_get(p, cpu, clamp_id);
 	}
+}
+
+static void printk_dbg_init(void)
+{
+//	struct uclamp_map *uc_map;
+//	int group_id = 0;
+//	int clamp_id;
+//
+//	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
+//		uc_map = &uclamp_maps[clamp_id][0];
+//		group_id = 0;
+//		for ( ; group_id <= CONFIG_UCLAMP_GROUPS; ++group_id) {
+//			printk("%p: uclamp_maps[%d][%d].tg_count=%d\n",
+//					&uc_map[group_id],
+//					clamp_id, group_id,
+//					uc_map[group_id].tg_count);
+//
+//		}
+//	}
+
+	printk_cpu_report();
 }
 
 /**
@@ -1248,6 +1328,16 @@ static inline void init_uclamp(void)
 	int clamp_id;
 	int cpu;
 
+	printk("idle_sched_class@%p\n", &idle_sched_class);
+	printk("sizeof(uclamp_map)=%lu, sizeof(int)=%lu, sizeof(list_head)=%lu\n",
+			sizeof(struct uclamp_map), sizeof(int),
+			sizeof(struct list_head));
+
+	printk("%p: sizeof(uclamp_maps)=%lu\n",
+			uclamp_maps, sizeof(uclamp_maps));
+
+	printk_dbg_init();
+
 	mutex_init(&uclamp_mutex);
 
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
@@ -1266,12 +1356,18 @@ static inline void init_uclamp(void)
 		}
 	}
 
+	printk_dbg_init();
+
 	/* Root TG's are initilized to the first clamp group */
 	group_id = 0;
 
 	/* Initialize root TG's to default (none) clamp values */
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
 		uc_map = &uclamp_maps[clamp_id][0];
+
+		printk("uclamp_maps@%p, &uclamp_maps[%d]@%p\n",
+				uclamp_maps, clamp_id, &uclamp_maps[clamp_id][0]);
+		printk("Init root TG's clamp_id=%d\n", clamp_id);
 
 		/* Map root TG's clamp value */
 		uclamp_group_init(clamp_id, group_id, uclamp_none(clamp_id));
@@ -1285,6 +1381,14 @@ static inline void init_uclamp(void)
 		/* Attach root TG's clamp group */
 		list_add(&uc_tg->tg_node, &uc_map[group_id].tg_list);
 		uc_map[group_id].tg_count += 1;
+
+		printk("Attach root TG's clamp_id=%d group_id=%d clamp_value=%d\n",
+			clamp_id, group_id, uclamp_none(clamp_id));
+
+		printk("uclamp_maps[%d][%d].tg_count=%d\n\n",
+			clamp_id, group_id, uc_map[group_id].tg_count);
+
+		printk_dbg_init();
 	}
 }
 #else
@@ -1297,6 +1401,94 @@ static inline int alloc_uclamp_sched_group(struct task_group *tg,
 static inline void free_uclamp_sched_group(struct task_group *tg) { }
 static inline void init_uclamp(void) { }
 #endif /* CONFIG_UTIL_CLAMP */
+
+//---------------------------8<-----------------------------
+#ifdef CONFIG_UTIL_CLAMP
+void printk_cpu_report(void)
+{
+	struct uclamp_map *uc_map;
+	struct uclamp_cpu *cpu_cc;
+	unsigned int group_id;
+	char buff[256];
+	int clamp_id;
+	char *pos;
+	int cpu;
+
+	pos = buff;
+	pos += sprintf(pos, "cmaps ");
+
+	clamp_id = UCLAMP_MIN;
+	for ( ; clamp_id < UCLAMP_CNT; ++clamp_id) {
+		uc_map = &uclamp_maps[clamp_id][0];
+		pos += sprintf(pos, "| clamp_id=%d(    ): ", clamp_id);
+
+		group_id = 0;
+		while (group_id <= CONFIG_UCLAMP_GROUPS) {
+			if (uclamp_group_free(clamp_id, group_id)) {
+				pos += sprintf(pos, "%4d(--) ", group_id);
+			} else {
+				pos += sprintf(pos, "%4d(%2d) ", group_id,
+					       uc_map[group_id].tg_count);
+			}
+			++group_id;
+		}
+	}
+	printk(KERN_WARNING "%s\n", buff);
+
+	for_each_possible_cpu(cpu) {
+		pos = buff;
+		pos += sprintf(pos, "cpu=%d ", cpu);
+
+		clamp_id = UCLAMP_MIN;
+		for ( ; clamp_id < UCLAMP_CNT; ++clamp_id) {
+			cpu_cc = &per_cpu(uclamp_cpus[clamp_id], cpu);
+			pos += sprintf(pos, "| clamp_id=%d(%4d): ", clamp_id, cpu_cc->value);
+
+			group_id = 0;
+			while (group_id <= CONFIG_UCLAMP_GROUPS) {
+				if (cpu_cc->group[group_id].value == UCLAMP_NONE) {
+					pos += sprintf(pos, "----(--) ");
+				} else {
+					pos += sprintf(pos, "%4d(%2d) ",
+						cpu_cc->group[group_id].value,
+						cpu_cc->group[group_id].tasks);
+				}
+				++group_id;
+			}
+		}
+		printk(KERN_WARNING "%s\n", buff);
+
+	}
+
+	for_each_possible_cpu(cpu) {
+		pos = buff;
+		pos += sprintf(pos, "cpu=%d ", cpu);
+
+		clamp_id = UCLAMP_MIN;
+		for ( ; clamp_id < UCLAMP_CNT; ++clamp_id) {
+			cpu_cc = &per_cpu(uclamp_cpus[clamp_id], cpu);
+			pos += sprintf(pos, "| clamp_id=%d(%4d): ", clamp_id, cpu_cc->value);
+
+			group_id = 0;
+			while (group_id <= CONFIG_UCLAMP_GROUPS) {
+				if (cpu_cc->group[group_id].value == UCLAMP_NONE) {
+					pos += sprintf(pos, "----(-:-) ");
+				} else {
+					pos += sprintf(pos, "%4d(%d:%d) ",
+						cpu_cc->group[group_id].value,
+						cpu_cc->group[group_id].eq_count,
+						cpu_cc->group[group_id].dq_count);
+				}
+				++group_id;
+			}
+		}
+		printk(KERN_WARNING "%s\n", buff);
+
+	}
+}
+EXPORT_SYMBOL_GPL(printk_cpu_report);
+#endif /* CONFIG_UTIL_CLAMP */
+//---------------------------8<-----------------------------
 
 static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 {
@@ -2712,6 +2904,11 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
 
 #ifdef CONFIG_UTIL_CLAMP
 	memset(&p->uclamp_group_id, UCLAMP_NONE, sizeof(p->uclamp_group_id));
+	printk("__sched_fork: parent=%d pid=%d comm=%s group_min=%d group_max=%d\n",
+	 		p->real_parent->pid,
+			p->pid, p->comm,
+			p->uclamp_group_id[UCLAMP_MIN],
+			p->uclamp_group_id[UCLAMP_MAX]);
 #endif
 
 #ifdef CONFIG_SCHEDSTATS

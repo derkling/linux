@@ -403,6 +403,9 @@ struct uclamp_group {
 	unsigned int value;
 	/* Number of RUNNABLE tasks on this clamp group */
 	unsigned int tasks;
+
+	unsigned int eq_count;
+	unsigned int dq_count;
 };
 
 /**
