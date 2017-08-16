@@ -393,6 +393,39 @@ extern int tg_nop(struct task_group *tg, void *data);
 
 #ifdef CONFIG_UTIL_CLAMP
 /**
+ * Utilization clamp Group
+ *
+ * Keep track of how many tasks are "active" (i.e. RUNNING or RUNNABLE) for a
+ * give utilization clamp value.
+ */
+struct uclamp_group {
+	/* Utilization clamp value for tasks on this clamp group */
+	unsigned int value;
+	/* Number of RUNNABLE tasks on this clamp group */
+	unsigned int tasks;
+};
+
+/**
+ * CPU's utilization clamp
+ *
+ * Keep track of all the clamp groups which may impact a CPU.
+ * Tasks belonging to different clamp groups have different util_{min,max}
+ * values, thus this data strucure allow to compute the most restrictive
+ * utilization clamp to use, depending on which clamp groups are currently
+ * active on each CPU.
+ *
+ * Since on each system we expect only a limited number of utilization clamp
+ * values, we can use a simple array to track the metrics required to compute
+ * all the per-CPU utilization clamp values.
+ */
+struct uclamp_cpu {
+        /* Utilization clamp value for a CPU */
+        int value;
+        /* Utilization clamp groups affecting this CPU */
+	struct uclamp_group group[CONFIG_UCLAMP_GROUPS+1];
+};
+
+/**
  * uclamp_none: default value for a clamp
  *
  * This returns the default value for each clamp
@@ -406,6 +439,40 @@ static inline unsigned int uclamp_none(int clamp_id)
 	if (clamp_id == UCLAMP_MIN)
 		return 0;
 	return SCHED_CAPACITY_SCALE;
+}
+
+/**
+ * uclamp_task_affect: check if a task affects a utilization clamp
+ * @p:        the task to consider
+ * @clamp_id: the utilization clamp to check
+ *
+ * A task affects a utilization clamp if its task_struct::uclamp_group_id is a
+ * valid clamp group index for the specified utilization clamp.
+ * Once a task is dequeued from a CPU, its clamp group indexes are reset to
+ * UCLAMP_NONE. A valid clamp group index is assigned to a task only when is
+ * RUNNABLE on a CPU and it represents the clamp group which is currently
+ * reference counted by that task.
+ *
+ * Return: true if p currently affects the specified clamp_id
+ */
+static inline bool uclamp_task_affect(struct task_struct *p, int clamp_id)
+{
+	int task_group_id = p->uclamp_group_id[clamp_id];
+
+	return (task_group_id != UCLAMP_NONE);
+}
+
+/**
+ * uclamp_group_active: check if a clamp group is active on a CPU
+ *
+ * A clamp group affects a CPU if it as at least one "active" task.
+ *
+ * Return: true if the specified CPU has at least one active task for
+ *         the specified clamp group.
+ */
+static inline bool uclamp_group_active(struct uclamp_cpu *ccc, int group_id)
+{
+	return ccc->group[group_id].tasks > 0;
 }
 #endif /* CONFIG_UTIL_CLAMP */
 
