@@ -742,6 +742,26 @@ config UTIL_CLAMP
 
 	  If in doubt, say N.
 
+config UCLAMP_GROUPS
+	int "Number of utilization clamping values supported"
+	range 1 127
+	depends on UTIL_CLAMP
+	default 3
+	help
+	  This defines the maximum number of different utilization clamping
+	  values which can be concurrently enforced for each utilization
+	  clamp index (i.e. minimum and maximum).
+
+	  When per-task utilization clamping is used we support only a
+          limited number of clamping values for two main reasons:
+	    1. on a real system we usually have only few classes of workloads
+	       which make sense to boost/restrict with different values,
+	       e.g. background vs foreground, interactive vs low-priority
+	    2. a limited number allows a simpler and more memory/time
+	       efficient tracking of the per-CPU clamping values.
+
+	  If in doubt, use the default value.
+
 if CGROUP_SCHED
 config FAIR_GROUP_SCHED
 	bool "Group scheduling for SCHED_OTHER"
