@@ -323,6 +323,12 @@ struct sched_info {
 # define SCHED_FIXEDPOINT_SHIFT		10
 # define SCHED_FIXEDPOINT_SCALE		(1L << SCHED_FIXEDPOINT_SHIFT)
 
+/*
+ * Increase resolution of cpu_capacity calculations
+ */
+#define SCHED_CAPACITY_SHIFT	SCHED_FIXEDPOINT_SHIFT
+#define SCHED_CAPACITY_SCALE	(1L << SCHED_CAPACITY_SHIFT)
+
 struct load_weight {
 	unsigned long			weight;
 	u32				inv_weight;
@@ -580,6 +586,42 @@ struct sched_dl_entity {
 	struct hrtimer inactive_timer;
 };
 
+#ifdef CONFIG_UCLAMP_TASK
+/*
+ * Number of utiliation clamp groups.
+ *
+ * The first clamp group (group_id=0) is used to track non clamped tasks, i.e.
+ * util_{min,max} (0,SCHED_CAPACITY_SCALE). Thus we allocate one more group in
+ * addition to the compile time configured number.
+ */
+#define UCLAMP_GROUPS (CONFIG_UCLAMP_GROUPS_COUNT + 1)
+
+/*
+ * Utilization clamp group
+ * @value:		clamp value tracked by a clamp group
+ * @group_id:		the group index used by the fast-path
+ * @mapped:		the group index is valid
+ *
+ * A utilization clamp group maps a:
+ *   clamp value (value), i.e.
+ *   util_{min,max} value requested from userspace
+ * to a:
+ *   clamp group index (group_id), i.e.
+ *   index of the per-cpu RUNNABLE tasks refcounting array
+ *
+ * The mapped bit is set whenever a task has been mapped on a clamp group for
+ * the first time. When this bit is set, any:
+ *   uclamp_group_inc() - for a new clamp value
+ * is matched by a:
+ *   uclamp_group_dec() - for the old clamp value
+ */
+struct uclamp_se {
+	unsigned int value		: bits_for(SCHED_CAPACITY_SCALE);
+	unsigned int group_id		: bits_for(UCLAMP_GROUPS);
+	unsigned int mapped		: 1;
+};
+#endif /* CONFIG_UCLAMP_TASK */
+
 union rcu_special {
 	struct {
 		u8			blocked;
@@ -659,7 +701,7 @@ struct task_struct {
 	struct sched_dl_entity		dl;
 
 #ifdef CONFIG_UCLAMP_TASK
-	int				uclamp[UCLAMP_CNT];
+	struct uclamp_se		uclamp[UCLAMP_CNT];
 #endif
 
 #ifdef CONFIG_PREEMPT_NOTIFIERS
