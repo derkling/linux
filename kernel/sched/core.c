@@ -771,6 +771,8 @@ extern void printk_cpu_report(void);
  */
 static DEFINE_PER_CPU(struct uclamp_cpu[UCLAMP_CNT], uclamp_cpus);
 
+static bool uclamp_dbg_enable = false;
+
 /**
  * uclamp_mutex: serialize TG's utilization clamping updates.
  *
@@ -993,6 +995,12 @@ static inline void uclamp_cpu_get(struct task_struct *p, int cpu, int clamp_id)
 	/* Mark task as enqueued for this clamp IDX */
 	p->uclamp_group_id[clamp_id] = group_id;
 
+	if (group_id > 0 && uclamp_dbg_enable) {
+		printk("cpu_get: pid=%d comm=%s clamp_id=%d group_id=%d tasks=%d\n",
+				p->pid, p->comm, clamp_id, group_id,
+				cpu_cc->group[group_id].tasks);
+	}
+
 	/*
 	 * If this is the new max utilization clamp value, then
 	 * we can update straightway the CPU clamp value.
@@ -1029,6 +1037,12 @@ static inline void uclamp_cpu_put(struct task_struct *p, int cpu, int clamp_id)
 	/* Decrement the task's reference counted group index */
 	group_id = p->uclamp_group_id[clamp_id];
 
+	if (group_id > 0 && uclamp_dbg_enable) {
+		printk("cpu_put1: pid=%d comm=%s clamp_id=%d group_id=%d tasks=%d\n",
+				p->pid, p->comm, clamp_id, group_id,
+				cpu_cc->group[group_id].tasks);
+	}
+
 	BUG_ON(cpu_cc->group[group_id].tasks == 0);
 
 	cpu_cc->group[group_id].tasks -= 1;
@@ -1036,6 +1050,14 @@ static inline void uclamp_cpu_put(struct task_struct *p, int cpu, int clamp_id)
 
 	/* Mark task as dequeued for this clamp IDX */
 	p->uclamp_group_id[clamp_id] = UCLAMP_NONE;
+
+	if (group_id > 0 && uclamp_dbg_enable) {
+		printk("cpu_put2: pid=%d comm=%s clamp_id=%d group_id=%d tasks=%d\n",
+				p->pid, p->comm, clamp_id, group_id,
+				cpu_cc->group[group_id].tasks);
+		if (cpu_cc->group[group_id].tasks == 0)
+			uclamp_dbg_enable = false;
+	}
 
 	/* If this is not the last task, no updates are required */
 	if (cpu_cc->group[group_id].tasks > 0) {
@@ -7125,9 +7147,13 @@ static int cpu_util_min_write_u64(struct cgroup_subsys_state *css,
 			goto out;
 	}
 
+	uclamp_dbg_enable = true;
+
 	/* Update TG's reference count */
 	uc_tg = &tg->uclamp[UCLAMP_MIN];
 	ret = uclamp_group_get(css, UCLAMP_MIN, uc_tg, min_value);
+
+	uclamp_dbg_enable = false;
 
 out:
 	rcu_read_unlock();
@@ -7173,9 +7199,13 @@ static int cpu_util_max_write_u64(struct cgroup_subsys_state *css,
 			goto out;
 	}
 
+	uclamp_dbg_enable = true;
+
 	/* Update TG's reference count */
 	uc_tg = &tg->uclamp[UCLAMP_MAX];
 	ret = uclamp_group_get(css, UCLAMP_MAX, uc_tg, max_value);
+
+	uclamp_dbg_enable = false;
 
 out:
 	rcu_read_unlock();
