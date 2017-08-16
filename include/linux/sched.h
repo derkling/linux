@@ -612,8 +612,11 @@ struct uclamp_se {
 	/*
 	 * Clamp value "obtained" by a scheduling entity.
 	 *
-	 * This cache the actual clamp value, possibly enforced by system
-	 * default clamps, a task is subject to while enqueued in a rq.
+	 * For a task, this is the value (possibly) enforced by the
+	 * task group the task is currently part of or by the system
+	 * default clamp values, whichever is the most restrictive.
+	 * For task groups, this is the value (possibly) enforced by a
+	 * parent task group.
 	 */
 	struct {
 		unsigned int value	: bits_per(SCHED_CAPACITY_SCALE);
