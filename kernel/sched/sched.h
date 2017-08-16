@@ -389,6 +389,42 @@ extern int tg_nop(struct task_group *tg, void *data);
 
 #ifdef CONFIG_UTIL_CLAMP
 /**
+ * Utilization clamp Group
+ *
+ * Keep track of how many tasks are "active" (i.e. RUNNING or RUNNABLE) for a
+ * give utilization clamp value.
+ */
+struct uclamp_group {
+	/* Utilization clamp value for tasks on this clamp group */
+	int value;
+	/* Number of RUNNABLE tasks on this clamp group */
+	int tasks;
+};
+
+/**
+ * CPU's utilization clamp
+ *
+ * Keep track of tasks active on a CPUs to aggregate their clamp values.  A
+ * clamp value is affecting a CPU where there is at least one task RUNNABLE
+ * (or actually running) with that value.
+ * All utilization clamping values are MAX aggregated, since:
+ * - for util_min: we wanna run the CPU at least at the max of the minimum
+ *   utilization required by its currently active tasks.
+ * - for util_max: we wanna allow the CPU to run up to the max of the
+ *   maximum utilization allowed by its currently active tasks.
+ *
+ * Since on each system we expect only a limited number of utilization clamp
+ * values, we can use a simple array to track the metrics required to compute
+ * all the per-CPU utilization clamp values.
+ */
+struct uclamp_cpu {
+	/* Utilization clamp value for a CPU */
+	int value;
+	/* Utilization clamp groups affecting this CPU */
+	struct uclamp_group group[CONFIG_UCLAMP_GROUPS+1];
+};
+
+/**
  * uclamp_none: default value for a clamp
  *
  * This returns the default value for each clamp
@@ -403,6 +439,42 @@ static inline unsigned int uclamp_none(int clamp_id)
 		return 0;
 	return SCHED_CAPACITY_SCALE;
 }
+
+/**
+ * uclamp_task_affect: check if a task affects a utilization clamp
+ * @p:        the task to consider
+ * @clamp_id: the utilization clamp to check
+ *
+ * A task affects a utilization clamp if its task_struct::uclamp_group_id is a
+ * valid clamp group index for the specified utilization clamp.
+ * Once a task is dequeued from a CPU, its clamp group indexes are reset to
+ * UCLAMP_NONE. A valid clamp group index is assigned to a task only when is
+ * RUNNABLE on a CPU and it represents the clamp group which is currently
+ * reference counted by that task.
+ *
+ * Return: true if p currently affects the specified clamp_id
+ */
+static inline bool uclamp_task_affect(struct task_struct *p, int clamp_id)
+{
+	int task_group_id = p->uclamp_group_id[clamp_id];
+
+	return (task_group_id != UCLAMP_NONE);
+}
+
+/**
+ * uclamp_group_active: check if a clamp group is active on a CPU
+ *
+ * A clamp group affects a CPU if it as at least one "active" task.
+ *
+ * Return: true if the specified CPU has at least one active task for
+ *         the specified clamp group.
+ */
+static inline bool uclamp_group_active(struct uclamp_cpu *uc_cpu, int group_id)
+{
+	return uc_cpu->group[group_id].tasks > 0;
+}
+#else
+struct uclamp_cpu { };
 #endif /* CONFIG_UTIL_CLAMP */
 
 extern void free_fair_sched_group(struct task_group *tg);
@@ -769,6 +841,9 @@ struct rq {
 
 	unsigned long cpu_capacity;
 	unsigned long cpu_capacity_orig;
+
+	/* util_{min,max} clamp values based on CPU's active tasks */
+	struct uclamp_cpu uclamp[UCLAMP_CNT];
 
 	struct callback_head *balance_callback;
 
