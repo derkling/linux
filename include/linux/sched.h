@@ -241,6 +241,15 @@ struct vtime {
 	u64			gtime;
 };
 
+#ifdef CONFIG_UTIL_CLAMP
+enum uclamp_id {
+	UCLAMP_MIN = 0, /* Minimum utilization */
+	UCLAMP_MAX,     /* Maximum utilization */
+	/* Utilization clamping constratins count */
+	UCLAMP_CNT
+};
+#endif
+
 struct sched_info {
 #ifdef CONFIG_SCHED_INFO
 	/* Cumulative counters: */
