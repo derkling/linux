@@ -462,6 +462,27 @@ static inline bool uclamp_task_affect(struct task_struct *p, int clamp_id)
 }
 
 /**
+ * uclamp_task_active: check if a task is clamping its CPU
+ * @p: the task to consider
+ *
+ * A task affects the utilization clamp of its CPU if it reference at least
+ * one utilization clamp for that CPU.
+ *
+ * Return: ture if p is currenlty clamping the utilization of its CPU.
+ */
+static inline bool uclamp_task_active(struct task_struct *p)
+{
+	int clamp_id;
+
+	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
+		if (uclamp_task_affect(p, clamp_id))
+			return true;
+	}
+
+	return false;
+}
+
+/**
  * uclamp_group_active: check if a clamp group is active on a CPU
  *
  * A clamp group affects a CPU if it as at least one "active" task.
