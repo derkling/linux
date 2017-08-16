@@ -601,6 +601,7 @@ struct sched_dl_entity {
  * @value:		clamp value tracked by a clamp group
  * @group_id:		the group index used by the fast-path
  * @mapped:		the group index is valid
+ * @active:		the se is currently refcounted in a CPU's clamp groups
  *
  * A utilization clamp group maps a:
  *   clamp value (value), i.e.
@@ -614,11 +615,16 @@ struct sched_dl_entity {
  *   uclamp_group_inc() - for a new clamp value
  * is matched by a:
  *   uclamp_group_dec() - for the old clamp value
+ *
+ * The active bit is set whenever a task has got an effective clamp group
+ * and value assigned, which can be different from the user requested ones.
+ * This allows to know a task is actually refcounting a CPU's clamp group.
  */
 struct uclamp_se {
 	unsigned int value		: bits_for(SCHED_CAPACITY_SCALE);
 	unsigned int group_id		: bits_for(UCLAMP_GROUPS);
 	unsigned int mapped		: 1;
+	unsigned int active		: 1;
 };
 #endif /* CONFIG_UCLAMP_TASK */
 
