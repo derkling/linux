@@ -754,6 +754,24 @@ config RT_GROUP_SCHED
 
 endif #CGROUP_SCHED
 
+config UTIL_CLAMP
+	bool "Utilization clamping per group of tasks"
+	depends on CPU_FREQ_GOV_SCHEDUTIL
+	depends on CGROUP_SCHED
+	default n
+	help
+	  This feature enable the scheduler to track the clamped utilization
+	  of each CPU based on RUNNABLE tasks currently scheduled on that CPU.
+
+	  A minimum utilization clamp can be used for example to "boost" the
+	  performance of important tasks, by running them on an OPP which can
+	  be higher than the minimum one eventually selected by the schedutil
+	  governor.
+	  A maximum utilization clamp can be used for example to "cap" the
+	  maximum OPP which can be used by background tasks.
+
+	  If in doubt, say N.
+
 config CGROUP_PIDS
 	bool "PIDs controller"
 	help
