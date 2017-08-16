@@ -718,25 +718,221 @@ static void set_load_weight(struct task_struct *p, bool update_load)
 }
 
 #ifdef CONFIG_UCLAMP_TASK
+/*
+ * Serializes updates of utilization clamp values
+ *
+ * The (slow-path) user-space triggers utilization clamp value updates which
+ * can require updates on (fast-path) scheduler's data structures used to
+ * support enqueue/dequeue operations.
+ * While the per-CPU rq lock protects fast-path update operations, user-space
+ * requests are serialized using a mutex to reduce the risk of conflicting
+ * updates or API abuses.
+ */
+static DEFINE_MUTEX(uclamp_mutex);
+
+/*
+ * Reference count utilization clamp buckets
+ * @value:	the utilization "clamp value" tracked by this clamp bucket
+ * @se_count:	the number of scheduling entities using this "clamp value"
+ * @data:	accessor for value and se_count reading
+ * @adata:	accessor for atomic operations on value and se_count
+ */
+union uclamp_map {
+	struct {
+		unsigned long value	: bits_per(SCHED_CAPACITY_SCALE);
+		unsigned long se_count	: BITS_PER_LONG -
+					  bits_per(SCHED_CAPACITY_SCALE);
+	};
+	unsigned long data;
+	atomic_long_t adata;
+};
+
+/*
+ * Map SEs "clamp value" into CPUs "clamp bucket"
+ *
+ * Matrix mapping "clamp values" (value) to "clamp buckets" (bucket_id),
+ * for each "clamp index" (clamp_id)
+ */
+static union uclamp_map uclamp_maps[UCLAMP_CNT][UCLAMP_BUCKETS];
+
+static inline unsigned int uclamp_bucket_value(unsigned int clamp_value)
+{
+#define UCLAMP_BUCKET_DELTA (SCHED_CAPACITY_SCALE / CONFIG_UCLAMP_BUCKETS_COUNT)
+#define UCLAMP_BUCKET_UPPER (UCLAMP_BUCKET_DELTA * CONFIG_UCLAMP_BUCKETS_COUNT)
+
+	if (clamp_value >= UCLAMP_BUCKET_UPPER)
+		return SCHED_CAPACITY_SCALE;
+
+	return UCLAMP_BUCKET_DELTA * (clamp_value / UCLAMP_BUCKET_DELTA);
+}
+
+static void uclamp_bucket_dec(unsigned int clamp_id, unsigned int bucket_id)
+{
+	union uclamp_map *uc_maps = &uclamp_maps[clamp_id][0];
+	union uclamp_map uc_map_old, uc_map_new;
+
+	uc_map_old.data = atomic_long_read(&uc_maps[bucket_id].adata);
+	do {
+		/*
+		 * Refcounting consistency check. If we release a non
+		 * referenced bucket: refcounting is broken and we warn.
+		 */
+		if (unlikely(!uc_map_old.se_count)) {
+			SCHED_WARN_ON(!uc_map_old.se_count);
+			return;
+		}
+
+		uc_map_new = uc_map_old;
+		uc_map_new.se_count--;
+
+	} while (!atomic_long_try_cmpxchg(&uc_maps[bucket_id].adata,
+					  &uc_map_old.data, uc_map_new.data));
+}
+
+static void uclamp_bucket_inc(struct uclamp_se *uc_se, unsigned int clamp_id,
+			      unsigned int clamp_value)
+{
+	union uclamp_map *uc_maps = &uclamp_maps[clamp_id][0];
+	unsigned int prev_bucket_id = uc_se->bucket_id;
+	union uclamp_map uc_map_old, uc_map_new;
+	unsigned int free_bucket_id;
+	unsigned int bucket_value;
+	unsigned int bucket_id;
+
+	bucket_value = uclamp_bucket_value(clamp_value);
+
+	do {
+		/* Find the bucket_id of an already mapped clamp bucket... */
+		free_bucket_id = UCLAMP_BUCKETS;
+		for (bucket_id = 0; bucket_id < UCLAMP_BUCKETS; ++bucket_id) {
+			uc_map_old.data = atomic_long_read(&uc_maps[bucket_id].adata);
+			if (free_bucket_id == UCLAMP_BUCKETS && !uc_map_old.se_count)
+				free_bucket_id = bucket_id;
+			if (uc_map_old.value == bucket_value)
+				break;
+		}
+
+		/* ... or allocate a new clamp bucket */
+		if (bucket_id >= UCLAMP_BUCKETS) {
+			/*
+			 * A valid clamp bucket must always be available.
+			 * If we cannot find one: refcounting is broken and we
+			 * warn once. The sched_entity will be tracked in the
+			 * fast-path using its previous clamp bucket, or not
+			 * tracked at all if not yet mapped (i.e. it's new).
+			 */
+			if (unlikely(free_bucket_id == UCLAMP_BUCKETS)) {
+				SCHED_WARN_ON(free_bucket_id == UCLAMP_BUCKETS);
+				return;
+			}
+			bucket_id = free_bucket_id;
+			uc_map_old.data = atomic_long_read(&uc_maps[bucket_id].adata);
+		}
+
+		uc_map_new.se_count = uc_map_old.se_count + 1;
+		uc_map_new.value = bucket_value;
+
+	} while (!atomic_long_try_cmpxchg(&uc_maps[bucket_id].adata,
+					  &uc_map_old.data, uc_map_new.data));
+
+	uc_se->value = clamp_value;
+	uc_se->bucket_id = bucket_id;
+
+	if (uc_se->mapped)
+		uclamp_bucket_dec(clamp_id, prev_bucket_id);
+
+	/*
+	 * Task's sched_entity are refcounted in the fast-path only when they
+	 * have got a valid clamp_bucket assigned.
+	 */
+	uc_se->mapped = true;
+}
+
 static int __setscheduler_uclamp(struct task_struct *p,
 				 const struct sched_attr *attr)
 {
-	if (attr->sched_util_min > attr->sched_util_max)
-		return -EINVAL;
-	if (attr->sched_util_max > SCHED_CAPACITY_SCALE)
+	unsigned int lower_bound = p->uclamp[UCLAMP_MIN].value;
+	unsigned int upper_bound = p->uclamp[UCLAMP_MAX].value;
+	int result = 0;
+
+	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN)
+		lower_bound = attr->sched_util_min;
+
+	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX)
+		upper_bound = attr->sched_util_max;
+
+	if (lower_bound > upper_bound ||
+	    upper_bound > SCHED_CAPACITY_SCALE)
 		return -EINVAL;
 
-	p->uclamp[UCLAMP_MIN] = attr->sched_util_min;
-	p->uclamp[UCLAMP_MAX] = attr->sched_util_max;
+	mutex_lock(&uclamp_mutex);
+	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN) {
+		uclamp_bucket_inc(&p->uclamp[UCLAMP_MIN],
+				  UCLAMP_MIN, lower_bound);
+	}
+	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX) {
+		uclamp_bucket_inc(&p->uclamp[UCLAMP_MAX],
+				  UCLAMP_MAX, upper_bound);
+	}
+	mutex_unlock(&uclamp_mutex);
 
-	return 0;
+	return result;
 }
+
+void uclamp_exit_task(struct task_struct *p)
+{
+	unsigned int clamp_id;
+
+	if (unlikely(!p->sched_class->uclamp_enabled))
+		return;
+
+	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
+		if (!p->uclamp[clamp_id].mapped)
+			continue;
+		uclamp_bucket_dec(clamp_id, p->uclamp[clamp_id].bucket_id);
+	}
+}
+
+static void uclamp_fork(struct task_struct *p, bool reset)
+{
+	unsigned int clamp_id;
+
+	if (unlikely(!p->sched_class->uclamp_enabled))
+		return;
+
+	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
+		unsigned int clamp_value = p->uclamp[clamp_id].value;
+
+		if (unlikely(reset))
+			clamp_value = uclamp_none(clamp_id);
+
+		p->uclamp[clamp_id].mapped = false;
+		uclamp_bucket_inc(&p->uclamp[clamp_id], clamp_id, clamp_value);
+	}
+}
+
+static void __init init_uclamp(void)
+{
+	struct uclamp_se *uc_se;
+	unsigned int clamp_id;
+
+	mutex_init(&uclamp_mutex);
+
+	memset(uclamp_maps, 0, sizeof(uclamp_maps));
+	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
+		uc_se = &init_task.uclamp[clamp_id];
+		uclamp_bucket_inc(uc_se, clamp_id, uclamp_none(clamp_id));
+	}
+}
+
 #else /* CONFIG_UCLAMP_TASK */
 static inline int __setscheduler_uclamp(struct task_struct *p,
 					const struct sched_attr *attr)
 {
 	return -EINVAL;
 }
+static inline void uclamp_fork(struct task_struct *p, bool reset) { }
+static inline void init_uclamp(void) { }
 #endif /* CONFIG_UCLAMP_TASK */
 
 static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
@@ -2320,6 +2516,7 @@ static inline void init_schedstats(void) {}
 int sched_fork(unsigned long clone_flags, struct task_struct *p)
 {
 	unsigned long flags;
+	bool reset;
 
 	__sched_fork(clone_flags, p);
 	/*
@@ -2337,7 +2534,8 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	/*
 	 * Revert to default priority/policy on fork if requested.
 	 */
-	if (unlikely(p->sched_reset_on_fork)) {
+	reset = p->sched_reset_on_fork;
+	if (unlikely(reset)) {
 		if (task_has_dl_policy(p) || task_has_rt_policy(p)) {
 			p->policy = SCHED_NORMAL;
 			p->static_prio = NICE_TO_PRIO(0);
@@ -2347,11 +2545,6 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 
 		p->prio = p->normal_prio = __normal_prio(p);
 		set_load_weight(p, false);
-
-#ifdef CONFIG_UCLAMP_TASK
-		p->uclamp[UCLAMP_MIN] = 0;
-		p->uclamp[UCLAMP_MAX] = SCHED_CAPACITY_SCALE;
-#endif
 
 		/*
 		 * We don't need the reset flag anymore after the fork. It has
@@ -2368,6 +2561,8 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 		p->sched_class = &fair_sched_class;
 
 	init_entity_runnable_average(&p->se);
+
+	uclamp_fork(p, reset);
 
 	/*
 	 * The child is not yet in the pid-hash so no cgroup attach races,
@@ -4613,9 +4808,14 @@ SYSCALL_DEFINE3(sched_setattr, pid_t, pid, struct sched_attr __user *, uattr,
 	rcu_read_lock();
 	retval = -ESRCH;
 	p = find_process_by_pid(pid);
-	if (p != NULL)
-		retval = sched_setattr(p, &attr);
+	if (likely(p))
+		get_task_struct(p);
 	rcu_read_unlock();
+
+	if (likely(p)) {
+		retval = sched_setattr(p, &attr);
+		put_task_struct(p);
+	}
 
 	return retval;
 }
@@ -4768,8 +4968,8 @@ SYSCALL_DEFINE4(sched_getattr, pid_t, pid, struct sched_attr __user *, uattr,
 		attr.sched_nice = task_nice(p);
 
 #ifdef CONFIG_UCLAMP_TASK
-	attr.sched_util_min = p->uclamp[UCLAMP_MIN];
-	attr.sched_util_max = p->uclamp[UCLAMP_MAX];
+	attr.sched_util_min = p->uclamp[UCLAMP_MIN].value;
+	attr.sched_util_max = p->uclamp[UCLAMP_MAX].value;
 #endif
 
 	rcu_read_unlock();
@@ -6124,6 +6324,8 @@ void __init sched_init(void)
 	init_schedstats();
 
 	psi_init();
+
+	init_uclamp();
 
 	scheduler_running = 1;
 }
