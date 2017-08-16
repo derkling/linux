@@ -323,6 +323,12 @@ struct sched_info {
 # define SCHED_FIXEDPOINT_SHIFT		10
 # define SCHED_FIXEDPOINT_SCALE		(1L << SCHED_FIXEDPOINT_SHIFT)
 
+/*
+ * Increase resolution of cpu_capacity calculations
+ */
+#define SCHED_CAPACITY_SHIFT		SCHED_FIXEDPOINT_SHIFT
+#define SCHED_CAPACITY_SCALE		(1L << SCHED_CAPACITY_SHIFT)
+
 struct load_weight {
 	unsigned long			weight;
 	u32				inv_weight;
@@ -580,6 +586,42 @@ struct sched_dl_entity {
 	struct hrtimer inactive_timer;
 };
 
+#ifdef CONFIG_UCLAMP_TASK
+/*
+ * Number of utilization clamp buckets.
+ *
+ * The first clamp bucket (bucket_id=0) is used to track non clamped tasks, i.e.
+ * util_{min,max} (0,SCHED_CAPACITY_SCALE). Thus we allocate one more bucket in
+ * addition to the compile time configured number.
+ */
+#define UCLAMP_BUCKETS (CONFIG_UCLAMP_BUCKETS_COUNT + 1)
+
+/*
+ * Utilization clamp bucket
+ * @value:		clamp value tracked by a clamp bucket
+ * @bucket_id:		the bucket index used by the fast-path
+ * @mapped:		the bucket index is valid
+ *
+ * A utilization clamp bucket maps a:
+ *   clamp value (value), i.e.
+ *   util_{min,max} value requested from userspace
+ * to a:
+ *   clamp bucket index (bucket_id), i.e.
+ *   index of the per-cpu RUNNABLE tasks refcounting array
+ *
+ * The mapped bit is set whenever a task has been mapped on a clamp bucket for
+ * the first time. When this bit is set, any:
+ *   uclamp_bucket_inc() - for a new clamp value
+ * is matched by a:
+ *   uclamp_bucket_dec() - for the old clamp value
+ */
+struct uclamp_se {
+	unsigned int value		: bits_per(SCHED_CAPACITY_SCALE);
+	unsigned int bucket_id		: bits_per(UCLAMP_BUCKETS);
+	unsigned int mapped		: 1;
+};
+#endif /* CONFIG_UCLAMP_TASK */
+
 union rcu_special {
 	struct {
 		u8			blocked;
@@ -659,7 +701,7 @@ struct task_struct {
 	struct sched_dl_entity		dl;
 
 #ifdef CONFIG_UCLAMP_TASK
-	int				uclamp[UCLAMP_CNT];
+	struct uclamp_se		uclamp[UCLAMP_CNT];
 #endif
 
 #ifdef CONFIG_PREEMPT_NOTIFIERS
