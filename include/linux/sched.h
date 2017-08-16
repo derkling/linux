@@ -601,6 +601,7 @@ struct sched_dl_entity {
  * @value:		clamp value tracked by a clamp bucket
  * @bucket_id:		the bucket index used by the fast-path
  * @mapped:		the bucket index is valid
+ * @active:		the se is currently refcounted in a CPU's clamp bucket
  *
  * A utilization clamp bucket maps a:
  *   clamp value (value), i.e.
@@ -614,11 +615,16 @@ struct sched_dl_entity {
  *   uclamp_bucket_inc() - for a new clamp value
  * is matched by a:
  *   uclamp_bucket_dec() - for the old clamp value
+ *
+ * The active bit is set whenever a task has got an effective clamp bucket
+ * and value assigned, which can be different from the user requested ones.
+ * This allows to know a task is actually refcounting a CPU's clamp bucket.
  */
 struct uclamp_se {
 	unsigned int value		: bits_per(SCHED_CAPACITY_SCALE);
 	unsigned int bucket_id		: bits_per(UCLAMP_BUCKETS);
 	unsigned int mapped		: 1;
+	unsigned int active		: 1;
 };
 #endif /* CONFIG_UCLAMP_TASK */
 
