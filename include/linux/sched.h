@@ -318,6 +318,12 @@ struct sched_info {
 # define SCHED_FIXEDPOINT_SHIFT		10
 # define SCHED_FIXEDPOINT_SCALE		(1L << SCHED_FIXEDPOINT_SHIFT)
 
+/*
+ * Increase resolution of cpu_capacity calculations
+ */
+#define SCHED_CAPACITY_SHIFT	SCHED_FIXEDPOINT_SHIFT
+#define SCHED_CAPACITY_SCALE	(1L << SCHED_CAPACITY_SHIFT)
+
 struct load_weight {
 	unsigned long			weight;
 	u32				inv_weight;
@@ -575,6 +581,26 @@ struct sched_dl_entity {
 	struct hrtimer inactive_timer;
 };
 
+/*
+ * Number of utiliation clamp groups
+ *
+ * The first clamp group (group_id=0) is used for tracking of non clamped
+ * tasks.  Thus we allocate one more slot than the value the kernel
+ * has been configured for, i.e. CONFIG_UCLAMP_GROUPS_COUNT.
+ */
+#define UCLAMP_GROUPS (CONFIG_UCLAMP_GROUPS_COUNT + 1)
+
+/**
+ * Utilization's clamp group
+ *
+ * A utilization clamp group maps a "clamp value" (value), i.e.
+ * util_{min,max}, to a "clamp group index" (group_id).
+ */
+struct uclamp_se {
+	unsigned int value		: SCHED_CAPACITY_SHIFT + 1;
+	unsigned int group_id		: order_base_2(UCLAMP_GROUPS);
+};
+
 union rcu_special {
 	struct {
 		u8			blocked;
@@ -659,7 +685,7 @@ struct task_struct {
 
 #ifdef CONFIG_UCLAMP_TASK
 	/* Utlization clamp values for this task */
-	int				uclamp[UCLAMP_CNT];
+	struct uclamp_se		uclamp[UCLAMP_CNT];
 #endif
 
 #ifdef CONFIG_PREEMPT_NOTIFIERS

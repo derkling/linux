@@ -717,25 +717,284 @@ static void set_load_weight(struct task_struct *p, bool update_load)
 }
 
 #ifdef CONFIG_UCLAMP_TASK
-static inline int __setscheduler_uclamp(struct task_struct *p,
-					const struct sched_attr *attr)
+/**
+ * uclamp_mutex: serializes updates of utilization clamp values
+ *
+ * A utilization clamp value update is usually triggered from a user-space
+ * process (slow-path) but it requires a synchronization with the scheduler's
+ * (fast-path) enqueue/dequeue operations.
+ * While the fast-path synchronization is protected by RQs spinlock, this
+ * mutex ensures that we sequentially serve user-space requests.
+ */
+static DEFINE_MUTEX(uclamp_mutex);
+
+/**
+ * uclamp_map: reference counts a utilization "clamp value"
+ * @value:    the utilization "clamp value" required
+ * @se_count: the number of scheduling entities requiring the "clamp value"
+ */
+union uclamp_map {
+	struct {
+		unsigned long value	: SCHED_CAPACITY_SHIFT + 1;
+		unsigned long se_count	: BITS_PER_LONG -
+					  SCHED_CAPACITY_SHIFT - 1;
+	};
+	unsigned long data;
+	atomic_long_t adata;
+};
+
+/**
+ * uclamp_maps: maps each SEs "clamp value" into a CPUs "clamp group"
+ *
+ * Since only a limited number of different "clamp values" are supported, we
+ * need to map each different clamp value into a "clamp group" (group_id) to
+ * be used by the per-CPU accounting in the fast-path, when tasks are
+ * enqueued and dequeued.
+ * We also support different kind of utilization clamping, min and max
+ * utilization for example, each representing what we call a "clamp index"
+ * (clamp_id).
+ *
+ * A matrix is thus required to map "clamp values" to "clamp groups"
+ * (group_id), for each "clamp index" (clamp_id), where:
+ * - rows are indexed by clamp_id and they collect the clamp groups for a
+ *   given clamp index
+ * - columns are indexed by group_id and they collect the clamp values which
+ *   maps to that clamp group
+ *
+ * Thus, the column index of a given (clamp_id, value) pair represents the
+ * clamp group (group_id) used by the fast-path's per-CPU accounting.
+ *
+ * Here is the map layout and, right below, how entries are accessed by the
+ * following code.
+ *
+ *                          uclamp_maps is a matrix of
+ *          +------- UCLAMP_CNT by UCLAMP_GROUPS entries
+ *          |                                |
+ *          |                /---------------+---------------\
+ *          |               +------------+       +------------+
+ *          |  / UCLAMP_MIN | value      |       | value      |
+ *          |  |            | se_count   |...... | se_count   |
+ *          |  |            +------------+       +------------+
+ *          +--+            +------------+       +------------+
+ *             |            | value      |       | value      |
+ *             \ UCLAMP_MAX | se_count   |...... | se_count   |
+ *                          +-----^------+       +----^-------+
+ *                                |                   |
+ *                      uc_map =  +                   |
+ *                     &uclamp_maps[clamp_id][0]      +
+ *                                                clamp_value =
+ *                                       uc_map[group_id].value
+ */
+static union uclamp_map uclamp_maps[UCLAMP_CNT][UCLAMP_GROUPS];
+
+#define UCLAMP_ENOSPC_FMT "Cannot allocate more than " \
+	__stringify(CONFIG_UCLAMP_GROUPS_COUNT) " UTIL_%s clamp groups\n"
+
+/**
+ * uclamp_group_put: decrease the reference count for a clamp group
+ * @clamp_id: the clamp index which was affected by a task group
+ * @uc_se: the utilization clamp data for that task group
+ *
+ * When the clamp value for a task group is changed we decrease the reference
+ * count for the clamp group mapping its current clamp value. A clamp group is
+ * released when there are no more task groups referencing its clamp value.
+ */
+static void uclamp_group_put(int clamp_id, int group_id)
 {
-	if (attr->sched_util_min > attr->sched_util_max)
-		return -EINVAL;
-	if (attr->sched_util_max > SCHED_CAPACITY_SCALE)
-		return -EINVAL;
+	union uclamp_map *uc_maps = &uclamp_maps[clamp_id][0];
+	union uclamp_map uc_map_old, uc_map_new;
+	long res;
 
-	p->uclamp[UCLAMP_MIN] = attr->sched_util_min;
-	p->uclamp[UCLAMP_MAX] = attr->sched_util_max;
+	/* Ignore SE's not yet attached */
+	if (group_id < 0)
+		return;
 
-	return 0;
+	do {
+		uc_map_old.data = atomic_long_read(&uc_maps[group_id].adata);
+#ifdef CONFIG_SCHED_DEBUG
+#define UCLAMP_GRPERR "invalid SE clamp group [%d:%d] refcount\n"
+		if (unlikely(!uc_map_old.se_count)) {
+			pr_err_ratelimited(UCLAMP_GRPERR, clamp_id, group_id);
+			return;
+		}
+#endif
+		uc_map_new = uc_map_old;
+		uc_map_new.se_count -= 1;
+		res = atomic_long_cmpxchg(&uc_maps[group_id].adata,
+					  uc_map_old.data,
+					  uc_map_new.data);
+	} while (res != uc_map_old.data);
 }
+
+/**
+ * uclamp_group_get: increase the reference count for a clamp group
+ * @clamp_id: the clamp index affected by the task
+ * @next_group_id: the clamp group to refcount
+ * @uc_se: the utilization clamp data for the task
+ * @clamp_value: the new clamp value for the task
+ *
+ * Each time a task changes its utilization clamp value, for a specified clamp
+ * index, we need to find an available clamp group which can be used to track
+ * this new clamp value. The corresponding clamp group index will be used by
+ * the task to reference count the clamp value on CPUs while enqueued.
+ */
+static void uclamp_group_get(int clamp_id, struct uclamp_se *uc_se,
+			     unsigned int clamp_value)
+{
+	union uclamp_map *uc_maps = &uclamp_maps[clamp_id][0];
+	union uclamp_map uc_map_old, uc_map_new;
+	int prev_group_id = uc_se->group_id;
+	unsigned int group_value;
+	int free_group_id = -1;
+	unsigned long res;
+	int group_id;
+	int cpu;
+
+	group_value = uclamp_round(clamp_value);
+
+retry:
+
+	for (group_id = 0; group_id < UCLAMP_GROUPS; ++group_id) {
+		uc_map_old.data = atomic_long_read(&uc_maps[group_id].adata);
+		if (free_group_id < 0 && !uc_map_old.se_count)
+			free_group_id = group_id;
+		if (uc_map_old.value == group_value)
+			break;
+	}
+	if (group_id >= UCLAMP_GROUPS) {
+		group_id = free_group_id;
+		uc_map_old.data = atomic_long_read(&uc_maps[group_id].adata);
+	}
+
+	uc_map_new.se_count = uc_map_old.se_count + 1;
+	uc_map_new.value = group_value;
+	res = atomic_long_cmpxchg(&uc_maps[group_id].adata,
+				  uc_map_old.data, uc_map_new.data);
+	if (res != uc_map_old.data)
+		goto retry;
+
+	/* Ensure each CPU tracks the correct value for this clamp group */
+	if (likely(uc_map_new.se_count > 1))
+		goto done;
+	for_each_possible_cpu(cpu) {
+		struct uclamp_cpu *uc_cpu = &cpu_rq(cpu)->uclamp;
+
+		/* Refcounting is expected to be always 0 for free groups */
+		if (unlikely(uc_cpu->group[clamp_id][group_id].tasks)) {
+			uc_cpu->group[clamp_id][group_id].tasks = 0;
+#ifdef CONFIG_SCHED_DEBUG
+			WARN(1, "invalid CPU[%d] clamp group [%d:%d] refcount\n",
+			     cpu_of(rq), clamp_id, group_id);
+#endif
+		}
+
+		if (uc_cpu->group[clamp_id][group_id].value == group_value)
+			continue;
+		uc_cpu->group[clamp_id][group_id].value = group_value;
+	}
+
+done:
+
+	/* Update SE's clamp values and attach it to new clamp group */
+	uc_se->value = clamp_value;
+	uc_se->group_id = group_id;
+
+	/* Release the previous clamp group */
+	uclamp_group_put(clamp_id, prev_group_id);
+}
+
+static int __setscheduler_uclamp(struct task_struct *p,
+				 const struct sched_attr *attr)
+{
+	unsigned int lower_bound = p->uclamp[UCLAMP_MIN].value;
+	unsigned int upper_bound = p->uclamp[UCLAMP_MAX].value;
+	int result = 0;
+
+	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN)
+		lower_bound = attr->sched_util_min;
+
+	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX)
+		upper_bound = attr->sched_util_max;
+
+	if (lower_bound > upper_bound ||
+	    upper_bound > SCHED_CAPACITY_SCALE)
+		return -EINVAL;
+
+	mutex_lock(&uclamp_mutex);
+
+	/* Update each required clamp group */
+	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN) {
+		uclamp_group_get(UCLAMP_MIN, &p->uclamp[UCLAMP_MIN],
+				 lower_bound);
+	}
+	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX) {
+		uclamp_group_get(UCLAMP_MAX, &p->uclamp[UCLAMP_MAX],
+				 upper_bound);
+	}
+
+	mutex_unlock(&uclamp_mutex);
+
+	return result;
+}
+
+/**
+ * uclamp_exit_task: release referenced clamp groups
+ * @p: the task exiting
+ *
+ * When a task terminates, release all its (eventually) refcounted
+ * task-specific clamp groups.
+ */
+void uclamp_exit_task(struct task_struct *p)
+{
+	uclamp_group_put(UCLAMP_MIN, p->uclamp[UCLAMP_MIN].group_id);
+	uclamp_group_put(UCLAMP_MAX, p->uclamp[UCLAMP_MAX].group_id);
+}
+
+/**
+ * uclamp_fork: refcount task-specific clamp values for a new task
+ */
+static void uclamp_fork(struct task_struct *p, bool reset)
+{
+	int clamp_id;
+
+	if (unlikely(!p->sched_class->uclamp_enabled))
+		return;
+
+	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
+		unsigned int clamp_value = p->uclamp[clamp_id].value;
+
+		if (unlikely(reset))
+			clamp_value = uclamp_none(clamp_id);
+
+		uclamp_group_get(clamp_id, &p->uclamp[clamp_id], clamp_value);
+	}
+}
+
+/**
+ * init_uclamp: initialize data structures required for utilization clamping
+ */
+static void __init init_uclamp(void)
+{
+	struct uclamp_se *uc_se;
+	int clamp_id;
+
+	mutex_init(&uclamp_mutex);
+
+	memset(uclamp_maps, 0, sizeof(uclamp_maps));
+	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
+		uc_se = &init_task.uclamp[clamp_id];
+		uclamp_group_get(clamp_id, uc_se, uclamp_none(clamp_id));
+	}
+}
+
 #else /* CONFIG_UCLAMP_TASK */
 static inline int __setscheduler_uclamp(struct task_struct *p,
 					const struct sched_attr *attr)
 {
 	return -EINVAL;
 }
+static inline void uclamp_fork(struct task_struct *p, bool reset) { }
+static inline void init_uclamp(void) { }
 #endif /* CONFIG_UCLAMP_TASK */
 
 static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
@@ -2314,6 +2573,7 @@ static inline void init_schedstats(void) {}
 int sched_fork(unsigned long clone_flags, struct task_struct *p)
 {
 	unsigned long flags;
+	bool reset;
 
 	__sched_fork(clone_flags, p);
 	/*
@@ -2331,7 +2591,8 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	/*
 	 * Revert to default priority/policy on fork if requested.
 	 */
-	if (unlikely(p->sched_reset_on_fork)) {
+	reset = p->sched_reset_on_fork;
+	if (unlikely(reset)) {
 		if (task_has_dl_policy(p) || task_has_rt_policy(p)) {
 			p->policy = SCHED_NORMAL;
 			p->static_prio = NICE_TO_PRIO(0);
@@ -2341,11 +2602,6 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 
 		p->prio = p->normal_prio = __normal_prio(p);
 		set_load_weight(p, false);
-
-#ifdef CONFIG_UCLAMP_TASK
-		p->uclamp[UCLAMP_MIN] = 0;
-		p->uclamp[UCLAMP_MAX] = SCHED_CAPACITY_SCALE;
-#endif
 
 		/*
 		 * We don't need the reset flag anymore after the fork. It has
@@ -2362,6 +2618,8 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 		p->sched_class = &fair_sched_class;
 
 	init_entity_runnable_average(&p->se);
+
+	uclamp_fork(p, reset);
 
 	/*
 	 * The child is not yet in the pid-hash so no cgroup attach races,
@@ -4610,9 +4868,14 @@ SYSCALL_DEFINE3(sched_setattr, pid_t, pid, struct sched_attr __user *, uattr,
 	rcu_read_lock();
 	retval = -ESRCH;
 	p = find_process_by_pid(pid);
-	if (p != NULL)
-		retval = sched_setattr(p, &attr);
+	if (likely(p))
+		get_task_struct(p);
 	rcu_read_unlock();
+
+	if (likely(p)) {
+		retval = sched_setattr(p, &attr);
+		put_task_struct(p);
+	}
 
 	return retval;
 }
@@ -4765,8 +5028,8 @@ SYSCALL_DEFINE4(sched_getattr, pid_t, pid, struct sched_attr __user *, uattr,
 		attr.sched_nice = task_nice(p);
 
 #ifdef CONFIG_UCLAMP_TASK
-	attr.sched_util_min = p->uclamp[UCLAMP_MIN];
-	attr.sched_util_max = p->uclamp[UCLAMP_MAX];
+	attr.sched_util_min = p->uclamp[UCLAMP_MIN].value;
+	attr.sched_util_max = p->uclamp[UCLAMP_MAX].value;
 #endif
 
 	rcu_read_unlock();
@@ -6115,6 +6378,8 @@ void __init sched_init(void)
 	init_sched_fair_class();
 
 	init_schedstats();
+
+	init_uclamp();
 
 	scheduler_running = 1;
 }
