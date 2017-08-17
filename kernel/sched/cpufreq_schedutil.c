@@ -208,6 +208,51 @@ static bool sugov_cpu_is_busy(struct sugov_cpu *sg_cpu)
 static inline bool sugov_cpu_is_busy(struct sugov_cpu *sg_cpu) { return false; }
 #endif /* CONFIG_NO_HZ_COMMON */
 
+#ifdef CONFIG_UTIL_CLAMP
+static inline
+void cpu_clamp_range(unsigned int cpu, unsigned int *min_util,
+                        unsigned int *max_util)
+{
+       struct uclamp_cpu *cgc;
+
+       *min_util = 0;
+       cgc = &cpu_rq(cpu)->uclamp_cpu[UCLAMP_MIN];
+       if (cgc->node)
+               *min_util = cgc->value;
+
+       *max_util = SCHED_CAPACITY_SCALE;
+       cgc = &cpu_rq(cpu)->uclamp_cpu[UCLAMP_MAX];
+       if (cgc->node)
+               *max_util = cgc->value;
+}
+
+static inline
+unsigned int uclamp_cpu_util(unsigned int cpu, unsigned int util)
+{
+       unsigned int max_util, min_util;
+
+       cpu_clamp_range(cpu, &min_util, &max_util);
+       return clamp(util, min_util, max_util);
+}
+
+static inline
+void clamp_compose(unsigned int *min_util, unsigned int *max_util,
+                      unsigned int j_min_util, unsigned int j_max_util)
+{
+       *min_util = max(*min_util, j_min_util);
+       *max_util = max(*max_util, j_max_util);
+}
+
+#define clamp_util(util, min_util, max_util) \
+       clamp_t(typeof(util), util, min_util, max_util)
+
+#else
+#define cpu_clamp_range(cpu, min_util, max_util) { }
+#define uclamp_cpu_util(cpu, util) util
+#define clamp_compose(min_util, max_util, j_min_util, j_max_util) { }
+#define clamp_util(util, min_util, max_util) util
+#endif /* CONFIG_UTIL_CLAMP */
+
 static void sugov_update_single(struct update_util_data *hook, u64 time,
 				unsigned int flags)
 {
@@ -231,6 +276,7 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 	} else {
 		sugov_get_util(&util, &max);
 		sugov_iowait_boost(sg_cpu, &util, &max);
+		util = uclamp_cpu_util(smp_processor_id(), util);
 		next_f = get_next_freq(sg_policy, util, max);
 		/*
 		 * Do not reduce the frequency if the CPU has not been idle
@@ -247,10 +293,16 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 	struct sugov_policy *sg_policy = sg_cpu->sg_policy;
 	struct cpufreq_policy *policy = sg_policy->policy;
 	unsigned long util = 0, max = 1;
+	unsigned int max_util = SCHED_CAPACITY_SCALE;
+	unsigned int min_util = 0;
 	unsigned int j;
+
+	/* Initialize clamping range based on caller CPU constraints */
+	cpu_clamp_range(smp_processor_id(), &min_util, &max_util);
 
 	for_each_cpu(j, policy->cpus) {
 		struct sugov_cpu *j_sg_cpu = &per_cpu(sugov_cpu, j);
+		unsigned int j_max_util, j_min_util;
 		unsigned long j_util, j_max;
 		s64 delta_ns;
 
@@ -277,7 +329,21 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 		}
 
 		sugov_iowait_boost(j_sg_cpu, &util, &max);
+
+		/*
+		 * Update clamping range based on this CPU constraints, but
+		 * only if this CPU is not currently idle. Idle CPUs do not
+		 * enforce constraints in a shared frequency domain.
+		 */
+		if (!idle_cpu(j)) {
+			cpu_clamp_range(j, &j_min_util, &j_max_util);
+			clamp_compose(&min_util, &max_util,
+					j_min_util, j_max_util);
+		}
 	}
+
+	/* Clamp utilization on aggregated CPUs ranges */
+	util = clamp_util(util, min_util, max_util);
 
 	return get_next_freq(sg_policy, util, max);
 }
