@@ -358,6 +358,7 @@ static int cpufreq_init(struct cpufreq_policy *policy)
 	}
 
 	policy->cpuinfo.transition_latency = transition_latency;
+	policy->transition_delay_us = transition_latency;
 
 	of_node_put(np);
 
