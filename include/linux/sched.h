@@ -3448,6 +3448,9 @@ void cpufreq_add_update_util_hook(int cpu, struct update_util_data *data,
                        void (*func)(struct update_util_data *data, u64 time,
                                     unsigned int flags));
 void cpufreq_remove_update_util_hook(int cpu);
+
+void update_sched_groups_capacity(const cpumask_t *cpus);
+
 #endif /* CONFIG_CPU_FREQ */
 
 #endif

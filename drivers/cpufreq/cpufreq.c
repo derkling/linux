@@ -407,6 +407,8 @@ scale_max_freq_capacity(const cpumask_t *cpus, unsigned long policy_max_freq)
 
 	pr_debug("cpus %*pbl policy max freq/max freq %lu/%lu kHz max freq scale %lu\n",
 		 cpumask_pr_args(cpus), policy_max_freq, max_freq, scale);
+
+	update_sched_groups_capacity(cpus);
 }
 
 unsigned long cpufreq_scale_max_freq_capacity(struct sched_domain *sd, int cpu)

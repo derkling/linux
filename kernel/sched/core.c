@@ -6571,6 +6571,35 @@ static void init_sched_groups_capacity(int cpu, struct sched_domain *sd)
 	atomic_set(&sg->sgc->nr_busy_cpus, sg->group_weight);
 }
 
+void update_sched_groups_capacity(const cpumask_t *cpus)
+{
+	int cpu;
+	struct sched_domain *sd;
+
+	/*
+	 * update_group_capacity updates the first group in the passed
+	 * sched_domain. On the bottom level we'll need to do that for each
+	 * CPU. On the higher levels the first CPU in the first group can take
+	 * care of it on behalf of all of the others in the group (the balance
+	 * designated cpu).
+	 * We iterate through CPUs in reverse order to make sure all
+	 * CPUs/groups on lower levels are updated before we update groups at
+	 * higher levels.
+	 */
+
+	for (cpu = nr_cpumask_bits-1; cpu >= 0; cpu--) {
+
+		if (!cpumask_test_cpu(cpu, cpus))
+			continue;
+
+		for_each_domain(cpu, sd) {
+			if (cpu != group_balance_cpu(sd->groups))
+				continue;
+			update_group_capacity(sd, cpu);
+		}
+	}
+}
+
 /*
  * Check that the per-cpu provided sd energy data is consistent for all cpus
  * within the mask.
