@@ -3045,9 +3045,19 @@ __update_load_avg_blocked_se(u64 now, int cpu, struct sched_entity *se)
 static int
 __update_load_avg_se(u64 now, int cpu, struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
-	return ___update_load_avg(now, cpu, &se->avg,
+	int res = ___update_load_avg(now, cpu, &se->avg,
 				  se->on_rq * scale_load_down(se->load.weight),
 				  cfs_rq->curr == se, NULL);
+
+	if (entity_is_task(se))
+		trace_printk("update_load: pid=%d comm=%s cpu=%d util_avg=%lu clamp_util_avg=%d uclamp_min=%d uclamp_max=%d",
+			     task_of(se)->pid, task_of(se)->comm, cpu,
+			     se->avg.util_avg,
+			     uclamp_util(cpu, se->avg.util_avg),
+			     uclamp_value(cpu, UCLAMP_MIN),
+			     uclamp_value(cpu, UCLAMP_MAX));
+
+	return res;
 }
 
 static int
