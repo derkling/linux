@@ -3308,6 +3308,15 @@ __update_load_avg_se(u64 now, int cpu, struct cfs_rq *cfs_rq, struct sched_entit
 				cfs_rq->curr == se)) {
 
 		___update_load_avg(&se->avg, se_weight(se), se_runnable(se));
+
+		if (entity_is_task(se))
+			trace_printk("update_load: pid=%d comm=%s cpu=%d util_avg=%lu clamp_util_avg=%d uclamp_min=%d uclamp_max=%d",
+				     task_of(se)->pid, task_of(se)->comm, cpu,
+				     se->avg.util_avg,
+				     uclamp_util(cpu, se->avg.util_avg),
+				     uclamp_value(cpu, UCLAMP_MIN),
+				     uclamp_value(cpu, UCLAMP_MAX));
+
 		return 1;
 	}
 
