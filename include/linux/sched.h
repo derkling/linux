@@ -590,6 +590,7 @@ struct task_struct {
 #ifdef CONFIG_UTIL_CLAMP
 	/* Index of clamp group the task has been accounted into */
 	int				uclamp_group_id[UCLAMP_CNT];
+	int				uclamp_trace_id[UCLAMP_CNT];
 #endif
 
 #ifdef CONFIG_PREEMPT_NOTIFIERS
