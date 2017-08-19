@@ -380,8 +380,20 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 	}
 
 	/* Clamp utilization based on aggregated uclamp constraints */
-	if (uclamp_enabled)
-		util = clamp(util, min_util, max_util);
+	if (uclamp_enabled) {
+		int cpu = smp_processor_id();
+		unsigned long clamped_util;
+
+		clamped_util = clamp(util, min_util, max_util);
+
+		trace_printk("next_freq: cpu=%d util=%lu util_uclamp=%lu cpu_cmin=%d cpu_cmax=%d srd_cmin=%lu srd_cmax=%lu",
+			     cpu, util, clamped_util,
+			     uclamp_value(cpu, UCLAMP_MIN),
+			     uclamp_value(cpu, UCLAMP_MAX),
+			     min_util, max_util);
+
+		util = clamped_util;
+	}
 
 	return get_next_freq(sg_policy, util, max);
 }
