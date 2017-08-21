@@ -181,11 +181,11 @@
 	energy-costs {
 		CPU_COST_CORTEX_A55: core-cost0 {
 			busy-cost-data = <
-				156   16
-				235   33
-				314   60
-				377   89
-				440   130
+				156   24
+				235   50
+				314   87
+				377   134
+				440   194
 			>;
 			idle-cost-data = <
 				0
@@ -196,11 +196,11 @@
 		};
 		CPU_COST_CORTEX_A75: core-cost1 {
 			busy-cost-data = <
-				365   132
-				547   263
-				730   471
-				876   714
-			       1024   1020
+				365   131
+				547   269
+				730   470
+				876   706
+			       1024   1029
 			>;
 			idle-cost-data = <
 				0
