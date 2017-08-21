@@ -5985,6 +5985,32 @@ static int cpu_util(int cpu)
 	return (util >= capacity) ? capacity : util;
 }
 
+/**
+ * cpu_util_est: estimated utilization for the specified CPU
+ * @cpu: the CPU to get the estimated utilization for
+ *
+ * The estimated utilization of a CPU is defined to be the maximum between its
+ * PELT's utilization and the sum of the estimated utilization of the tasks
+ * currently RUNNABLE on that CPU.
+ *
+ * This allows to properly represent the expected utilization of a CPU which
+ * has just got a big task running since a long sleep period. At the same time
+ * however it preserves the benefits of the "blocked load" in describing the
+ * potential for other tasks waking up on the same CPU.
+ *
+ * Return: the estimated utlization for the specified CPU
+ */
+static inline unsigned long cpu_util_est(int cpu)
+{
+	struct sched_avg *sa = &cpu_rq(cpu)->cfs.avg;
+	unsigned long util = cpu_util(cpu);
+
+	if (!sched_feat(UTIL_EST))
+		return util;
+
+	return max(util, util_est(sa, UTIL_EST_LAST));
+}
+
 static inline int task_util(struct task_struct *p)
 {
 	return p->se.avg.util_avg;
@@ -6007,10 +6033,18 @@ static int cpu_util_wake(int cpu, struct task_struct *p)
 
 	/* Task has no contribution or is new */
 	if (cpu != task_cpu(p) || !p->se.avg.last_update_time)
-		return cpu_util(cpu);
+		return cpu_util_est(cpu);
 
 	capacity = capacity_orig_of(cpu);
 	util = max_t(long, cpu_rq(cpu)->cfs.avg.util_avg - task_util(p), 0);
+
+	/*
+	 * Estimated utilization tracks only tasks already enqueued, but still
+	 * sometimes can return a bigger value than PELT, for example when the
+	 * blocked load is negligible wrt the estimated utilization of the
+	 * already enqueued tasks.
+	 */
+	util = max_t(long, util, cpu_util_est(cpu));
 
 	return (util >= capacity) ? capacity : util;
 }
@@ -7539,7 +7573,7 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 			load = source_load(i, load_idx);
 
 		sgs->group_load += load;
-		sgs->group_util += cpu_util(i);
+		sgs->group_util += cpu_util_est(i);
 		sgs->sum_nr_running += rq->cfs.h_nr_running;
 
 		nr_running = rq->nr_running;
