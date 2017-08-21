@@ -5936,6 +5936,35 @@ static int cpu_util(int cpu)
 	return (util >= capacity) ? capacity : util;
 }
 
+/**
+ * cpu_util_est: estimated utilization for the specified CPU
+ * @cpu: the CPU to get the estimated utilization for
+ *
+ * The estimated utilization of a CPU is defined to be the maximum between its
+ * PELT's utilization and the sum of the estimated utilization of the tasks
+ * currently RUNNABLE on that CPU.
+ *
+ * This allows to properly represent the expected utilization of a CPU which
+ * has just got a big task running since a long sleep period. At the same time
+ * however it preserves the benefits of the "blocked load" in describing the
+ * potential for other tasks waking up on the same CPU.
+ *
+ * Return: the estimated utlization for the specified CPU
+ */
+static inline unsigned long cpu_util_est(int cpu)
+{
+	unsigned long capacity = capacity_orig_of(cpu);
+	struct sched_avg *sa = &cpu_rq(cpu)->cfs.avg;
+	unsigned long util = cpu_util(cpu);
+
+	if (!sched_feat(UTIL_EST))
+		return util;
+
+	util = max(util, util_est(sa, UTIL_EST_LAST));
+
+	return (util >= capacity) ? capacity : util;
+}
+
 static inline int task_util(struct task_struct *p)
 {
 	return p->se.avg.util_avg;
@@ -5954,16 +5983,18 @@ static inline int task_util_est(struct task_struct *p)
  */
 static int cpu_util_wake(int cpu, struct task_struct *p)
 {
-	unsigned long util, capacity;
+	unsigned long util_est = cpu_util_est(cpu);
+	unsigned long capacity;
 
 	/* Task has no contribution or is new */
 	if (cpu != task_cpu(p) || !p->se.avg.last_update_time)
-		return cpu_util(cpu);
+		return util_est;
 
 	capacity = capacity_orig_of(cpu);
-	util = max_t(long, cpu_rq(cpu)->cfs.avg.util_avg - task_util(p), 0);
+	if (util_est < cpu_util(cpu))
+		util_est = max_t(long, cpu_util(cpu) - task_util(p), 0);
 
-	return (util >= capacity) ? capacity : util;
+	return min(util_est, capacity);
 }
 
 /*
@@ -7490,7 +7521,7 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 			load = source_load(i, load_idx);
 
 		sgs->group_load += load;
-		sgs->group_util += cpu_util(i);
+		sgs->group_util += cpu_util_est(i);
 		sgs->sum_nr_running += rq->cfs.h_nr_running;
 
 		nr_running = rq->nr_running;
