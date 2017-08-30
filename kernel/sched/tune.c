@@ -337,7 +337,7 @@ void schedtune_enqueue_task(struct task_struct *p, int cpu)
 	struct boost_groups *bg = &per_cpu(cpu_boost_groups, cpu);
 	unsigned long irq_flags;
 	struct schedtune *st;
-	int idx;
+	int idx, task_boost;
 
 	if (!unlikely(schedtune_initialized))
 		return;
@@ -361,11 +361,21 @@ void schedtune_enqueue_task(struct task_struct *p, int cpu)
 
 	st = task_schedtune(p);
 	idx = st->idx;
+	task_boost = st->boost;
 
 	schedtune_tasks_update(p, cpu, idx, ENQUEUE_TASK);
 
 	rcu_read_unlock();
 	raw_spin_unlock_irqrestore(&bg->lock, irq_flags);
+
+	/*
+	 * It's likely a good time to update the cpu frequency governor
+	 * since cpu utilization may either not be updated on enqueue
+	 * or may not have triggered a cpufreq update
+	 */
+	if (task_boost)
+		cpufreq_update_util(cpu_rq(cpu),
+				    SCHED_CPUFREQ_SCHEDTUNE_UPDATE);
 }
 
 int schedtune_allow_attach(struct cgroup_subsys_state *css,
