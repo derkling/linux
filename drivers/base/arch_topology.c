@@ -21,6 +21,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/sched/topology.h>
+#include <linux/cpuset.h>
 
 DEFINE_PER_CPU(unsigned long, freq_scale) = SCHED_CAPACITY_SCALE;
 
@@ -186,6 +187,50 @@ done:
 	}
 
 	return flags_changed;
+}
+
+int topology_smt_flags(void)
+{
+	if (asym_cpucap == asym_thread)
+		pr_info("topology_smt_flags: SD_ASYM_CPUCAPACITY\n");
+	else
+		pr_info("topology_smut_flags: !SD_ASYM_CPUCAPACITY\n");
+
+	return asym_cpucap == asym_thread ? SD_ASYM_CPUCAPACITY : 0;
+}
+
+int topology_core_flags(void)
+{
+	if (asym_cpucap == asym_core)
+		pr_info("topology_core_flags: SD_ASYM_CPUCAPACITY\n");
+	else
+		pr_info("topology_core_flags: !SD_ASYM_CPUCAPACITY\n");
+
+	return asym_cpucap == asym_core ? SD_ASYM_CPUCAPACITY : 0;
+}
+
+int topology_cpu_flags(void)
+{
+	if (asym_cpucap == asym_die)
+		pr_info("topology_die_flags: SD_ASYM_CPUCAPACITY\n");
+	else
+		pr_info("topology_die_flags: !SD_ASYM_CPUCAPACITY\n");
+
+	return asym_cpucap == asym_die ? SD_ASYM_CPUCAPACITY : 0;
+}
+
+static int update_topology = 0;
+
+int topology_update_cpu_topology(void)
+{
+	return update_topology;
+}
+
+static void update_topology_flags(void)
+{
+	update_topology = 1;
+	rebuild_sched_domains();
+	update_topology = 0;
 }
 
 static u32 capacity_scale;
