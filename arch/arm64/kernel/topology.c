@@ -283,14 +283,33 @@ topology_populated:
 	topology_detect_flags();
 }
 
+#ifdef CONFIG_SCHED_SMT
+static int smt_flags(void)
+{
+	return cpu_smt_flags() | topology_smt_flags();
+}
+#endif
+
+#ifdef CONFIG_SCHED_MC
+static int core_flags(void)
+{
+	return cpu_core_flags() | topology_core_flags();
+}
+#endif
+
+static int cpu_flags(void)
+{
+	return topology_cpu_flags();
+}
+
 static struct sched_domain_topology_level arm64_topology[] = {
 #ifdef CONFIG_SCHED_SMT
-	{ cpu_smt_mask, cpu_smt_flags, SD_INIT_NAME(SMT) },
+	{ cpu_smt_mask, smt_flags, SD_INIT_NAME(SMT) },
 #endif
 #ifdef CONFIG_SCHED_MC
-	{ cpu_coregroup_mask, cpu_core_flags, SD_INIT_NAME(MC) },
+	{ cpu_coregroup_mask, core_flags, SD_INIT_NAME(MC) },
 #endif
-	{ cpu_cpu_mask, SD_INIT_NAME(DIE) },
+	{ cpu_cpu_mask, cpu_flags, SD_INIT_NAME(DIE) },
 	{ NULL, }
 };
 
