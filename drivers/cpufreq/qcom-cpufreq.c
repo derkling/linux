@@ -46,36 +46,23 @@ static DEFINE_PER_CPU(struct cpufreq_suspend_t, suspend_data);
 static int set_cpu_freq(struct cpufreq_policy *policy, unsigned int new_freq,
 			unsigned int index)
 {
-	int ret = 0;
-	struct cpufreq_freqs freqs;
+	int ret;
 	unsigned long rate;
-
-	freqs.old = policy->cur;
-	freqs.new = new_freq;
-	freqs.cpu = policy->cpu;
-
-	cpufreq_freq_transition_begin(policy, &freqs);
 
 	rate = new_freq * 1000;
 	rate = clk_round_rate(cpu_clk[policy->cpu], rate);
 	ret = clk_set_rate(cpu_clk[policy->cpu], rate);
-	cpufreq_freq_transition_end(policy, &freqs, ret);
 
 	return ret;
 }
 
-static int msm_cpufreq_target(struct cpufreq_policy *policy,
-				unsigned int target_freq,
-				unsigned int relation)
+static int msm_cpufreq_target_index(struct cpufreq_policy *policy,
+			      unsigned int index)
 {
-	int ret = 0;
-	int index;
-	struct cpufreq_frequency_table *table;
+	int ret;
+	struct cpufreq_frequency_table *table = policy->freq_table;
 
 	mutex_lock(&per_cpu(suspend_data, policy->cpu).suspend_mutex);
-
-	if (target_freq == policy->cur)
-		goto done;
 
 	if (per_cpu(suspend_data, policy->cpu).device_suspended) {
 		pr_debug("cpufreq: cpu%d scheduling frequency change "
@@ -83,24 +70,6 @@ static int msm_cpufreq_target(struct cpufreq_policy *policy,
 		ret = -EFAULT;
 		goto done;
 	}
-
-	table = cpufreq_frequency_get_table(policy->cpu);
-	if (!table) {
-		pr_err("cpufreq: Failed to get frequency table for CPU%u\n",
-		       policy->cpu);
-		ret = -ENODEV;
-		goto done;
-	}
-	if (cpufreq_frequency_table_target(policy, table, target_freq, relation,
-			&index)) {
-		pr_err("cpufreq: invalid target_freq: %d\n", target_freq);
-		ret = -EINVAL;
-		goto done;
-	}
-
-	pr_debug("CPU[%d] target %d relation %d (%d-%d) selected %d\n",
-		policy->cpu, target_freq, relation,
-		policy->min, policy->max, table[index].frequency);
 
 	ret = set_cpu_freq(policy, table[index].frequency,
 			   table[index].driver_data);
@@ -308,7 +277,7 @@ static struct cpufreq_driver msm_cpufreq_driver = {
 	.flags		= CPUFREQ_STICKY | CPUFREQ_CONST_LOOPS,
 	.init		= msm_cpufreq_init,
 	.verify		= msm_cpufreq_verify,
-	.target		= msm_cpufreq_target,
+	.target_index	= msm_cpufreq_target_index,
 	.get		= msm_cpufreq_get_freq,
 	.name		= "msm",
 	.attr		= msm_freq_attr,
