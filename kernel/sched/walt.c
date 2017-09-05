@@ -43,7 +43,7 @@ unsigned int sysctl_sched_walt_init_task_load_pct = 15;
 unsigned int __read_mostly walt_disabled = 0;
 
 /* Window size (in ns) */
-__read_mostly unsigned int walt_ravg_window = 20000000;
+__read_mostly unsigned int walt_ravg_window = (3333333 * 3);
 
 /* Min window size (in ns) = 10ms */
 #ifdef CONFIG_HZ_300
@@ -51,7 +51,7 @@ __read_mostly unsigned int walt_ravg_window = 20000000;
  * Tick interval becomes to 3333333 due to
  * rounding error when HZ=300.
  */
-#define MIN_SCHED_RAVG_WINDOW (3333333 * 6)
+#define MIN_SCHED_RAVG_WINDOW (3333333 * 3)
 #else
 #define MIN_SCHED_RAVG_WINDOW 10000000
 #endif
