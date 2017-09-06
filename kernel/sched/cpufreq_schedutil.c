@@ -122,6 +122,9 @@ static bool sugov_up_down_rate_limit(struct sugov_policy *sg_policy, u64 time,
 {
 	s64 delta_ns;
 
+	if (!use_pelt())
+		return false;
+
 	delta_ns = time - sg_policy->last_freq_update_time;
 
 	if (next_freq > sg_policy->next_freq &&
