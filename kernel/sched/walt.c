@@ -187,7 +187,7 @@ static int __init set_walt_ravg_window(char *str)
 
 early_param("walt_ravg_window", set_walt_ravg_window);
 
-static void
+static bool
 update_window_start(struct rq *rq, u64 wallclock)
 {
 	s64 delta;
@@ -201,12 +201,13 @@ update_window_start(struct rq *rq, u64 wallclock)
 	}
 
 	if (delta < walt_ravg_window)
-		return;
+		return false;
 
 	nr_windows = div64_u64(delta, walt_ravg_window);
 	rq->window_start += (u64)nr_windows * (u64)walt_ravg_window;
 
 	rq->cum_window_demand = rq->cumulative_runnable_avg;
+	return true;
 }
 
 /*
@@ -732,12 +733,14 @@ static void update_task_demand(struct task_struct *p, struct rq *rq,
 void walt_update_task_ravg(struct task_struct *p, struct rq *rq,
 	     int event, u64 wallclock, u64 irqtime)
 {
+	bool rollover;
+
 	if (walt_disabled || !rq->window_start)
 		return;
 
 	lockdep_assert_held(&rq->lock);
 
-	update_window_start(rq, wallclock);
+	rollover = update_window_start(rq, wallclock);
 
 	if (!p->ravg.mark_start)
 		goto done;
@@ -745,6 +748,8 @@ void walt_update_task_ravg(struct task_struct *p, struct rq *rq,
 	update_task_demand(p, rq, event, wallclock);
 	update_cpu_busy_time(p, rq, event, wallclock, irqtime);
 
+	if (rollover)
+		cpufreq_update_util(rq, 0);
 done:
 	trace_walt_update_task_ravg(p, rq, event, wallclock, irqtime);
 
