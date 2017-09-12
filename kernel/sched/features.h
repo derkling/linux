@@ -82,4 +82,4 @@ SCHED_FEAT(ENERGY_AWARE, false)
 /*
  * UtilEst. Use estimated utilization for CPUs and TASKs.
  */
-SCHED_FEAT(UTIL_EST, false)
+SCHED_FEAT(UTIL_EST, true)
