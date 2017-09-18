@@ -26,10 +26,16 @@
 #include <linux/slab.h>
 #include <linux/suspend.h>
 
+#include <linux/memblock.h>
+#include <linux/mman.h>
+#include <linux/io.h>
+
+#include <linux/mm.h>
 #include <uapi/linux/psci.h>
 
 #include <asm/cpuidle.h>
 #include <asm/cputype.h>
+#include <asm/sysreg.h>
 #include <asm/system_misc.h>
 #include <asm/smp_plat.h>
 #include <asm/suspend.h>
@@ -147,8 +153,138 @@ static int psci_to_linux_errno(int errno)
 	return -EINVAL;
 }
 
+/* physical address, hardcoded value
+ * XXX VALUE CHANGES MUST BE SYNCHRONIZED WITH ATF
+ */
+static uint32_t memPointer = 0xf0000000;
+/* shared memory size */
+static uint32_t reserveSize =  0x1000;
+
+#define MPIDR_CLUSTER_MASK 0xff00
+#define MPIDR_CPU_MASK 0xff
+
+inline static uint64_t read_mpidr(void)
+{
+    return read_sysreg(mpidr_el1);
+}
+
+/*
+ * return linear sequencial index as a function of the mpidr parameter
+ * Verbatim copy of the same code in ATG XXX changes must be synchronized with AFT
+ */
+static inline uint32_t getLinearCpuId(uint64_t mpidr)
+{
+    uint32_t clusterId = (mpidr & MPIDR_CLUSTER_MASK)>>8;
+    uint32_t coreId = (mpidr & MPIDR_CPU_MASK);
+
+    uint32_t clusterOffset = clusterId ? 2:0;
+
+    return coreId + clusterOffset;
+}
+
+/*
+ * return linear sequencial index as a function of the mpidr
+ * Verbatim copy of the same code in ATG XXX changes must be synchronized with AFT
+ */
+static inline uint32_t getCpuId(void)
+{
+    uint64_t mpidr = read_mpidr();
+
+    return getLinearCpuId(mpidr);
+}
+
+/*
+ * structure of the data stored in the shared memory page.
+ * XXX changes must be synchronized with ATF
+ * XXX pay attention to alignment/padding rules in order not to fall into inconsistent states
+ */
+struct CounterData
+{
+    uint64_t mpidrValue;
+
+    uint64_t constantFrequencyBeforeSleep;
+    uint64_t constantFrequencyOffset;
+    uint64_t padding;
+};
+
+/*
+ * virtual address where the shared memory page is mapped onto
+ */
+static struct CounterData *virtAddress = NULL;
+
+/* debug related enum */
+static enum DebugCallee {
+    SUSPEND,
+    CPU_ON,
+    CPU_OFF,
+    WAKE_UP,
+    SYS_SUSPEND,
+    SYS_OFF,
+    BLANK
+};
+
+/* debug related array of "strings" */
+static char *calleeNames[] = {"S", "ON", "OFF", "W", "SYS_SUSP", "SYS_OFF", " "};
+
+uint64_t get_constant_frequency_counter_debug(enum DebugCallee debug_callee, uint32_t state )
+{
+    uint64_t mpidr = read_mpidr();
+    uint64_t linearCpuId = getLinearCpuId(mpidr);
+    uint64_t offset = virtAddress[linearCpuId ].constantFrequencyOffset;
+
+    uint64_t counterValue =  read_sysreg(cntpct_el0)- offset;
+
+#if 1
+    /* "debug infrastructure" */
+    if(linearCpuId == 0)
+    {
+        uint64_t freq = read_sysreg(cntfrq_el0);
+        uint64_t cycleCounter = read_sysreg(pmccntr_el0);
+        static uint64_t lastOffset = 0;
+
+        if(state != 0xffffffff)
+        {
+            static uint64_t lastCycleValue = 0;
+            static uint64_t lastConstValue = 0;
+            pr_info("id %llx %s s %x const=%llx cycle=%llx  ratio %lld part %lld\n", mpidr, calleeNames[debug_callee], state, counterValue, cycleCounter, (cycleCounter*1000)/counterValue, ((cycleCounter-lastCycleValue)*1000)/(counterValue - lastConstValue)  );
+            lastCycleValue= cycleCounter;
+            lastConstValue= counterValue;
+        }
+        else
+        {
+            pr_info("id %llx %s const=%llx cycle=%llx  ratio %lld\n", mpidr, calleeNames[debug_callee], counterValue, cycleCounter, (cycleCounter*1000)/counterValue );
+        }
+
+        lastOffset = offset;
+    }
+#endif
+
+    return counterValue;
+}
+
+/* sample the constant frequency counter */
+uint64_t get_constant_frequency_counter()
+{
+    return get_constant_frequency_counter_debug(BLANK, 0);
+}
+
+/* sample the cpu cycle counter */
+uint64_t get_core_cycle_counter(void)
+{
+    return read_sysreg(pmccntr_el0);
+}
+
 static u32 psci_get_version(void)
 {
+    pr_info("attempt reserve %X", memPointer);
+
+    virtAddress = memremap(memPointer, reserveSize ,MEMREMAP_WB);
+    pr_info("allocated address 0x%X\n", virtAddress);
+    if(!virtAddress)
+    {
+        panic("failed to allocate the intended physical address\n");
+    }
+
 	return invoke_psci_fn(PSCI_0_2_FN_PSCI_VERSION, 0, 0, 0);
 }
 
@@ -157,8 +293,13 @@ static int psci_cpu_suspend(u32 state, unsigned long entry_point)
 	int err;
 	u32 fn;
 
+    get_constant_frequency_counter_debug(SUSPEND, state);
+
 	fn = psci_function_id[PSCI_FN_CPU_SUSPEND];
 	err = invoke_psci_fn(fn, state, entry_point, 0);
+
+    get_constant_frequency_counter_debug(WAKE_UP, state);
+
 	return psci_to_linux_errno(err);
 }
 
@@ -166,6 +307,8 @@ static int psci_cpu_off(u32 state)
 {
 	int err;
 	u32 fn;
+
+    /*get_constant_frequency_counter_debug(CPU_OFF, 0xffffffff );*/
 
 	fn = psci_function_id[PSCI_FN_CPU_OFF];
 	err = invoke_psci_fn(fn, state, 0, 0);
@@ -179,6 +322,8 @@ static int psci_cpu_on(unsigned long cpuid, unsigned long entry_point)
 
 	fn = psci_function_id[PSCI_FN_CPU_ON];
 	err = invoke_psci_fn(fn, cpuid, entry_point, 0);
+   /* get_constant_frequency_counter_debug(CPU_ON, cpuid);*/
+
 	return psci_to_linux_errno(err);
 }
 
@@ -234,11 +379,13 @@ static int get_set_conduit_method(struct device_node *np)
 
 static void psci_sys_reset(enum reboot_mode reboot_mode, const char *cmd)
 {
+    pr_info("SYS RESET\n");
 	invoke_psci_fn(PSCI_0_2_FN_SYSTEM_RESET, 0, 0, 0);
 }
 
 static void psci_sys_poweroff(void)
 {
+    pr_info("SYS OFF\n");
 	invoke_psci_fn(PSCI_0_2_FN_SYSTEM_OFF, 0, 0, 0);
 }
 
@@ -418,8 +565,13 @@ CPUIDLE_METHOD_OF_DECLARE(psci, "psci", &psci_cpuidle_ops);
 
 static int psci_system_suspend(unsigned long unused)
 {
+
+    pr_info("SYS SUSPEND\n");
+    /*get_constant_frequency_counter(SYS_SUSPEND, 0xffffffff);*/
 	return invoke_psci_fn(PSCI_FN_NATIVE(1_0, SYSTEM_SUSPEND),
 			      virt_to_phys(cpu_resume), 0, 0);
+
+    /*get_constant_frequency_counter(WAKE_UP, 0xffffffff);*/
 }
 
 static int psci_system_suspend_enter(suspend_state_t state)

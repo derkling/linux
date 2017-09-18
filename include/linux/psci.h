@@ -52,4 +52,8 @@ static inline int psci_acpi_init(void) { return 0; }
 static inline bool acpi_psci_present(void) { return false; }
 #endif
 
+uint64_t get_core_cycle_counter(void);
+
+uint64_t get_constant_frequency_counter(void);
+
 #endif /* __LINUX_PSCI_H */
