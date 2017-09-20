@@ -241,6 +241,18 @@ config QCOM_SCM_64
 config HAVE_ARM_SMCCC
 	bool
 
+config GEM5_ACTMON
+	bool "GEM5_ACTIVITY_MONITORS"
+	depends on  ARM_PSCI_FW && ARM64
+	help
+	  Enables the gem5 activity monitor implementation.
+
+config JUNO_ACTMON
+	bool "JUNO_ACTIVITY_MONITORS"
+	depends on  ARM_PSCI_FW && ARM64
+	help
+	  Enables the Juno activity monitor implementation.
+
 source "drivers/firmware/broadcom/Kconfig"
 source "drivers/firmware/google/Kconfig"
 source "drivers/firmware/efi/Kconfig"
