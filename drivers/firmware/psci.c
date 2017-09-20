@@ -263,15 +263,27 @@ uint64_t get_constant_frequency_counter_debug(enum DebugCallee debug_callee, uin
 }
 
 /* sample the constant frequency counter */
-uint64_t get_constant_frequency_counter()
+uint64_t get_constant_frequency_counter(void)
 {
-    return get_constant_frequency_counter_debug(BLANK, 0);
+ #if CONFIG_GEM5_ACTMON
+    /* TODO: placeholder for gem5 const freq counter read*/
+#elif CONFIG_JUNO_ACTMON
+   return get_constant_frequency_counter_debug(BLANK, 0);
+#else
+    panic("ACTMON not set to gem5 nor Juno");
+#endif
 }
 
 /* sample the cpu cycle counter */
 uint64_t get_core_cycle_counter(void)
 {
+#if CONFIG_GEM5_ACTMON
+    /* TODO: placeholder for gem5 core cycle read*/
+#elif CONFIG_JUNO_ACTMON
     return read_sysreg(pmccntr_el0);
+#else
+    panic("ACTMON not set to gem5 nor Juno");
+#endif
 }
 
 static u32 psci_get_version(void)
