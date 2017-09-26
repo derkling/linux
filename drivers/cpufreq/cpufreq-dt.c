@@ -48,6 +48,7 @@ static int set_target(struct cpufreq_policy *policy, unsigned int index)
 	struct cpufreq_frequency_table *freq_table = policy->freq_table;
 	struct clk *cpu_clk = policy->clk;
 	struct private_data *priv = policy->driver_data;
+	unsigned long freq = policy->freq_table[index].frequency;
 	struct device *cpu_dev = priv->cpu_dev;
 	struct regulator *cpu_reg = priv->cpu_reg;
 	unsigned long volt = 0, volt_old = 0, tol = 0;
@@ -55,7 +56,7 @@ static int set_target(struct cpufreq_policy *policy, unsigned int index)
 	long freq_Hz, freq_exact;
 	int ret;
 
-	freq_Hz = clk_round_rate(cpu_clk, freq_table[index].frequency * 1000);
+	freq_Hz = clk_round_rate(cpu_clk, freq * 1000);
 	if (freq_Hz <= 0)
 		freq_Hz = freq_table[index].frequency * 1000;
 
@@ -114,6 +115,10 @@ static int set_target(struct cpufreq_policy *policy, unsigned int index)
 			clk_set_rate(cpu_clk, old_freq * 1000);
 		}
 	}
+
+	if(!ret)
+		arch_set_freq_scale(policy->related_cpus, freq,
+						policy->cpuinfo.max_freq);
 
 	return ret;
 }
