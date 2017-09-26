@@ -234,7 +234,7 @@ uint64_t get_constant_frequency_counter_debug(enum DebugCallee debug_callee, uin
 
     uint64_t counterValue =  read_sysreg(cntpct_el0)- offset;
 
-#if 1
+#if 0
     /* "debug infrastructure" */
     if(linearCpuId == 0)
     {
