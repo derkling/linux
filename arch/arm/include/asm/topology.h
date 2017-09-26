@@ -5,6 +5,7 @@
 
 #include <linux/cpufreq.h>
 #include <linux/cpumask.h>
+#include <linux/arch_topology.h>
 
 struct cputopo_arm {
 	int thread_id;
@@ -25,9 +26,8 @@ void init_cpu_topology(void);
 void store_cpu_topology(unsigned int cpuid);
 const struct cpumask *cpu_coregroup_mask(int cpu);
 
-#ifdef CONFIG_CPU_FREQ
-#define arch_scale_freq_capacity cpufreq_scale_freq_capacity
-#endif
+/* Replace task scheduler's default frequency-invariant accounting */
+#define arch_scale_freq_capacity topology_get_freq_scale
 
 #else
 
