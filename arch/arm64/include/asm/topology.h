@@ -28,6 +28,11 @@ struct sched_domain;
 extern unsigned long cpufreq_scale_freq_capacity(struct sched_domain *sd, int cpu);
 #endif
 
+#include <linux/arch_topology.h>
+
+/* Replace task scheduler's default frequency-invariant accounting */
+#define arch_scale_freq_capacity topology_get_freq_scale
+
 #include <asm-generic/topology.h>
 
 #endif /* _ASM_ARM_TOPOLOGY_H */
