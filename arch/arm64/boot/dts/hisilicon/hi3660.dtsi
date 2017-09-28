@@ -1278,7 +1278,7 @@
 				sustainable-power = <4500>;
 
 				/* sensor ID */
-				thermal-sensors = <&tsensor 4>;
+				thermal-sensors = <&tsensor 1>;
 
 				trips {
 					threshold: trip-point@0 {
