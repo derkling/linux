@@ -212,8 +212,9 @@ struct CounterData
  */
 static struct CounterData *virtAddress = NULL;
 
+#define PSCI_DEBUG 1
 /* debug related enum */
-static enum DebugCallee {
+enum DebugCallee {
     SUSPEND,
     CPU_ON,
     CPU_OFF,
@@ -234,11 +235,11 @@ uint64_t get_constant_frequency_counter_debug(enum DebugCallee debug_callee, uin
 
     uint64_t counterValue =  read_sysreg(cntpct_el0)- offset;
 
-#if 0
+#if PSCI_DEBUG
     /* "debug infrastructure" */
     if(linearCpuId == 0)
     {
-        uint64_t freq = read_sysreg(cntfrq_el0);
+        /*uint64_t freq = read_sysreg(cntfrq_el0);*/
         uint64_t cycleCounter = read_sysreg(pmccntr_el0);
         static uint64_t lastOffset = 0;
 
@@ -291,7 +292,7 @@ static u32 psci_get_version(void)
     pr_info("attempt reserve %X", memPointer);
 
     virtAddress = memremap(memPointer, reserveSize ,MEMREMAP_WB);
-    pr_info("allocated address 0x%X\n", virtAddress);
+    pr_info("allocated address 0x%llX\n", (uint64_t)virtAddress);
     if(!virtAddress)
     {
         panic("failed to allocate the intended physical address\n");
