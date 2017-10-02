@@ -56,4 +56,6 @@ uint64_t get_core_cycle_counter(void);
 
 uint64_t get_constant_frequency_counter(void);
 
+uint64_t get_instructions_retired_counter(void);
+
 #endif /* __LINUX_PSCI_H */

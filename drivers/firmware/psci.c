@@ -287,6 +287,19 @@ uint64_t get_core_cycle_counter(void)
 #endif
 }
 
+/* sample numer of instructions retired counter */
+uint64_t get_instructions_retired_counter(void)
+{
+ #if CONFIG_GEM5_ACTMON
+    return read_sysreg(pmevcntr1_el0);
+#elif CONFIG_JUNO_ACTMON
+    /*TODO: Obtain JUNO inst retired counter (must remember to reset value in ATF) */
+#else
+    panic("ACTMON not set to gem5 nor Juno");
+#endif
+}
+
+
 static u32 psci_get_version(void)
 {
 
