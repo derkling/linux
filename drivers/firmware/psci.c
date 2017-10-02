@@ -267,9 +267,9 @@ uint64_t get_constant_frequency_counter_debug(enum DebugCallee debug_callee, uin
 uint64_t get_constant_frequency_counter(void)
 {
  #if CONFIG_GEM5_ACTMON
-    /* TODO: placeholder for gem5 const freq counter read*/
+    return read_sysreg(pmevcntr0_el0);
 #elif CONFIG_JUNO_ACTMON
-   return get_constant_frequency_counter_debug(BLANK, 0);
+    return get_constant_frequency_counter_debug(BLANK, 0);
 #else
     panic("ACTMON not set to gem5 nor Juno");
 #endif
@@ -279,7 +279,7 @@ uint64_t get_constant_frequency_counter(void)
 uint64_t get_core_cycle_counter(void)
 {
 #if CONFIG_GEM5_ACTMON
-    /* TODO: placeholder for gem5 core cycle read*/
+    return read_sysreg(pmccntr_el0);
 #elif CONFIG_JUNO_ACTMON
     return read_sysreg(pmccntr_el0);
 #else
@@ -289,6 +289,21 @@ uint64_t get_core_cycle_counter(void)
 
 static u32 psci_get_version(void)
 {
+
+#if CONFIG_GEM5_ACTMON
+    /* Initialize PMU configuration
+     * enable bit in pmcr
+     * enable pmcntenset_el0 
+     * The PMEVTYPER0 is set to the constant freq event 0x4004
+     */
+    uint32_t pmcrVal;
+    pmcrVal = read_sysreg(pmcr_el0);
+    write_sysreg(pmcrVal | 1, pmcr_el0);
+    
+    write_sysreg(0x4004, pmevtyper0_el0);
+    write_sysreg(0x3, pmcntenset_el0);
+#endif
+
     pr_info("attempt reserve %X", memPointer);
 
     virtAddress = memremap(memPointer, reserveSize ,MEMREMAP_WB);
