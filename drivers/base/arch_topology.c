@@ -55,7 +55,8 @@ static ssize_t cpu_capacity_show(struct device *dev,
 			topology_get_cpu_scale(NULL, cpu->dev.id));
 }
 
-static void update_topology_flags(void);
+static void update_topology_flags_workfn(struct work_struct *work);
+static DECLARE_WORK(update_topology_flags_work, update_topology_flags_workfn);
 
 static ssize_t cpu_capacity_store(struct device *dev,
 				  struct device_attribute *attr,
@@ -83,7 +84,7 @@ static ssize_t cpu_capacity_store(struct device *dev,
 	mutex_unlock(&cpu_scale_mutex);
 
 	if (topology_detect_flags())
-		update_topology_flags();
+		schedule_work(&update_topology_flags_work);
 
 	return count;
 }
@@ -226,7 +227,11 @@ int topology_update_cpu_topology(void)
 	return update_topology;
 }
 
-static void update_topology_flags(void)
+/*
+ * Updating the sched_domains can't be done directly from cpufreq callbacks
+ * due to locking, so queue the work for later.
+ */
+static void update_topology_flags_workfn(struct work_struct *work)
 {
 	update_topology = 1;
 	rebuild_sched_domains();
@@ -331,7 +336,7 @@ init_cpu_capacity_callback(struct notifier_block *nb,
 		if (cpumask_empty(cpus_to_visit)) {
 			topology_normalize_cpu_scale();
 			if (topology_detect_flags())
-				update_topology_flags();
+				schedule_work(&update_topology_flags_work);
 			kfree(raw_capacity);
 			pr_debug("cpu_capacity: parsing done\n");
 			cap_parsing_done = true;
