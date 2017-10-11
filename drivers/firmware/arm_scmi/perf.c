@@ -32,6 +32,7 @@ enum scmi_performance_protocol_cmd {
 	PERF_LEVEL_GET = 0x8,
 	PERF_NOTIFY_LIMITS = 0x9,
 	PERF_NOTIFY_LEVEL = 0xa,
+	PERF_OPP_SET = 0xf,
 };
 
 struct scmi_opp {
@@ -80,6 +81,12 @@ struct scmi_perf_get_limits {
 struct scmi_perf_set_level {
 	__le32 domain;
 	__le32 level;
+};
+
+struct scmi_perf_set_opp {
+	__le32 domain;
+	__le32 cpus_online;
+	__le32 max_opp;
 };
 
 struct scmi_perf_notify_level_or_limits {
@@ -325,6 +332,29 @@ scmi_perf_level_set(const struct scmi_handle *handle, u32 domain, u32 level)
 
 	scmi_one_xfer_put(handle, t);
 	return ret;
+}
+
+static int __maybe_unused scmi_perf_opp_set(const struct scmi_handle *handle,
+				u32 domain, u32 cpus_online, u32 max_opp)
+{
+	struct scmi_perf_set_opp *opps;
+	struct scmi_xfer *t;
+	int retval;
+
+	retval = scmi_one_xfer_init(handle, PERF_OPP_SET, SCMI_PROTOCOL_PERF,
+					sizeof(*opps), 0, &t);
+	if (retval)
+		return -EINVAL;
+
+	opps = t->tx.buf;
+	opps->domain = cpu_to_le32(domain);
+	opps->cpus_online = cpu_to_le32(cpus_online);
+	opps->max_opp = cpu_to_le32(max_opp);
+
+	retval = scmi_do_xfer(handle, t);
+	scmi_one_xfer_put(handle, t);
+
+	return retval;
 }
 
 static int
