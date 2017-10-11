@@ -204,7 +204,11 @@ struct CounterData
 
     uint64_t constantFrequencyBeforeSleep;
     uint64_t constantFrequencyOffset;
-    uint64_t padding;
+
+    uint64_t cycleCounterBeforeSleep;
+
+    uint64_t retiredInstructionsBeforeSleepH;
+    uint64_t retiredInstructionsBeforeSleepL;
 };
 
 /*
@@ -293,7 +297,7 @@ uint64_t get_instructions_retired_counter(void)
  #if CONFIG_GEM5_ACTMON
     return read_sysreg(pmevcntr1_el0);
 #elif CONFIG_JUNO_ACTMON
-    /*TODO: Obtain JUNO inst retired counter (must remember to reset value in ATF) */
+    return (((uint64_t)read_sysreg(pmevcntr1_el0))<<32) | read_sysreg(pmevcntr0_el0);
 #else
     panic("ACTMON not set to gem5 nor Juno");
 #endif
@@ -334,12 +338,9 @@ static int psci_cpu_suspend(u32 state, unsigned long entry_point)
 	int err;
 	u32 fn;
 
-    get_constant_frequency_counter_debug(SUSPEND, state);
-
 	fn = psci_function_id[PSCI_FN_CPU_SUSPEND];
 	err = invoke_psci_fn(fn, state, entry_point, 0);
 
-    get_constant_frequency_counter_debug(WAKE_UP, state);
 
 	return psci_to_linux_errno(err);
 }
@@ -349,7 +350,6 @@ static int psci_cpu_off(u32 state)
 	int err;
 	u32 fn;
 
-    /*get_constant_frequency_counter_debug(CPU_OFF, 0xffffffff );*/
 
 	fn = psci_function_id[PSCI_FN_CPU_OFF];
 	err = invoke_psci_fn(fn, state, 0, 0);
@@ -363,7 +363,6 @@ static int psci_cpu_on(unsigned long cpuid, unsigned long entry_point)
 
 	fn = psci_function_id[PSCI_FN_CPU_ON];
 	err = invoke_psci_fn(fn, cpuid, entry_point, 0);
-   /* get_constant_frequency_counter_debug(CPU_ON, cpuid);*/
 
 	return psci_to_linux_errno(err);
 }
@@ -608,11 +607,9 @@ static int psci_system_suspend(unsigned long unused)
 {
 
     pr_info("SYS SUSPEND\n");
-    /*get_constant_frequency_counter(SYS_SUSPEND, 0xffffffff);*/
 	return invoke_psci_fn(PSCI_FN_NATIVE(1_0, SYSTEM_SUSPEND),
 			      virt_to_phys(cpu_resume), 0, 0);
 
-    /*get_constant_frequency_counter(WAKE_UP, 0xffffffff);*/
 }
 
 static int psci_system_suspend_enter(suspend_state_t state)
