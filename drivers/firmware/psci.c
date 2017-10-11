@@ -303,6 +303,17 @@ uint64_t get_instructions_retired_counter(void)
 #endif
 }
 
+/* sample memory stall cycles - only available on gem5 */
+uint64_t get_memory_stall_cycle_counter(void)
+{
+ #if CONFIG_GEM5_ACTMON
+    return read_sysreg(pmevcntr2_el0);
+#elif CONFIG_JUNO_ACTMON
+    panic("backend mem stall not present on Juno");
+#else
+    panic("ACTMON not set to gem5 nor Juno");
+#endif
+}
 
 static u32 psci_get_version(void)
 {
@@ -317,8 +328,10 @@ static u32 psci_get_version(void)
     pmcrVal = read_sysreg(pmcr_el0);
     write_sysreg(pmcrVal | 1, pmcr_el0);
     
-    write_sysreg(0x4004, pmevtyper0_el0);
-    write_sysreg(0x3, pmcntenset_el0);
+    write_sysreg(0x4004, pmevtyper1_el0);
+    write_sysreg(0x8, pmevtyper1_el0);
+    write_sysreg(0x4005, pmevtyper2_el0);
+    write_sysreg(0x8, pmcntenset_el0);
 #endif
 
     pr_info("attempt reserve %X", memPointer);
