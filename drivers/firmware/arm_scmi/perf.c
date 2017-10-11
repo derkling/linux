@@ -16,10 +16,14 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <linux/debugfs.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/pm_opp.h>
+#include <linux/slab.h>
 #include <linux/sort.h>
+#include <linux/string.h>
+#include <linux/uaccess.h>
 
 #include "common.h"
 
@@ -510,8 +514,47 @@ static struct scmi_perf_ops perf_ops = {
 	.freq_get = scmi_dvfs_freq_get,
 };
 
+static ssize_t debugfs_scmi_write_table(struct file *file,
+			const char __user *user_buf, size_t count, loff_t *ppos)
+{
+	const struct scmi_handle *handle = file->private_data;
+	u32 domain_id, cpus_online, max_opp;
+	char buf[32];
+	int retval;
+
+	if (count >= sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(&buf, user_buf, count))
+		return -EFAULT;
+
+	retval = sscanf(buf, "%i %i %i", &domain_id, &cpus_online, &max_opp);
+	if (retval != 3) {
+		dev_err(handle->dev, "debugfs: incorrect string received\n");
+		return -EINVAL;
+	}
+
+	dev_dbg(handle->dev, "debugfs: received=%i, %i, %i.\n",
+					domain_id, cpus_online, max_opp);
+	retval = scmi_perf_opp_set(handle, domain_id, cpus_online, max_opp);
+	if (retval) {
+		dev_err(handle->dev, "debugfs: scmi xfer failed\n");
+		return -EIO;
+	}
+
+	return count;
+}
+
+static const struct file_operations scmi_write_table_fops = {
+	.open = simple_open,
+	.read = NULL,
+	.write = debugfs_scmi_write_table,
+	.llseek = default_llseek,
+};
+
 int scmi_perf_protocol_init(struct scmi_handle *handle)
 {
+	struct dentry *scmi_d, *scmi_f; /* for debugfs files */
 	int domain;
 	u32 version;
 
@@ -536,6 +579,18 @@ int scmi_perf_protocol_init(struct scmi_handle *handle)
 	}
 
 	handle->perf_ops = &perf_ops;
+
+	/* Debugfs-related functions below */
+	scmi_d = debugfs_create_dir("scmi", NULL);
+	if (!scmi_d)
+		dev_warn(handle->dev, "unable to create debugfs dir\n");
+
+	scmi_f = debugfs_create_file("write_table_cmd", 0644, scmi_d, handle,
+							&scmi_write_table_fops);
+	if (!scmi_f) {
+		dev_warn(handle->dev, "unable to create debugfs file\n");
+		debugfs_remove_recursive(scmi_d);
+	}
 
 	return 0;
 }
