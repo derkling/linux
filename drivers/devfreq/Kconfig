@@ -130,6 +130,13 @@ config HISI_DDR_DEVFREQ
          It adjusts ddr frequency according to pm qos memory bandwidth
          request.
 
+config ARM64_DSU_DVFS_DEVFREQ
+	tristate "ARM DSU DVFS Control DEVFREQ Driver"
+	depends on ARM64
+	select PM_OPP
+	help
+	  If unsure, say N.
+
 source "drivers/devfreq/event/Kconfig"
 
 endif # PM_DEVFREQ
