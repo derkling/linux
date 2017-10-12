@@ -11,6 +11,7 @@ obj-$(CONFIG_ARM_EXYNOS4_BUS_DEVFREQ)	+= exynos/
 obj-$(CONFIG_ARM_EXYNOS5_BUS_DEVFREQ)	+= exynos/
 obj-$(CONFIG_ARM_TEGRA_DEVFREQ)		+= tegra-devfreq.o
 obj-$(CONFIG_HISI_DDR_DEVFREQ)		+= hisi-ddr-devfreq.o
+obj-$(CONFIG_ARM64_DSU_DVFS_DEVFREQ)	+= dsu-dvfs-devfreq.o
 
 # DEVFREQ Event Drivers
 obj-$(CONFIG_PM_DEVFREQ_EVENT)		+= event/
