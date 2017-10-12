@@ -224,6 +224,39 @@
 		/include/ "hi3660-sched-energy.dtsi"
 	};
 
+	dsu_coupled: dsu_dvfs0 {
+		compatible = "arm,dsu_dvfs";
+		cpu = <0>; /* CPU from for coupled control */
+	};
+
+	devfreq-cpufreq {
+		dsu-cpufreq {
+			/*
+			 * Min frequency setup for coupled systems.
+			 * This is for the dsu_coupled device to use
+                         * and set.
+			 */
+			target-dev = <&dsu_coupled>;
+			/*
+			 * Frequencies for coupled CPUs are set to min.
+			 * This is platform specific. Different cpu-to-dev
+			 * maps should be created for dsu_decoupled devices.
+			 */
+			cpu-to-dev-map-0 =
+				< 533000 533000 >,
+				< 999000 533000 >,
+				< 1402000 533000 >,
+				< 1709000 533000 >,
+				< 1844000 533000 >;
+			cpu-to-dev-map-4 =
+				< 903000 999000 >,
+				< 1421000 1402000 >,
+				< 1805000 1844000 >,
+				< 2112000 1844000 >,
+				< 2362000 1844000 >;
+		};
+	};
+
 	cluster0_opp: opp_table0 {
 		compatible = "operating-points-v2";
 		opp-shared;
