@@ -17,20 +17,32 @@
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
 #include <linux/cpumask.h>
-#include <linux/slab.h>
-#include <linux/platform_device.h>
-#include <linux/of.h>
+#include <linux/cpu_pm.h>
 #include <linux/module.h>
+#include <linux/of.h>
+#include <linux/platform_device.h>
+#include <linux/slab.h>
+#include <linux/workqueue.h>
+
 #include "governor.h"
+
+#include <trace/events/dsu_dvfs.h>
+
+#define DEFAULT_POLLING_MS		10
 
 struct cpu_state {
 	unsigned int freq;
 	unsigned int min_freq;
 	unsigned int max_freq;
-	bool on;
 	unsigned int first_cpu;
 };
-static struct cpu_state *state[NR_CPUS];
+
+struct cpu_status {
+	bool on;
+	struct cpu_state *state;
+};
+
+static struct cpu_status status[NR_CPUS];
 static int cpufreq_cnt;
 
 struct freq_map {
@@ -50,6 +62,10 @@ struct devfreq_node {
 	struct delayed_work dwork;
 	bool drop;
 	unsigned long prev_tgt;
+	struct workqueue_struct *update_wq;
+	struct work_struct update_handle;
+	struct hrtimer poll_timer;
+	u32 polling_ms;
 };
 static LIST_HEAD(devfreq_list);
 static DEFINE_MUTEX(state_lock);
@@ -118,13 +134,37 @@ out:
 	return ret;
 }
 
-static void update_all_devfreqs(void)
-{
-	struct devfreq_node *node;
+/*
+* static void update_all_devfreqs(void)
+* {
+*	struct devfreq_node *node;
+*
+*	list_for_each_entry(node, &devfreq_list, list) {
+*		if (node->update_wq)
+*			queue_work(node->update_wq, &node->update_handle);
+*		else
+*			update_node(node);
+*	}
+* }
+*/
 
-	list_for_each_entry(node, &devfreq_list, list) {
-		update_node(node);
-	}
+static void devfreq_node_handle_update(struct work_struct *work)
+{
+	struct devfreq_node *node = container_of(work, struct devfreq_node,
+					     update_handle);
+	update_node(node);
+}
+
+static enum hrtimer_restart devfreq_node_polling(struct hrtimer *hrtimer)
+{
+	struct devfreq_node *node = container_of(hrtimer, struct devfreq_node,
+					     poll_timer);
+
+	queue_work(node->update_wq, &node->update_handle);
+
+	hrtimer_forward_now(&node->poll_timer,
+			    ms_to_ktime(node->polling_ms));
+	return HRTIMER_RESTART;
 }
 
 static void do_timeout(struct work_struct *work)
@@ -150,31 +190,157 @@ static struct devfreq_node *find_devfreq_node(struct device *dev)
 	return NULL;
 }
 
-/* ==================== cpufreq part ==================== */
 static void add_policy(struct cpufreq_policy *policy)
 {
 	struct cpu_state *new_state;
+	struct cpu_state *state = status[policy->cpu].state;
 	unsigned int cpu, first_cpu;
 
-	if (state[policy->cpu]) {
-		state[policy->cpu]->freq = policy->cur;
-		state[policy->cpu]->on = true;
+	mutex_lock(&state_lock);
+
+	if (state) {
+		new_state = state;
 	} else {
 		new_state = kzalloc(sizeof(struct cpu_state), GFP_KERNEL);
 		if (!new_state)
-			return;
-
-		first_cpu = cpumask_first(policy->related_cpus);
-		new_state->first_cpu = first_cpu;
-		new_state->freq = policy->cur;
-		new_state->min_freq = policy->cpuinfo.min_freq;
-		new_state->max_freq = policy->cpuinfo.max_freq;
-		new_state->on = true;
-
-		for_each_cpu(cpu, policy->related_cpus)
-			state[cpu] = new_state;
+			goto out;
 	}
+
+	first_cpu = cpumask_first(policy->related_cpus);
+	new_state->first_cpu = first_cpu;
+	new_state->freq = policy->cur;
+	new_state->min_freq = policy->cpuinfo.min_freq;
+	new_state->max_freq = policy->cpuinfo.max_freq;
+
+	for_each_cpu(cpu, policy->related_cpus) {
+		status[cpu].state = new_state;
+		status[cpu].on = true;
+	}
+
+out:
+	mutex_unlock(&state_lock);
 }
+
+static void remove_policy(struct cpufreq_policy *policy)
+{
+	unsigned int cpu, first_cpu;
+
+	mutex_lock(&state_lock);
+
+	first_cpu = cpumask_first(policy->related_cpus);
+	if (status[first_cpu].state)
+		kfree(status[first_cpu].state);
+
+	for_each_cpu(cpu, policy->related_cpus) {
+		status[first_cpu].state = NULL;
+		status[cpu].on = false;
+	}
+
+	mutex_unlock(&state_lock);
+}
+
+static void enable_cpu(unsigned int cpu) {
+	status[cpu].on = true;
+}
+
+static void disable_cpu(unsigned int cpu) {
+	status[cpu].on = false;
+}
+
+#ifdef CONFIG_HOTPLUG_CPU
+static int hotplug_notifier(struct notifier_block *nb,
+				    unsigned long action, void *data)
+{
+	unsigned int cpu = (long)data;
+
+	/* We are only interested in these two cases */
+	switch (action & ~CPU_TASKS_FROZEN) {
+	case CPU_UP_PREPARE:
+		enable_cpu(cpu);
+		break;
+	case CPU_DOWN_PREPARE:
+		disable_cpu(cpu);
+		break;
+	default:
+		break;
+	}
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block cpu_hotplug_nb = {
+	.notifier_call = hotplug_notifier,
+};
+
+static int register_cpu_hotplug(void)
+{
+	return register_hotcpu_notifier(&cpu_hotplug_nb);
+}
+
+static void unregister_cpu_hotplug(void)
+{
+	unregister_hotcpu_notifier(&cpu_hotplug_nb);
+}
+
+#else /* ! CONFIG_HOTPLUG_CPU */
+static int register_cpu_hotplug(void)
+{
+	return -ENODEV;
+}
+
+static int unregister_cpu_hotplug(void)
+{
+	return 0;
+}
+
+#endif /* CONFIG_HOTPLUG_CPU */
+
+
+#ifdef CONFIG_CPU_PM
+static int cpu_pm_notifier(struct notifier_block *nb, unsigned long action,
+			       void *data)
+{
+	unsigned int cpu = smp_processor_id();
+
+	switch (action) {
+	case CPU_PM_ENTER:
+		disable_cpu(cpu);
+		break;
+	case CPU_PM_ENTER_FAILED:
+	case CPU_PM_EXIT:
+		enable_cpu(cpu);
+		break;
+	}
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block cpu_pm_nb = {
+	.notifier_call = cpu_pm_notifier,
+};
+
+static int register_cpu_pm(void)
+{
+	return cpu_pm_register_notifier(&cpu_pm_nb);
+}
+
+static void unregister_cpu_pm(void)
+{
+	cpu_pm_unregister_notifier(&cpu_pm_nb);
+}
+
+#else /* ! CONFIG_CPU_PM */
+static int register_cpu_pm(void)
+{
+	return -ENODEV;
+}
+
+static int unregister_cpu_pm(void)
+{
+	return 0;
+}
+
+#endif /* CONFIG_CPU_PM */
 
 static int cpufreq_policy_notifier(struct notifier_block *nb,
 		unsigned long event, void *data)
@@ -183,19 +349,11 @@ static int cpufreq_policy_notifier(struct notifier_block *nb,
 
 	switch (event) {
 	case CPUFREQ_CREATE_POLICY:
-		mutex_lock(&state_lock);
 		add_policy(policy);
-		update_all_devfreqs();
-		mutex_unlock(&state_lock);
 		break;
 
 	case CPUFREQ_REMOVE_POLICY:
-		mutex_lock(&state_lock);
-		if (state[policy->cpu]) {
-			state[policy->cpu]->on = false;
-			update_all_devfreqs();
-		}
-		mutex_unlock(&state_lock);
+		remove_policy(policy);
 		break;
 	}
 
@@ -210,20 +368,19 @@ static int cpufreq_trans_notifier(struct notifier_block *nb,
 		unsigned long event, void *data)
 {
 	struct cpufreq_freqs *freq = data;
-	struct cpu_state *s;
+	struct cpu_state *state;
 
 	if (event != CPUFREQ_POSTCHANGE)
 		return 0;
 
 	mutex_lock(&state_lock);
 
-	s = state[freq->cpu];
-	if (!s)
+	state = status[freq->cpu].state;
+	if (!state)
 		goto out;
 
-	if (s->freq != freq->new) {
-		s->freq = freq->new;
-		update_all_devfreqs();
+	if (state->freq != freq->new) {
+		state->freq = freq->new;
 	}
 
 out:
@@ -280,6 +437,7 @@ static int unregister_cpufreq(void)
 {
 	int ret = 0;
 	int cpu;
+	struct cpu_state *state;
 
 	mutex_lock(&cpufreq_reg_lock);
 
@@ -291,12 +449,13 @@ static int unregister_cpufreq(void)
 	cpufreq_unregister_notifier(&cpufreq_trans_nb,
 				CPUFREQ_TRANSITION_NOTIFIER);
 
-	for (cpu = ARRAY_SIZE(state) - 1; cpu >= 0; cpu--) {
-		if (!state[cpu])
+	for (cpu = ARRAY_SIZE(status) - 1; cpu >= 0; cpu--) {
+		state = status[cpu].state;
+		if (!state)
 			continue;
-		if (state[cpu]->first_cpu == cpu)
-			kfree(state[cpu]);
-		state[cpu] = NULL;
+		if (state->first_cpu == cpu)
+			kfree(state);
+		state = NULL;
 	}
 
 out:
@@ -305,14 +464,13 @@ out:
 	return ret;
 }
 
-/* ==================== devfreq part ==================== */
-
 static unsigned int interpolate_freq(struct devfreq *df, unsigned int cpu)
 {
 	unsigned int *freq_table = df->profile->freq_table;
-	unsigned int cpu_min = state[cpu]->min_freq;
-	unsigned int cpu_max = state[cpu]->max_freq;
-	unsigned int cpu_freq = state[cpu]->freq;
+	struct cpu_state *state = status[cpu].state;
+	unsigned int cpu_min = state->min_freq;
+	unsigned int cpu_max = state->max_freq;
+	unsigned int cpu_freq = state->freq;
 	unsigned int dev_min, dev_max, cpu_percent;
 
 	if (freq_table) {
@@ -334,8 +492,9 @@ static unsigned int cpu_to_dev_freq(struct devfreq *df, unsigned int cpu)
 	struct freq_map *map = NULL;
 	unsigned int cpu_khz = 0, freq;
 	struct devfreq_node *n = df->data;
+	struct cpu_state *state = status[cpu].state;
 
-	if (!state[cpu] || !state[cpu]->on || state[cpu]->first_cpu != cpu) {
+	if (!state || !status[cpu].on) {
 		freq = 0;
 		goto out;
 	}
@@ -345,12 +504,15 @@ static unsigned int cpu_to_dev_freq(struct devfreq *df, unsigned int cpu)
 	else if (n->map)
 		map = n->map[cpu];
 
-	cpu_khz = state[cpu]->freq;
+	if (!map)
+		map = n->map[state->first_cpu];
 
 	if (!map) {
 		freq = interpolate_freq(df, cpu);
 		goto out;
 	}
+
+	cpu_khz = state->freq;
 
 	while (map->cpu_khz && map->cpu_khz < cpu_khz)
 		map++;
@@ -359,13 +521,12 @@ static unsigned int cpu_to_dev_freq(struct devfreq *df, unsigned int cpu)
 	freq = map->target_freq;
 
 out:
-	dev_dbg(df->dev.parent, "CPU%u: %d -> dev: %u\n", cpu, cpu_khz, freq);
+	trace_dsu_dvfs_gov_status_each(cpu, cpu_khz, freq);
 	return freq;
 }
 
 static int devfreq_cpufreq_get_freq(struct devfreq *df,
-					unsigned long *freq,
-					u32 *flag)
+					unsigned long *freq)
 {
 	unsigned int cpu, tgt_freq = 0;
 	struct devfreq_node *node;
@@ -390,6 +551,8 @@ static int devfreq_cpufreq_get_freq(struct devfreq *df,
 		*freq = tgt_freq;
 
 	node->prev_tgt = tgt_freq;
+
+	trace_dsu_dvfs_gov_status(*freq);
 
 	return 0;
 }
@@ -448,12 +611,47 @@ static ssize_t show_map(struct device *dev, struct device_attribute *attr,
 	return cnt;
 }
 
+static ssize_t show_devfreq_state(struct device *dev,
+				  struct device_attribute *attr,
+				  char *buf)
+{
+
+	unsigned int cpu, cnt = 0;
+	unsigned int len;
+	struct cpu_state *state;
+
+	len = PAGE_SIZE;
+	cnt += snprintf(buf + cnt, len - cnt,
+			"CPU\tFreq\tMin\tMax\tFirst\tOn\n");
+
+	mutex_lock(&state_lock);
+	for (cpu = 0; cpu < NR_CPUS; cpu++) {
+		state = status[cpu].state;
+		if (state)
+			cnt += snprintf(buf + cnt, len - cnt,
+					"%u\t%u\t%u\t%u\t%d\t%u\n",
+					cpu, state->freq, state->min_freq,
+					state->max_freq, state->first_cpu,
+					status[cpu].on
+			);
+	}
+	mutex_unlock(&state_lock);
+
+	if (cnt < len)
+		cnt += snprintf(buf + cnt, len - cnt, "\n");
+
+	return cnt;
+}
+
+
 static DEVICE_ATTR(freq_map, 0444, show_map, NULL);
+static DEVICE_ATTR(state, 0444, show_devfreq_state, NULL);
 gov_attr(timeout, 0U, 100U);
 
 static struct attribute *dev_attr[] = {
 	&dev_attr_freq_map.attr,
 	&dev_attr_timeout.attr,
+	&dev_attr_state.attr,
 	NULL,
 };
 
@@ -467,16 +665,11 @@ static int devfreq_cpufreq_gov_start(struct devfreq *devfreq)
 	int ret = 0;
 	struct devfreq_node *node;
 	bool alloc = false;
-
-	ret = register_cpufreq();
-	if (ret)
-		return ret;
+	struct cpufreq_policy *policy;
 
 	ret = sysfs_create_group(&devfreq->dev.kobj, &dev_attr_group);
-	if (ret) {
-		unregister_cpufreq();
+	if (ret)
 		return ret;
-	}
 
 	mutex_lock(&state_lock);
 
@@ -504,8 +697,54 @@ static int devfreq_cpufreq_gov_start(struct devfreq *devfreq)
 		goto update_fail;
 
 	mutex_unlock(&state_lock);
+
+	ret = register_cpufreq();
+	if (ret) {
+		pr_warn("Unable to register cpufreq notifications.\n");
+		goto update_fail;
+	}
+
+	ret = register_cpu_pm();
+	if (ret) {
+		pr_warn("Unable to register CPU PM notifications.\n");
+		goto cpu_pm_fail;
+	}
+
+	ret = register_cpu_hotplug();
+	if (ret) {
+		pr_warn("Unable to register hotplug notifications.\n");
+		goto hotplug_fail;
+	}
+
+	node->polling_ms = DEFAULT_POLLING_MS;
+	node->update_wq = alloc_workqueue("devfreq_cpufreq_wq", WQ_UNBOUND, 0);
+	if (IS_ERR(node->update_wq)) {
+		pr_err("Cannot create workqueue.\n");
+		/* TODO: properly handle error */
+		return PTR_ERR(node->update_wq);
+	}
+	/* TODO: is there a better way */
+	policy = cpufreq_cpu_get(0);
+	if (policy) {
+		if (workqueue_set_unbound_cpumask(policy->related_cpus)) {
+			pr_err("Error to bound to LITTLE CPUs\n");
+		}
+		cpufreq_cpu_put(policy);
+	}
+
+	INIT_WORK(&node->update_handle, devfreq_node_handle_update);
+
+	hrtimer_init(&node->poll_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	node->poll_timer.function = devfreq_node_polling;
+	hrtimer_start(&node->poll_timer, ms_to_ktime(node->polling_ms),
+		      HRTIMER_MODE_REL);
+
 	return 0;
 
+hotplug_fail:
+	unregister_cpu_pm();
+cpu_pm_fail:
+	unregister_cpufreq();
 update_fail:
 	devfreq->data = node->orig_data;
 	if (alloc) {
@@ -515,7 +754,6 @@ update_fail:
 alloc_fail:
 	mutex_unlock(&state_lock);
 	sysfs_remove_group(&devfreq->dev.kobj, &dev_attr_group);
-	unregister_cpufreq();
 	return ret;
 }
 
@@ -524,6 +762,14 @@ static void devfreq_cpufreq_gov_stop(struct devfreq *devfreq)
 	struct devfreq_node *node = devfreq->data;
 
 	cancel_delayed_work_sync(&node->dwork);
+
+	/* Cancel hrtimer */
+	if (hrtimer_active(&node->poll_timer))
+		hrtimer_cancel(&node->poll_timer);
+	/* Wait for pending work */
+	flush_workqueue(node->update_wq);
+	/* Destroy workqueue */
+	destroy_workqueue(node->update_wq);
 
 	mutex_lock(&state_lock);
 	devfreq->data = node->orig_data;
@@ -537,6 +783,8 @@ static void devfreq_cpufreq_gov_stop(struct devfreq *devfreq)
 
 	sysfs_remove_group(&devfreq->dev.kobj, &dev_attr_group);
 	unregister_cpufreq();
+	unregister_cpu_pm();
+	unregister_cpu_hotplug();
 }
 
 static int devfreq_cpufreq_ev_handler(struct devfreq *devfreq,
