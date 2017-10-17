@@ -315,6 +315,25 @@ uint64_t get_memory_stall_cycle_counter(void)
 #endif
 }
 
+void debugCounters(void)
+{
+    uint32_t cpuId = getCpuId();
+    if (cpuId == 0)
+    {   
+        uint64_t cycleCounter     = get_core_cycle_counter();
+        uint64_t constFreqCounter = get_constant_frequency_counter();
+        uint64_t instRetired      = get_instructions_retired_counter();
+        
+        static uint64_t lastCycleValue;
+        static uint64_t lastConstValue;
+        
+        pr_info("id %llx   const=%llx cycle=%llx  ratio %lld part %lld\n", cpuId, constFreqCounter, cycleCounter, (cycleCounter*1000)/constFreqCounter, ((cycleCounter-lastCycleValue)*1000)/(constFreqCounter - lastConstValue)  );
+
+        lastConstValue = constFreqCounter;
+        lastCycleValue = cycleCounter;
+    }
+}
+
 static u32 psci_get_version(void)
 {
 
@@ -325,13 +344,13 @@ static u32 psci_get_version(void)
      * The PMEVTYPER0 is set to the constant freq event 0x4004
      */
     uint32_t pmcrVal;
+    write_sysreg(0x80000007, pmcntenset_el0);
     pmcrVal = read_sysreg(pmcr_el0);
     write_sysreg(pmcrVal | 1, pmcr_el0);
     
-    write_sysreg(0x4004, pmevtyper1_el0);
+    write_sysreg(0x4004, pmevtyper0_el0);
     write_sysreg(0x8, pmevtyper1_el0);
     write_sysreg(0x4005, pmevtyper2_el0);
-    write_sysreg(0x8, pmcntenset_el0);
 #endif
 
     pr_info("attempt reserve %X", memPointer);
@@ -351,9 +370,11 @@ static int psci_cpu_suspend(u32 state, unsigned long entry_point)
 	int err;
 	u32 fn;
 
+    /*debugCounters();*/
 	fn = psci_function_id[PSCI_FN_CPU_SUSPEND];
 	err = invoke_psci_fn(fn, state, entry_point, 0);
 
+    /*debugCounters();*/
 
 	return psci_to_linux_errno(err);
 }
