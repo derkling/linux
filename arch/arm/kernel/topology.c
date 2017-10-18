@@ -41,6 +41,7 @@ static void __init parse_dt_topology(void)
 		pr_err("No CPU information found in DT\n");
 		return;
 	}
+	of_node_put(cn);
 
 	for_each_possible_cpu(cpu) {
 		/* too early to use cpu->of_node */
@@ -50,8 +51,8 @@ static void __init parse_dt_topology(void)
 			continue;
 		}
 
-		if (topology_parse_cpu_capacity(cn, cpu))
-			of_node_put(cn);
+		topology_parse_cpu_capacity(cn, cpu);
+		of_node_put(cn);
 	}
 
 	topology_normalize_cpu_scale();
