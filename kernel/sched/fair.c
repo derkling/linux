@@ -4898,6 +4898,8 @@ static inline void util_est_enqueue(struct task_struct *p)
 	 *       utilization estimation policy at run-time.
 	 */
 	cfs_rq->avg.util_est.last += task_util_est(p);
+	/* trace_printk("util_est_enqueue=update pid=%d comm=%s util_avg=%d util_est=%d", */
+	/* 	p->pid, p->comm, task_util(p), task_util_est(p)); */
 
 	/* Update plots for Task and CPU estimated utilization */
 	trace_sched_load_avg_task(p, &p->se.avg);
@@ -4981,11 +4983,17 @@ static inline void util_est_dequeue(struct task_struct *p, int flags)
 			(cfs_rq->avg.util_est.last - task_util_est(p)));
 	cfs_rq->avg.util_est.last = util_est;
 
+	/* trace_printk("util_est_dequeue=update_rq pid=%d comm=%s util_avg=%d util_est=%d", */
+	/* 	p->pid, p->comm, task_util(p), task_util_est(p)); */
+
+
 	/*
 	 * Skip update of task's estimated utilization if it has not changed since
 	 * task enqueue time.
 	 */
 	if (p->se.avg.util_est.last == task_util(p)) {
+		/* trace_printk("util_est_dequeue=skip_se pid=%d comm=%s util_avg=%d util_est=%d", */
+		/* 	p->pid, p->comm, task_util(p), task_util_est(p)); */
 		update_se = false;
 	}
 
@@ -5001,6 +5009,9 @@ static inline void util_est_dequeue(struct task_struct *p, int flags)
 		p->se.avg.util_est.last = task_util(p);
 		ewma_util_add(&p->se.avg.util_ewma, task_util(p));
 		p->se.avg.util_est.ewma = ewma_util_read(&p->se.avg.util_ewma);
+		/* trace_printk("util_est_dequeue=update_se pid=%d comm=%s util_avg=%d util_est=%d", */
+		/* 	p->pid, p->comm, task_util(p), task_util_est(p)); */
+
 	}
 
 	/* Update plots for Task and CPU estimated utilization */
