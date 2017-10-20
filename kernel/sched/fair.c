@@ -4958,7 +4958,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	if (!se)
 		add_nr_running(rq, 1);
 
-	util_est_enqueue(p);
+	/* util_est_enqueue(p); */
 	hrtick_update(rq);
 }
 
@@ -5007,8 +5007,8 @@ static inline void util_est_dequeue(struct task_struct *p, int flags)
 	 */
 	if (update_se) {
 		p->se.avg.util_est.last = task_util(p);
-		ewma_util_add(&p->se.avg.util_ewma, task_util(p));
-		p->se.avg.util_est.ewma = ewma_util_read(&p->se.avg.util_ewma);
+		/* ewma_util_add(&p->se.avg.util_ewma, task_util(p)); */
+		/* p->se.avg.util_est.ewma = ewma_util_read(&p->se.avg.util_ewma); */
 		/* trace_printk("util_est_dequeue=update_se pid=%d comm=%s util_avg=%d util_est=%d", */
 		/* 	p->pid, p->comm, task_util(p), task_util_est(p)); */
 
@@ -5076,7 +5076,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	if (!se)
 		sub_nr_running(rq, 1);
 
-	util_est_dequeue(p, flags);
+	/* util_est_dequeue(p, flags); */
 	hrtick_update(rq);
 }
 
