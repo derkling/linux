@@ -4982,6 +4982,14 @@ static inline void util_est_dequeue(struct task_struct *p, int flags)
 	cfs_rq->avg.util_est.last = util_est;
 
 	/*
+	 * Skip update of task's estimated utilization if it has not changed since
+	 * task enqueue time.
+	 */
+	if (p->se.avg.util_est.last == task_util(p)) {
+		update_se = false;
+	}
+
+	/*
 	 * Update Task's estimated utilization
 	 *
 	 * When *p completes an activation we can consolidate another sample
