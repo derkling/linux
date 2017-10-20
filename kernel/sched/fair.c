@@ -4963,25 +4963,22 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 static inline void util_est_dequeue(struct task_struct *p, int flags)
 {
 	struct cfs_rq *cfs_rq = &task_rq(p)->cfs;
-	int task_sleep = flags & DEQUEUE_SLEEP;
+	bool update_se = flags & DEQUEUE_SLEEP;
 	long util_est;
 
 	/*
 	 * Update (top level CFS) RQ estimated utilization
 	 *
 	 * When *p is the last FAIR task then the RQ's estimated utilization
-	 * is 0 by its definition.
+	 * of a CPU is 0 by definition.
 	 *
 	 * Otherwise, in removing *p's util_est from the current RQ's util_est
 	 * we should account for cases where this last activation of *p was
 	 * longher then the previous ones. In these cases as well we set to 0
 	 * the new estimated utilization for the CPU.
 	 */
-	util_est = (cfs_rq->nr_running > 1)
-		? cfs_rq->avg.util_est.last - task_util_est(p)
-		: 0;
-	if (util_est < 0)
-		util_est = 0;
+	util_est = max_t(long, 0,
+			(cfs_rq->avg.util_est.last - task_util_est(p)));
 	cfs_rq->avg.util_est.last = util_est;
 
 	/*
@@ -4992,7 +4989,7 @@ static inline void util_est_dequeue(struct task_struct *p, int flags)
 	 * for this task and using this value to load another sample in the
 	 * EMWA for the task.
 	 */
-	if (task_sleep) {
+	if (update_se) {
 		p->se.avg.util_est.last = task_util(p);
 		ewma_util_add(&p->se.avg.util_ewma, task_util(p));
 		p->se.avg.util_est.ewma = ewma_util_read(&p->se.avg.util_ewma);
@@ -5001,6 +4998,7 @@ static inline void util_est_dequeue(struct task_struct *p, int flags)
 	/* Update plots for Task and CPU estimated utilization */
 	trace_sched_load_avg_task(p, &p->se.avg);
 	trace_sched_load_avg_cpu(cpu_of(rq_of(cfs_rq)), cfs_rq);
+
 }
 
 static void set_next_buddy(struct sched_entity *se);
