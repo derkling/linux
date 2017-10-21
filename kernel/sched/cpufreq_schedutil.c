@@ -15,6 +15,8 @@
 
 #include <linux/sched/cpufreq.h>
 #include <trace/events/power.h>
+unsigned long boosted_cpu_util(int cpu);
+
 
 struct sugov_tunables {
 	struct gov_attr_set	attr_set;
