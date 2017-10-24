@@ -15,18 +15,49 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
-
-#define INTR_STAT_OFS	0x0
-#define INTR_SET_OFS	0x8
-#define INTR_CLR_OFS	0x10
-
-#define MHU_LP_OFFSET	0x0
-#define MHU_HP_OFFSET	0x20
-#define MHU_SEC_OFFSET	0x200
-#define TX_REG_OFFSET	0x100
+#include <linux/of_address.h>
 
 #define MHU_NUM_PCHANS	3	/* Secure, Non-Secure High and Low Priority */
 #define MHU_CHAN_MAX	20	/* Max channels to save on unused RAM */
+
+#define MHU_V2_COMPAT_STR	"arm,mhuv2-doorbell"
+
+enum mhu_regs {
+	MHU_REG_STAT,
+	MHU_REG_SET,
+	MHU_REG_CLR,
+	MHU_REG_END
+};
+
+enum mhu_access_regs {
+	MHU_REG_ACC_REQ,
+	MHU_REG_ACC_RDY,
+	MHU_REG_ACC_END
+};
+
+enum mhu_channels {
+	MHU_CHAN_LOW,
+	MHU_CHAN_HIGH,
+	MHU_CHAN_SEC,
+	MHU_CHAN_END
+};
+
+/**
+ * ARM MHU Mailbox device specific data
+ *
+ * @regs: MHU version specific array of register offset for STAT,
+ *        SET & CLEAR registers.
+ * @chans: MHU version specific array of channel offset for Low
+ *         Priority, High Priority & Secure channels.
+ * @acc_regs: An array of access register offsets.
+ * @tx_reg_off: Offset for TX register.
+ */
+struct mhu_data {
+	int regs[MHU_REG_END]; /* STAT, SET, CLEAR */
+	int chans[MHU_CHAN_END]; /* LP, HP, Sec */
+	int acc_regs[MHU_REG_ACC_END];  /* ACCESS_REQUEST, ACCESS_READY */
+	long int tx_reg_off;
+};
 
 struct mhu_link {
 	unsigned irq;
@@ -38,6 +69,7 @@ struct arm_mhu {
 	void __iomem *base;
 	struct mhu_link mlink[MHU_NUM_PCHANS];
 	struct mbox_controller mbox;
+	struct mhu_data *drvdata;
 	struct device *dev;
 	const char *name;
 };
@@ -92,8 +124,10 @@ static void mhu_mbox_clear_irq(struct mbox_chan *chan)
 {
 	struct mhu_channel *chan_info = chan->con_priv;
 	void __iomem *base = chan_info->mhu->mlink[chan_info->pchan].rx_reg;
+	struct mhu_data *mdata = chan_info->mhu->drvdata;
 
-	writel_relaxed(BIT(chan_info->doorbell), base + INTR_CLR_OFS);
+	writel_relaxed(BIT(chan_info->doorbell),
+			base + mdata->regs[MHU_REG_CLR]);
 }
 
 static unsigned int mhu_mbox_irq_to_pchan_num(struct arm_mhu *mhu, int irq)
@@ -116,7 +150,7 @@ static struct mbox_chan *mhu_mbox_irq_to_channel(struct arm_mhu *mhu,
 	struct mbox_controller *mbox = &mhu->mbox;
 	void __iomem *base = mhu->mlink[pchan].rx_reg;
 
-	bits = readl_relaxed(base + INTR_STAT_OFS);
+	bits = readl_relaxed(base + mhu->drvdata->regs[MHU_REG_STAT]);
 	if (!bits)
 		/* No IRQs fired in specified physical channel */
 		return NULL;
@@ -151,9 +185,11 @@ static irqreturn_t mhu_mbox_thread_handler(int irq, void *data)
 static bool mhu_doorbell_last_tx_done(struct mbox_chan *chan)
 {
 	struct mhu_channel *chan_info = chan->con_priv;
+	struct mhu_data *mdata = chan_info->mhu->drvdata;
 	void __iomem *base = chan_info->mhu->mlink[chan_info->pchan].tx_reg;
 
-	if (readl_relaxed(base + INTR_STAT_OFS) & BIT(chan_info->doorbell))
+	if (readl_relaxed(base + mdata->regs[MHU_REG_STAT])
+			& BIT(chan_info->doorbell))
 		return false;
 
 	return true;
@@ -162,16 +198,28 @@ static bool mhu_doorbell_last_tx_done(struct mbox_chan *chan)
 static int mhu_doorbell_send_data(struct mbox_chan *chan, void *data)
 {
 	struct mhu_channel *chan_info = chan->con_priv;
+	struct mhu_data *mdata = chan_info->mhu->drvdata;
 	void __iomem *base = chan_info->mhu->mlink[chan_info->pchan].tx_reg;
 
 	/* Send event to co-processor */
-	writel_relaxed(BIT(chan_info->doorbell), base + INTR_SET_OFS);
+	writel_relaxed(BIT(chan_info->doorbell),
+			base + mdata->regs[MHU_REG_SET]);
 
 	return 0;
 }
 
 static int mhu_doorbell_startup(struct mbox_chan *chan)
 {
+	struct mhu_channel *chan_info = chan->con_priv;
+	struct mhu_data *mdata = chan_info->mhu->drvdata;
+	struct device_node *np = chan_info->mhu->dev->of_node;
+	void __iomem *base = chan_info->mhu->mlink[chan_info->pchan].tx_reg;
+
+	if (of_device_is_compatible(np, MHU_V2_COMPAT_STR))
+		writel_relaxed(0x1, base
+			+ (mdata->acc_regs[MHU_REG_ACC_REQ]
+			 - (mdata->chans[chan_info->pchan])));
+
 	mhu_mbox_clear_irq(chan);
 	return 0;
 }
@@ -180,6 +228,9 @@ static void mhu_doorbell_shutdown(struct mbox_chan *chan)
 {
 	struct mhu_channel *chan_info = chan->con_priv;
 	struct mbox_controller *mbox = &chan_info->mhu->mbox;
+	struct mhu_data *mdata = chan_info->mhu->drvdata;
+	struct device_node *np = chan_info->mhu->dev->of_node;
+	void __iomem *base = chan_info->mhu->mlink[chan_info->pchan].tx_reg;
 	int i;
 
 	for (i = 0; i < mbox->num_chans; i++)
@@ -190,6 +241,11 @@ static void mhu_doorbell_shutdown(struct mbox_chan *chan)
 		dev_warn(mbox->dev, "Request to free non-existent channel\n");
 		return;
 	}
+
+	if (of_device_is_compatible(np, MHU_V2_COMPAT_STR))
+		writel_relaxed(0x0, base
+			+ (mdata->acc_regs[MHU_REG_ACC_REQ]
+			 - (mdata->chans[chan_info->pchan])));
 
 	/* Reset channel */
 	mhu_mbox_clear_irq(chan);
@@ -261,16 +317,17 @@ static irqreturn_t mhu_rx_interrupt(int irq, void *p)
 	struct arm_mhu *mhu = p;
 	unsigned int pchan = mhu_mbox_irq_to_pchan_num(mhu, irq);
 	struct mbox_chan *chan = mhu_mbox_to_channel(&mhu->mbox, pchan, 0);
+	struct mhu_data *mdata = mhu->drvdata;
 	void __iomem *base = mhu->mlink[pchan].rx_reg;
 	u32 val;
 
-	val = readl_relaxed(base + INTR_STAT_OFS);
+	val = readl_relaxed(base + mdata->regs[MHU_REG_STAT]);
 	if (!val)
 		return IRQ_NONE;
 
 	mbox_chan_received_data(chan, (void *)&val);
 
-	writel_relaxed(val, base + INTR_CLR_OFS);
+	writel_relaxed(val, base + mdata->regs[MHU_REG_CLR]);
 
 	return IRQ_HANDLED;
 }
@@ -278,8 +335,9 @@ static irqreturn_t mhu_rx_interrupt(int irq, void *p)
 static bool mhu_last_tx_done(struct mbox_chan *chan)
 {
 	struct mhu_channel *chan_info = chan->con_priv;
+	struct mhu_data *mdata = chan_info->mhu->drvdata;
 	void __iomem *base = chan_info->mhu->mlink[chan_info->pchan].tx_reg;
-	u32 val = readl_relaxed(base + INTR_STAT_OFS);
+	u32 val = readl_relaxed(base + mdata->regs[MHU_REG_STAT]);
 
 	return (val == 0);
 }
@@ -287,10 +345,11 @@ static bool mhu_last_tx_done(struct mbox_chan *chan)
 static int mhu_send_data(struct mbox_chan *chan, void *data)
 {
 	struct mhu_channel *chan_info = chan->con_priv;
+	struct mhu_data *mdata = chan_info->mhu->drvdata;
 	void __iomem *base = chan_info->mhu->mlink[chan_info->pchan].tx_reg;
 	u32 *arg = data;
 
-	writel_relaxed(*arg, base + INTR_SET_OFS);
+	writel_relaxed(*arg, base + mdata->regs[MHU_REG_SET]);
 
 	return 0;
 }
@@ -298,11 +357,18 @@ static int mhu_send_data(struct mbox_chan *chan, void *data)
 static int mhu_startup(struct mbox_chan *chan)
 {
 	struct mhu_channel *chan_info = chan->con_priv;
+	struct device_node *np = chan_info->mhu->dev->of_node;
+	struct mhu_data *mdata = chan_info->mhu->drvdata;
 	void __iomem *base = chan_info->mhu->mlink[chan_info->pchan].tx_reg;
 	u32 val;
 
-	val = readl_relaxed(base + INTR_STAT_OFS);
-	writel_relaxed(val, base + INTR_CLR_OFS);
+	if (of_device_is_compatible(np, MHU_V2_COMPAT_STR))
+		writel_relaxed(0x1, base
+			+ (mdata->acc_regs[MHU_REG_ACC_REQ]
+			- (mdata->chans[chan_info->pchan])));
+
+	val = readl_relaxed(base + mdata->regs[MHU_REG_STAT]);
+	writel_relaxed(val, base + mdata->regs[MHU_REG_CLR]);
 
 	return 0;
 }
@@ -341,10 +407,14 @@ static int mhu_probe(struct amba_device *adev, const struct amba_id *id)
 	struct mbox_chan *chans;
 	struct mhu_mbox_pdata *pdata;
 	struct device *dev = &adev->dev;
+	void __iomem *tx_base;
 	struct device_node *np = dev->of_node;
-	int mhu_reg[MHU_NUM_PCHANS] = {
-		MHU_LP_OFFSET, MHU_HP_OFFSET, MHU_SEC_OFFSET,
-	};
+	struct mhu_data *mdata = id->data;
+
+	if (!mdata) {
+		dev_err(dev, "device data not found\n");
+		return -EINVAL;
+	}
 
 	err = of_property_read_u32(np, "#mbox-cells", &cell_count);
 	if (err) {
@@ -381,6 +451,14 @@ static int mhu_probe(struct amba_device *adev, const struct amba_id *id)
 		return PTR_ERR(mhu->base);
 	}
 
+	if (of_device_is_compatible(np, MHU_V2_COMPAT_STR)) {
+		tx_base = of_iomap(np, 1);
+		if (!tx_base) {
+			dev_err(dev, "failed to map tx registers\n");
+			return -ENOMEM;
+		}
+	}
+
 	err = of_property_read_string(np, "mbox-name", &mhu->name);
 	if (err)
 		mhu->name = np->full_name;
@@ -398,6 +476,9 @@ static int mhu_probe(struct amba_device *adev, const struct amba_id *id)
 	mhu->mbox.txdone_irq = false;
 	mhu->mbox.txdone_poll = true;
 	mhu->mbox.txpoll_period = 1;
+	mhu->drvdata = mdata;
+	if (of_device_is_compatible(np, MHU_V2_COMPAT_STR))
+		mhu->drvdata->tx_reg_off = tx_base - mhu->base;
 
 	mhu->mbox.of_xlate = mhu_mbox_xlate;
 	amba_set_drvdata(adev, mhu);
@@ -424,8 +505,9 @@ static int mhu_probe(struct amba_device *adev, const struct amba_id *id)
 			continue;
 		}
 
-		mhu->mlink[i].rx_reg = mhu->base + mhu_reg[i];
-		mhu->mlink[i].tx_reg = mhu->mlink[i].rx_reg + TX_REG_OFFSET;
+		mhu->mlink[i].rx_reg = mhu->base + mhu->drvdata->chans[i];
+		mhu->mlink[i].tx_reg = mhu->mlink[i].rx_reg
+			+ mhu->drvdata->tx_reg_off;
 
 		err = devm_request_threaded_irq(dev, irq, NULL, handler,
 						IRQF_ONESHOT, "mhu_link", mhu);
@@ -440,10 +522,28 @@ static int mhu_probe(struct amba_device *adev, const struct amba_id *id)
 	return 0;
 }
 
+static struct mhu_data arm_mhuv2_data = {
+	.regs = { 0x0, 0xC, 0x8 }, /* STAT, SET, CLR */
+	.chans = { 0x20, 0x0 }, /* LP, HP */
+	.acc_regs = { 0xF88, 0xF8C }, /* ACCESS_REQUEST, ACCESS_READY */
+};
+
+static struct mhu_data arm_mhuv1_data = {
+	.regs = { 0x0, 0x8, 0x10 }, /* STAT, SET, CLR */
+	.chans = { 0x0, 0x20, 0x200 }, /* LP, HP, SEC */
+	.tx_reg_off = 0x100,
+};
+
 static struct amba_id mhu_ids[] = {
+	{
+		.id     = 0x4b0d1,
+		.mask   = 0xfffff,
+		.data	= (void *)&arm_mhuv2_data,
+	},
 	{
 		.id	= 0x1bb098,
 		.mask	= 0xffffff,
+		.data	= (void *)&arm_mhuv1_data,
 	},
 	{ 0, 0 },
 };
