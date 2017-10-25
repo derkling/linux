@@ -29,3 +29,6 @@ obj-$(CONFIG_CPU_FREQ) += cpufreq.o
 obj-$(CONFIG_CPU_FREQ_GOV_SCHEDUTIL) += cpufreq_schedutil.o
 obj-$(CONFIG_MEMBARRIER) += membarrier.o
 obj-$(CONFIG_CPU_ISOLATION) += isolation.o
+ifeq ($(CONFIG_PM_OPP),y)
+       obj-$(CONFIG_SMP) += energy.o
+endif
