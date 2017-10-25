@@ -137,6 +137,26 @@ unsigned long dev_pm_opp_get_voltage(struct dev_pm_opp *opp)
 }
 EXPORT_SYMBOL_GPL(dev_pm_opp_get_voltage);
 
+
+/* Too lazo to backport the comment */
+unsigned long dev_pm_opp_get_amperage(struct dev_pm_opp *opp)
+{
+	struct dev_pm_opp *tmp_opp;
+	unsigned long a = 0;
+
+	opp_rcu_lockdep_assert();
+
+	tmp_opp = rcu_dereference(opp);
+	if (IS_ERR_OR_NULL(tmp_opp))
+		pr_err("%s: Invalid parameters\n", __func__);
+	else
+		a = tmp_opp->u_amp;
+
+	return a;
+}
+EXPORT_SYMBOL_GPL(dev_pm_opp_get_amperage);
+
+
 /**
  * dev_pm_opp_get_freq() - Gets the frequency corresponding to an available opp
  * @opp:	opp for which frequency has to be returned for
