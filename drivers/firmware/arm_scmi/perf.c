@@ -98,6 +98,12 @@ struct scmi_perf_notify_level_or_limits {
 	__le32 notify_enable;
 };
 
+struct scmi_perf_changed_level {
+	__le32 agent_id;
+	__le32 domain;
+	__le32 level;
+};
+
 struct scmi_msg_resp_perf_describe_levels {
 	__le16 num_returned;
 	__le16 num_remaining;
@@ -380,6 +386,15 @@ scmi_perf_level_get(const struct scmi_handle *handle, u32 domain, u32 *level)
 
 	scmi_one_xfer_put(handle, t);
 	return ret;
+}
+
+extern void scmi_cpufreq_level_changed_n10n(int domain_id, unsigned long rate);
+
+void scmi_perf_level_changed_n10n(void *data)
+{
+	struct scmi_perf_changed_level *parameters = data;
+
+	scmi_cpufreq_level_changed_n10n(parameters->domain, parameters->level);
 }
 
 static int __scmi_perf_notify_enable(const struct scmi_handle *handle, u32 cmd,
