@@ -1482,7 +1482,7 @@ static void cpufreq_remove_dev(struct device *dev, struct subsys_interface *sif)
  *	We adjust to current frequency first, and need to clean up later.
  *	So either call to cpufreq_update_policy() or schedule handle_update()).
  */
-static void cpufreq_out_of_sync(struct cpufreq_policy *policy,
+void cpufreq_out_of_sync(struct cpufreq_policy *policy,
 				unsigned int new_freq)
 {
 	struct cpufreq_freqs freqs;
