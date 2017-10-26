@@ -63,6 +63,7 @@
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP_0>;
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER0>;
 			operating-points-v2 = <&cluster0_opp>;
+			capacity-dmips-mhz = <593>;
 		};
 
 		cpu1: cpu@1 {
@@ -74,6 +75,7 @@
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP_0>;
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER0>;
 			operating-points-v2 = <&cluster0_opp>;
+			capacity-dmips-mhz = <593>;
 		};
 
 		cpu2: cpu@2 {
@@ -85,6 +87,7 @@
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP_0>;
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER0>;
 			operating-points-v2 = <&cluster0_opp>;
+			capacity-dmips-mhz = <593>;
 		};
 
 		cpu3: cpu@3 {
@@ -96,6 +99,7 @@
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP_0>;
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER0>;
 			operating-points-v2 = <&cluster0_opp>;
+			capacity-dmips-mhz = <593>;
 		};
 
 		cpu4: cpu@100 {
@@ -111,6 +115,7 @@
 			>;
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER1>;
 			operating-points-v2 = <&cluster1_opp>;
+			capacity-dmips-mhz = <1024>;
 		};
 
 		cpu5: cpu@101 {
@@ -126,6 +131,7 @@
 			>;
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER1>;
 			operating-points-v2 = <&cluster1_opp>;
+			capacity-dmips-mhz = <1024>;
 		};
 
 		cpu6: cpu@102 {
@@ -141,6 +147,7 @@
 			>;
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER1>;
 			operating-points-v2 = <&cluster1_opp>;
+			capacity-dmips-mhz = <1024>;
 		};
 
 		cpu7: cpu@103 {
@@ -156,6 +163,7 @@
 			>;
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER1>;
 			operating-points-v2 = <&cluster1_opp>;
+			capacity-dmips-mhz = <1024>;
 		};
 
 		idle-states {
