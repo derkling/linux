@@ -189,6 +189,27 @@ unsigned long dev_pm_opp_get_freq(struct dev_pm_opp *opp)
 }
 EXPORT_SYMBOL_GPL(dev_pm_opp_get_freq);
 
+unsigned long dev_pm_opp_get_supply_power(struct dev_pm_opp *opp)
+{
+	unsigned long uA, uV, uW = 0;
+
+	if (IS_ERR_OR_NULL(opp) || !opp->available) {
+		pr_err("%s: Invalid parameters\n", __func__);
+		return 0;
+	}
+
+	uV = dev_pm_opp_get_voltage(opp);
+	if (!uV)
+		goto out;
+
+	uA = dev_pm_opp_get_amperage(opp);
+	if (uA)
+		uW = uA * uV / 1000000;
+out:
+	return uW;
+}
+EXPORT_SYMBOL_GPL(dev_pm_opp_get_supply_power);
+
 /**
  * dev_pm_opp_is_turbo() - Returns if opp is turbo OPP or not
  * @opp: opp for which turbo mode is being verified
