@@ -384,6 +384,12 @@
 			compatible = "arm,juno-scp-shmem";
 			reg = <0x100 0x80>;
 		};
+
+		cpu_scp_ntf: scp-shmem@300 {
+			compatible = "arm,juno-scp-shmem";
+			reg = <0x300 0x80>;
+		};
+
 	};
 
 	pcie_ctlr: pcie-controller@40000000 {
@@ -411,9 +417,9 @@
 	scmi {
 		compatible = "arm,scmi";
 		method = "mailbox-doorbell";
-		mbox-names = "tx";
-		mboxes = <&mailbox 0 0>;
-		shmem = <&cpu_scp_lpri>;
+		mbox-names = "tx", "rx";
+		mboxes = <&mailbox 0 0>, <&mailbox 1 1>;
+		shmem = <&cpu_scp_lpri &cpu_scp_ntf>;
 		#address-cells = <1>;
 		#size-cells = <0>;
 
