@@ -35,6 +35,7 @@
 #include <linux/of_device.h>
 #include <linux/semaphore.h>
 #include <linux/slab.h>
+#include <linux/workqueue.h>
 
 #include "common.h"
 
@@ -126,6 +127,8 @@ struct scmi_info {
 	struct scmi_revision_info version;
 	struct scmi_handle handle;
 	struct mbox_client cl;
+	struct mbox_client ntf_cl;
+	struct work_struct ntf_work;
 	struct mbox_chan *tx_chan;
 	struct mbox_chan *rx_chan;
 	void __iomem *tx_payload;
@@ -185,6 +188,29 @@ static inline int scmi_to_linux_errno(int errno)
 	return -EIO;
 }
 
+static void scmi_n10n_work(struct work_struct *ntf_work)
+{
+	struct scmi_info *info = container_of(ntf_work, struct scmi_info, ntf_work);
+	struct scmi_shared_mem *mem = info->rx_payload;
+	struct device *dev = info->dev;
+	u8 proto_id, msg_id;
+
+	/* extra check to ensure that channel is owned by us */
+	WARN(mem->channel_status == 1,
+		"%s: channel ownership didn't transferred to us,"
+		"channel_status=%x\n", __func__, mem->channel_status);
+
+	proto_id = (mem->msg_header >> MSG_PROTOCOL_ID_SHIFT) & MSG_PROTOCOL_ID_MASK;
+	msg_id = (mem->msg_header >> MSG_ID_SHIFT) & MSG_ID_MASK;
+
+	dev_warn(dev, "%s: unknown n10n received! proto_id=%x, msg_id=%x\n",
+			__func__, proto_id, msg_id);
+
+	/* free the channel finally */
+	mem->channel_status = 0x1;
+	return;
+}
+
 /**
  * scmi_dump_header_dbg() - Helper to dump a message header.
  *
@@ -196,6 +222,25 @@ static inline void scmi_dump_header_dbg(struct device *dev,
 {
 	dev_dbg(dev, "Command ID: %x Sequence ID: %x Protocol: %x\n",
 		hdr->id, hdr->seq, hdr->protocol_id);
+}
+
+static void scmi_n10n_rx_callback(struct mbox_client *ntf_cl, void *m)
+{
+	struct scmi_info *info = container_of(ntf_cl, struct scmi_info, ntf_cl);
+	struct scmi_shared_mem *mem = info->rx_payload;
+	struct device *dev = info->dev;
+	bool scheduled;
+
+	/* extra check to ensure that channel is owned by us */
+	WARN(mem->channel_status == 1, "%s %s %s: channel ownership "
+			"didn't transferred to us, channel_status=%x\n",
+			dev_driver_string(dev), dev_name(dev),
+			__func__, mem->channel_status);
+
+	scheduled = schedule_work(&info->ntf_work);
+	if (unlikely(!scheduled))
+		/* Not sure what to do in this case but it least we can warn */
+		dev_WARN(dev, "%s: cannot add work to system_wq!\n", __func__);
 }
 
 /**
@@ -724,14 +769,15 @@ static const struct scmi_protocol_match *scmi_protocol_match_get(u8 protocol_id)
 static int scmi_probe(struct platform_device *pdev)
 {
 	int ret = -EINVAL;
-	struct resource res;
+	struct resource res, res_rx;
 	resource_size_t size;
 	struct mbox_client *cl;
+	struct mbox_client *ntf_cl;
 	struct scmi_handle *handle;
 	const struct scmi_desc *desc;
 	struct scmi_info *info = NULL;
 	struct device *dev = &pdev->dev;
-	struct device_node *child, *shmem, *np = dev->of_node;
+	struct device_node *child, *shmem, *shmem_rx, *np = dev->of_node;
 
 	desc = of_match_device(scmi_of_match, dev)->data;
 
@@ -783,6 +829,41 @@ static int scmi_probe(struct platform_device *pdev)
 		goto out;
 	}
 
+	shmem_rx = of_parse_phandle(np, "shmem", 1);
+	if (!shmem_rx) {
+		dev_err(dev, "no shmem_rx\n");
+		goto out;
+	}
+	ret = of_address_to_resource(shmem_rx, 0, &res_rx);
+	of_node_put(shmem_rx);
+	if (ret) {
+		dev_err(dev, "failed to get SCMI Rx payload mem resource\n");
+		goto out;
+	}
+
+	size = resource_size(&res_rx);
+	info->rx_payload = devm_ioremap(dev, res_rx.start, size);
+	if (!info->rx_payload) {
+		dev_err(dev, "failed to ioremap SCMI Rx payload\n");
+		ret = -EADDRNOTAVAIL;
+		goto out;
+	}
+
+	/* set up client for n10ns and request rx channel for it */
+	ntf_cl = &info->ntf_cl;
+	ntf_cl->dev = dev;
+	ntf_cl->rx_callback = scmi_n10n_rx_callback;
+	ntf_cl->tx_block = false;
+	ntf_cl->knows_txdone = true;
+
+	info->rx_chan = mbox_request_channel_byname(ntf_cl, "rx");
+	if (IS_ERR(info->rx_chan)) {
+		ret = PTR_ERR(info->rx_chan);
+		goto out;
+	}
+
+	INIT_WORK(&info->ntf_work, scmi_n10n_work);
+
 	handle = &info->handle;
 	handle->dev = info->dev;
 	handle->version = &info->version;
@@ -828,6 +909,10 @@ static int scmi_probe(struct platform_device *pdev)
 out:
 	if (!IS_ERR(info->tx_chan))
 		mbox_free_channel(info->tx_chan);
+	if (!IS_ERR(info->rx_chan))
+		mbox_free_channel(info->rx_chan);
+
+	cancel_work_sync(&info->ntf_work);
 	return ret;
 }
 
@@ -845,9 +930,12 @@ static int scmi_remove(struct platform_device *pdev)
 		list_del(&info->node);
 	mutex_unlock(&scmi_list_mutex);
 
-	if (!ret)
+	if (!ret) {
 		/* Safe to free channels since no more users */
 		mbox_free_channel(info->tx_chan);
+		cancel_work_sync(&info->ntf_work);
+		mbox_free_channel(info->rx_chan);
+	}
 
 	return ret;
 }
