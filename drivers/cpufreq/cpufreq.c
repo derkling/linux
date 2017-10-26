@@ -1527,6 +1527,9 @@ void cpufreq_out_of_sync(struct cpufreq_policy *policy,
 {
 	struct cpufreq_freqs freqs;
 
+	if (policy->cur == new_freq)
+		return;
+
 	pr_debug("Warning: CPU frequency out of sync: cpufreq and timing core thinks of %u, is %u kHz\n",
 		 policy->cur, new_freq);
 
