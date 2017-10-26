@@ -188,6 +188,8 @@ static inline int scmi_to_linux_errno(int errno)
 	return -EIO;
 }
 
+extern void scmi_perf_level_changed_n10n(void *data);
+
 static void scmi_n10n_work(struct work_struct *ntf_work)
 {
 	struct scmi_info *info = container_of(ntf_work, struct scmi_info, ntf_work);
@@ -203,7 +205,13 @@ static void scmi_n10n_work(struct work_struct *ntf_work)
 	proto_id = (mem->msg_header >> MSG_PROTOCOL_ID_SHIFT) & MSG_PROTOCOL_ID_MASK;
 	msg_id = (mem->msg_header >> MSG_ID_SHIFT) & MSG_ID_MASK;
 
-	dev_warn(dev, "%s: unknown n10n received! proto_id=%x, msg_id=%x\n",
+	/* If it's PERFORMANCE protocol (0x13) and message id is
+	 * PERFORMANCE_LEVEL_CHANGED (0x1) then call scmi perf driver n10n */
+	if ((proto_id == 0x13) && (msg_id == 0x1))
+		scmi_perf_level_changed_n10n((void *) mem->msg_payload);
+	else
+		dev_warn(dev,
+			"%s: unknown n10n received! proto_id=%x, msg_id=%x\n",
 			__func__, proto_id, msg_id);
 
 	/* free the channel finally */
