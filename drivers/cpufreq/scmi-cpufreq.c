@@ -51,6 +51,30 @@ unsigned int scmi_cpufreq_get_rate(unsigned int cpu)
 	return rate / 1000;
 }
 
+extern void cpufreq_out_of_sync(struct cpufreq_policy *policy, unsigned int new_freq);
+
+void scmi_cpufreq_level_changed_n10n(int domain_id, unsigned long rate)
+{
+	unsigned int cpu;
+
+	/*
+	 * Ugly.
+	 * Ideally we should somehow jump from domain_id to policy in order
+	 * to execute cpufreq_out_of_sync().
+	 * Currently we just iterate over all possible cpus to find a policy
+	 * that controls domain value we received from SCMI notification.
+	 */
+	for_each_possible_cpu(cpu) {
+		struct cpufreq_policy *policy = cpufreq_cpu_get_raw(cpu);
+		struct scmi_data *priv = policy->driver_data;
+
+		if (priv->domain_id == domain_id) {
+			cpufreq_out_of_sync(policy, rate / 1000);
+			return;
+		}
+	}
+}
+
 static int
 scmi_cpufreq_set_target(struct cpufreq_policy *policy, unsigned int index)
 {
