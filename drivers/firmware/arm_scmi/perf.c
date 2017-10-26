@@ -120,6 +120,8 @@ struct perf_dom_info {
 	bool set_perf;
 	bool perf_limit_notify;
 	bool perf_level_notify;
+	bool notifications_enabled;
+	u32 number;
 	u32 opp_count;
 	u32 sustained_freq_khz;
 	u32 sustained_perf_level;
@@ -133,10 +135,15 @@ struct scmi_perf_info {
 	bool power_scale_mw;
 	u64 stats_addr;
 	u32 stats_size;
+	struct dentry *scmi_debugfs_dir;
+	struct scmi_handle *handle;
 	struct perf_dom_info *dom_info;
 };
 
 static struct scmi_perf_info perf_info;
+
+static int scmi_perf_level_notify_enable(const struct scmi_handle *handle,
+                                         u32 domain, bool enable);
 
 static int scmi_perf_attributes_get(const struct scmi_handle *handle,
 				    struct scmi_perf_info *perf_info)
@@ -165,6 +172,75 @@ static int scmi_perf_attributes_get(const struct scmi_handle *handle,
 
 	scmi_one_xfer_put(handle, t);
 	return ret;
+}
+
+static ssize_t debugfs_scmi_level_notify_read(struct file *file, char __user *user_buf,
+					size_t count, loff_t *ppos)
+{
+	struct perf_dom_info *dom_info = file->private_data;
+	char buf[3];
+	bool val = dom_info->notifications_enabled;
+
+	if (val)
+		buf[0] = 'Y';
+	else
+		buf[0] = 'N';
+	buf[1] = '\n';
+	buf[2] = 0x00;
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
+}
+
+static ssize_t debugfs_scmi_level_notify_write(struct file *file, const char __user *user_buf,
+					size_t count, loff_t *ppos)
+{
+	struct perf_dom_info *dom_info = file->private_data;
+	char buf[32];
+	size_t buf_size;
+	bool bv;
+	bool notification_enabled = dom_info->notifications_enabled;
+
+	buf_size = min(count, (sizeof(buf)-1));
+	if (copy_from_user(buf, user_buf, buf_size))
+		return -EFAULT;
+
+	buf[buf_size] = '\0';
+	if (strtobool(buf, &bv) == 0) {
+		dev_dbg(perf_info.handle->dev, "scmi n10ns: %s for domain %i\n",
+			bv ? "enable n10ns" : "disable n10ns",
+			dom_info->number);
+
+		if (notification_enabled != bv) {
+			scmi_perf_level_notify_enable(perf_info.handle,
+							dom_info->number, bv);
+			dom_info->notifications_enabled = bv;
+		}
+	}
+
+	return count;
+}
+
+static const struct file_operations scmi_level_notify_fops = {
+	.read = debugfs_scmi_level_notify_read,
+	.write = debugfs_scmi_level_notify_write,
+	.open = simple_open,
+	.llseek = default_llseek,
+};
+
+static void scmi_perf_create_level_notify_file(struct perf_dom_info *dom_info)
+{
+	struct dentry *scmi_f;
+	char buf[SCMI_MAX_STR_SIZE + 9];
+
+	snprintf(buf, sizeof(buf), "notify_%i_%s",
+					dom_info->number, dom_info->name);
+
+	scmi_f = debugfs_create_file(&buf[0], 0644,
+		perf_info.scmi_debugfs_dir, dom_info, &scmi_level_notify_fops);
+        if (!scmi_f) {
+		pr_err("scmi:unable to create debugfs file for domain: %s\n", dom_info->name);
+		return;
+	}
 }
 
 static int
@@ -199,6 +275,11 @@ scmi_perf_domain_attributes_get(const struct scmi_handle *handle, u32 domain,
 		dom_info->mult_factor =	(dom_info->sustained_freq_khz * 1000) /
 					dom_info->sustained_perf_level;
 		memcpy(dom_info->name, attr->name, SCMI_MAX_STR_SIZE);
+
+		dom_info->number = domain;
+		dom_info->notifications_enabled = false;
+		if (dom_info->perf_level_notify)
+			scmi_perf_create_level_notify_file(dom_info);
 	}
 
 	scmi_one_xfer_put(handle, t);
@@ -569,7 +650,7 @@ static const struct file_operations scmi_write_table_fops = {
 
 int scmi_perf_protocol_init(struct scmi_handle *handle)
 {
-	struct dentry *scmi_d, *scmi_f; /* for debugfs files */
+	struct dentry *scmi_f; /* for debugfs files */
 	int domain;
 	u32 version;
 
@@ -586,6 +667,12 @@ int scmi_perf_protocol_init(struct scmi_handle *handle)
 	if (!perf_info.dom_info)
 		return -ENOMEM;
 
+	perf_info.handle = handle;
+
+	perf_info.scmi_debugfs_dir = debugfs_create_dir("scmi", NULL);
+	if (!perf_info.scmi_debugfs_dir)
+		pr_err("unable to create debugfs directory for scmi\n");
+
 	for (domain = 0; domain < perf_info.num_domains; domain++) {
 		struct perf_dom_info *dom = perf_info.dom_info + domain;
 
@@ -595,17 +682,15 @@ int scmi_perf_protocol_init(struct scmi_handle *handle)
 
 	handle->perf_ops = &perf_ops;
 
-	/* Debugfs-related functions below */
-	scmi_d = debugfs_create_dir("scmi", NULL);
-	if (!scmi_d)
-		dev_warn(handle->dev, "unable to create debugfs dir\n");
-
-	scmi_f = debugfs_create_file("write_table_cmd", 0644, scmi_d, handle,
-							&scmi_write_table_fops);
+	scmi_f = debugfs_create_file("write_table_cmd",	0644,
+		perf_info.scmi_debugfs_dir, handle, &scmi_write_table_fops);
 	if (!scmi_f) {
-		dev_warn(handle->dev, "unable to create debugfs file\n");
-		debugfs_remove_recursive(scmi_d);
+		pr_err("scmi:unable to create debugfs file\n");
+		debugfs_remove_recursive(perf_info.scmi_debugfs_dir);
 	}
+
+	/* there should be ->fini or ->remove callback (not only ->init) for
+	 * protocols as well, where we can call debugfs_remove_recursive() */
 
 	return 0;
 }
