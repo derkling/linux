@@ -4869,6 +4869,21 @@ static inline void hrtick_update(struct rq *rq)
 }
 #endif
 
+static inline int task_util(struct task_struct *p);
+static inline int task_util_est(struct task_struct *p);
+
+static inline void util_est_enqueue(struct task_struct *p)
+{
+	struct cfs_rq *cfs_rq = &task_rq(p)->cfs;
+
+	/*
+	 * Update (top level CFS) RQ estimated utilization.
+	 * NOTE: here we assumes that we never change the
+	 *       utilization estimation policy at run-time.
+	 */
+	cfs_rq->avg.util_est.last += task_util_est(p);
+}
+
 /*
  * The enqueue_task method is called before nr_running is
  * increased. Here we update the fair scheduling stats and
@@ -4922,6 +4937,48 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		add_nr_running(rq, 1);
 
 	hrtick_update(rq);
+}
+
+static inline void util_est_dequeue(struct task_struct *p, int flags)
+{
+	struct cfs_rq *cfs_rq = &task_rq(p)->cfs;
+	bool update_se = flags & DEQUEUE_SLEEP;
+	long util_est;
+
+	/*
+	 * Update (top level CFS) RQ estimated utilization
+	 *
+	 * When *p is the last FAIR task then the RQ's estimated utilization
+	 * of a CPU is 0 by definition.
+	 *
+	 * Otherwise, in removing *p's util_est from the current RQ's util_est
+	 * we should account for cases where this last activation of *p was
+	 * longher then the previous ones. In these cases as well we set to 0
+	 * the new estimated utilization for the CPU.
+	 */
+	util_est = max_t(long, 0,
+			(cfs_rq->avg.util_est.last - task_util_est(p)));
+	cfs_rq->avg.util_est.last = util_est;
+
+	/*
+	 * Skip update of task's estimated utilization if it has not changed since
+	 * task enqueue time.
+	 */
+	if (p->se.avg.util_est.last == task_util(p))
+		update_se = false;
+
+	/*
+	 * Update Task's estimated utilization
+	 *
+	 * When *p completes an activation we can consolidate another sample
+	 * about the task size. This is done by storing the last PELT value
+	 * for this task and using this value to load another sample in the
+	 * EMWA for the task.
+	 */
+	if (update_se) {
+		p->se.avg.util_est.last = task_util(p);
+
+	}
 }
 
 static void set_next_buddy(struct sched_entity *se);
@@ -5437,7 +5494,6 @@ static int wake_affine(struct sched_domain *sd, struct task_struct *p,
 	return affine;
 }
 
-static inline int task_util(struct task_struct *p);
 static int cpu_util_wake(int cpu, struct task_struct *p);
 
 static unsigned long capacity_spare_wake(int cpu, struct task_struct *p)
@@ -5877,9 +5933,45 @@ static int cpu_util(int cpu)
 	return (util >= capacity) ? capacity : util;
 }
 
+/**
+ * cpu_util_est: estimated utilization for the specified CPU
+ * @cpu: the CPU to get the estimated utilization for
+ *
+ * The estimated utilization of a CPU is defined to be the maximum between its
+ * PELT's utilization and the sum of the estimated utilization of the tasks
+ * currently RUNNABLE on that CPU.
+ *
+ * This allows to properly represent the expected utilization of a CPU which
+ * has just got a big task running since a long sleep period. At the same time
+ * however it preserves the benefits of the "blocked load" in describing the
+ * potential for other tasks waking up on the same CPU.
+ *
+ * Return: the estimated utlization for the specified CPU
+ */
+static inline unsigned long cpu_util_est(int cpu)
+{
+	unsigned long capacity = capacity_orig_of(cpu);
+	struct sched_avg *sa = &cpu_rq(cpu)->cfs.avg;
+	unsigned long util = cpu_util(cpu);
+
+	if (!sched_feat(UTIL_EST))
+		return util;
+
+	util = max(util, util_est(sa, UTIL_EST_LAST));
+
+	return (util >= capacity) ? capacity : util;
+}
+
 static inline int task_util(struct task_struct *p)
 {
 	return p->se.avg.util_avg;
+}
+
+static inline int task_util_est(struct task_struct *p)
+{
+	struct sched_avg *sa = &p->se.avg;
+
+	return util_est(sa, UTIL_EST_POLICY);
 }
 
 /*

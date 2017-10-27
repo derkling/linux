@@ -363,6 +363,28 @@ struct sched_avg {
 /* Default policy used by utilization estimation */
 #define UTIL_EST_POLICY	UTIL_EST_MAX_EWMA_LAST
 
+/**
+ * util_est: estimated utilization for a given entity (i.e. SE or RQ)
+ *
+ * Depending on the selected utlization estimation policy, the estimated
+ * utilization of a SE or RQ is returned by this function.
+ * Supported policies are:
+ * UTIL_EST_LAST: the value of the PELT signal the last time a SE has
+ *                completed an activation, i.e. it has been dequeued because
+ *                of a sleep
+ * UTIL_EST_EWMA: the exponential weighted moving average of all the past
+ *                UTIL_EST_LAST samples
+ * UTIL_EST_MAX_EWMA_LAST: the maximum among the previous two metrics
+ */
+static inline unsigned long util_est(struct sched_avg *sa, int policy)
+{
+	if (likely(policy == UTIL_EST_MAX_EWMA_LAST))
+		return max(sa->util_est.ewma, sa->util_est.last);
+	if (policy == UTIL_EST_EWMA)
+		return sa->util_est.ewma;
+	return sa->util_est.last;
+}
+
 struct sched_statistics {
 #ifdef CONFIG_SCHEDSTATS
 	u64				wait_start;
