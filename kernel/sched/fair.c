@@ -4898,6 +4898,10 @@ static inline void util_est_enqueue(struct task_struct *p)
 	 *       utilization estimation policy at run-time.
 	 */
 	cfs_rq->avg.util_est.last += task_util_est(p);
+
+	/* Update plots for Task and CPU estimated utilization */
+	trace_sched_load_avg_task(p, &p->se.avg);
+	trace_sched_load_avg_cpu(cpu_of(rq_of(cfs_rq)), cfs_rq);
 }
 
 /*
@@ -5010,6 +5014,9 @@ static inline void util_est_dequeue(struct task_struct *p, int flags)
 	ewma = util_last + (ewma << 2) - ewma;
 	p->se.avg.util_est.ewma = ewma >> 2;
 
+	/* Update plots for Task and CPU estimated utilization */
+	trace_sched_load_avg_task(p, &p->se.avg);
+	trace_sched_load_avg_cpu(cpu_of(rq_of(cfs_rq)), cfs_rq);
 }
 
 static void set_next_buddy(struct sched_entity *se);
