@@ -3302,6 +3302,8 @@ __update_load_avg_blocked_se(u64 now, int cpu, struct sched_entity *se)
 static int
 __update_load_avg_se(u64 now, int cpu, struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
+	struct task_struct *tsk;
+
 	if (entity_is_task(se))
 		se->runnable_weight = se->load.weight;
 
@@ -3311,6 +3313,15 @@ __update_load_avg_se(u64 now, int cpu, struct cfs_rq *cfs_rq, struct sched_entit
 		___update_load_avg(&se->avg, se_weight(se), se_runnable(se));
 
 		trace_sched_load_se(se);
+
+		/* Trace utilization only for actual tasks */
+		if (entity_is_task(se)) {
+			tsk = task_of(se);
+			trace_sched_util_est_task(tsk, &se->avg);
+			/* Trace utilization only for top level CFS RQ */
+			cfs_rq = &(task_rq(tsk)->cfs);
+			trace_sched_util_est_cpu(cpu, cfs_rq);
+		}
 
 		return 1;
 	}
@@ -5189,6 +5200,10 @@ static inline void util_est_enqueue(struct task_struct *p)
 
 	/* Update root cfs_rq's estimated utilization */
 	cfs_rq->util_est_runnable += task_util_est(p);
+
+	/* Update plots for Task and CPU estimated utilization */
+	trace_sched_util_est_task(p, &p->se.avg);
+	trace_sched_util_est_cpu(cpu_of(rq_of(cfs_rq)), cfs_rq);
 }
 
 /*
@@ -5280,6 +5295,8 @@ static inline void util_est_dequeue(struct task_struct *p, int flags)
 		cfs_rq->util_est_runnable = 0;
 	}
 
+	/* Update plots for CPU's estimated utilization */
+	trace_sched_util_est_cpu(cpu_of(rq_of(cfs_rq)), cfs_rq);
 	/*
 	 * Skip update of task's estimated utilization when the task has not
 	 * yet completed an activation, e.g. being migrated.
@@ -5319,6 +5336,9 @@ static inline void util_est_dequeue(struct task_struct *p, int flags)
 		ewma = util_last;
 	}
 	p->util_est.ewma = ewma;
+
+	/* Update plots for Task's estimated utilization */
+	trace_sched_util_est_task(p, &p->se.avg);
 }
 
 static void set_next_buddy(struct sched_entity *se);
