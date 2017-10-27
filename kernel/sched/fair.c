@@ -4981,6 +4981,8 @@ static inline void util_est_dequeue(struct task_struct *p, int flags)
 	 * EMWA for the task.
 	 */
 	p->se.avg.util_est.last = task_util(p);
+	ewma_util_add(&p->se.avg.util_ewma, p->se.avg.util_est.last);
+	p->se.avg.util_est.ewma = ewma_util_read(&p->se.avg.util_ewma);
 }
 
 static void set_next_buddy(struct sched_entity *se);
