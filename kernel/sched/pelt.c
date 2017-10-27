@@ -298,6 +298,17 @@ int __update_load_avg_se(u64 now, int cpu, struct cfs_rq *cfs_rq, struct sched_e
 
 		trace_sched_load_se(se);
 
+		/* Trace utilization only for actual tasks */
+		if (entity_is_task(se)) {
+			struct task_struct *tsk = container_of(se, struct task_struct, se);
+
+			trace_sched_util_est_task(tsk, &se->avg);
+
+			/* Trace utilization only for top level CFS RQ */
+			cfs_rq = &(task_rq(tsk)->cfs);
+			trace_sched_util_est_cpu(cpu, cfs_rq);
+		}
+
 		return 1;
 	}
 
