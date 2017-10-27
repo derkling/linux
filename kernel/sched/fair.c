@@ -4940,6 +4940,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	if (!se)
 		add_nr_running(rq, 1);
 
+	util_est_enqueue(p);
 	hrtick_update(rq);
 }
 
