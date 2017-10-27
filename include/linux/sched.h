@@ -378,7 +378,7 @@ struct sched_avg {
  */
 static inline unsigned long util_est(struct sched_avg *sa, int policy)
 {
-	if (likely(policy == UTIL_EST_MAX_EWMA_LAST))
+	if (policy == UTIL_EST_MAX_EWMA_LAST)
 		return max(sa->util_est.ewma, sa->util_est.last);
 	if (policy == UTIL_EST_EWMA)
 		return sa->util_est.ewma;
