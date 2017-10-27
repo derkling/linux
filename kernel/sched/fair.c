@@ -5319,6 +5319,10 @@ static inline void util_est_enqueue(struct cfs_rq *cfs_rq,
 	enqueued  = READ_ONCE(cfs_rq->avg.util_est.enqueued);
 	enqueued += (_task_util_est(p) | 0x1);
 	WRITE_ONCE(cfs_rq->avg.util_est.enqueued, enqueued);
+
+	/* Update plots for Task and CPU estimated utilization */
+	trace_sched_util_est_task(p, &p->se.avg);
+	trace_sched_util_est_cpu(cpu_of(rq_of(cfs_rq)), cfs_rq);
 }
 
 /*
@@ -5416,6 +5420,9 @@ static inline void util_est_dequeue(struct cfs_rq *cfs_rq,
 	}
 	WRITE_ONCE(cfs_rq->avg.util_est.enqueued, ue.enqueued);
 
+	/* Update plots for CPU's estimated utilization */
+	trace_sched_util_est_cpu(cpu_of(rq_of(cfs_rq)), cfs_rq);
+
 	/*
 	 * Skip update of task's estimated utilization when the task has not
 	 * yet completed an activation, e.g. being migrated.
@@ -5461,6 +5468,9 @@ static inline void util_est_dequeue(struct cfs_rq *cfs_rq,
 	ue.ewma  += last_ewma_diff;
 	ue.ewma >>= UTIL_EST_WEIGHT_SHIFT;
 	WRITE_ONCE(p->se.avg.util_est, ue);
+
+	/* Update plots for Task's estimated utilization */
+	trace_sched_util_est_task(p, &p->se.avg);
 }
 
 static void set_next_buddy(struct sched_entity *se);
