@@ -713,6 +713,70 @@ TRACE_EVENT(sched_load_tg,
 		  __entry->load)
 );
 #endif /* CONFIG_FAIR_GROUP_SCHED */
+
+/*
+ * Tracepoint for tasks' estimated utilization.
+ */
+TRACE_EVENT(sched_util_est_task,
+
+	TP_PROTO(struct task_struct *tsk, struct sched_avg *avg),
+
+	TP_ARGS(tsk, avg),
+
+	TP_STRUCT__entry(
+		__array( char,	comm,	TASK_COMM_LEN		)
+		__field( pid_t,		pid			)
+		__field( int,		cpu			)
+		__field( unsigned long,	util_avg		)
+		__field( unsigned long,	est_last		)
+		__field( unsigned long,	est_ewma		)
+
+	),
+
+	TP_fast_assign(
+		memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
+		__entry->pid			= tsk->pid;
+		__entry->cpu			= task_cpu(tsk);
+		__entry->util_avg		= avg->util_avg;
+		__entry->est_last		= avg->util_est.last;
+		__entry->est_ewma		= avg->util_est.ewma;
+	),
+
+	TP_printk("comm=%s pid=%d cpu=%d util_avg=%lu est_ewma=%lu est_last=%lu",
+		  __entry->comm,
+		  __entry->pid,
+		  __entry->cpu,
+		  __entry->util_avg,
+		  __entry->est_ewma,
+		  __entry->est_last)
+);
+
+/*
+ * Tracepoint for root cfs_rq's estimated utilization.
+ */
+TRACE_EVENT(sched_util_est_cpu,
+
+	TP_PROTO(int cpu, struct cfs_rq *cfs_rq),
+
+	TP_ARGS(cpu, cfs_rq),
+
+	TP_STRUCT__entry(
+		__field( int,		cpu			)
+		__field( unsigned long,	util_avg		)
+		__field( unsigned long,	util_est_runnable	)
+	),
+
+	TP_fast_assign(
+		__entry->cpu			= cpu;
+		__entry->util_avg		= cfs_rq->avg.util_avg;
+		__entry->util_est_runnable	= cfs_rq->util_est_runnable;
+	),
+
+	TP_printk("cpu=%d util_avg=%lu util_runnable=%lu",
+		  __entry->cpu,
+		  __entry->util_avg,
+		  __entry->util_est_runnable)
+);
 #endif /* CONFIG_SMP */
 #endif /* _TRACE_SCHED_H */
 
