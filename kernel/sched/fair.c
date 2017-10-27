@@ -3398,6 +3398,7 @@ static inline void update_load_avg(struct sched_entity *se, int flags)
 	struct cfs_rq *cfs_rq = cfs_rq_of(se);
 	u64 now = cfs_rq_clock_task(cfs_rq);
 	struct rq *rq = rq_of(cfs_rq);
+	struct task_struct *tsk;
 	int cpu = cpu_of(rq);
 	int decayed;
 
@@ -3413,6 +3414,17 @@ static inline void update_load_avg(struct sched_entity *se, int flags)
 
 	if (decayed && (flags & UPDATE_TG))
 		update_tg_load_avg(cfs_rq, 0);
+
+	/* Trace utilization only for actual tasks */
+	if (!entity_is_task(se))
+		return;
+
+	tsk = task_of(se);
+	trace_sched_load_avg_task(tsk, &se->avg);
+
+	/* Trace utilization only for top level CFS RQ */
+	cfs_rq = &(task_rq(tsk)->cfs);
+	trace_sched_load_avg_cpu(cpu, cfs_rq);
 }
 
 /**
@@ -4888,6 +4900,10 @@ static inline void util_est_enqueue(struct task_struct *p)
 
 	/* Update root cfs_rq's estimated utilization */
 	cfs_rq->util_est_runnable += task_util_est(p);
+
+	/* Update plots for Task and CPU estimated utilization */
+	trace_sched_load_avg_task(p, &p->se.avg);
+	trace_sched_load_avg_cpu(cpu_of(rq_of(cfs_rq)), cfs_rq);
 }
 
 /*
@@ -5018,6 +5034,10 @@ static inline void util_est_dequeue(struct task_struct *p, int flags)
 		ewma = util_last;
 	}
 	p->util_est.ewma = ewma;
+
+	/* Update plots for Task and CPU estimated utilization */
+	trace_sched_load_avg_task(p, &p->se.avg);
+	trace_sched_load_avg_cpu(cpu_of(rq_of(cfs_rq)), cfs_rq);
 }
 
 static void set_next_buddy(struct sched_entity *se);
