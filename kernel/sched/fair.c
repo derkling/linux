@@ -4944,10 +4944,13 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	hrtick_update(rq);
 }
 
+/* void util_est_dequeue(struct task_struct *p, int flags) */
 static inline void util_est_dequeue(struct task_struct *p, int flags)
 {
 	struct cfs_rq *cfs_rq = &task_rq(p)->cfs;
+	unsigned long util_last = task_util(p);
 	bool sleep = flags & DEQUEUE_SLEEP;
+	unsigned long ewma;
 	long util_est;
 
 	/*
@@ -4961,15 +4964,18 @@ static inline void util_est_dequeue(struct task_struct *p, int flags)
 	 * longher then the previous ones. In these cases as well we set to 0
 	 * the new estimated utilization for the CPU.
 	 */
-	util_est = max_t(long, 0,
-			(cfs_rq->avg.util_est.last - task_util_est(p)));
+	util_est  = cfs_rq->avg.util_est.last;
+	util_est -= task_util_est(p);
+	if (util_est < 0)
+		util_est = 0;
 	cfs_rq->avg.util_est.last = util_est;
 
 	/*
-	 * Skip update of task's estimated utilization if it has not changed since
-	 * task enqueue time or the task has not completed an activation.
+	 * Skip update of task's estimated utilization when it has not
+	 * changed, since task enqueue time, or the task has not yet completed
+	 * an activation.
 	 */
-	if (p->se.avg.util_est.last == task_util(p) || !sleep)
+	if (p->se.avg.util_est.last == util_last || !sleep)
 		return;
 
 	/*
@@ -4978,11 +4984,20 @@ static inline void util_est_dequeue(struct task_struct *p, int flags)
 	 * When *p completes an activation we can consolidate another sample
 	 * about the task size. This is done by storing the last PELT value
 	 * for this task and using this value to load another sample in the
-	 * EMWA for the task.
+	 * exponential weighted moving average:
+	 *
+	 *      ewma(t) = w *  task_util(p) + (1 - w) ewma(t-1)
+	 *      	= w *  task_util(p) + ewma(t-1) - w * ewma(t-1)
+	 *      	= w * (task_util(p) + ewma(t-1) / w - ewma(t-1))
+	 *
+	 * Where 'w' is the weight of new samples, which is configured to be
+	 * 0.25, thus making w=1/4
 	 */
-	p->se.avg.util_est.last = task_util(p);
-	ewma_util_add(&p->se.avg.util_ewma, p->se.avg.util_est.last);
-	p->se.avg.util_est.ewma = ewma_util_read(&p->se.avg.util_ewma);
+	p->se.avg.util_est.last = util_last;
+	ewma = p->se.avg.util_est.ewma;
+	ewma = util_last + (ewma << 2) - ewma;
+	p->se.avg.util_est.ewma = ewma >> 2;
+
 }
 
 static void set_next_buddy(struct sched_entity *se);
