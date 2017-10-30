@@ -4947,7 +4947,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 static inline void util_est_dequeue(struct task_struct *p, int flags)
 {
 	struct cfs_rq *cfs_rq = &task_rq(p)->cfs;
-	bool update_se = flags & DEQUEUE_SLEEP;
+	bool sleep = flags & DEQUEUE_SLEEP;
 	long util_est;
 
 	/*
@@ -4965,25 +4965,22 @@ static inline void util_est_dequeue(struct task_struct *p, int flags)
 			(cfs_rq->avg.util_est.last - task_util_est(p)));
 	cfs_rq->avg.util_est.last = util_est;
 
-//	/*
-//	 * Skip update of task's estimated utilization if it has not changed since
-//	 * task enqueue time.
-//	 */
-//	if (p->se.avg.util_est.last == task_util(p))
-//		update_se = false;
-//
-//	/*
-//	 * Update Task's estimated utilization
-//	 *
-//	 * When *p completes an activation we can consolidate another sample
-//	 * about the task size. This is done by storing the last PELT value
-//	 * for this task and using this value to load another sample in the
-//	 * EMWA for the task.
-//	 */
-//	if (update_se) {
-//		p->se.avg.util_est.last = task_util(p);
-//
-//	}
+	/*
+	 * Skip update of task's estimated utilization if it has not changed since
+	 * task enqueue time or the task has not completed an activation.
+	 */
+	if (p->se.avg.util_est.last == task_util(p) || !sleep)
+		return;
+
+	/*
+	 * Update Task's estimated utilization
+	 *
+	 * When *p completes an activation we can consolidate another sample
+	 * about the task size. This is done by storing the last PELT value
+	 * for this task and using this value to load another sample in the
+	 * EMWA for the task.
+	 */
+	p->se.avg.util_est.last = task_util(p);
 }
 
 static void set_next_buddy(struct sched_entity *se);
