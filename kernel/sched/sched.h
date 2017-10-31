@@ -2128,7 +2128,12 @@ static inline unsigned long cpu_util_dl(struct rq *rq)
 
 static inline unsigned long cpu_util_cfs(struct rq *rq)
 {
-	return rq->cfs.avg.util_avg;
+	unsigned long util_est = rq->cfs.avg.util_avg;
+
+	if (sched_feat(UTIL_EST))
+		util_est = max(util_est, rq->cfs.util_est_runnable);
+
+	return util_est;
 }
 
 #endif
