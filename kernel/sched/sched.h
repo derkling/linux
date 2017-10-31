@@ -372,6 +372,7 @@ struct cfs_rq {
 	 * CFS load tracking
 	 */
 	struct sched_avg avg;
+	unsigned long util_est_runnable;
 	u64 runnable_load_sum;
 	unsigned long runnable_load_avg;
 #ifdef CONFIG_FAIR_GROUP_SCHED
@@ -1613,6 +1614,10 @@ static inline unsigned long task_util(struct task_struct *p)
 	return p->se.avg.util_avg;
 }
 
+static inline unsigned long task_util_est(struct task_struct *p)
+{
+	return max(p->se.avg.util_est.ewma, p->se.avg.util_est.last);
+}
 
 /*
  * cpu_util returns the amount of capacity of a CPU that is used by CFS
