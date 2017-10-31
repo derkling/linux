@@ -6332,6 +6332,41 @@ static unsigned long cpu_util(int cpu)
 	return (util >= capacity) ? capacity : util;
 }
 
+/**
+ * cpu_util_est: estimated utilization for the specified CPU
+ * @cpu: the CPU to get the estimated utilization for
+ *
+ * The estimated utilization of a CPU is defined to be the maximum between its
+ * PELT's utilization and the sum of the estimated utilization of the tasks
+ * currently RUNNABLE on that CPU.
+ *
+ * This allows to properly represent the expected utilization of a CPU which
+ * has just got a big task running since a long sleep period. At the same time
+ * however it preserves the benefits of the "blocked utilization" in
+ * describing the potential for other tasks waking up on the same CPU.
+ *
+ * Return: the estimated utilization for the specified CPU
+ */
+static inline unsigned long cpu_util_est(int cpu)
+{
+	unsigned long util, util_est;
+	unsigned long capacity;
+	struct cfs_rq *cfs_rq;
+
+	if (!sched_feat(UTIL_EST))
+		return cpu_util(cpu);
+
+	cfs_rq = &cpu_rq(cpu)->cfs;
+	util = cfs_rq->avg.util_avg;
+	util_est = cfs_rq->util_est_runnable;
+	util_est = max(util, util_est);
+
+	capacity = capacity_orig_of(cpu);
+	util_est = min(util_est, capacity);
+
+	return util_est;
+}
+
 static inline unsigned long task_util(struct task_struct *p)
 {
 	return p->se.avg.util_avg;
@@ -6348,16 +6383,43 @@ static inline unsigned long task_util_est(struct task_struct *p)
  */
 static unsigned long cpu_util_wake(int cpu, struct task_struct *p)
 {
-	unsigned long util, capacity;
+	long util, util_est;
 
 	/* Task has no contribution or is new */
 	if (cpu != task_cpu(p) || !p->se.avg.last_update_time)
-		return cpu_util(cpu);
+		return cpu_util_est(cpu);
 
-	capacity = capacity_orig_of(cpu);
-	util = max_t(long, cpu_rq(cpu)->cfs.avg.util_avg - task_util(p), 0);
+	/* Discount task's blocked util from CPU's util */
+	util = cpu_util(cpu) - task_util(p);
+	util = max(util, 0L);
 
-	return (util >= capacity) ? capacity : util;
+	if (!sched_feat(UTIL_EST))
+		return util;
+
+	/*
+	 * These are the main cases covered:
+	 * - if *p is the only task sleeping on this CPU, then:
+	 *      cpu_util (== task_util) > util_est (== 0)
+	 *   and thus we return:
+	 *      cpu_util_wake = (cpu_util - task_util) = 0
+	 *
+	 * - if other tasks are SLEEPING on the same CPU, which is just waking
+	 *   up, then:
+	 *      cpu_util >= task_util
+	 *      cpu_util > util_est (== 0)
+	 *   and thus we discount *p's blocked utilization to return:
+	 *      cpu_util_wake = (cpu_util - task_util) >= 0
+	 *
+	 * - if other tasks are RUNNABLE on that CPU and
+	 *      util_est > cpu_util
+	 *   then we use util_est since it returns a more restrictive
+	 *   estimation of the spare capacity on that CPU, by just considering
+	 *   the expected utilization of tasks already runnable on that CPU.
+	 */
+	util_est = cpu_rq(cpu)->cfs.util_est_runnable;
+	util = max(util, util_est);
+
+	return util;
 }
 
 /*
@@ -7882,7 +7944,7 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 			load = source_load(i, load_idx);
 
 		sgs->group_load += load;
-		sgs->group_util += cpu_util(i);
+		sgs->group_util += cpu_util_est(i);
 		sgs->sum_nr_running += rq->cfs.h_nr_running;
 
 		nr_running = rq->nr_running;
