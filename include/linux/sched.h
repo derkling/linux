@@ -1413,6 +1413,21 @@ struct ravg {
 };
 #endif
 
+/**
+ * Estimation Utilization for FAIR tasks.
+ *
+ * Support data structure to track an Exponential Weighted Moving Average
+ * (EWMA) of a FAIR task's utilization. New samples are added to the moving
+ * average each time a task completes an activation. Sample's weight is
+ * chosen so that the EWMA will be relatively insensitive to transient changes
+ * to the task's workload.
+ */
+struct util_est {
+	unsigned int		last;
+	unsigned int		ewma;
+#define UTIL_EST_WEIGHT_SHIFT	2
+};
+
 struct sched_entity {
 	struct load_weight	load;		/* for load-balancing */
 	struct rb_node		run_node;
@@ -1441,7 +1456,8 @@ struct sched_entity {
 
 #ifdef CONFIG_SMP
 	/* Per entity load average tracking */
-	struct sched_avg	avg;
+	struct sched_avg	avg ____cacheline_aligned_in_smp;
+	struct util_est		util_est;
 #endif
 };
 
