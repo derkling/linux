@@ -5011,8 +5011,11 @@ static inline void util_est_dequeue(struct task_struct *p, int flags)
 	 */
 	p->se.avg.util_est.last = util_last;
 	ewma = p->se.avg.util_est.ewma;
-	ewma = util_last + (ewma << 2) - ewma;
-	p->se.avg.util_est.ewma = ewma >> 2;
+	if (likely(ewma != 0))
+		ewma = (util_last + (ewma << 2) - ewma) >> 2;
+	else
+		ewma = util_last;
+	p->se.avg.util_est.ewma = ewma;
 
 	/* Update plots for Task and CPU estimated utilization */
 	trace_sched_load_avg_task(p, &p->se.avg);
