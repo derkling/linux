@@ -91,3 +91,8 @@ SCHED_FEAT(WA_BIAS, true)
  * decisions optimizing for energy efficiency.
  */
 SCHED_FEAT(ENERGY_AWARE, false)
+
+/*
+ * UtilEstimation. Use estimated CPU utilization.
+ */
+SCHED_FEAT(UTIL_EST, false)

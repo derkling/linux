@@ -5252,6 +5252,20 @@ static inline void update_overutilized_status(struct rq *rq)
 #define update_overutilized_status(rq) do {} while (0)
 #endif /* CONFIG_SMP */
 
+static inline unsigned long task_util(struct task_struct *p);
+static inline unsigned long _task_util_est(struct task_struct *p);
+
+static inline void util_est_enqueue(struct task_struct *p)
+{
+	struct cfs_rq *cfs_rq = &task_rq(p)->cfs;
+
+	if (!sched_feat(UTIL_EST))
+		return;
+
+	/* Update root cfs_rq's estimated utilization */
+	cfs_rq->avg.util_est.enqueued += _task_util_est(p);
+}
+
 /*
  * The enqueue_task method is called before nr_running is
  * increased. Here we update the fair scheduling stats and
@@ -5307,7 +5321,83 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		if (!task_new)
 			update_overutilized_status(rq);
 	}
+	util_est_enqueue(p);
 	hrtick_update(rq);
+}
+
+/*
+ * Check if the specified (signed) value is within a specified margin,
+ * based on the observation that:
+ *     abs(x) < y := (unsigned)(x + y - 1) < (2 * y - 1)
+ */
+static inline bool within_margin(long value, unsigned int margin)
+{
+	return ((unsigned int)(value + margin - 1) < (2 * margin - 1));
+}
+
+static inline void util_est_dequeue(struct task_struct *p, int flags)
+{
+	struct cfs_rq *cfs_rq = &task_rq(p)->cfs;
+	unsigned long util_last;
+	long last_ewma_diff;
+	unsigned long ewma;
+	long util_est = 0;
+
+	if (!sched_feat(UTIL_EST))
+		return;
+
+	/*
+	 * Update root cfs_rq's estimated utilization
+	 *
+	 * If *p is the last task then the root cfs_rq's estimated utilization
+	 * of a CPU is 0 by definition.
+	 */
+	if (cfs_rq->nr_running) {
+		util_est  = READ_ONCE(cfs_rq->avg.util_est.enqueued);
+		util_est -= min_t(long, util_est, _task_util_est(p));
+	}
+	WRITE_ONCE(cfs_rq->avg.util_est.enqueued, util_est);
+
+	/*
+	 * Skip update of task's estimated utilization when the task has not
+	 * yet completed an activation, e.g. being migrated.
+	 */
+	if (!(flags & DEQUEUE_SLEEP))
+		return;
+
+	ewma = READ_ONCE(p->se.avg.util_est.ewma);
+	util_last = task_util(p);
+
+	/*
+	 * Skip update of task's estimated utilization when its EWMA is
+	 * already ~1% close to its last activation value.
+	 */
+	last_ewma_diff = util_last - ewma;
+	if (within_margin(last_ewma_diff, (SCHED_CAPACITY_SCALE / 100)))
+		return;
+
+	/*
+	 * Update Task's estimated utilization
+	 *
+	 * When *p completes an activation we can consolidate another sample
+	 * about the task size. This is done by storing the last PELT value
+	 * for this task and using this value to load another sample in the
+	 * exponential weighted moving average:
+	 *
+	 *  ewma(t) = w *  task_util(p) + (1-w) * ewma(t-1)
+	 *          = w *  task_util(p) +         ewma(t-1)  - w * ewma(t-1)
+	 *          = w * (task_util(p) -         ewma(t-1)) +     ewma(t-1)
+	 *          = w * (      last_ewma_diff            ) +     ewma(t-1)
+	 *          = w * (last_ewma_diff  +  ewma(t-1) / w)
+	 *
+	 * Where 'w' is the weight of new samples, which is configured to be
+	 * 0.25, thus making w=1/4 ( >>= UTIL_EST_WEIGHT_SHIFT)
+	 */
+	ewma   = last_ewma_diff + (ewma << UTIL_EST_WEIGHT_SHIFT);
+	ewma >>= UTIL_EST_WEIGHT_SHIFT;
+
+	WRITE_ONCE(p->se.avg.util_est.ewma, ewma);
+	WRITE_ONCE(p->se.avg.util_est.enqueued, util_last);
 }
 
 static void set_next_buddy(struct sched_entity *se);
@@ -5366,6 +5456,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	if (!se)
 		sub_nr_running(rq, 1);
 
+	util_est_dequeue(p, flags);
 	hrtick_update(rq);
 }
 
@@ -6601,6 +6692,12 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
 static inline unsigned long task_util(struct task_struct *p)
 {
 	return p->se.avg.util_avg;
+}
+
+
+static inline unsigned long _task_util_est(struct task_struct *p)
+{
+	return max(p->se.avg.util_est.ewma, p->se.avg.util_est.enqueued);
 }
 
 /*
