@@ -763,6 +763,12 @@ void init_entity_runnable_average(struct sched_entity *se)
 	sa->util_avg = 0;
 	sa->util_sum = 0;
 	/* when this task enqueue'ed, it will contribute to its cfs_rq's load_avg */
+
+	/* Utilization estimation */
+	if (entity_is_task(se)) {
+		se->avg.util_est.ewma = 0;
+		se->avg.util_est.last = 0;
+	}
 }
 
 static inline u64 cfs_rq_clock_task(struct cfs_rq *cfs_rq);
@@ -4686,6 +4692,20 @@ static void update_capacity_of(int cpu)
 }
 #endif
 
+static inline unsigned long task_util(struct task_struct *p);
+static inline unsigned long task_util_est(struct task_struct *p);
+
+static inline void util_est_enqueue(struct task_struct *p)
+{
+	struct cfs_rq *cfs_rq = &task_rq(p)->cfs;
+
+	if (!sched_feat(UTIL_EST))
+		return;
+
+	/* Update root cfs_rq's estimated utilization */
+	cfs_rq->util_est_runnable += task_util_est(p);
+}
+
 /*
  * The enqueue_task method is called before nr_running is
  * increased. Here we update the fair scheduling stats and
@@ -4744,6 +4764,8 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	if (!se)
 		add_nr_running(rq, 1);
 
+	util_est_enqueue(p);
+
 #ifdef CONFIG_SMP
 
 	/*
@@ -4786,6 +4808,64 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 #endif /* CONFIG_SMP */
 	hrtick_update(rq);
+}
+
+static inline void util_est_dequeue(struct task_struct *p, int flags)
+{
+	struct cfs_rq *cfs_rq = &task_rq(p)->cfs;
+	unsigned long util_last = task_util(p);
+	bool sleep = flags & DEQUEUE_SLEEP;
+	unsigned long ewma;
+	long util_est = 0;
+
+	if (!sched_feat(UTIL_EST))
+		return;
+
+	/*
+	 * Update root cfs_rq's estimated utilization
+	 *
+	 * If *p is the last task then the root cfs_rq's estimated utilization
+	 * of a CPU is 0 by definition.
+	 *
+	 * Otherwise, in removing *p's util_est from its cfs_rq's
+	 * util_est_runnable we should account for cases where this last
+	 * activation of *p was longer then the previous ones.
+	 * Also in these cases we need to set 0 the estimated utilization for
+	 * the CPU.
+	 */
+	if (cfs_rq->nr_running) {
+		util_est  = READ_ONCE(cfs_rq->util_est_runnable);
+		util_est -= min_t(long, util_est, task_util_est(p));
+	}
+	WRITE_ONCE(cfs_rq->util_est_runnable, util_est);
+
+	/*
+	 * Skip update of task's estimated utilization when the task has not
+	 * yet completed an activation, e.g. being migrated.
+	 */
+	if (!sleep)
+		return;
+
+	/*
+	 * Update Task's estimated utilization
+	 *
+	 * When *p completes an activation we can consolidate another sample
+	 * about the task size. This is done by storing the last PELT value
+	 * for this task and using this value to load another sample in the
+	 * exponential weighted moving average:
+	 *
+	 *      ewma(t) = w *  task_util(p) + (1 - w) ewma(t-1)
+	 *              = w *  task_util(p) + ewma(t-1) - w * ewma(t-1)
+	 *              = w * (task_util(p) + ewma(t-1) / w - ewma(t-1))
+	 *
+	 * Where 'w' is the weight of new samples, which is configured to be
+	 * 0.25, thus making w=1/4
+	 */
+	p->se.avg.util_est.last = util_last;
+	ewma = READ_ONCE(p->se.avg.util_est.ewma);
+	ewma   = util_last + (ewma << UTIL_EST_WEIGHT_SHIFT) - ewma;
+	ewma >>= UTIL_EST_WEIGHT_SHIFT;
+	WRITE_ONCE(p->se.avg.util_est.ewma, ewma);
 }
 
 static void set_next_buddy(struct sched_entity *se);
@@ -4855,6 +4935,8 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 	if (!se)
 		sub_nr_running(rq, 1);
+
+	util_est_dequeue(p, flags);
 
 #ifdef CONFIG_SMP
 
