@@ -6248,7 +6248,7 @@ done:
  */
 static unsigned long cpu_util_wake(int cpu, struct task_struct *p)
 {
-	unsigned long util, capacity;
+	long util, util_est;
 
 #ifdef CONFIG_SCHED_WALT
 	/*
@@ -6260,14 +6260,42 @@ static unsigned long cpu_util_wake(int cpu, struct task_struct *p)
 	if (!walt_disabled && sysctl_sched_use_walt_cpu_util)
 		return cpu_util(cpu);
 #endif
+
 	/* Task has no contribution or is new */
 	if (cpu != task_cpu(p) || !p->se.avg.last_update_time)
-		return cpu_util(cpu);
+		return cpu_util_est(cpu);
 
-	capacity = capacity_orig_of(cpu);
-	util = max_t(long, cpu_util(cpu) - task_util(p), 0);
+	/* Discount task's blocked util from CPU's util */
+	util = cpu_util(cpu) - task_util(p);
+	util = max(util, 0L);
 
-	return (util >= capacity) ? capacity : util;
+	if (!sched_feat(UTIL_EST))
+		return util;
+
+	/*
+	 * These are the main cases covered:
+	 * - if *p is the only task sleeping on this CPU, then:
+	 *      cpu_util (== task_util) > util_est (== 0)
+	 *   and thus we return:
+	 *      cpu_util_wake = (cpu_util - task_util) = 0
+	 *
+	 * - if other tasks are SLEEPING on the same CPU, which is just waking
+	 *   up, then:
+	 *      cpu_util >= task_util
+	 *      cpu_util > util_est (== 0)
+	 *   and thus we discount *p's blocked utilization to return:
+	 *      cpu_util_wake = (cpu_util - task_util) >= 0
+	 *
+	 * - if other tasks are RUNNABLE on that CPU and
+	 *      util_est > cpu_util
+	 *   then we use util_est since it returns a more restrictive
+	 *   estimation of the spare capacity on that CPU, by just considering
+	 *   the expected utilization of tasks already runnable on that CPU.
+	 */
+	util_est = cpu_rq(cpu)->cfs.util_est_runnable;
+	util = max(util, util_est);
+
+	return util;
 }
 
 static int start_cpu(bool boosted)
@@ -8037,7 +8065,7 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 			load = source_load(i, load_idx);
 
 		sgs->group_load += load;
-		sgs->group_util += cpu_util(i);
+		sgs->group_util += cpu_util_est(i);
 		sgs->sum_nr_running += rq->cfs.h_nr_running;
 
 		nr_running = rq->nr_running;
