@@ -338,6 +338,21 @@ struct sched_avg {
 	unsigned long			util_avg;
 };
 
+/**
+ * Estimation Utilization for FAIR tasks.
+ *
+ * Support data structure to track an Exponential Weighted Moving Average
+ * (EWMA) of a FAIR task's utilization. New samples are added to the moving
+ * average each time a task completes an activation. Sample's weight is
+ * chosen so that the EWMA will be relatively insensitive to transient changes
+ * to the task's workload.
+ */
+struct util_est {
+	unsigned int			last;
+	unsigned int			ewma;
+#define UTIL_EST_WEIGHT_SHIFT		2
+};
+
 struct sched_statistics {
 #ifdef CONFIG_SCHEDSTATS
 	u64				wait_start;
@@ -408,6 +423,7 @@ struct sched_entity {
 	 * collide with read-mostly values above.
 	 */
 	struct sched_avg		avg ____cacheline_aligned_in_smp;
+	struct util_est			util_est;
 #endif
 };
 
