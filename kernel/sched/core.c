@@ -197,11 +197,6 @@ static int sched_feat_set(char *cmp)
 				sysctl_sched_features &= ~(1UL << i);
 				sched_feat_disable(i);
 			} else {
-#ifdef CONFIG_SMP
-				if (i == __SCHED_FEAT_ENERGY_AWARE)
-					WARN(!have_sched_energy_data(),
-					     "Missing sched energy data\n");
-#endif
 				sysctl_sched_features |= (1UL << i);
 				sched_feat_enable(i);
 			}
@@ -7482,9 +7477,6 @@ static int build_sched_domains(const struct cpumask *cpu_map,
 		cpu_attach_domain(sd, d.rd, i);
 	}
 	rcu_read_unlock();
-
-	WARN(sched_feat(ENERGY_AWARE) && !have_sched_energy_data(),
-	     "Missing data for energy aware scheduling\n");
 
 	ret = 0;
 error:

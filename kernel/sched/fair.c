@@ -5287,7 +5287,7 @@ unsigned long capacity_curr_of(int cpu)
 
 static inline bool energy_aware(void)
 {
-	return sched_feat(ENERGY_AWARE);
+	return false;
 }
 
 struct energy_env {
