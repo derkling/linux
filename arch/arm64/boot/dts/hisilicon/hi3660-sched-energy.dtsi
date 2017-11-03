@@ -16,9 +16,9 @@ energy-costs {
 			1024   2848
 		>;
 		idle-cost-data = <
-			18
-			18
-			3
+			0
+			0
+			0
 			0
 			0
 		>;
@@ -32,8 +32,8 @@ energy-costs {
 			462    502
 		>;
 		idle-cost-data = <
-			5
-			5
+			0
+			0
 			0
 			0
 		>;
@@ -47,10 +47,10 @@ energy-costs {
 			1024  433
 		>;
 		idle-cost-data = <
-			102
-			102
-			102
-			102
+			0
+			0
+			0
+			0
 			0
 		>;
 	};
@@ -63,9 +63,9 @@ energy-costs {
 			462   144
 		>;
 		idle-cost-data = <
-			12
-			12
-			12
+			0
+			0
+			0
 			0
 		>;
 	};
