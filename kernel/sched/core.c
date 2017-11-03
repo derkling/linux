@@ -42,6 +42,7 @@
 
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 
+#if defined(CONFIG_SCHED_DEBUG) && defined(HAVE_JUMP_LABEL)
 /*
  * Debugging: various feature bits
  */
@@ -54,6 +55,8 @@ const_debug unsigned int sysctl_sched_features =
 	0;
 
 #undef SCHED_FEAT
+
+#endif
 
 /*
  * Number of tasks to iterate in a single balance run.
