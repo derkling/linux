@@ -53,17 +53,17 @@ energy-costs {
 
 	CLUSTER_COST: cluster-cost {
 		busy-cost-data = <
-			178    16
-			369    29
-			622    47
-			819    75
-		       1024   112
+			178	0
+			369	0
+			622	0
+			819	0
+		       1024	0
 		>;
 		idle-cost-data = <
-			 47
-			 47
-			 47
-			  0
+			0
+			0
+			0
+			0
 		>;
 	};
 };
