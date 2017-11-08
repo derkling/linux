@@ -823,6 +823,11 @@ void post_init_entity_util_avg(struct sched_entity *se)
 			se->avg.last_update_time = cfs_rq_clock_task(cfs_rq);
 			return;
 		}
+		/* Utilization estimation */
+		if (entity_is_task(se)) {
+			p->util_est.ewma = 0;
+			p->util_est.last = 0;
+		}
 	}
 
 	attach_entity_cfs_rq(se);
@@ -4790,6 +4795,20 @@ static bool cpu_overutilized(int cpu);
 unsigned long boosted_cpu_util(int cpu);
 #endif
 
+static inline unsigned long task_util(struct task_struct *p);
+static inline unsigned long task_util_est(struct task_struct *p);
+
+static inline void util_est_enqueue(struct task_struct *p)
+{
+	struct cfs_rq *cfs_rq = &task_rq(p)->cfs;
+
+	if (!sched_feat(UTIL_EST))
+		return;
+
+	/* Update (top level CFS) RQ estimated utilization */
+	cfs_rq->util_est_runnable += task_util_est(p);
+}
+
 /*
  * The enqueue_task method is called before nr_running is
  * increased. Here we update the fair scheduling stats and
@@ -4877,8 +4896,82 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		}
 	}
 
+	util_est_enqueue(p);
 #endif /* CONFIG_SMP */
 	hrtick_update(rq);
+}
+
+static inline void util_est_dequeue(struct task_struct *p, int flags)
+{
+	struct cfs_rq *cfs_rq = &task_rq(p)->cfs;
+	unsigned long util_last = task_util(p);
+	bool sleep = flags & DEQUEUE_SLEEP;
+	unsigned long ewma;
+	long util_est;
+
+	if (!sched_feat(UTIL_EST))
+		return;
+
+	/*
+	 * Update (top level CFS) RQ estimated utilization
+	 *
+	 * When *p is the last FAIR task then the RQ's estimated utilization
+	 * of a CPU is 0 by definition.
+	 *
+	 * Otherwise, in removing *p's util_est from the current RQ's util_est
+	 * we should account for cases where this last activation of *p was
+	 * longer then the previous ones. In these cases as well we set to 0
+	 * the new estimated utilization for the CPU.
+	 */
+	if (cfs_rq->nr_running > 0) {
+		util_est  = cfs_rq->util_est_runnable;
+		util_est -= task_util_est(p);
+		if (util_est < 0)
+			util_est = 0;
+		cfs_rq->util_est_runnable = util_est;
+	} else {
+		cfs_rq->util_est_runnable = 0;
+	}
+
+	/*
+	 * Skip update of task's estimated utilization when the task has not
+	 * yet completed an activation, e.g. being migrated.
+	 */
+	if (!sleep)
+		return;
+
+	/*
+	 * Skip update of task's estimated utilization when its EWMA is already
+	 * ~1% close to its last activation value.
+	 */
+	util_est = p->util_est.ewma;
+	if (abs(util_est - util_last) <= (SCHED_CAPACITY_SCALE / 100))
+		return;
+
+	/*
+	 * Update Task's estimated utilization
+	 *
+	 * When *p completes an activation we can consolidate another sample
+	 * about the task size. This is done by storing the last PELT value
+	 * for this task and using this value to load another sample in the
+	 * exponential weighted moving average:
+	 *
+	 *      ewma(t) = w *  task_util(p) + (1 - w) ewma(t-1)
+	 *              = w *  task_util(p) + ewma(t-1) - w * ewma(t-1)
+	 *              = w * (task_util(p) + ewma(t-1) / w - ewma(t-1))
+	 *
+	 * Where 'w' is the weight of new samples, which is configured to be
+	 * 0.25, thus making w=1/4
+	 */
+	p->util_est.last = util_last;
+	ewma = p->util_est.ewma;
+	if (likely(ewma != 0)) {
+		ewma   = util_last + (ewma << UTIL_EST_WEIGHT_SHIFT) - ewma;
+		ewma >>= UTIL_EST_WEIGHT_SHIFT;
+	} else {
+		ewma = util_last;
+	}
+	p->util_est.ewma = ewma;
 }
 
 static void set_next_buddy(struct sched_entity *se);
@@ -4952,6 +5045,9 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 	if (!se)
 		walt_dec_cumulative_runnable_avg(rq, p);
+
+	util_est_dequeue(p, flags);
+
 #endif /* CONFIG_SMP */
 
 	hrtick_update(rq);
@@ -5722,8 +5818,6 @@ static inline bool cpu_in_sg(struct sched_group *sg, int cpu)
 	return cpu != -1 && cpumask_test_cpu(cpu, sched_group_cpus(sg));
 }
 
-static inline unsigned long task_util(struct task_struct *p);
-
 /*
  * energy_diff(): Estimate the energy impact of changing the utilization
  * distribution. eenv specifies the change: utilisation amount, source, and
@@ -5996,6 +6090,11 @@ static inline unsigned long task_util(struct task_struct *p)
 	}
 #endif
 	return p->se.avg.util_avg;
+}
+
+static inline unsigned long task_util_est(struct task_struct *p)
+{
+	return max(p->util_est.ewma, p->util_est.last);
 }
 
 static inline unsigned long boosted_task_util(struct task_struct *task);
@@ -6641,7 +6740,7 @@ done:
 
 	return target;
 }
- 
+
 /*
  * cpu_util_wake: Compute cpu utilization with any contributions from
  * the waking task p removed.
@@ -6962,7 +7061,7 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 /*
  * Disable WAKE_AFFINE in the case where task @p doesn't fit in the
  * capacity of either the waking CPU @cpu or the previous CPU @prev_cpu.
- * 
+ *
  * In that case WAKE_AFFINE doesn't make sense and we'll let
  * BALANCE_WAKE sort things out.
  */
@@ -7047,7 +7146,7 @@ static int select_energy_cpu_brute(struct task_struct *p, int prev_cpu, int sync
 			target_cpu = tmp_backup;
 			eenv.dst_cpu = target_cpu;
 			eenv.trg_cpu = target_cpu;
-			if (tmp_backup < 0 || 
+			if (tmp_backup < 0 ||
 			    tmp_backup == prev_cpu ||
 			    energy_diff(&eenv) >= 0) {
 				schedstat_inc(p->se.statistics.nr_wakeups_secb_no_nrg_sav);
