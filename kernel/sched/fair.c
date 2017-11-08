@@ -5450,7 +5450,7 @@ struct energy_env {
 	} cap;
 };
 
-static int cpu_util_wake(int cpu, struct task_struct *p);
+static unsigned long cpu_util_wake(int cpu, struct task_struct *p);
 
 /*
  * __cpu_norm_util() returns the cpu util relative to a specific capacity,
@@ -6646,7 +6646,7 @@ done:
  * cpu_util_wake: Compute cpu utilization with any contributions from
  * the waking task p removed.
  */
-static int cpu_util_wake(int cpu, struct task_struct *p)
+static unsigned long cpu_util_wake(int cpu, struct task_struct *p)
 {
 	unsigned long util, capacity;
 
