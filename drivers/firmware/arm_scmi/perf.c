@@ -16,8 +16,10 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <linux/cpu.h>
 #include <linux/debugfs.h>
 #include <linux/of.h>
+#include <linux/kernel.h>
 #include <linux/platform_device.h>
 #include <linux/pm_opp.h>
 #include <linux/slab.h>
@@ -128,6 +130,7 @@ struct perf_dom_info {
 	u32 mult_factor;
 	char name[SCMI_MAX_STR_SIZE];
 	struct scmi_opp opp[MAX_OPPS];
+	struct dentry *dom_dir; /* debug fs directory */
 };
 
 struct scmi_perf_info {
@@ -142,8 +145,11 @@ struct scmi_perf_info {
 
 static struct scmi_perf_info perf_info;
 
+static int scmi_dev_domain_id(struct device *dev);
 static int scmi_perf_level_notify_enable(const struct scmi_handle *handle,
-                                         u32 domain, bool enable);
+						u32 domain, bool enable);
+static int __maybe_unused scmi_perf_opp_set(const struct scmi_handle *handle,
+				u32 domain, u32 cpus_online, u32 max_opp);
 
 static int scmi_perf_attributes_get(const struct scmi_handle *handle,
 				    struct scmi_perf_info *perf_info)
@@ -227,19 +233,114 @@ static const struct file_operations scmi_level_notify_fops = {
 	.llseek = default_llseek,
 };
 
+static ssize_t debugfs_scmi_write_table(struct file *file,
+			const char __user *user_buf, size_t count, loff_t *ppos)
+{
+	struct perf_dom_info *dom_info = file->private_data;
+	u32 domain_id, max_opp;
+	long cpus_online = 0;
+	char buf[8];
+	int retval;
+
+	if (count >= sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(&buf, user_buf, count))
+		return -EFAULT;
+
+	retval = sscanf(buf, "%i", &max_opp);
+	if (retval != 1) {
+		dev_err(perf_info.handle->dev, "debugfs: incorrect value received\n");
+		return -EINVAL;
+	}
+
+	domain_id = dom_info->number;
+
+	retval = kstrtol(file->f_path.dentry->d_iname, 10, &cpus_online);
+	if (!cpus_online || retval)
+		return -EIO;
+
+	dev_dbg(perf_info.handle->dev,
+		"debugfs: received= dom=%i, %lu cpus online, max opp=%i.\n",
+				domain_id, cpus_online, max_opp);
+
+	retval = scmi_perf_opp_set(perf_info.handle, domain_id, cpus_online,
+					max_opp);
+	if (retval) {
+		dev_err(perf_info.handle->dev, "debugfs: scmi xfer failed\n");
+		return -EIO;
+	}
+
+	return count;
+}
+
+static const struct file_operations scmi_write_table_fops = {
+	.open = simple_open,
+	.read = NULL,
+	.write = debugfs_scmi_write_table,
+	.llseek = default_llseek,
+};
+
 static void scmi_perf_create_level_notify_file(struct perf_dom_info *dom_info)
 {
 	struct dentry *scmi_f;
 	char buf[SCMI_MAX_STR_SIZE + 9];
 
+	if (!dom_info->dom_dir)
+		return;
+
 	snprintf(buf, sizeof(buf), "notify_%i_%s",
 					dom_info->number, dom_info->name);
 
-	scmi_f = debugfs_create_file(&buf[0], 0644,
-		perf_info.scmi_debugfs_dir, dom_info, &scmi_level_notify_fops);
+	scmi_f = debugfs_create_file(&buf[0], 0644, dom_info->dom_dir, dom_info,
+						&scmi_level_notify_fops);
         if (!scmi_f) {
-		pr_err("scmi:unable to create debugfs file for domain: %s\n", dom_info->name);
+		pr_err("scmi:unable to create debugfs file for domain: %s\n",
+				dom_info->name);
 		return;
+	}
+}
+
+static void scmi_perf_create_domain_dir(struct perf_dom_info *dom_info)
+{
+	char buf[SCMI_MAX_STR_SIZE + 3];
+
+	if (!perf_info.scmi_debugfs_dir)
+		return;
+
+	snprintf(buf, sizeof(buf), "%i_%s", dom_info->number, dom_info->name);
+
+	dom_info->dom_dir = debugfs_create_dir(buf, perf_info.scmi_debugfs_dir);
+	if (!dom_info->dom_dir)
+		pr_err("scmi:unable to create debugfs dir for dom %i\n",
+							dom_info->number);
+}
+
+static void scmi_perf_create_traffic_cop_set_opp_files(struct perf_dom_info *dom_info)
+{
+	struct device *cpu_dev;
+	struct dentry *scmi_f;
+	unsigned int cpu, cpus_count = 0;
+	int domain_iter;
+	char buf[3];
+
+	for_each_possible_cpu(cpu) {
+
+		cpu_dev = get_cpu_device(cpu);
+		domain_iter = scmi_dev_domain_id(cpu_dev);
+		if (domain_iter == dom_info->number) {
+			cpus_count++;
+
+			snprintf(buf, sizeof(buf), "%i", cpus_count);
+
+			scmi_f = debugfs_create_file(buf, 0644,
+				dom_info->dom_dir,
+				dom_info, &scmi_write_table_fops);
+
+			if (!scmi_f)
+				pr_err("failed to create one or more"
+					"debugfs files for scmi\n");
+		}
 	}
 }
 
@@ -278,8 +379,6 @@ scmi_perf_domain_attributes_get(const struct scmi_handle *handle, u32 domain,
 
 		dom_info->number = domain;
 		dom_info->notifications_enabled = false;
-		if (dom_info->perf_level_notify)
-			scmi_perf_create_level_notify_file(dom_info);
 	}
 
 	scmi_one_xfer_put(handle, t);
@@ -610,47 +709,8 @@ static struct scmi_perf_ops perf_ops = {
 	.freq_get = scmi_dvfs_freq_get,
 };
 
-static ssize_t debugfs_scmi_write_table(struct file *file,
-			const char __user *user_buf, size_t count, loff_t *ppos)
-{
-	const struct scmi_handle *handle = file->private_data;
-	u32 domain_id, cpus_online, max_opp;
-	char buf[32];
-	int retval;
-
-	if (count >= sizeof(buf))
-		return -EINVAL;
-
-	if (copy_from_user(&buf, user_buf, count))
-		return -EFAULT;
-
-	retval = sscanf(buf, "%i %i %i", &domain_id, &cpus_online, &max_opp);
-	if (retval != 3) {
-		dev_err(handle->dev, "debugfs: incorrect string received\n");
-		return -EINVAL;
-	}
-
-	dev_dbg(handle->dev, "debugfs: received=%i, %i, %i.\n",
-					domain_id, cpus_online, max_opp);
-	retval = scmi_perf_opp_set(handle, domain_id, cpus_online, max_opp);
-	if (retval) {
-		dev_err(handle->dev, "debugfs: scmi xfer failed\n");
-		return -EIO;
-	}
-
-	return count;
-}
-
-static const struct file_operations scmi_write_table_fops = {
-	.open = simple_open,
-	.read = NULL,
-	.write = debugfs_scmi_write_table,
-	.llseek = default_llseek,
-};
-
 int scmi_perf_protocol_init(struct scmi_handle *handle)
 {
-	struct dentry *scmi_f; /* for debugfs files */
 	int domain;
 	u32 version;
 
@@ -678,19 +738,17 @@ int scmi_perf_protocol_init(struct scmi_handle *handle)
 
 		scmi_perf_domain_attributes_get(handle, domain, dom);
 		scmi_perf_describe_levels_get(handle, domain, dom);
+
+		/* debugfs files and directories */
+		scmi_perf_create_domain_dir(dom);
+
+		if (dom->perf_level_notify)
+			scmi_perf_create_level_notify_file(dom);
+
+		scmi_perf_create_traffic_cop_set_opp_files(dom);
 	}
 
 	handle->perf_ops = &perf_ops;
-
-	scmi_f = debugfs_create_file("write_table_cmd",	0644,
-		perf_info.scmi_debugfs_dir, handle, &scmi_write_table_fops);
-	if (!scmi_f) {
-		pr_err("scmi:unable to create debugfs file\n");
-		debugfs_remove_recursive(perf_info.scmi_debugfs_dir);
-	}
-
-	/* there should be ->fini or ->remove callback (not only ->init) for
-	 * protocols as well, where we can call debugfs_remove_recursive() */
 
 	return 0;
 }
