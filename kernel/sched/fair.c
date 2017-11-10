@@ -6632,6 +6632,37 @@ static int wake_cap(struct task_struct *p, int cpu, int prev_cpu)
 	return !util_fits_capacity(task_util(p), min_cap);
 }
 
+static unsigned long compute_energy(struct task_struct *p, int dst_cpu)
+{
+	unsigned long util, max_util, sum_util;
+	struct capacity_state *cs;
+	unsigned long energy = 0;
+	struct freq_domain *fd;
+	int cpu;
+
+	for_each_freq_domain(fd) {
+		max_util = sum_util = 0;
+		for_each_cpu_and(cpu, freq_domain_span(fd), cpu_online_mask) {
+			util = cpu_util_wake(cpu, p) + cpu_util_dl(cpu_rq(cpu));
+			if (cpu == dst_cpu)
+				util += task_util_est(p);
+			max_util = max(util, max_util);
+			sum_util += util;
+		}
+
+		/*
+		 * Here we assume that the capacity states of CPUs belonging to
+		 * the same frequency domains are shared. Hence, we look at the
+		 * capacity state of the first CPU and re-use it for all.
+		 */
+		cpu = cpumask_first(freq_domain_span(fd));
+		cs = find_cap_state(cpu, max_util);
+		energy += cs->power * sum_util / cs->cap;
+	}
+
+	return energy;
+}
+
 /*
  * select_task_rq_fair: Select target runqueue for the waking task in domains
  * that have the 'sd_flag' flag set. In practice, this is SD_BALANCE_WAKE,
