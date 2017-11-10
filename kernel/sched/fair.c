@@ -23,6 +23,7 @@
 
 #include <linux/sched/mm.h>
 #include <linux/sched/topology.h>
+#include <linux/sched/energy.h>
 
 #include <linux/latencytop.h>
 #include <linux/cpumask.h>
@@ -6419,6 +6420,30 @@ static bool cpu_overutilized(int cpu)
 }
 
 /*
+ * Returns the util of "cpu" if "p" wakes up on "dst_cpu".
+ */
+static unsigned long cpu_util_next(int cpu, struct task_struct *p, int dst_cpu)
+{
+	unsigned long util = cpu_rq(cpu)->cfs.avg.util_avg;
+	unsigned long capacity = capacity_orig_of(cpu);
+
+	/*
+	 * If p is where it should be, or if it has no impact on cpu, there is
+	 * not much to do.
+	 */
+	if ((task_cpu(p) == dst_cpu) || (cpu != task_cpu(p) && cpu != dst_cpu))
+		goto clamp_util;
+
+	if (dst_cpu == cpu)
+		util += task_util(p);
+	else
+		util = max_t(long, util - task_util(p), 0);
+
+clamp_util:
+	return (util >= capacity) ? capacity : util;
+}
+
+/*
  * Disable WAKE_AFFINE in the case where task @p doesn't fit in the
  * capacity of either the waking CPU @cpu or the previous CPU @prev_cpu.
  *
@@ -6440,6 +6465,63 @@ static int wake_cap(struct task_struct *p, int cpu, int prev_cpu)
 	sync_entity_load_avg(&p->se);
 
 	return !util_fits_capacity(task_util(p), min_cap);
+}
+
+static struct capacity_state *find_cap_state(int cpu, unsigned long util)
+{
+	struct sched_energy_model *em = *per_cpu_ptr(energy_model, cpu);
+	struct capacity_state *cs = NULL;
+	int i;
+
+	/*
+	 * As the goal is to estimate the OPP reached for a specific util
+	 * value, mimic the behaviour of schedutil with a 1.25 coefficient
+	 */
+	util += util >> 2;
+
+	for (i = 0; i < em->nr_cap_states; i++) {
+		cs = &em->cap_states[i];
+		if (cs->cap > util)
+			break;
+	}
+
+	return cs;
+}
+
+static unsigned long compute_energy(struct task_struct *p, int dst_cpu)
+{
+	unsigned long util, fdom_max_util;
+	struct capacity_state *cs;
+	unsigned long energy = 0;
+	struct freq_domain *fdom;
+	int cpu;
+
+	for_each_freq_domain(fdom) {
+		fdom_max_util = 0;
+		for_each_cpu_and(cpu, &(fdom->span), cpu_online_mask) {
+			util = cpu_util_next(cpu, p, dst_cpu);
+			fdom_max_util = max(util, fdom_max_util);
+		}
+
+		/*
+		 * Here we assume that the capacity states of CPUs belonging to
+		 * the same frequency domains are shared. Hence, we look at the
+		 * capacity state of the first CPU and re-use it for all.
+		 */
+		cpu = cpumask_first(&(fdom->span));
+		cs = find_cap_state(cpu, fdom_max_util);
+
+		/*
+		 * The energy consumed by each CPU is derived from the power
+		 * it dissipates at the expected OPP and its percentage of
+		 * busy time.
+		 */
+		for_each_cpu_and(cpu, &(fdom->span), cpu_online_mask) {
+			util = cpu_util_next(cpu, p, dst_cpu);
+			energy += cs->power * util / cs->cap;
+		}
+	}
+	return energy;
 }
 
 /*
