@@ -1666,8 +1666,7 @@ static inline unsigned long cpu_util_freq(int cpu)
 #endif
 	return (util >= capacity) ? capacity : util;
 }
-
-#endif
+#endif /* CONFIG_SMP */
 
 static inline void sched_rt_avg_update(struct rq *rq, u64 rt_delta)
 {
