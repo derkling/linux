@@ -6700,6 +6700,81 @@ static unsigned long compute_energy(struct task_struct *p, int dst_cpu)
 	return energy;
 }
 
+static int find_energy_efficient_cpu(struct sched_domain *sd,
+					struct task_struct *p, int prev_cpu)
+{
+	unsigned long cur_energy, prev_energy, best_energy, cpu_cap;
+	unsigned long task_util = task_util_est(p);
+	int cpu, best_energy_cpu = prev_cpu;
+	struct freq_domain *fd;
+
+	if (!task_util)
+		return prev_cpu;
+
+	if (cpumask_test_cpu(prev_cpu, &p->cpus_allowed))
+		prev_energy = best_energy = compute_energy(p, prev_cpu);
+	else
+		prev_energy = best_energy = ULONG_MAX;
+
+	for_each_freq_domain(fd) {
+		unsigned long spare_cap, max_spare_cap = 0;
+		int max_spare_cap_cpu = -1;
+		unsigned long util;
+
+		/* Find the CPU with the max spare cap in the freq. dom. */
+		for_each_cpu_and(cpu, freq_domain_span(fd), sched_domain_span(sd)) {
+			if (!cpumask_test_cpu(cpu, &p->cpus_allowed))
+				continue;
+
+			if (cpu == prev_cpu)
+				continue;
+
+			util = cpu_util_wake(cpu, p);
+			cpu_cap = capacity_of(cpu);
+			if (!util_fits_capacity(util + task_util, cpu_cap))
+				continue;
+
+			spare_cap = cpu_cap - util;
+			if (spare_cap > max_spare_cap) {
+				max_spare_cap = spare_cap;
+				max_spare_cap_cpu = cpu;
+			}
+		}
+
+		/* Evaluate the energy impact of using this CPU. */
+		if (max_spare_cap_cpu >= 0) {
+			cur_energy = compute_energy(p, max_spare_cap_cpu);
+			if (cur_energy < best_energy) {
+				best_energy = cur_energy;
+				best_energy_cpu = max_spare_cap_cpu;
+			}
+		}
+	}
+
+	/*
+	 * We pick the best CPU only if it saves at least 1.5% of the
+	 * energy used by prev_cpu.
+	 */
+	if ((prev_energy - best_energy) > (prev_energy >> 6))
+		return best_energy_cpu;
+
+	return prev_cpu;
+}
+
+static inline bool wake_energy(struct task_struct *p, int prev_cpu)
+{
+	struct sched_domain *sd;
+
+	if (!sched_energy_enabled())
+		return false;
+
+	sd = rcu_dereference_sched(cpu_rq(prev_cpu)->sd);
+	if (!sd || sd_overutilized(sd))
+		return false;
+
+	return true;
+}
+
 /*
  * select_task_rq_fair: Select target runqueue for the waking task in domains
  * that have the 'sd_flag' flag set. In practice, this is SD_BALANCE_WAKE,
@@ -6716,18 +6791,22 @@ static int
 select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_flags)
 {
 	struct sched_domain *tmp, *affine_sd = NULL, *sd = NULL;
+	struct sched_domain *energy_sd = NULL;
 	int cpu = smp_processor_id();
 	int new_cpu = prev_cpu;
-	int want_affine = 0;
+	int want_affine = 0, want_energy = 0;
 	int sync = (wake_flags & WF_SYNC) && !(current->flags & PF_EXITING);
+
+	rcu_read_lock();
 
 	if (sd_flag & SD_BALANCE_WAKE) {
 		record_wakee(p);
+		want_energy = wake_energy(p, prev_cpu);
 		want_affine = !wake_wide(p) && !wake_cap(p, cpu, prev_cpu)
-			      && cpumask_test_cpu(cpu, &p->cpus_allowed);
+			      && cpumask_test_cpu(cpu, &p->cpus_allowed)
+			      && !want_energy;
 	}
 
-	rcu_read_lock();
 	for_each_domain(cpu, tmp) {
 		if (!(tmp->flags & SD_LOAD_BALANCE))
 			break;
@@ -6741,6 +6820,14 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 			affine_sd = tmp;
 			break;
 		}
+
+		/*
+		 * Energy-aware task placement is performed on the highest
+		 * non-overutilized domain spanning over cpu and prev_cpu.
+		 */
+		if (want_energy && !sd_overutilized(tmp) &&
+		    cpumask_test_cpu(prev_cpu, sched_domain_span(tmp)))
+			energy_sd = tmp;
 
 		if (tmp->flags & sd_flag)
 			sd = tmp;
@@ -6765,7 +6852,9 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 		sync_entity_load_avg(&p->se);
 	}
 
-	if (!sd) {
+	if (energy_sd) {
+		new_cpu = find_energy_efficient_cpu(energy_sd, p, prev_cpu);
+	} else if (!sd) {
 pick_cpu:
 		if (sd_flag & SD_BALANCE_WAKE) { /* XXX always ? */
 			new_cpu = select_idle_sibling(p, prev_cpu, new_cpu);
