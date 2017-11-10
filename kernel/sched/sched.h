@@ -31,6 +31,7 @@
 #include <linux/sched/user.h>
 #include <linux/sched/wake_q.h>
 #include <linux/sched/xacct.h>
+#include <linux/sched/energy.h>
 
 #include <uapi/linux/sched/types.h>
 
