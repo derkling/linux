@@ -6633,6 +6633,74 @@ static int wake_cap(struct task_struct *p, int cpu, int prev_cpu)
 }
 
 /*
+ * Returns the util of "cpu" if "p" wakes up on "dst_cpu".
+ */
+static unsigned long cpu_util_next(int cpu, struct task_struct *p, int dst_cpu)
+{
+	unsigned long util, util_est;
+	struct cfs_rq *cfs_rq;
+
+	/* Task is where it should be, or has no impact on cpu */
+	if ((task_cpu(p) == dst_cpu) || (cpu != task_cpu(p) && cpu != dst_cpu))
+		return cpu_util(cpu);
+
+	cfs_rq = &cpu_rq(cpu)->cfs;
+	util = READ_ONCE(cfs_rq->avg.util_avg);
+
+	if (dst_cpu == cpu)
+		util += task_util(p);
+	else
+		util = max_t(long, util - task_util(p), 0);
+
+	if (sched_feat(UTIL_EST)) {
+		util_est = READ_ONCE(cfs_rq->avg.util_est.enqueued);
+		if (dst_cpu == cpu)
+			util_est += _task_util_est(p);
+		else
+			util_est = max_t(long, util_est - _task_util_est(p), 0);
+		util = max(util, util_est);
+	}
+
+	return min_t(unsigned long, util, capacity_orig_of(cpu));
+}
+
+/*
+ * Estimates the system level energy assuming that p wakes-up on dst_cpu.
+ *
+ * compute_energy() is safe to call only if an energy model is available for
+ * the platform, which is when sched_energy_enabled() is true.
+ */
+static unsigned long compute_energy(struct task_struct *p, int dst_cpu)
+{
+	unsigned long util, max_util, sum_util;
+	struct capacity_state *cs;
+	unsigned long energy = 0;
+	struct freq_domain *fd;
+	int cpu;
+
+	for_each_freq_domain(fd) {
+		max_util = sum_util = 0;
+		for_each_cpu_and(cpu, freq_domain_span(fd), cpu_online_mask) {
+			util = cpu_util_next(cpu, p, dst_cpu);
+			util += cpu_util_dl(cpu_rq(cpu));
+			max_util = max(util, max_util);
+			sum_util += util;
+		}
+
+		/*
+		 * Here we assume that the capacity states of CPUs belonging to
+		 * the same frequency domains are shared. Hence, we look at the
+		 * capacity state of the first CPU and re-use it for all.
+		 */
+		cpu = cpumask_first(freq_domain_span(fd));
+		cs = find_cap_state(cpu, max_util);
+		energy += cs->power * sum_util / cs->cap;
+	}
+
+	return energy;
+}
+
+/*
  * select_task_rq_fair: Select target runqueue for the waking task in domains
  * that have the 'sd_flag' flag set. In practice, this is SD_BALANCE_WAKE,
  * SD_BALANCE_FORK, or SD_BALANCE_EXEC.
