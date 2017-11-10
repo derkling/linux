@@ -1110,6 +1110,7 @@ extern void sched_ttwu_pending(void);
 			__sd; __sd = __sd->parent)
 
 #define for_each_lower_domain(sd) for (; sd; sd = sd->child)
+#define for_each_higher_domain(sd) for (; sd; sd = sd->parent)
 
 /**
  * highest_flag_domain - Return highest sched_domain containing flag.
