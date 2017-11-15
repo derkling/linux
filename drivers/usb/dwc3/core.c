@@ -1442,10 +1442,10 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
 
 	switch (dwc->current_dr_role) {
 	case DWC3_GCTL_PRTCAP_DEVICE:
+	case DWC3_GCTL_PRTCAP_OTG:
 		spin_lock_irqsave(&dwc->lock, flags);
 		dwc3_gadget_suspend(dwc);
 		spin_unlock_irqrestore(&dwc->lock, flags);
-		dwc3_core_exit(dwc);
 		break;
 	case DWC3_GCTL_PRTCAP_HOST:
 		/* do nothing during host runtime_suspend */
@@ -1471,6 +1471,8 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
 		break;
 	}
 
+	dwc3_core_exit(dwc);
+
 	return 0;
 }
 
@@ -1479,12 +1481,16 @@ static int dwc3_resume_common(struct dwc3 *dwc, pm_message_t msg)
 	unsigned long	flags;
 	int		ret;
 
+	ret = dwc3_core_init(dwc);
+	if (ret)
+		return ret;
+
 	switch (dwc->current_dr_role) {
 	case DWC3_GCTL_PRTCAP_DEVICE:
 		ret = dwc3_core_init(dwc);
 		if (ret)
 			return ret;
-
+	case DWC3_GCTL_PRTCAP_OTG:
 		dwc3_set_prtcap(dwc, DWC3_GCTL_PRTCAP_DEVICE);
 		spin_lock_irqsave(&dwc->lock, flags);
 		dwc3_gadget_resume(dwc);
@@ -1578,6 +1584,7 @@ static int dwc3_runtime_resume(struct device *dev)
 
 	switch (dwc->current_dr_role) {
 	case DWC3_GCTL_PRTCAP_DEVICE:
+	case DWC3_GCTL_PRTCAP_OTG:
 		dwc3_gadget_process_pending_events(dwc);
 		break;
 	case DWC3_GCTL_PRTCAP_HOST:
@@ -1587,7 +1594,6 @@ static int dwc3_runtime_resume(struct device *dev)
 	}
 
 	pm_runtime_mark_last_busy(dev);
-	/* maybe drop this? */
 	pm_runtime_get(dev);
 
 	return 0;
@@ -1599,6 +1605,7 @@ static int dwc3_runtime_idle(struct device *dev)
 
 	switch (dwc->current_dr_role) {
 	case DWC3_GCTL_PRTCAP_DEVICE:
+	case DWC3_GCTL_PRTCAP_OTG:
 		if (dwc3_runtime_checks(dwc))
 			return -EBUSY;
 		break;
