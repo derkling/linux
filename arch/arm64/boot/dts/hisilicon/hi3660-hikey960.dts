@@ -363,6 +363,7 @@
 			/* gpio_150_user_led1 */
 			gpios = <&gpio18 6 0>;
 			linux,default-trigger = "heartbeat";
+			status = "disabled";
 		};
 
 		user_led2 {
@@ -370,6 +371,7 @@
 			/* gpio_151_user_led2 */
 			gpios = <&gpio18 7 0>;
 			linux,default-trigger = "mmc0";
+			status = "disabled";
 		};
 
 		user_led3 {
@@ -384,6 +386,7 @@
 			/* gpio_190_user_led4 */
 			gpios = <&gpio23 6 0>;
 			linux,default-trigger = "cpu0";
+			status = "disabled";
 		};
 
 		wlan_active_led {
