@@ -1325,18 +1325,20 @@ static int dwc3_suspend_common(struct dwc3 *dwc)
 {
 	unsigned long	flags;
 
-	switch (dwc->current_dr_role) {
-	case DWC3_GCTL_PRTCAP_DEVICE:
+	switch (dwc->dr_mode) {
+	case USB_DR_MODE_PERIPHERAL:
+	case USB_DR_MODE_OTG:
 		spin_lock_irqsave(&dwc->lock, flags);
 		dwc3_gadget_suspend(dwc);
 		spin_unlock_irqrestore(&dwc->lock, flags);
-		dwc3_core_exit(dwc);
 		break;
-	case DWC3_GCTL_PRTCAP_HOST:
+	case USB_DR_MODE_HOST:
 	default:
 		/* do nothing */
 		break;
 	}
+
+	dwc3_core_exit(dwc);
 
 	return 0;
 }
@@ -1346,17 +1348,18 @@ static int dwc3_resume_common(struct dwc3 *dwc)
 	unsigned long	flags;
 	int		ret;
 
-	switch (dwc->current_dr_role) {
-	case DWC3_GCTL_PRTCAP_DEVICE:
-		ret = dwc3_core_init(dwc);
-		if (ret)
-			return ret;
+	ret = dwc3_core_init(dwc);
+	if (ret)
+		return ret;
 
+	switch (dwc->dr_mode) {
+	case USB_DR_MODE_PERIPHERAL:
+	case USB_DR_MODE_OTG:
 		spin_lock_irqsave(&dwc->lock, flags);
 		dwc3_gadget_resume(dwc);
 		spin_unlock_irqrestore(&dwc->lock, flags);
-		break;
-	case DWC3_GCTL_PRTCAP_HOST:
+		/* FALLTHROUGH */
+	case USB_DR_MODE_HOST:
 	default:
 		/* do nothing */
 		break;
@@ -1367,7 +1370,7 @@ static int dwc3_resume_common(struct dwc3 *dwc)
 
 static int dwc3_runtime_checks(struct dwc3 *dwc)
 {
-	switch (dwc->current_dr_role) {
+	switch (dwc->dr_mode) {
 	case USB_DR_MODE_PERIPHERAL:
 	case USB_DR_MODE_OTG:
 #ifndef CONFIG_USB_DWC3_HISI
@@ -1413,18 +1416,18 @@ static int dwc3_runtime_resume(struct device *dev)
 	if (ret)
 		return ret;
 
-	switch (dwc->current_dr_role) {
-	case DWC3_GCTL_PRTCAP_DEVICE:
+	switch (dwc->dr_mode) {
+	case USB_DR_MODE_PERIPHERAL:
+	case USB_DR_MODE_OTG:
 		dwc3_gadget_process_pending_events(dwc);
 		break;
-	case DWC3_GCTL_PRTCAP_HOST:
+	case USB_DR_MODE_HOST:
 	default:
 		/* do nothing */
 		break;
 	}
 
 	pm_runtime_mark_last_busy(dev);
-	/* maybe drop this? */
 	pm_runtime_get(dev);
 
 	return 0;
@@ -1434,12 +1437,13 @@ static int dwc3_runtime_idle(struct device *dev)
 {
 	struct dwc3     *dwc = dev_get_drvdata(dev);
 
-	switch (dwc->current_dr_role) {
-	case DWC3_GCTL_PRTCAP_DEVICE:
+	switch (dwc->dr_mode) {
+	case USB_DR_MODE_PERIPHERAL:
+	case USB_DR_MODE_OTG:
 		if (dwc3_runtime_checks(dwc))
 			return -EBUSY;
 		break;
-	case DWC3_GCTL_PRTCAP_HOST:
+	case USB_DR_MODE_HOST:
 	default:
 		/* do nothing */
 		break;
