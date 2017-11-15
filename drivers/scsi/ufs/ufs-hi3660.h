@@ -16,6 +16,8 @@
 
 #define HBRN8_POLL_TOUT_MS      1000
 
+#define UFS_BIT(x)     (1L << (x))
+
 /*
  * pericrg specific define
  */
