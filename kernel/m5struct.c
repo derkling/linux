@@ -40,10 +40,10 @@
 /*
  * Structure size information
  */
-/* const int thread_info_size = sizeof(struct thread_info); */
-/* const int thread_info_task = offsetof(struct thread_info, task); */
-const int thread_info_size = sizeof(struct secondary_data);
-const int thread_info_tasl = offsetof(struct secondary_data, task);
+const int thread_info_size = sizeof(struct thread_info); 
+const int thread_info_task = offsetof(struct thread_info, task); 
+/*const int thread_info_size = sizeof(struct secondary_data);*/
+/*const int thread_info_task = offsetof(struct secondary_data, task);*/
 
 const int task_struct_size = sizeof(struct task_struct);
 const int task_struct_pid = offsetof(struct task_struct, pid);
