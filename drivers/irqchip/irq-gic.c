@@ -834,7 +834,7 @@ static void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 		}
 		dmb(ishst);
 
-		gic_unlock_irqrestore(&irq_controller_lock, flags);
+		gic_unlock_irqrestore(flags);
 	} else {
 		if (unlikely(nr_cpu_ids == 1)) {
 			/* Only one CPU? let's do a self-IPI... */
@@ -858,7 +858,7 @@ static void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 		/* this always happens on GIC0 */
 		writel_relaxed(map << 16 | irq, base + GIC_DIST_SOFTINT);
 
-		gic_unlock_irqrestore(&irq_controller_lock, flags);
+		gic_unlock_irqrestore(flags);
 	}
 }
 #endif
@@ -1156,9 +1156,9 @@ static int gic_init_bases(struct gic_chip_data *gic, int irq_start,
 	gic->gem5_extensions = false;
 	if (gic->probe_gem5_extensions) {
 #ifndef CONFIG_BL_SWITCHER
-		if (readl_relaxed(dist_base + GIC_DIST_CTR) & 0x100) {
+		if (readl_relaxed(gic->raw_dist_base + GIC_DIST_CTR) & 0x100) {
 			pr_info("GIC: Detected gem5 extensions\n");
-			writel_relaxed(0x200, dist_base + GIC_DIST_CTR);
+			writel_relaxed(0x200, gic->raw_dist_base + GIC_DIST_CTR);
 			gic->gem5_extensions = true;
 		}
 #else
@@ -1461,8 +1461,6 @@ gic_of_init(struct device_node *node, struct device_node *parent)
 	gic->probe_gem5_extensions =
 		node && of_device_is_compatible(node, "gem5,gic");
 
-	__gic_init_bases(gic_cnt, -1, dist_base, cpu_base, percpu_offset,
-			 &node->fwnode);
 	if (!gic_cnt) {
 		gic_init_physaddr(node);
 		gic_of_setup_kvm_info(node);
