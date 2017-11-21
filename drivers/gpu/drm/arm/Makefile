@@ -1,4 +1,6 @@
 hdlcd-y := hdlcd_drv.o hdlcd_crtc.o
 obj-$(CONFIG_DRM_HDLCD)	+= hdlcd.o
+hdlcdgem5-y := gem5_hdlcd_drv.o gem5_hdlcd_crtc.o
+obj-$(CONFIG_DRM_HDLCD_GEM5)	+= hdlcdgem5.o
 mali-dp-y := malidp_drv.o malidp_hw.o malidp_planes.o malidp_crtc.o
 obj-$(CONFIG_DRM_MALI_DISPLAY)	+= mali-dp.o
