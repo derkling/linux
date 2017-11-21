@@ -97,8 +97,7 @@ static int mc_cpufreq_set_target(struct cpufreq_policy *policy,
 	freqs.old = mc_cpufreq_get_rate(cpu);
 
 	/* Determine valid target frequency using freq_table */
-	cpufreq_frequency_table_target(policy, freq_table[cur_cluster],
-				       target_freq, relation, &freq_tab_idx);
+	freq_tab_idx = cpufreq_frequency_table_target(policy, target_freq, relation);
 	freqs.new = freq_table[cur_cluster][freq_tab_idx].frequency;
 
 	pr_debug("%s: cpu: %d, cluster: %d, oldfreq: %d, target freq: %d, new freq: %d\n",
