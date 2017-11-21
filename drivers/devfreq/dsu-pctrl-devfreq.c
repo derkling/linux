@@ -189,7 +189,7 @@ struct dsu_pctrl {
 	u32 static_leakage_per_mb;
 	u32 dram_energy_per_mb;
 
-	unsigned int *freq_table;
+	unsigned long *freq_table;
 	int freq_table_len;
 
 	struct workqueue_struct *update_wq;
