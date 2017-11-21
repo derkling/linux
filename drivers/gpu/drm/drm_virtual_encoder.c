@@ -211,7 +211,7 @@ static int drm_vencoder_bind(struct device *dev, struct device *master,
 	encoder->possible_clones = 0;
 
 	ret = drm_encoder_init(drm, encoder, &drm_vencoder_funcs,
-			       DRM_MODE_ENCODER_VIRTUAL);
+			       DRM_MODE_ENCODER_VIRTUAL, NULL);
 	if (ret)
 		goto encoder_init_err;
 
