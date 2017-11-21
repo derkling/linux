@@ -16,6 +16,19 @@ config DRM_HDLCD
 
 	  If M is selected the module will be called hdlcd.
 
+config DRM_HDLCD_GEM5
+	tristate "ARM HDLCD FOR GEM5"
+	depends on DRM && OF && (ARM || ARM64)
+	depends on COMMON_CLK
+	depends on !DRM_HDLCD
+	select DRM_ARM
+	select DRM_KMS_HELPER
+	select DRM_KMS_CMA_HELPER
+	help
+	  Choose this option if you have a gem5 system.
+
+	  If M is selected the module will be called hdlcdgem5.
+
 config DRM_HDLCD_SHOW_UNDERRUN
 	bool "Show underrun conditions"
 	depends on DRM_HDLCD
