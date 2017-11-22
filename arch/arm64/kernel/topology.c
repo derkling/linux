@@ -299,6 +299,33 @@ static void __init reset_cpu_topology(void)
 	}
 }
 
+static inline int cpu_smt_flags(void)
+{
+	return SD_SHARE_PKG_RESOURCES  | SD_SHARE_POWERDOMAIN;
+}
+
+const struct cpumask *cpu_smt_mask(int cpu)
+{
+	return &cpu_topology[cpu].thread_sibling;
+}
+
+static inline int cpu_cpu_flags(void)
+{
+	return SD_ASYM_CPUCAPACITY;
+}
+
+static struct sched_domain_topology_level arm64_topology[] = {
+#ifdef CONFIG_SCHED_SMT
+	{ cpu_smt_mask, cpu_smt_flags, SD_INIT_NAME(SMT) },
+#endif
+#ifdef CONFIG_SCHED_MC
+	{ cpu_coregroup_mask, cpu_core_flags, SD_INIT_NAME(MC) },
+#endif
+	{ cpu_cpu_mask, cpu_cpu_flags, SD_INIT_NAME(DIE) },
+	{ NULL, },
+};
+
+
 void __init init_cpu_topology(void)
 {
 	reset_cpu_topology();
@@ -309,4 +336,7 @@ void __init init_cpu_topology(void)
 	 */
 	if (of_have_populated_dt() && parse_dt_topology())
 		reset_cpu_topology();
+
+	/* Set scheduler topology descriptor */
+	set_sched_topology(arm64_topology);
 }
