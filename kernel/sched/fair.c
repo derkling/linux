@@ -5410,8 +5410,10 @@ static inline void update_overutilized_status(struct rq *rq)
 
 	rcu_read_lock();
 	sd = rcu_dereference(rq->sd);
-	if (sd && !sd_overutilized(sd) && cpu_overutilized(rq->cpu))
+	if (sd && !sd_overutilized(sd) && cpu_overutilized(rq->cpu)) {
+		trace_sched_overutilized(sd, 0, 1);
 		WRITE_ONCE(sd->shared->overutilized, 1);
+	}
 	rcu_read_unlock();
 }
 #else
@@ -8727,7 +8729,7 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 	struct sched_group *sg = env->sd->groups;
 	struct sg_lb_stats *local = &sds->local_stat;
 	struct sg_lb_stats tmp_sgs;
-	int load_idx, prefer_sibling, overload = 0, overutilized = 0;
+	int load_idx, prefer_sibling, overload = 0, overutilized = 0, ou;
 	int misfit_task = 0;
 
 	if (child && child->flags & SD_PREFER_SIBLING)
@@ -8812,9 +8814,13 @@ next_group:
 		if (READ_ONCE(env->dst_rq->rd->overload) != overload)
 			WRITE_ONCE(env->dst_rq->rd->overload, overload);
 
+		ou = sd_overutilized(env->sd);
+
 		/* Update over-utilization (tipping point, U >= 0) indicator */
-		if (sd_overutilized(env->sd) != overutilized)
+		if (ou != overutilized) {
+			trace_sched_overutilized(env->sd, ou, overutilized);
 			WRITE_ONCE(env->sd->shared->overutilized, overutilized);
+		}
 	} else {
 		/*
 		 * If there is a misfit task in one cpu in this sched_domain
@@ -8835,6 +8841,8 @@ next_group:
 			 */
 			while (sd) {
 				if (sd->flags & SD_ASYM_CPUCAPACITY) {
+					ou = sd_overutilized(sd);
+					trace_sched_overutilized(sd, ou, 1);
 					WRITE_ONCE(sd->shared->overutilized, 1);
 					break;
 				}
@@ -8842,8 +8850,11 @@ next_group:
 			}
 		}
 
-		if (sds->total_capacity * 1024 < sds->total_util * capacity_margin)
+		if (sds->total_capacity * 1024 < sds->total_util * capacity_margin) {
+			ou = sd_overutilized(env->sd->parent);
+			trace_sched_overutilized(env->sd->parent, ou, 1);
 			WRITE_ONCE(env->sd->parent->shared->overutilized, 1);
+		}
 	}
 }
 
