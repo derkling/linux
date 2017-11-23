@@ -5377,8 +5377,11 @@ static inline void update_overutilized_status(struct rq *rq)
 
 	rcu_read_lock();
 	sd = rcu_dereference(rq->sd);
-	if (sd && !sd_overutilized(sd) && cpu_overutilized(rq->cpu))
+	if (sd && !sd_overutilized(sd) && cpu_overutilized(rq->cpu)) {
+		int ou = sd_overutilized(sd);
+		trace_sched_overutilized(sd, ou, 1);
 		WRITE_ONCE(sd->shared->overutilized, 1);
+	}
 	rcu_read_unlock();
 }
 #else
@@ -8511,7 +8514,7 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 	struct sg_lb_stats tmp_sgs;
 	int load_idx, prefer_sibling = 0;
 	bool overload = false;
-	int overutilized = 0;
+	int overutilized = 0, ou;
 
 	if (child && child->flags & SD_PREFER_SIBLING)
 		prefer_sibling = 1;
@@ -8593,16 +8596,23 @@ next_group:
 			env->dst_rq->rd->overload = overload;
 	}
 
-	if (sd_overutilized(env->sd) != overutilized)
+	ou = sd_overutilized(env->sd);
+
+	if (ou != overutilized) {
+		trace_sched_overutilized(env->sd, ou, overutilized);
 		WRITE_ONCE(env->sd->shared->overutilized, overutilized);
+	}
 
 	/*
 	 * If the domain util is greater that domain capacity, load balancing
 	 * needs to be done at the next sched domain level as well.
 	 */
 	if (env->sd->parent &&
-	    !util_fits_capacity(sds->total_util, sds->total_capacity))
+	    !util_fits_capacity(sds->total_util, sds->total_capacity)) {
+		ou = sd_overutilized(env->sd->parent);
+		trace_sched_overutilized(env->sd->parent, ou, 1);
 		WRITE_ONCE(env->sd->parent->shared->overutilized, 1);
+	}
 }
 
 /**
