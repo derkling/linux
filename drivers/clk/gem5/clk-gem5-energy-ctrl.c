@@ -90,7 +90,7 @@ struct clk *gem5_clk_register_energy_ctrl(const char *name, int cluster_id)
 
 	init.name = name;
 	init.ops = &clk_energy_ctrl_ops;
-	init.flags = CLK_IS_ROOT | CLK_GET_RATE_NOCACHE;
+	init.flags = CLK_GET_RATE_NOCACHE;
 	init.num_parents = 0;
 
 	clk = clk_register(NULL, &energy_ctrl->hw);
