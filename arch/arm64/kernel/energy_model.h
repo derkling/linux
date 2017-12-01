@@ -171,6 +171,98 @@ static struct sched_group_energy energy_core_hikey = {
 	.cap_states     = cap_states_core_hikey,
 };
 
+/* HiKey 960 */
+
+static struct idle_state idle_states_cluster_hikey960_a53[] = {
+	{ .power = 12 }, /* arch_cpu_idle() (active idle) = WFI */
+	{ .power = 12 }, /* retention */
+	{ .power = 12 }, /* cpu-sleep */
+	{ .power =  0 }, /* cluster-sleep */
+};
+
+static struct idle_state idle_states_cluster_hikey960_a72[] = {
+	{ .power = 102 }, /* arch_cpu_idle() (active idle) = WFI */
+	{ .power = 102 }, /* retention */
+	{ .power = 102 }, /* cpu-nap */
+	{ .power = 102 }, /* cpu-sleep */
+	{ .power =   0 }, /* cluster-sleep */
+};
+
+static struct capacity_state cap_states_cluster_hikey960_a53[] = {
+	{ .cap =  133, .power =  12, }, /*  533 MHz */
+	{ .cap =  250, .power =  22, }, /*  999 MHz */
+	{ .cap =  351, .power =  36, }, /* 1402 MHz */
+	{ .cap =  429, .power =  67, }, /* 1709 MHz */
+	{ .cap =  462, .power = 144, }, /* 1844 Mhz */
+};
+
+static struct capacity_state cap_states_cluster_hikey960_a72[] = {
+	{ .cap =  390, .power = 102, }, /*  903 MHz */
+	{ .cap =  615, .power = 124, }, /* 1421 MHz */
+	{ .cap =  782, .power = 221, }, /* 1805 MHz */
+	{ .cap =  915, .power = 330, }, /* 2112 MHz */
+	{ .cap = 1024, .power = 433, }, /* 2362 MHz */
+};
+
+static struct sched_group_energy energy_cluster_hikey960_a53 = {
+	.nr_idle_states = ARRAY_SIZE(idle_states_cluster_hikey960_a53),
+	.idle_states    = idle_states_cluster_hikey960_a53,
+	.nr_cap_states  = ARRAY_SIZE(cap_states_cluster_hikey960_a53),
+	.cap_states     = cap_states_cluster_hikey960_a53,
+};
+
+static struct sched_group_energy energy_cluster_hikey960_a72 = {
+	.nr_idle_states = ARRAY_SIZE(idle_states_cluster_hikey960_a72),
+	.idle_states    = idle_states_cluster_hikey960_a72,
+	.nr_cap_states  = ARRAY_SIZE(cap_states_cluster_hikey960_a72),
+	.cap_states     = cap_states_cluster_hikey960_a72,
+};
+
+static struct idle_state idle_states_core_hikey960_a53[] = {
+	{ .power = 5 }, /* arch_cpu_idle() (active idle) = WFI */
+	{ .power = 5 }, /* retention */
+	{ .power = 0 }, /* cpu-sleep */
+	{ .power = 0 }, /* cluster-sleep */
+};
+
+static struct idle_state idle_states_core_hikey960_a72[] = {
+	{ .power = 18 }, /* arch_cpu_idle() (active idle) = WFI */
+	{ .power = 18 }, /* retention */
+	{ .power =  3 }, /* cpu-nap */
+	{ .power =  0 }, /* cpu-sleep */
+	{ .power =  0 }, /* cluster-sleep */
+};
+
+static struct capacity_state cap_states_core_hikey960_a53[] = {
+	{ .cap =  133, .power =   87, }, /*  533 MHz */
+	{ .cap =  250, .power =  164, }, /*  999 MHz */
+	{ .cap =  351, .power =  265, }, /* 1402 MHz */
+	{ .cap =  429, .power =  388, }, /* 1709 MHz */
+	{ .cap =  462, .power =  502, }, /* 1844 Mhz */
+};
+
+static struct capacity_state cap_states_core_hikey960_a72[] = {
+	{ .cap =  390, .power =  404, }, /*  903 MHz */
+	{ .cap =  615, .power =  861, }, /* 1421 MHz */
+	{ .cap =  782, .power = 1398, }, /* 1805 MHz */
+	{ .cap =  915, .power = 2200, }, /* 2112 MHz */
+	{ .cap = 1024, .power = 2848, }, /* 2362 MHz */
+};
+
+static struct sched_group_energy energy_core_hikey960_a53 = {
+	.nr_idle_states = ARRAY_SIZE(idle_states_core_hikey960_a53),
+	.idle_states    = idle_states_core_hikey960_a53,
+	.nr_cap_states  = ARRAY_SIZE(cap_states_core_hikey960_a53),
+	.cap_states     = cap_states_core_hikey960_a53,
+};
+
+static struct sched_group_energy energy_core_hikey960_a72 = {
+	.nr_idle_states = ARRAY_SIZE(idle_states_core_hikey960_a72),
+	.idle_states    = idle_states_core_hikey960_a72,
+	.nr_cap_states  = ARRAY_SIZE(cap_states_core_hikey960_a72),
+	.cap_states     = cap_states_core_hikey960_a72,
+};
+
 /* An energy model contains core, cluster and system sched group energy
  * for 2 clusters (cluster id 0 and 1). set_energy_model() relies on
  * this feature. It is enforced by a BUG_ON in energy().
@@ -194,9 +286,16 @@ static struct energy_model hikey_model = {
 	{ &energy_system_hikey, &energy_system_hikey, },
 };
 
+static struct energy_model hikey960_model = {
+	{ &energy_core_hikey960_a53, &energy_core_hikey960_a72, },
+	{ &energy_cluster_hikey960_a53, &energy_cluster_hikey960_a72, },
+	{},
+};
+
 static struct of_device_id model_matches[] = {
 	{ .compatible = "arm,juno", .data = &juno_model },
 	{ .compatible = "hisilicon,hi6220-hikey", .data = &hikey_model },
+	{ .compatible = "hisilicon,hi3660-hikey960", .data = &hikey960_model },
 	{},
 };
 
