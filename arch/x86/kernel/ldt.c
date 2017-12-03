@@ -52,7 +52,7 @@ static void flush_ldt(void *__mm)
 		return;
 
 	pc = &mm->context;
-	set_ldt(pc->ldt->entries, pc->ldt->nr_entries);
+	set_ldt(pc->ldt->entries_va, pc->ldt->nr_entries);
 
 	refresh_ldt_segments();
 }
@@ -80,11 +80,11 @@ static struct ldt_struct *alloc_ldt_struct(unsigned int num_entries)
 	 * than PAGE_SIZE.
 	 */
 	if (alloc_size > PAGE_SIZE)
-		new_ldt->entries = vzalloc(alloc_size);
+		new_ldt->entries_va = vzalloc(alloc_size);
 	else
-		new_ldt->entries = (void *)get_zeroed_page(GFP_KERNEL);
+		new_ldt->entries_va = (void *)get_zeroed_page(GFP_KERNEL);
 
-	if (!new_ldt->entries) {
+	if (!new_ldt->entries_va) {
 		kfree(new_ldt);
 		return NULL;
 	}
@@ -96,7 +96,7 @@ static struct ldt_struct *alloc_ldt_struct(unsigned int num_entries)
 /* After calling this, the LDT is immutable. */
 static void finalize_ldt_struct(struct ldt_struct *ldt)
 {
-	paravirt_alloc_ldt(ldt->entries, ldt->nr_entries);
+	paravirt_alloc_ldt(ldt->entries_va, ldt->nr_entries);
 }
 
 /* context.lock is held */
@@ -115,11 +115,11 @@ static void free_ldt_struct(struct ldt_struct *ldt)
 	if (likely(!ldt))
 		return;
 
-	paravirt_free_ldt(ldt->entries, ldt->nr_entries);
+	paravirt_free_ldt(ldt->entries_va, ldt->nr_entries);
 	if (ldt->nr_entries * LDT_ENTRY_SIZE > PAGE_SIZE)
-		vfree_atomic(ldt->entries);
+		vfree_atomic(ldt->entries_va);
 	else
-		free_page((unsigned long)ldt->entries);
+		free_page((unsigned long)ldt->entries_va);
 	kfree(ldt);
 }
 
@@ -152,7 +152,7 @@ int init_new_context_ldt(struct task_struct *tsk, struct mm_struct *mm)
 		goto out_unlock;
 	}
 
-	memcpy(new_ldt->entries, old_mm->context.ldt->entries,
+	memcpy(new_ldt->entries_va, old_mm->context.ldt->entries_va,
 	       new_ldt->nr_entries * LDT_ENTRY_SIZE);
 	finalize_ldt_struct(new_ldt);
 
@@ -194,7 +194,7 @@ static int read_ldt(void __user *ptr, unsigned long bytecount)
 	if (entries_size > bytecount)
 		entries_size = bytecount;
 
-	if (copy_to_user(ptr, mm->context.ldt->entries, entries_size)) {
+	if (copy_to_user(ptr, mm->context.ldt->entries_va, entries_size)) {
 		retval = -EFAULT;
 		goto out_unlock;
 	}
@@ -280,10 +280,12 @@ static int write_ldt(void __user *ptr, unsigned long bytecount, int oldmode)
 	if (!new_ldt)
 		goto out_unlock;
 
-	if (old_ldt)
-		memcpy(new_ldt->entries, old_ldt->entries, old_nr_entries * LDT_ENTRY_SIZE);
+	if (old_ldt) {
+		memcpy(new_ldt->entries_va, old_ldt->entries_va,
+		       old_nr_entries * LDT_ENTRY_SIZE);
+	}
 
-	new_ldt->entries[ldt_info.entry_number] = ldt;
+	new_ldt->entries_va[ldt_info.entry_number] = ldt;
 	finalize_ldt_struct(new_ldt);
 
 	install_ldt(mm, new_ldt);

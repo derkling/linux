@@ -50,7 +50,7 @@ struct ldt_struct {
 	 * call gates.  On native, we could merge the ldt_struct and LDT
 	 * allocations, but it's not worth trying to optimize.
 	 */
-	struct desc_struct *entries;
+	struct desc_struct *entries_va;
 	unsigned int nr_entries;
 };
 
@@ -91,7 +91,7 @@ static inline void load_mm_ldt(struct mm_struct *mm)
 	 */
 
 	if (unlikely(ldt))
-		set_ldt(ldt->entries, ldt->nr_entries);
+		set_ldt(ldt->entries_va, ldt->nr_entries);
 	else
 		clear_LDT();
 #else

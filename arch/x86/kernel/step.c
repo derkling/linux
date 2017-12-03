@@ -38,7 +38,7 @@ unsigned long convert_ip_to_linear(struct task_struct *child, struct pt_regs *re
 			     seg >= child->mm->context.ldt->nr_entries))
 			addr = -1L; /* bogus selector, access would fault */
 		else {
-			desc = &child->mm->context.ldt->entries[seg];
+			desc = &child->mm->context.ldt->entries_va[seg];
 			base = get_desc_base(desc);
 
 			/* 16-bit code segment? */

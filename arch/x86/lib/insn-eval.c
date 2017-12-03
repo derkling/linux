@@ -583,7 +583,7 @@ static struct desc_struct *get_desc(unsigned short sel)
 		mutex_lock(&current->active_mm->context.lock);
 		ldt = current->active_mm->context.ldt;
 		if (ldt && sel < ldt->nr_entries)
-			desc = &ldt->entries[sel];
+			desc = &ldt->entries_va[sel];
 
 		mutex_unlock(&current->active_mm->context.lock);
 

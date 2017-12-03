@@ -29,7 +29,7 @@ static inline struct desc_struct FPU_get_ldt_descriptor(unsigned seg)
 	seg >>= 3;
 	mutex_lock(&current->mm->context.lock);
 	if (current->mm->context.ldt && seg < current->mm->context.ldt->nr_entries)
-		ret = current->mm->context.ldt->entries[seg];
+		ret = current->mm->context.ldt->entries_va[seg];
 	mutex_unlock(&current->mm->context.lock);
 #endif
 	return ret;

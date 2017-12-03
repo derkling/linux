@@ -2375,7 +2375,7 @@ static unsigned long get_segment_base(unsigned int segment)
 		if (!ldt || idx >= ldt->nr_entries)
 			return 0;
 
-		desc = &ldt->entries[idx];
+		desc = &ldt->entries_va[idx];
 #else
 		return 0;
 #endif
