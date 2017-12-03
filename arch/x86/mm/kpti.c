@@ -184,6 +184,15 @@ static void __init kpti_clone_user_shared(void)
 }
 
 /*
+ * Clone the populated PMDs of the entry and irqentry text and force it RO.
+ */
+static void __init kpti_clone_entry_text(void)
+{
+	kpti_clone_pmds((unsigned long) __entry_text_start,
+			(unsigned long) __irqentry_text_end, _PAGE_RW);
+}
+
+/*
  * Ensure that the top level of the user page tables are entirely
  * populated.  This ensures that all processes that get forked have the
  * same entries.  This way, we do not have to ever go set up new entries in
@@ -234,4 +243,5 @@ void __init kpti_init(void)
 
 	kpti_init_all_pgds();
 	kpti_clone_user_shared();
+	kpti_clone_entry_text();
 }
