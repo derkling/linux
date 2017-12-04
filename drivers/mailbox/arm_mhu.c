@@ -536,7 +536,7 @@ static struct mhu_data arm_mhuv1_data = {
 
 static struct amba_id mhu_ids[] = {
 	{
-		.id     = 0x4b0d1,
+		.id     = 0xbb0d1,
 		.mask   = 0xfffff,
 		.data	= (void *)&arm_mhuv2_data,
 	},
