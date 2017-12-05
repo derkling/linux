@@ -73,14 +73,14 @@ static int ddr_devfreq_target(struct device *dev,
 	if (ddev->devfreq->max_freq &&
 	    max_freq != ddev->up_thres_freq &&
 	    ddev->req_up_thres) {
-		dev_info(dev, "set up threshold:%lu\n", max_freq);
+		dev_dbg(dev, "set up threshold:%lu\n", max_freq);
 		(void)clk_set_rate(ddev->req_up_thres, max_freq);
 		ddev->up_thres_freq = max_freq;
 	}
 
 	if (ddev->dn_thres_freq != *freq) {
 		/* undate ddr freqency down threshold */
-		dev_info(dev, "set down threshold:%lu\n", *freq);
+		dev_dbg(dev, "set down threshold:%lu\n", *freq);
 		(void)clk_set_rate(ddev->req_dn_thres, *freq);
 		ddev->dn_thres_freq = *freq;
 	}
@@ -102,7 +102,7 @@ static int ddr_devfreq_get_dev_status(struct device *dev,
 		stat->total_time =
 			(ddev->max_freq * ddev->pdata->bytes_per_cycle) >> 20;
 		stat->current_frequency = ddev->max_freq;
-		dev_info(&pdev->dev, "ddr bandwdith request: %lu / %lu\n",
+		dev_dbg(&pdev->dev, "ddr bandwdith request: %lu / %lu\n",
 				stat->busy_time, stat->total_time);
 	}
 #endif
