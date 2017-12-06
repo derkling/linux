@@ -15,7 +15,6 @@
 #define pr_fmt(fmt) "sched-energy: " fmt
 
 #include <linux/pm_opp.h>
-#include <linux/cpufreq.h>
 #include <linux/sched/topology.h>
 #include <linux/sched/energy.h>
 
@@ -29,29 +28,18 @@ struct sched_energy_model __percpu *energy_model;
  * as we don't know how many frequency domains the system has */
 LIST_HEAD(freq_domains);
 
-static int build_energy_model(int cpu)
+static int build_energy_model(int cpu, cpumask_t *fdom)
 {
 	struct sched_energy_model *em = per_cpu_ptr(energy_model, cpu);
 	unsigned long cpu_scale = topology_get_cpu_scale(NULL, cpu);
 	unsigned long freq, power, max_freq = ULONG_MAX;
 	unsigned long opp_eff, prev_opp_eff = ULONG_MAX;
-	cpumask_t sharing_cpus;
 	struct device *cpu_dev;
 	struct dev_pm_opp *opp;
 	unsigned long cap;
 	int opp_count, i;
 
 	cpu_dev = get_cpu_device(cpu);
-	if (!cpu_dev) {
-		pr_err("CPU%d: No cpu device.\n", cpu);
-		return -1;
-	}
-
-	if (dev_pm_opp_get_sharing_cpus(cpu_dev, &sharing_cpus)) {
-		pr_err("CPU%d: Cannot get cpumask of CPUs sharing OPPs.\n", cpu);
-		return -1;
-	}
-
 	opp_count = dev_pm_opp_get_opp_count(cpu_dev);
 	if (opp_count <= 0) {
 		pr_err("CPU%d: Failed to get # of available OPPs.\n", cpu);
@@ -86,9 +74,9 @@ static int build_energy_model(int cpu)
 		 * the power of each CPU represents only a portion of the
 		 * regulator's power. As long as the CPUs in a frequency
 		 * domain all have the same architecture, it should be safe
-		 * to divide the regulator's power evenly among the CPUs.
+		 * to divide the regulator's power evenly among them.
 		 */
-		power /= cpumask_weight(&sharing_cpus);
+		power /= cpumask_weight(fdom);
 
 		cap = freq * cpu_scale / max_freq;
 		em->cap_states[i].power = power;
@@ -129,10 +117,9 @@ static void free_energy_model(void)
 
 void start_sched_energy(void)
 {
-	struct cpufreq_policy policy;
 	struct freq_domain *tmp;
-	cpumask_t cpus_to_visit;
-	int cpu;
+	struct device *cpu_dev;
+	int cpu, ret, fdom_cpu;
 
 	/* Energy aware scheduling is used for asymetric systems only */
 	if (!lowest_flag_domain(smp_processor_id(), SD_ASYM_CPUCAPACITY))
@@ -144,40 +131,32 @@ void start_sched_energy(void)
 		return;
 	}
 
-	cpumask_copy(&cpus_to_visit, cpu_possible_mask);
-	while (!cpumask_empty(&cpus_to_visit)) {
-		cpu = cpumask_first(&cpus_to_visit);
-		if (cpufreq_get_policy(&policy, cpu)) {
-			pr_err("CPU%d: Failed to access policy.\n", cpu);
-			free_energy_model();
-			return;
-		}
+	for_each_possible_cpu(cpu) {
+		if (per_cpu_ptr(energy_model, cpu)->cap_states)
+			continue;
 
-		/* Keep a copy of the related_cpus mask */
+		/* Keep a copy of the sharing_cpus mask */
 		tmp = kzalloc(sizeof(struct freq_domain), GFP_KERNEL);
 		if (!tmp) {
 			pr_err("Failed to allocate frequency domain.\n");
 			free_energy_model();
 			return;
 		}
-		cpumask_copy(&(tmp->fdom), policy.related_cpus);
+		/* XXX: I think it's safe not to test the return of get_cpu_dev */
+		cpu_dev = get_cpu_device(cpu);
+		dev_pm_opp_get_sharing_cpus(cpu_dev, &(tmp->fdom));
 		list_add(&(tmp->next), &freq_domains);
 
-		/* Build the energy model of each CPU of the current policy */
-		for_each_cpu(cpu, policy.related_cpus) {
-			int ret;
-
-			ret = build_energy_model(cpu);
+		/* Build the energy model each CPU in this freq. domain */
+		for_each_cpu(fdom_cpu, &(tmp->fdom)) {
+			ret = build_energy_model(fdom_cpu, &(tmp->fdom));
 			if (ret) {
 				free_energy_model();
 				return;
 			}
-
-			cpumask_clear_cpu(cpu, &cpus_to_visit);
 		}
 	}
 
-	/* TODO: Write mem barrier needed here ? */
 	static_branch_enable(&sched_energy_present);
 
 	pr_info("Energy Aware Scheduling started.\n");
