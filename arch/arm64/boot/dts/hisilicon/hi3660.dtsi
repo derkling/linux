@@ -292,7 +292,6 @@
 			opp-hz = /bits/ 64 <2112000000>;
 			opp-microvolt = <1000000>;
 			clock-latency-ns = <300000>;
-			opp-microamp = <3504000>;
 		};
 
 		opp14 {

@@ -13,6 +13,7 @@
  */
 
 #define pr_fmt(fmt) "sched-energy: " fmt
+#define DEBUG
 
 #include <linux/pm_opp.h>
 #include <linux/sched/topology.h>
@@ -95,7 +96,7 @@ static int build_energy_model(int cpu, cpumask_t *fdom)
 	}
 
 	em->nb_cap_states = opp_count;
-
+	pr_debug("Energy model of CPU%d built\n", cpu);
 	return 0;
 }
 
@@ -113,6 +114,7 @@ static void free_energy_model(void)
 		list_del(&(pos->next));
 		kfree(pos);
 	}
+	pr_debug("Energy model has been erased\n");
 }
 
 void start_sched_energy(void)
@@ -122,8 +124,10 @@ void start_sched_energy(void)
 	int cpu, ret, fdom_cpu;
 
 	/* Energy aware scheduling is used for asymetric systems only */
-	if (!lowest_flag_domain(smp_processor_id(), SD_ASYM_CPUCAPACITY))
+	if (!lowest_flag_domain(smp_processor_id(), SD_ASYM_CPUCAPACITY)) {
+		pr_debug("EAS cannot be used with !SD_ASYM_CPUCAPACITY\n");
 		return;
+	}
 
 	energy_model = alloc_percpu(struct sched_energy_model);
 	if (!energy_model) {
@@ -146,6 +150,7 @@ void start_sched_energy(void)
 		cpu_dev = get_cpu_device(cpu);
 		dev_pm_opp_get_sharing_cpus(cpu_dev, &(tmp->fdom));
 		list_add(&(tmp->next), &freq_domains);
+		pr_debug("Added freq. dom. %*pbl\n", cpumask_pr_args(&(tmp->fdom)));
 
 		/* Build the energy model each CPU in this freq. domain */
 		for_each_cpu(fdom_cpu, &(tmp->fdom)) {
