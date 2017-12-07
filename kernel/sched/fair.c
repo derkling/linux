@@ -6326,30 +6326,27 @@ struct capacity_state* find_cap_state(int cpu, unsigned long util)
 /* TODO: explain how this is working */
 static unsigned long compute_energy(struct task_struct *p, int dst_cpu)
 {
-	unsigned long fdom_max_util, norm_util;
+	unsigned long util, fdom_max_util, norm_util;
 	struct freq_domain *fdom;
 	struct capacity_state *cs;
 	unsigned long energy = 0;
-	cpumask_t cur_cpus;
 	int cpu;
 
 	for_each_freq_domain(fdom) {
-		cpumask_and(&cur_cpus, cpu_online_mask, &(fdom->fdom));
-		if (cpumask_empty(&cur_cpus))
-			break;
 
 		fdom_max_util = 0;
-		for_each_cpu(cpu, &cur_cpus)
-			fdom_max_util = max(cpu_util_next(cpu, p, dst_cpu),
-								fdom_max_util);
+		for_each_cpu_and(cpu, &(fdom->fdom), cpu_online_mask) {
+			util = cpu_util_next(cpu, p, dst_cpu);
+			fdom_max_util = max(util, fdom_max_util);
+		}
 
 		/* Here we assume that the capacity states of CPUs belonging to
 		 * the same frequency domains are shared. Hence, we look at
 		 * the capacity state of the first CPU and re-use it for all.
 		 * Removing this assumption is possible but that involves
 		 * a higher algorithmic complexity */
-		cs = find_cap_state(cpumask_first(&cur_cpus), fdom_max_util);
-		for_each_cpu(cpu, &cur_cpus) {
+		cs = find_cap_state(cpumask_first(&(fdom->fdom)), fdom_max_util);
+		for_each_cpu_and(cpu, &(fdom->fdom), cpu_online_mask) {
 			norm_util = cpu_util_next(cpu, p, dst_cpu);
 			norm_util = (norm_util << SCHED_CAPACITY_SHIFT) / cs->cap;
 			energy += (cs->power * norm_util) >> SCHED_CAPACITY_SHIFT;
