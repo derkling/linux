@@ -220,11 +220,14 @@ static inline pgd_t pti_set_user_pgd(pgd_t *pgdp, pgd_t pgd)
 		 * the wrong CR3.
 		 *
 		 * As exceptions, we don't set NX if:
-		 *  - this is EFI or similar, the kernel may execute from it
+		 *  - _PAGE_USER is not set.  This could be an executable
+		 *     EFI runtime mapping or something similar, and the kernel
+		 *     may execute from it
 		 *  - we don't have NX support
-		 *  - we're clearing the PGD (i.e. pgd.pgd == 0).
+		 *  - we're clearing the PGD (i.e. the new pgd is not present).
 		 */
-		if ((pgd.pgd & _PAGE_USER) && (__supported_pte_mask & _PAGE_NX))
+		if ((pgd.pgd & (_PAGE_USER|_PAGE_PRESENT)) == (_PAGE_USER|_PAGE_PRESENT) &&
+		    (__supported_pte_mask & _PAGE_NX))
 			pgd.pgd |= _PAGE_NX;
 	} else {
 		/*
