@@ -16,9 +16,9 @@ energy-costs {
 			1024   2848
 		>;
 		idle-cost-data = <
-			18
-			18
-			3
+			0
+			0
+			0
 			0
 			0
 		>;
@@ -32,40 +32,40 @@ energy-costs {
 			462    502
 		>;
 		idle-cost-data = <
-			5
-			5
+			0
+			0
 			0
 			0
 		>;
 	};
 	CLUSTER_COST_A72: cluster-cost0 {
 		busy-cost-data = <
-			390   102
-			615   124
-			782   221
-			915   330
-			1024  433
+			390   0
+			615   0
+			782   0
+			915   0
+			1024  0
 		>;
 		idle-cost-data = <
-			102
-			102
-			102
-			102
+			0
+			0
+			0
+			0
 			0
 		>;
 	};
 	CLUSTER_COST_A53: cluster-cost1 {
 		busy-cost-data = <
-			133   12
-			250   22
-			351   36
-			429   67
-			462   144
+			133   0
+			250   0
+			351   0
+			429   0
+			462   0
 		>;
 		idle-cost-data = <
-			12
-			12
-			12
+			0
+			0
+			0
 			0
 		>;
 	};
