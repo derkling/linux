@@ -10,6 +10,9 @@
 
 #include "hi3660.dtsi"
 #include "hikey960-pinctrl.dtsi"
+#include "hi3660-gpu.dtsi"
+#include "hi3660-drm.dtsi"
+
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/interrupt-controller/irq.h>
@@ -51,6 +54,14 @@
 			record-size	= <0x00020000>;
 			console-size	= <0x00020000>;
 			ftrace-size	= <0x00020000>;
+		};
+
+		/* global autoconfigured region for contiguous allocations */
+		linux,cma {
+			compatible = "shared-dma-pool";
+			reusable;
+			size = <0x00000000 0x08000000>;
+			linux,cma-default;
 		};
 	};
 
@@ -187,6 +198,16 @@
 		/* WLAN card specific delay */
 		startup-delay-us = <70000>;
 		enable-active-high;
+	};
+
+	smmu {
+		compatible = "hisi,hisi-smmu";
+		phy_pgd_base = <0x0 0x34A78000>;
+	};
+ 
+	smmu_lpae {
+		compatible = "hisi,hisi-smmu-lpae";
+		status = "ok";
 	};
 
 	firmware {
@@ -595,4 +616,13 @@
 		interrupt-parent = <&gpio22>;
 		interrupts = <3 IRQ_TYPE_EDGE_RISING>;
 	};
+};
+
+&ufs {
+	ufs-hi3660-use-rate-B;
+	ufs-hi3660-broken-fastauto;
+	ufs-hi3660-use-HS-GEAR3;
+	ufs-hi3660-broken-clk-gate-bypass;
+	reset-gpio = <&gpio18 1 0>;
+	status = "okay";
 };
