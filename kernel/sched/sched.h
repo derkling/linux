@@ -31,10 +31,8 @@ extern long calc_load_fold_active(struct rq *this_rq);
 
 #ifdef CONFIG_SMP
 extern void update_cpu_load_active(struct rq *this_rq);
-extern void check_for_migration(struct rq *rq, struct task_struct *p);
 #else
 static inline void update_cpu_load_active(struct rq *this_rq) { }
-static inline void check_for_migration(struct rq *rq, struct task_struct *p) { }
 #endif
 
 /*
@@ -614,7 +612,6 @@ struct rq {
 	#define CPU_LOAD_IDX_MAX 5
 	unsigned long cpu_load[CPU_LOAD_IDX_MAX];
 	unsigned long last_load_update_tick;
-	unsigned int misfit_task;
 #ifdef CONFIG_NO_HZ_COMMON
 	u64 nohz_stamp;
 	unsigned long nohz_flags;
