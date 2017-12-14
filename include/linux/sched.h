@@ -1057,47 +1057,9 @@ struct idle_state {
 	unsigned long power;	 /* power consumption in this idle state */
 };
 
-struct sched_group_energy {
-	unsigned int nr_idle_states;	/* number of idle states */
-	struct idle_state *idle_states;	/* ptr to idle state array */
-	unsigned int nr_cap_states;	/* number of capacity states */
-	struct capacity_state *cap_states; /* ptr to capacity state array */
-};
-
 unsigned long capacity_curr_of(int cpu);
 
 struct sched_group;
-
-struct eas_stats {
-	/* select_idle_sibling() stats */
-	u64 sis_attempts;
-	u64 sis_idle;
-	u64 sis_cache_affine;
-	u64 sis_suff_cap;
-	u64 sis_idle_cpu;
-	u64 sis_count;
-
-	/* select_energy_cpu_brute() stats */
-	u64 secb_attempts;
-	u64 secb_sync;
-	u64 secb_idle_bt;
-	u64 secb_insuff_cap;
-	u64 secb_no_nrg_sav;
-	u64 secb_nrg_sav;
-	u64 secb_count;
-
-	/* find_best_target() stats */
-	u64 fbt_attempts;
-	u64 fbt_no_cpu;
-	u64 fbt_no_sd;
-	u64 fbt_pref_idle;
-	u64 fbt_count;
-
-	/* cas */
-	/* select_task_rq_fair() stats */
-	u64 cas_attempts;
-	u64 cas_count;
-};
 
 struct sched_domain {
 	/* These fields must be setup */
@@ -1159,8 +1121,6 @@ struct sched_domain {
 	unsigned int ttwu_wake_remote;
 	unsigned int ttwu_move_affine;
 	unsigned int ttwu_move_balance;
-
-	struct eas_stats eas_stats;
 #endif
 #ifdef CONFIG_SCHED_DEBUG
 	char *name;
@@ -1197,8 +1157,6 @@ bool cpus_share_cache(int this_cpu, int that_cpu);
 
 typedef const struct cpumask *(*sched_domain_mask_f)(int cpu);
 typedef int (*sched_domain_flags_f)(void);
-typedef
-const struct sched_group_energy * const(*sched_domain_energy_f)(int cpu);
 
 #define SDTL_OVERLAP	0x01
 
@@ -1211,7 +1169,6 @@ struct sd_data {
 struct sched_domain_topology_level {
 	sched_domain_mask_f mask;
 	sched_domain_flags_f sd_flags;
-	sched_domain_energy_f energy;
 	int		    flags;
 	int		    numa_level;
 	struct sd_data      data;
@@ -1327,15 +1284,6 @@ struct sched_statistics {
 	u64			nr_wakeups_sis_suff_cap;
 	u64			nr_wakeups_sis_idle_cpu;
 	u64			nr_wakeups_sis_count;
-
-	/* energy_aware_wake_cpu() */
-	u64			nr_wakeups_secb_attempts;
-	u64			nr_wakeups_secb_sync;
-	u64			nr_wakeups_secb_idle_bt;
-	u64			nr_wakeups_secb_insuff_cap;
-	u64			nr_wakeups_secb_no_nrg_sav;
-	u64			nr_wakeups_secb_nrg_sav;
-	u64			nr_wakeups_secb_count;
 
 	/* find_best_target() */
 	u64			nr_wakeups_fbt_attempts;
