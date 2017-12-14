@@ -4658,8 +4658,6 @@ static inline void hrtick_update(struct rq *rq)
 #endif
 
 #ifdef CONFIG_SMP
-static bool __cpu_overutilized(int cpu, int delta);
-static bool cpu_overutilized(int cpu);
 unsigned long boosted_cpu_util(int cpu);
 #else
 #define boosted_cpu_util(cpu) cpu_util_freq(cpu)
@@ -4675,9 +4673,6 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &p->se;
-#ifdef CONFIG_SMP
-	int task_new = flags & ENQUEUE_WAKEUP_NEW;
-#endif
 
 	/*
 	 * If in_iowait is set, the code below may not trigger any cpufreq
@@ -4743,15 +4738,8 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	 */
 	schedtune_enqueue_task(p, cpu_of(rq));
 
-	if (!se) {
+	if (!se)
 		walt_inc_cumulative_runnable_avg(rq, p);
-		if (!task_new && !rq->rd->overutilized &&
-		    cpu_overutilized(rq->cpu)) {
-			rq->rd->overutilized = true;
-			trace_sched_overutilized(true);
-		}
-	}
-
 #endif /* CONFIG_SMP */
 	hrtick_update(rq);
 }
@@ -5844,15 +5832,6 @@ static inline bool task_fits_max(struct task_struct *p, int cpu)
 	return __task_fits(p, cpu, 0);
 }
 
-static bool __cpu_overutilized(int cpu, int delta)
-{
-	return (capacity_of(cpu) * 1024) < ((cpu_util(cpu) + delta) * capacity_margin);
-}
-
-static bool cpu_overutilized(int cpu)
-{
-	return __cpu_overutilized(cpu, 0);
-}
 
 #ifdef CONFIG_SCHED_TUNE
 
@@ -6662,13 +6641,6 @@ static int select_energy_cpu_brute(struct task_struct *p, int prev_cpu, int sync
 		if (!walt_disabled && sysctl_sched_use_walt_cpu_util)
 			delta = task_util(p);
 #endif
-		/* Not enough spare capacity on previous cpu */
-		if (__cpu_overutilized(prev_cpu, delta)) {
-			schedstat_inc(p, se.statistics.nr_wakeups_secb_insuff_cap);
-			schedstat_inc(this_rq(), eas_stats.secb_insuff_cap);
-			goto unlock;
-		}
-
 		if (energy_diff(&eenv) >= 0) {
 			/* No energy saving for target_cpu, try backup */
 			target_cpu = tmp_backup;
@@ -6727,7 +6699,7 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 			      cpumask_test_cpu(cpu, &p->cpus_allowed);
 	}
 
-	if (energy_aware() && !(cpu_rq(prev_cpu)->rd->overutilized))
+	if (energy_aware())
 		return select_energy_cpu_brute(p, prev_cpu, sync);
 
 	rcu_read_lock();
@@ -8162,12 +8134,11 @@ static inline void update_cpu_stats_if_tickless(struct rq *rq) { }
  * @local_group: Does group contain this_cpu.
  * @sgs: variable to hold the statistics for this group.
  * @overload: Indicate more than one runnable task for any CPU.
- * @overutilized: Indicate overutilization for any CPU.
  */
 static inline void update_sg_lb_stats(struct lb_env *env,
 			struct sched_group *group, int load_idx,
 			int local_group, struct sg_lb_stats *sgs,
-			bool *overload, bool *overutilized)
+			bool *overload)
 {
 	unsigned long load;
 	int i, nr_running;
@@ -8207,9 +8178,6 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 		 */
 		if (!nr_running && idle_cpu(i))
 			sgs->idle_cpus++;
-
-		if (cpu_overutilized(i))
-			*overutilized = true;
 	}
 
 	/* Adjust by relative CPU capacity of the group */
@@ -8318,7 +8286,7 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 	struct sched_group *sg = env->sd->groups;
 	struct sg_lb_stats tmp_sgs;
 	int load_idx, prefer_sibling = 0;
-	bool overload = false, overutilized = false;
+	bool overload = false;
 
 	if (child && child->flags & SD_PREFER_SIBLING)
 		prefer_sibling = 1;
@@ -8340,7 +8308,7 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 		}
 
 		update_sg_lb_stats(env, sg, load_idx, local_group, sgs,
-						&overload, &overutilized);
+						&overload);
 
 		if (local_group)
 			goto next_group;
@@ -8384,17 +8352,6 @@ next_group:
 		/* update overload indicator if we are at root domain */
 		if (env->dst_rq->rd->overload != overload)
 			env->dst_rq->rd->overload = overload;
-
-		/* Update over-utilization (tipping point, U >= 0) indicator */
-		if (env->dst_rq->rd->overutilized != overutilized) {
-			env->dst_rq->rd->overutilized = overutilized;
-			trace_sched_overutilized(overutilized);
-		}
-	} else {
-		if (!env->dst_rq->rd->overutilized && overutilized) {
-			env->dst_rq->rd->overutilized = true;
-			trace_sched_overutilized(true);
-		}
 	}
 
 }
@@ -8617,10 +8574,6 @@ static struct sched_group *find_busiest_group(struct lb_env *env)
 	 * this level.
 	 */
 	update_sd_lb_stats(env, &sds);
-
-	if (energy_aware() && !env->dst_rq->rd->overutilized)
-		goto out_balanced;
-
 	local = &sds.local_stat;
 	busiest = &sds.busiest_stat;
 
@@ -8804,14 +8757,6 @@ static int need_active_balance(struct lb_env *env)
 	    (env->src_rq->cfs.h_nr_running == 1)) {
 		if ((check_cpu_capacity(env->src_rq, sd)) &&
 		    (capacity_of(env->src_cpu)*sd->imbalance_pct < capacity_of(env->dst_cpu)*100))
-			return 1;
-	}
-
-	if ((capacity_of(env->src_cpu) < capacity_of(env->dst_cpu)) &&
-	    ((capacity_orig_of(env->src_cpu) < capacity_orig_of(env->dst_cpu))) &&
-				env->src_rq->cfs.h_nr_running == 1 &&
-				cpu_overutilized(env->src_cpu) &&
-				!cpu_overutilized(env->dst_cpu)) {
 			return 1;
 	}
 
@@ -9706,8 +9651,7 @@ static inline bool nohz_kick_needed(struct rq *rq)
 	if (time_before(now, nohz.next_balance))
 		return false;
 
-	if (rq->nr_running >= 2 &&
-	    (!energy_aware() || cpu_overutilized(cpu)))
+	if (rq->nr_running >= 2)
 		return true;
 
 	rcu_read_lock();
@@ -9818,14 +9762,6 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 
 	if (static_branch_unlikely(&sched_numa_balancing))
 		task_tick_numa(rq, curr);
-
-#ifdef CONFIG_SMP
-	if (!rq->rd->overutilized && cpu_overutilized(task_cpu(curr))) {
-		rq->rd->overutilized = true;
-		trace_sched_overutilized(true);
-	}
-#endif
-
 }
 
 /*
