@@ -91,7 +91,6 @@
 			cooling-max-level = <0>;
 			#cooling-cells = <2>; /* min followed by max */
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
-			sched-energy-costs = <&CPU_COST &CLUSTER_COST>;
 			dynamic-power-coefficient = <311>;
 		};
 
@@ -103,7 +102,6 @@
 			next-level-cache = <&CLUSTER0_L2>;
 			operating-points-v2 = <&cpu_opp_table>;
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
-			sched-energy-costs = <&CPU_COST &CLUSTER_COST>;
 		};
 
 		cpu2: cpu@2 {
@@ -114,7 +112,6 @@
 			next-level-cache = <&CLUSTER0_L2>;
 			operating-points-v2 = <&cpu_opp_table>;
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
-			sched-energy-costs = <&CPU_COST &CLUSTER_COST>;
 		};
 
 		cpu3: cpu@3 {
@@ -125,7 +122,6 @@
 			next-level-cache = <&CLUSTER0_L2>;
 			operating-points-v2 = <&cpu_opp_table>;
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
-			sched-energy-costs = <&CPU_COST &CLUSTER_COST>;
 		};
 
 		cpu4: cpu@100 {
@@ -136,7 +132,6 @@
 			next-level-cache = <&CLUSTER1_L2>;
 			operating-points-v2 = <&cpu_opp_table>;
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
-			sched-energy-costs = <&CPU_COST &CLUSTER_COST>;
 		};
 
 		cpu5: cpu@101 {
@@ -147,7 +142,6 @@
 			next-level-cache = <&CLUSTER1_L2>;
 			operating-points-v2 = <&cpu_opp_table>;
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
-			sched-energy-costs = <&CPU_COST &CLUSTER_COST>;
 		};
 
 		cpu6: cpu@102 {
@@ -158,7 +152,6 @@
 			next-level-cache = <&CLUSTER1_L2>;
 			operating-points-v2 = <&cpu_opp_table>;
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
-			sched-energy-costs = <&CPU_COST &CLUSTER_COST>;
 		};
 
 		cpu7: cpu@103 {
@@ -169,7 +162,6 @@
 			next-level-cache = <&CLUSTER1_L2>;
 			operating-points-v2 = <&cpu_opp_table>;
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
-			sched-energy-costs = <&CPU_COST &CLUSTER_COST>;
 		};
 
 		CLUSTER0_L2: l2-cache0 {
@@ -179,8 +171,6 @@
 		CLUSTER1_L2: l2-cache1 {
 			compatible = "cache";
 		};
-
-		/include/ "hi6220-sched-energy.dtsi"
 	};
 
 	cpu_opp_table: cpu_opp_table {
