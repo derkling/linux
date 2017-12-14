@@ -1048,15 +1048,6 @@ struct sched_domain_attr {
 
 extern int sched_domain_level_max;
 
-struct capacity_state {
-	unsigned long cap;	/* compute capacity */
-	unsigned long power;	/* power consumption at this compute capacity */
-};
-
-struct idle_state {
-	unsigned long power;	 /* power consumption in this idle state */
-};
-
 unsigned long capacity_curr_of(int cpu);
 
 struct sched_group;
