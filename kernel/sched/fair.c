@@ -5241,7 +5241,7 @@ unsigned long capacity_curr_of(int cpu)
 
 static inline bool energy_aware(void)
 {
-	return sched_feat(ENERGY_AWARE);
+	return false;
 }
 
 struct energy_env {
@@ -6729,9 +6729,6 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 			      !wake_cap(p, cpu, prev_cpu) &&
 			      cpumask_test_cpu(cpu, &p->cpus_allowed);
 	}
-
-	if (energy_aware() && !(cpu_rq(prev_cpu)->rd->overutilized))
-		return select_energy_cpu_brute(p, prev_cpu, sync);
 
 	rcu_read_lock();
 	for_each_domain(cpu, tmp) {
