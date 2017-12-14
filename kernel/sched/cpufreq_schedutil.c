@@ -187,15 +187,6 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
 	return cpufreq_driver_resolve_freq(policy, freq);
 }
 
-static inline bool use_pelt(void)
-{
-#ifdef CONFIG_SCHED_WALT
-	return (!sysctl_sched_use_walt_cpu_util || walt_disabled);
-#else
-	return true;
-#endif
-}
-
 static void sugov_get_util(unsigned long *util, unsigned long *max, u64 time)
 {
 	int cpu = smp_processor_id();
@@ -213,8 +204,7 @@ static void sugov_get_util(unsigned long *util, unsigned long *max, u64 time)
 	rt = (rt * max_cap) >> SCHED_CAPACITY_SHIFT;
 
 	*util = cpu_util(cpu);
-	if (likely(use_pelt()))
-		*util = min((*util + rt), max_cap);
+	*util = *util + rt;
 
 	*max = max_cap;
 }
