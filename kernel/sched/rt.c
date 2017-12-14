@@ -10,7 +10,6 @@
 #include <linux/irq_work.h>
 
 #include "walt.h"
-#include "tune.h"
 
 int sched_rr_timeslice = RR_TIMESLICE;
 
@@ -1323,7 +1322,6 @@ enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 
 	if (!task_current(rq, p) && p->nr_cpus_allowed > 1) {
 		enqueue_pushable_task(rq, p);
-		schedtune_enqueue_task(p, cpu_of(rq));
 	}
 }
 
@@ -1336,7 +1334,6 @@ static void dequeue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 	walt_dec_cumulative_runnable_avg(rq, p);
 
 	dequeue_pushable_task(rq, p);
-	schedtune_dequeue_task(p, cpu_of(rq));
 }
 
 /*
@@ -1676,7 +1673,7 @@ static int find_best_rt_target(struct task_struct* task, int cpu,
 		/*
 		 * Iterate from higher cpus for boosted tasks.
 		 */
-		int i = boosted ? NR_CPUS-iter_cpu-1 : iter_cpu;
+		int i = iter_cpu;
 		if (!cpu_online(i) || !cpumask_test_cpu(i, tsk_cpus_allowed(task)))
 			continue;
 
@@ -1785,8 +1782,8 @@ static int find_lowest_rq(struct task_struct *task, int sync)
 	 * lowest priority tasks in the system.
 	 */
 
-	boosted = schedtune_task_boost(task) > 0;
-	prefer_idle = schedtune_prefer_idle(task) > 0;
+	boosted = false;
+	prefer_idle = false;
 	if(boosted || prefer_idle) {
 		return find_best_rt_target(task, cpu, lowest_mask, boosted, prefer_idle);
 	} else {
@@ -1812,8 +1809,7 @@ static int find_lowest_rq(struct task_struct *task, int sync)
 					/* Ensuring that boosted/prefer idle
 					 * tasks are not pre-empted even if low
 					 * priority*/
-					if (!curr || (schedtune_task_boost(curr) == 0
-					    && schedtune_prefer_idle(curr) == 0)) {
+					if (!curr ) {
 						rcu_read_unlock();
 						return this_cpu;
 					}
@@ -1826,8 +1822,7 @@ static int find_lowest_rq(struct task_struct *task, int sync)
 					/* Ensuring that boosted/prefer idle
 					 * tasks are not pre-empted even if low
 					 * priority*/
-					if(!curr || (schedtune_task_boost(curr) == 0
-						     && schedtune_prefer_idle(curr) == 0)) {
+					if (!curr) {
 						rcu_read_unlock();
 						return best_cpu;
 					}
