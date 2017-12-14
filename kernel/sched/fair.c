@@ -5428,7 +5428,6 @@ static inline int find_idlest_cpu(struct sched_domain *sd, struct task_struct *p
 
 	if (wu) {
 		schedstat_inc(p, se.statistics.nr_wakeups_cas_attempts);
-		schedstat_inc(this_rq(), eas_stats.cas_attempts);
 	}
 
 	if (!cpumask_intersects(sched_domain_span(sd), &p->cpus_allowed))
@@ -5438,9 +5437,6 @@ static inline int find_idlest_cpu(struct sched_domain *sd, struct task_struct *p
 		struct sched_group *group;
 		struct sched_domain *tmp;
 		int weight;
-
-		if (wu)
-			schedstat_inc(sd, eas_stats.cas_attempts);
 
 		if (!(sd->flags & sd_flag)) {
 			sd = sd->child;
@@ -5475,7 +5471,6 @@ static inline int find_idlest_cpu(struct sched_domain *sd, struct task_struct *p
 
 	if (wu && (cas_cpu >= 0)) {
 		schedstat_inc(p, se.statistics.nr_wakeups_cas_count);
-		schedstat_inc(this_rq(), eas_stats.cas_count);
 	}
 
 	return new_cpu;
@@ -5493,12 +5488,10 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
 	unsigned long best_idle_capacity = ULONG_MAX;
 
 	schedstat_inc(p, se.statistics.nr_wakeups_sis_attempts);
-	schedstat_inc(this_rq(), eas_stats.sis_attempts);
 
 	if (!sysctl_sched_cstate_aware) {
 		if (idle_cpu(target)) {
 			schedstat_inc(p, se.statistics.nr_wakeups_sis_idle);
-			schedstat_inc(this_rq(), eas_stats.sis_idle);
 			return target;
 		}
 
@@ -5507,7 +5500,6 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
 		 */
 		if (prev != target && cpus_share_cache(prev, target) && idle_cpu(prev)) {
 			schedstat_inc(p, se.statistics.nr_wakeups_sis_cache_affine);
-			schedstat_inc(this_rq(), eas_stats.sis_cache_affine);
 			return prev;
 		}
 	}
@@ -5535,8 +5527,6 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
 
 					if (i == target && new_usage <= capacity_curr_of(target)) {
 						schedstat_inc(p, se.statistics.nr_wakeups_sis_suff_cap);
-						schedstat_inc(this_rq(), eas_stats.sis_suff_cap);
-						schedstat_inc(sd, eas_stats.sis_suff_cap);
 						return target;
 					}
 
@@ -5556,8 +5546,6 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
 				target = cpumask_first_and(sched_group_cpus(sg),
 					tsk_cpus_allowed(p));
 				schedstat_inc(p, se.statistics.nr_wakeups_sis_idle_cpu);
-				schedstat_inc(this_rq(), eas_stats.sis_idle_cpu);
-				schedstat_inc(sd, eas_stats.sis_idle_cpu);
 				goto done;
 			}
 next:
@@ -5570,7 +5558,6 @@ next:
 
 done:
 	schedstat_inc(p, se.statistics.nr_wakeups_sis_count);
-	schedstat_inc(this_rq(), eas_stats.sis_count);
 
 	return target;
 }
