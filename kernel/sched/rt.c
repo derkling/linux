@@ -1649,108 +1649,13 @@ static struct task_struct *pick_highest_pushable_task(struct rq *rq, int cpu)
 
 static DEFINE_PER_CPU(cpumask_var_t, local_cpu_mask);
 
-static int find_best_rt_target(struct task_struct* task, int cpu,
-			      struct cpumask* lowest_mask,
-			      bool boosted, bool prefer_idle) {
-	int iter_cpu;
-	int target_cpu = -1;
-	int boosted_cpu = -1;
-	int backup_cpu = -1;
-	int boosted_orig_capacity = capacity_orig_of(0);
-	int backup_capacity = 0;
-	int best_idle_cpu = -1;
-	unsigned long target_util = 0;
-	unsigned long new_util;
-	/* We want to elect the best one based on task class,
-	 * idleness, and utilization.
-	 */
-	for (iter_cpu = 0; iter_cpu < NR_CPUS; iter_cpu++) {
-		int cur_capacity;
-		/*
-		 * Iterate from higher cpus for boosted tasks.
-		 */
-		int i = iter_cpu;
-		if (!cpu_online(i) || !cpumask_test_cpu(i, tsk_cpus_allowed(task)))
-			continue;
-
-		new_util = cpu_util(i) + task_util(task);
-
-		if (new_util > capacity_orig_of(i))
-			continue;
-
-		/*
-		 * Unconditionally favoring tasks that prefer idle cpus to
-		 * improve latency.
-		 */
-		if (idle_cpu(i) && prefer_idle
-		    && cpumask_test_cpu(i, lowest_mask) && best_idle_cpu < 0) {
-			best_idle_cpu = i;
-			continue;
-		}
-
-		if (cpumask_test_cpu(i, lowest_mask)) {
-			/* Bias cpu selection towards cpu with higher original
-			 * capacity if task is boosted.
-			 * Assumption: Higher cpus are exclusively alloted for
-			 * boosted tasks.
-			 */
-			if (boosted && boosted_cpu < 0
-			    && boosted_orig_capacity < capacity_orig_of(i)) {
-				boosted_cpu = i;
-				boosted_orig_capacity = capacity_orig_of(i);
-			}
-			cur_capacity = capacity_curr_of(i);
-			if (new_util < cur_capacity && cpu_rq(i)->nr_running) {
-				if(!boosted) {
-					/* Find a target cpu with highest utilization.*/
-					if (target_util < new_util) {
-						target_cpu = i;
-						target_util = new_util;
-					}
-				} else {
-					if (target_util == 0 || target_util > new_util) {
-					/* Find a target cpu with lowest utilization.*/
-						target_cpu = i;
-						target_util = new_util;
-					}
-				}
-			} else if (backup_capacity == 0 || backup_capacity < cur_capacity) {
-				/* Select a backup CPU with highest capacity.*/
-				backup_capacity = cur_capacity;
-				backup_cpu = i;
-			}
-		}
-	}
-
-	if (boosted && boosted_cpu >=0 && boosted_cpu > best_idle_cpu)
-		target_cpu = boosted_cpu;
-	else if (prefer_idle && best_idle_cpu >= 0)
-		target_cpu = best_idle_cpu;
-
-	if (target_cpu < 0) {
-		if (backup_cpu >= 0)
-			return backup_cpu;
-
-		/* Select current cpu if it is present in the mask.*/
-		if (cpumask_test_cpu(cpu, lowest_mask))
-			return cpu;
-
-		/* Pick a random cpu from lowest_mask */
-		target_cpu = cpumask_any(lowest_mask);
-		if (target_cpu < nr_cpu_ids)
-			return target_cpu;
-		return -1;
-	}
-	return target_cpu;
-}
-
 static int find_lowest_rq(struct task_struct *task, int sync)
 {
 	struct sched_domain *sd;
+	struct task_struct* curr;
 	struct cpumask *lowest_mask = this_cpu_cpumask_var_ptr(local_cpu_mask);
 	int this_cpu = smp_processor_id();
 	int cpu      = task_cpu(task);
-	bool boosted, prefer_idle;
 
 	/* Make sure the mask is initialized first */
 	if (unlikely(!lowest_mask))
@@ -1778,67 +1683,54 @@ static int find_lowest_rq(struct task_struct *task, int sync)
 	 * lowest priority tasks in the system.
 	 */
 
-	boosted = false;
-	prefer_idle = false;
-	if(boosted || prefer_idle) {
-		return find_best_rt_target(task, cpu, lowest_mask, boosted, prefer_idle);
-	} else {
-		/* Now we want to elect the best one based on on our affinity
-		 * and topology.
-		 * We prioritize the last cpu that the task executed on since
-		 * it is most likely cache-hot in that location.
-		 */
-		struct task_struct* curr;
-		if (!cpumask_test_cpu(this_cpu, lowest_mask))
-			this_cpu = -1; /* Skip this_cpu opt if not among lowest */
-		rcu_read_lock();
-		for_each_domain(cpu, sd) {
-			if (sd->flags & SD_WAKE_AFFINE) {
-				int best_cpu;
-				/*
-				 * "this_cpu" is cheaper to preempt than a
-				 * remote processor.
-				 */
-				if (this_cpu != -1 &&
-				    cpumask_test_cpu(this_cpu, sched_domain_span(sd))) {
-					curr = cpu_rq(this_cpu)->curr;
-					/* Ensuring that boosted/prefer idle
-					 * tasks are not pre-empted even if low
-					 * priority*/
-					if (!curr ) {
-						rcu_read_unlock();
-						return this_cpu;
-					}
+	/* Now we want to elect the best one based on on our affinity
+	 * and topology.
+	 * We prioritize the last cpu that the task executed on since
+	 * it is most likely cache-hot in that location.
+	 */
+	if (!cpumask_test_cpu(this_cpu, lowest_mask))
+		this_cpu = -1; /* Skip this_cpu opt if not among lowest */
+	rcu_read_lock();
+	for_each_domain(cpu, sd) {
+		if (sd->flags & SD_WAKE_AFFINE) {
+			int best_cpu;
+			/*
+			 * "this_cpu" is cheaper to preempt than a
+			 * remote processor.
+			 */
+			if (this_cpu != -1 &&
+			    cpumask_test_cpu(this_cpu, sched_domain_span(sd))) {
+				curr = cpu_rq(this_cpu)->curr;
+				if (!curr) {
+					rcu_read_unlock();
+					return this_cpu;
 				}
+			}
 
-				best_cpu = cpumask_first_and(lowest_mask,
-							     sched_domain_span(sd));
-				if (best_cpu < nr_cpu_ids) {
-					curr = cpu_rq(best_cpu)->curr;
-					/* Ensuring that boosted/prefer idle
-					 * tasks are not pre-empted even if low
-					 * priority*/
-					if (!curr) {
-						rcu_read_unlock();
-						return best_cpu;
-					}
+			best_cpu = cpumask_first_and(lowest_mask,
+						     sched_domain_span(sd));
+			if (best_cpu < nr_cpu_ids) {
+				curr = cpu_rq(best_cpu)->curr;
+				if (!curr) {
+					rcu_read_unlock();
+					return best_cpu;
 				}
 			}
 		}
-		rcu_read_unlock();
-
-		/* And finally, if there were no matches within the domains just
-		 * give the caller *something* to work with from the compatible
-		 * locations.
-		 */
-		if (this_cpu != -1)
-			return this_cpu;
-
-		cpu = cpumask_any(lowest_mask);
-		if (cpu < nr_cpu_ids)
-			return cpu;
-		return -1;
 	}
+	rcu_read_unlock();
+
+	/* And finally, if there were no matches within the domains just
+	 * give the caller *something* to work with from the compatible
+	 * locations.
+	 */
+	if (this_cpu != -1)
+		return this_cpu;
+
+	cpu = cpumask_any(lowest_mask);
+	if (cpu < nr_cpu_ids)
+		return cpu;
+	return -1;
 }
 
 /* Will lock the rq it finds */
