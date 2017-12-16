@@ -167,6 +167,13 @@
 			ftrace-size	= <0x00020000>;
 		};
 
+		linux,cma {
+			compatible = "shared-dma-pool";
+			reusable;
+			size = <0x00000000 0x08000000>;
+			linux,cma-default;
+		};
+
 		hifi-base {
 			reg = <0x0 0x89200000 0x0 0x980000>;
 			no-map;
