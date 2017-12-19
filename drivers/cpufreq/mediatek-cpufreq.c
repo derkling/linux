@@ -305,8 +305,6 @@ static int mtk_cpufreq_set_target(struct cpufreq_policy *policy,
 	return 0;
 }
 
-#define DYNAMIC_POWER "dynamic-power-coefficient"
-
 static void mtk_cpufreq_ready(struct cpufreq_policy *policy)
 {
 	struct mtk_cpu_dvfs_info *info = policy->driver_data;
@@ -317,11 +315,8 @@ static void mtk_cpufreq_ready(struct cpufreq_policy *policy)
 		return;
 
 	if (of_find_property(np, "#cooling-cells", NULL)) {
-		of_property_read_u32(np, DYNAMIC_POWER, &capacitance);
-
-		info->cdev = of_cpufreq_power_cooling_register(np,
-						policy, capacitance, NULL);
-
+		info->cdev = of_cpufreq_power_cooling_register(np, policy,
+									NULL);
 		if (IS_ERR(info->cdev)) {
 			dev_err(info->cpu_dev,
 				"running cpufreq without cooling device: %ld\n",
@@ -489,6 +484,8 @@ static int mtk_cpufreq_init(struct cpufreq_policy *policy)
 	cpumask_copy(policy->cpus, &info->cpus);
 	policy->driver_data = info;
 	policy->clk = info->cpu_clk;
+
+	dev_pm_opp_of_estimate_power(info->cpu_dev);
 
 	return 0;
 
