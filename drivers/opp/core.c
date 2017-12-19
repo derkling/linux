@@ -128,6 +128,24 @@ unsigned long dev_pm_opp_get_freq(struct dev_pm_opp *opp)
 EXPORT_SYMBOL_GPL(dev_pm_opp_get_freq);
 
 /**
+ * dev_pm_opp_get_power() - Gets the estimated power corresponding to an opp
+ * @opp:	opp for which power has to be returned for
+ *
+ * Return: estimated power in micro-watts corresponding to the opp, else
+ * return 0
+ */
+unsigned long dev_pm_opp_get_power(struct dev_pm_opp *opp)
+{
+	if (IS_ERR_OR_NULL(opp)) {
+		pr_err("%s: Invalid parameters\n", __func__);
+		return 0;
+	}
+
+	return opp->power_estimate_uw;
+}
+EXPORT_SYMBOL_GPL(dev_pm_opp_get_power);
+
+/**
  * dev_pm_opp_is_turbo() - Returns if opp is turbo OPP or not
  * @opp: opp for which turbo mode is being verified
  *
@@ -985,6 +1003,18 @@ static bool _opp_supported_by_regulators(struct dev_pm_opp *opp,
 	return true;
 }
 
+/**
+ * Estimate the power of an OPP as P = C * V^2 * f, with C the device's
+ * capacitance, V the OPP's voltage and f the OPP's frequency.
+ */
+static void _opp_estimate_power(struct dev_pm_opp *opp, unsigned long cap)
+{
+	unsigned long mV = opp->supplies[0].u_volt / 1000;
+	unsigned long KHz = opp->rate / 1000;
+
+	opp->power_estimate_uw = cap * mV * mV * KHz / 1000000000;
+}
+
 /*
  * Returns:
  * 0: On success. And appropriate error message for duplicate OPPs.
@@ -1038,6 +1068,8 @@ int _opp_add(struct device *dev, struct dev_pm_opp *new_opp,
 
 	if (opp_table->get_pstate)
 		new_opp->pstate = opp_table->get_pstate(dev, new_opp->rate);
+
+	_opp_estimate_power(new_opp, opp_table->capacitance);
 
 	list_add(&new_opp->node, head);
 	mutex_unlock(&opp_table->lock);
