@@ -470,6 +470,8 @@ static int mtk_cpufreq_init(struct cpufreq_policy *policy)
 	policy->driver_data = info;
 	policy->clk = info->cpu_clk;
 
+	dev_pm_opp_of_estimate_power(info->cpu_dev);
+
 	return 0;
 
 out_free_cpufreq_table:
