@@ -50,6 +50,7 @@
 			enable-method = "psci";
 			next-level-cache = <&L2_0>;
 			qcom,ea = <&ea0>;
+			dynamic-power-coefficient = <100>;
 			L2_0: l2-cache {
 			      compatible = "arm,arch-cache";
 			      cache-level = <2>;
@@ -77,6 +78,7 @@
 			enable-method = "psci";
 			next-level-cache = <&L2_0>;
 			qcom,ea = <&ea1>;
+			dynamic-power-coefficient = <100>;
 			L1_I_1: l1-icache {
 				compatible = "arm,arch-cache";
 				qcom,dump-size = <0x9040>;
@@ -99,6 +101,7 @@
 			enable-method = "psci";
 			next-level-cache = <&L2_0>;
 			qcom,ea = <&ea2>;
+			dynamic-power-coefficient = <100>;
 			L1_I_2: l1-icache {
 				compatible = "arm,arch-cache";
 				qcom,dump-size = <0x9040>;
@@ -121,6 +124,7 @@
 			enable-method = "psci";
 			next-level-cache = <&L2_0>;
 			qcom,ea = <&ea3>;
+			dynamic-power-coefficient = <100>;
 			L1_I_3: l1-icache {
 				compatible = "arm,arch-cache";
 				qcom,dump-size = <0x9040>;
@@ -143,6 +147,7 @@
 			enable-method = "psci";
 			next-level-cache = <&L2_1>;
 			qcom,ea = <&ea4>;
+			dynamic-power-coefficient = <500>;
 			L2_1: l2-cache {
 				compatible = "arm,arch-cache";
 				cache-level = <2>;
@@ -169,6 +174,7 @@
 			enable-method = "psci";
 			next-level-cache = <&L2_1>;
 			qcom,ea = <&ea5>;
+			dynamic-power-coefficient = <500>;
 			L1_I_101: l1-icache {
 				compatible = "arm,arch-cache";
 				qcom,dump-size = <0x12000>;
@@ -191,6 +197,7 @@
 			enable-method = "psci";
 			next-level-cache = <&L2_1>;
 			qcom,ea = <&ea6>;
+			dynamic-power-coefficient = <500>;
 			L1_I_102: l1-icache {
 				compatible = "arm,arch-cache";
 				qcom,dump-size = <0x12000>;
@@ -213,6 +220,7 @@
 			enable-method = "psci";
 			next-level-cache = <&L2_1>;
 			qcom,ea = <&ea7>;
+			dynamic-power-coefficient = <500>;
 			L1_I_103: l1-icache {
 				compatible = "arm,arch-cache";
 				qcom,dump-size = <0x12000>;
