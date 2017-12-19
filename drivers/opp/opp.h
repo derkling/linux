@@ -84,6 +84,8 @@ struct dev_pm_opp {
 
 	unsigned long clock_latency_ns;
 
+	unsigned long power_estimate_uw;
+
 	struct opp_table *opp_table;
 
 	struct device_node *np;
@@ -165,6 +167,8 @@ struct opp_table {
 	/* For backward compatibility with v1 bindings */
 	unsigned int voltage_tolerance_v1;
 
+	unsigned int capacitance;
+
 	enum opp_table_access shared_opp;
 	struct dev_pm_opp *suspend_opp;
 
@@ -198,6 +202,7 @@ int _opp_add(struct device *dev, struct dev_pm_opp *new_opp, struct opp_table *o
 int _opp_add_v1(struct opp_table *opp_table, struct device *dev, unsigned long freq, long u_volt, bool dynamic);
 void _dev_pm_opp_cpumask_remove_table(const struct cpumask *cpumask, bool of);
 struct opp_table *_add_opp_table(struct device *dev);
+void _opp_estimate_power(struct dev_pm_opp *opp);
 
 #ifdef CONFIG_OF
 void _of_init_opp_table(struct opp_table *opp_table, struct device *dev);
