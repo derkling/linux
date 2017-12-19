@@ -128,6 +128,24 @@ unsigned long dev_pm_opp_get_freq(struct dev_pm_opp *opp)
 EXPORT_SYMBOL_GPL(dev_pm_opp_get_freq);
 
 /**
+ * dev_pm_opp_get_power() - Gets the estimated power corresponding to an opp
+ * @opp:	opp for which power has to be returned for
+ *
+ * Return: estimated power in mirco-watts corresponding to the opp, else
+ * return 0
+ */
+unsigned long dev_pm_opp_get_power(struct dev_pm_opp *opp)
+{
+	if (IS_ERR_OR_NULL(opp) || !opp->available) {
+		pr_err("%s: Invalid parameters\n", __func__);
+		return 0;
+	}
+
+	return opp->power_estimate_uw;
+}
+EXPORT_SYMBOL_GPL(dev_pm_opp_get_power);
+
+/**
  * dev_pm_opp_is_turbo() - Returns if opp is turbo OPP or not
  * @opp: opp for which turbo mode is being verified
  *
@@ -147,6 +165,28 @@ bool dev_pm_opp_is_turbo(struct dev_pm_opp *opp)
 	return opp->turbo;
 }
 EXPORT_SYMBOL_GPL(dev_pm_opp_is_turbo);
+
+/**
+ * dev_pm_opp_has_power() - Get the status of power values for OPPs
+ * @cpu_dev:	CPU device for which we do this operation
+ *
+ * Return: True if the OPPs hold power estimates for the CPU
+ */
+bool dev_pm_opp_has_power(struct device *cpu_dev)
+{
+	struct opp_table *opp_table;
+	bool has_power;
+
+	opp_table = _find_opp_table(cpu_dev);
+	if (IS_ERR(opp_table))
+		return false;
+
+	has_power = opp_table->has_power;
+
+	dev_pm_opp_put_opp_table(opp_table);
+
+	return has_power;
+}
 
 /**
  * dev_pm_opp_get_max_clock_latency() - Get max clock latency in nanoseconds

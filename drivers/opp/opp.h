@@ -84,6 +84,8 @@ struct dev_pm_opp {
 
 	unsigned long clock_latency_ns;
 
+	unsigned long power_estimate_uw;
+
 	struct opp_table *opp_table;
 
 	struct device_node *np;
@@ -175,6 +177,8 @@ struct opp_table {
 	struct regulator **regulators;
 	unsigned int regulator_count;
 	bool genpd_performance_state;
+
+	bool has_power;
 
 	int (*set_opp)(struct dev_pm_set_opp_data *data);
 	struct dev_pm_set_opp_data *set_opp_data;
