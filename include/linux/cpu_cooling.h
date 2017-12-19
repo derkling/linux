@@ -43,7 +43,7 @@ cpufreq_cooling_register(struct cpufreq_policy *policy);
 
 struct thermal_cooling_device *
 cpufreq_power_cooling_register(struct cpufreq_policy *policy,
-			       u32 capacitance, get_static_t plat_static_func);
+			       get_static_t plat_static_func);
 
 /**
  * of_cpufreq_cooling_register - create cpufreq cooling device based on DT.
@@ -58,7 +58,6 @@ of_cpufreq_cooling_register(struct device_node *np,
 struct thermal_cooling_device *
 of_cpufreq_power_cooling_register(struct device_node *np,
 				  struct cpufreq_policy *policy,
-				  u32 capacitance,
 				  get_static_t plat_static_func);
 #else
 static inline struct thermal_cooling_device *
@@ -71,7 +70,6 @@ of_cpufreq_cooling_register(struct device_node *np,
 static inline struct thermal_cooling_device *
 of_cpufreq_power_cooling_register(struct device_node *np,
 				  struct cpufreq_policy *policy,
-				  u32 capacitance,
 				  get_static_t plat_static_func)
 {
 	return NULL;
