@@ -151,6 +151,24 @@ unsigned long dev_pm_opp_get_freq(struct dev_pm_opp *opp)
 EXPORT_SYMBOL_GPL(dev_pm_opp_get_freq);
 
 /**
+ * dev_pm_opp_get_power() - Gets the estimated power corresponding to an opp
+ * @opp:	opp for which power has to be returned for
+ *
+ * Return: estimated power in micro-watts corresponding to the opp, else
+ * return 0
+ */
+unsigned long dev_pm_opp_get_power(struct dev_pm_opp *opp)
+{
+	if (IS_ERR_OR_NULL(opp)) {
+		pr_err("%s: Invalid parameters\n", __func__);
+		return 0;
+	}
+
+	return opp->power_estimate_uw;
+}
+EXPORT_SYMBOL_GPL(dev_pm_opp_get_power);
+
+/**
  * dev_pm_opp_is_turbo() - Returns if opp is turbo OPP or not
  * @opp: opp for which turbo mode is being verified
  *
@@ -954,6 +972,28 @@ static bool _opp_supported_by_regulators(struct dev_pm_opp *opp,
 	return true;
 }
 
+/**
+ * Estimate the power of an OPP as P = C * V^2 * f, with C the device's
+ * capacitance, V the OPP's voltage and f the OPP's frequency.
+ */
+static void _opp_estimate_power(struct dev_pm_opp *opp, unsigned long cap)
+{
+	unsigned long mV = opp->u_volt / 1000;
+	unsigned long KHz = opp->rate / 1000;
+
+	opp->power_estimate_uw = cap * mV * mV * KHz / 1000000000;
+}
+
+/*
+ * Returns:
+ * 0: On success. And appropriate error message for duplicate OPPs.
+ * -EBUSY: For OPP with same freq/volt and is available. The callers of
+ *  _opp_add() must return 0 if they receive -EBUSY from it. This is to make
+ *  sure we don't print error messages unnecessarily if different parts of
+ *  kernel try to initialize the OPP table.
+ * -EEXIST: For OPP with same freq but different volt or is unavailable. This
+ *  should be considered an error by the callers of _opp_add().
+ */
 int _opp_add(struct device *dev, struct dev_pm_opp *new_opp,
 	     struct opp_table *opp_table)
 {
@@ -986,6 +1026,8 @@ int _opp_add(struct device *dev, struct dev_pm_opp *new_opp,
 		return opp->available && new_opp->u_volt == opp->u_volt ?
 			0 : -EEXIST;
 	}
+
+	_opp_estimate_power(new_opp, opp_table->capacitance);
 
 	new_opp->opp_table = opp_table;
 	list_add_rcu(&new_opp->node, head);
