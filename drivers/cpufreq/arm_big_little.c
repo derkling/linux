@@ -497,6 +497,8 @@ static int bL_cpufreq_init(struct cpufreq_policy *policy)
 	if (is_bL_switching_enabled())
 		per_cpu(cpu_last_req_freq, policy->cpu) = clk_get_cpu_rate(policy->cpu);
 
+	dev_pm_opp_of_estimate_power(cpu_dev);
+
 	dev_info(cpu_dev, "%s: CPU %d initialized\n", __func__, policy->cpu);
 	return 0;
 }
