@@ -30,7 +30,11 @@ unsigned long dev_pm_opp_get_voltage(struct dev_pm_opp *opp);
 
 unsigned long dev_pm_opp_get_freq(struct dev_pm_opp *opp);
 
+unsigned long dev_pm_opp_get_power(struct dev_pm_opp *opp);
+
 bool dev_pm_opp_is_turbo(struct dev_pm_opp *opp);
+
+bool dev_pm_opp_has_power(struct device *cpu_dev);
 
 int dev_pm_opp_get_opp_count(struct device *dev);
 unsigned long dev_pm_opp_get_max_clock_latency(struct device *dev);
@@ -80,7 +84,17 @@ static inline unsigned long dev_pm_opp_get_freq(struct dev_pm_opp *opp)
 	return 0;
 }
 
+static inline unsigned long dev_pm_opp_get_power(struct dev_pm_opp *opp)
+{
+	return 0;
+}
+
 static inline bool dev_pm_opp_is_turbo(struct dev_pm_opp *opp)
+{
+	return false;
+}
+
+static inline bool dev_pm_opp_has_power(struct device *cpu_dev)
 {
 	return false;
 }
@@ -208,6 +222,7 @@ void dev_pm_opp_of_remove_table(struct device *dev);
 int dev_pm_opp_of_cpumask_add_table(const struct cpumask *cpumask);
 void dev_pm_opp_of_cpumask_remove_table(const struct cpumask *cpumask);
 int dev_pm_opp_of_get_sharing_cpus(struct device *cpu_dev, struct cpumask *cpumask);
+int dev_pm_opp_of_estimate_power(struct device *cpu_dev);
 #else
 static inline int dev_pm_opp_of_add_table(struct device *dev)
 {
@@ -230,6 +245,11 @@ static inline void dev_pm_opp_of_cpumask_remove_table(const struct cpumask *cpum
 static inline int dev_pm_opp_of_get_sharing_cpus(struct device *cpu_dev, struct cpumask *cpumask)
 {
 	return -ENOTSUPP;
+}
+
+static inline int dev_pm_opp_of_estimate_power(struct device *cpu_dev)
+{
+	return -EINVAL;
 }
 #endif
 

@@ -89,6 +89,8 @@ struct dev_pm_opp {
 	unsigned long u_amp;
 	unsigned long clock_latency_ns;
 
+	unsigned long power_estimate_uw;
+
 	struct opp_table *opp_table;
 	struct rcu_head rcu_head;
 
@@ -180,6 +182,8 @@ struct opp_table {
 	const char *prop_name;
 	struct clk *clk;
 	struct regulator *regulator;
+
+	bool has_power;
 
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *dentry;
