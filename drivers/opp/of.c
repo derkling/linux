@@ -633,3 +633,64 @@ put_cpu_node:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(dev_pm_opp_of_get_sharing_cpus);
+
+/**
+ * dev_pm_opp_of_estimate_power() - Estimates the power dissipated by @cpu_dev
+ *                                  at each OPP.
+ * @cpu_dev:	CPU device for which we do this estimation
+ *
+ * This estimates the active power consumed by a CPU at each OPP using:
+ *                         P = C * V^2 * f
+ * with P the power, C the CPU's capacitance, V the OPP's voltage and f the
+ * OPP's frequency. V and f are assumed to be known by the time this function
+ * is called and C is read from DT.
+ *
+ * Returns -EINVAL if the CPU's capacitance cannot be read from DT.
+ */
+int dev_pm_opp_of_estimate_power(struct device *cpu_dev)
+{
+	struct opp_table *opp_table;
+	unsigned long mV, uW, KHz;
+	struct device_node *np;
+	struct dev_pm_opp *opp;
+	u32 capacitance = 0;
+	int ret = 0;
+
+	opp_table = _find_opp_table(cpu_dev);
+	if (IS_ERR(opp_table)) {
+		ret = PTR_ERR(opp_table);
+		dev_dbg(cpu_dev, "%s: no OPP table (%d)\n", __func__, ret);
+		return ret;
+	}
+
+	np = of_node_get(cpu_dev->of_node);
+	if (!np) {
+		dev_err(cpu_dev, "%s: no node for cpu\n", __func__);
+		ret = -ENOENT;
+		goto out;
+	}
+
+	of_property_read_u32(np, "dynamic-power-coefficient", &capacitance);
+	of_node_put(np);
+
+	if (!capacitance) {
+		opp_table->has_power = false;
+		ret = -EINVAL;
+		goto out;
+	}
+
+	list_for_each_entry(opp, &opp_table->opp_list, node) {
+		mV = dev_pm_opp_get_voltage(opp) / 1000;
+		KHz = dev_pm_opp_get_freq(opp) / 1000;
+		uW = (unsigned long)capacitance * KHz * mV * mV;
+		uW /= 1000000000;
+		opp->power_estimate_uw = uW;
+	}
+
+	opp_table->has_power = true;
+
+out:
+	dev_pm_opp_put_opp_table(opp_table);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(dev_pm_opp_of_estimate_power);
