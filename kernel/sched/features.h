@@ -97,3 +97,8 @@ SCHED_FEAT(UTIL_EST, true)
  * util_avg of RT runqueues.
  */
 SCHED_FEAT(SUGOV_RT_MAX, false)
+
+/*
+ * Fast pre-selection of CPU candidates for EAS.
+ */
+SCHED_FEAT(FIND_BEST_TARGET, true)
