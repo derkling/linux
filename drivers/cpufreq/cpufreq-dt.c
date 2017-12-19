@@ -284,6 +284,8 @@ static int cpufreq_init(struct cpufreq_policy *policy)
 	policy->cpuinfo.transition_latency = transition_latency;
 	policy->dvfs_possible_from_any_cpu = true;
 
+	dev_pm_opp_of_estimate_power(cpu_dev);
+
 	return 0;
 
 out_free_cpufreq_table:
@@ -329,13 +331,8 @@ static void cpufreq_ready(struct cpufreq_policy *policy)
 	 * thermal DT code takes care of matching them.
 	 */
 	if (of_find_property(np, "#cooling-cells", NULL)) {
-		u32 power_coefficient = 0;
-
-		of_property_read_u32(np, "dynamic-power-coefficient",
-				     &power_coefficient);
-
-		priv->cdev = of_cpufreq_power_cooling_register(np,
-				policy, power_coefficient, NULL);
+		priv->cdev = of_cpufreq_power_cooling_register(np, policy,
+									NULL);
 		if (IS_ERR(priv->cdev)) {
 			dev_err(priv->cpu_dev,
 				"running cpufreq without cooling device: %ld\n",

@@ -497,6 +497,8 @@ static int bL_cpufreq_init(struct cpufreq_policy *policy)
 	if (is_bL_switching_enabled())
 		per_cpu(cpu_last_req_freq, policy->cpu) = clk_get_cpu_rate(policy->cpu);
 
+	dev_pm_opp_of_estimate_power(cpu_dev);
+
 	dev_info(cpu_dev, "%s: CPU %d initialized\n", __func__, policy->cpu);
 	return 0;
 }
@@ -539,13 +541,8 @@ static void bL_cpufreq_ready(struct cpufreq_policy *policy)
 		return;
 
 	if (of_find_property(np, "#cooling-cells", NULL)) {
-		u32 power_coefficient = 0;
-
-		of_property_read_u32(np, "dynamic-power-coefficient",
-				     &power_coefficient);
-
 		cdev[cur_cluster] = of_cpufreq_power_cooling_register(np,
-				policy, power_coefficient, NULL);
+								policy, NULL);
 		if (IS_ERR(cdev[cur_cluster])) {
 			dev_err(cpu_dev,
 				"running cpufreq without cooling device: %ld\n",
