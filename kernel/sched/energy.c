@@ -70,6 +70,7 @@ static int build_energy_model(int cpu)
 
 		if (!power) {
 			kfree(em->cap_states);
+			pr_info("CPU%d: no power for OPP %d\n", cpu, i+1);
 			return -EINVAL;
 		}
 

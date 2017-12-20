@@ -628,6 +628,7 @@ int dev_pm_opp_of_estimate_power(struct device *cpu_dev)
 	if (!capacitance) {
 		opp_table->has_power = false;
 		ret = -EINVAL;
+		pr_info("CPU%d: no capacitance to compute OPP power\n", cpu_dev->id);
 		goto out;
 	}
 
@@ -637,6 +638,8 @@ int dev_pm_opp_of_estimate_power(struct device *cpu_dev)
 		uW = (u64)capacitance * KHz * mV * mV;
 		do_div(uW, 1000000000);
 		opp->power_estimate_uw = uW;
+		pr_info("CPU%d OPP: %lu KHz, %lu mV, %lu uW\n", cpu_dev->id,
+				KHz, mV, uW);
 	}
 
 	opp_table->has_power = true;
