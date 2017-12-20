@@ -265,8 +265,7 @@ static void dbs_irq_work(struct irq_work *irq_work)
 	schedule_work_on(smp_processor_id(), &policy_dbs->work);
 }
 
-static void dbs_update_util_handler(struct update_util_data *data, u64 time,
-				    unsigned int flags)
+static void dbs_update_util_handler(struct update_util_data *data, u64 time)
 {
 	struct cpu_dbs_info *cdbs = container_of(data, struct cpu_dbs_info, update_util);
 	struct policy_dbs_info *policy_dbs = cdbs->policy_dbs;

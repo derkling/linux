@@ -3012,29 +3012,6 @@ static inline void update_cfs_group(struct sched_entity *se)
 }
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 
-static inline void cfs_rq_util_change(struct cfs_rq *cfs_rq)
-{
-	struct rq *rq = rq_of(cfs_rq);
-
-	if (&rq->cfs == cfs_rq) {
-		/*
-		 * There are a few boundary cases this might miss but it should
-		 * get called often enough that that should (hopefully) not be
-		 * a real problem.
-		 *
-		 * It will not get called when we go idle, because the idle
-		 * thread is a different class (!fair), nor will the utilization
-		 * number include things like RT tasks.
-		 *
-		 * As is, the util number is not freq-invariant (we'd have to
-		 * implement arch_scale_freq_capacity() for that).
-		 *
-		 * See cpu_util().
-		 */
-		cpufreq_update_util(rq, 0);
-	}
-}
-
 #ifdef CONFIG_SMP
 /*
  * Approximate:
@@ -3688,9 +3665,6 @@ update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq)
 	cfs_rq->load_last_update_time_copy = sa->last_update_time;
 #endif
 
-	if (decayed)
-		cfs_rq_util_change(cfs_rq);
-
 	return decayed;
 }
 
@@ -3737,8 +3711,6 @@ static void attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 	cfs_rq->avg.util_sum += se->avg.util_sum;
 
 	add_tg_cfs_propagate(cfs_rq, se->avg.load_sum);
-
-	cfs_rq_util_change(cfs_rq);
 }
 
 /**
@@ -3756,8 +3728,6 @@ static void detach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 	sub_positive(&cfs_rq->avg.util_sum, se->avg.util_sum);
 
 	add_tg_cfs_propagate(cfs_rq, -se->avg.load_sum);
-
-	cfs_rq_util_change(cfs_rq);
 }
 
 /*
@@ -3881,11 +3851,7 @@ update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq)
 #define SKIP_AGE_LOAD	0x0
 #define DO_ATTACH	0x0
 
-static inline void update_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se, int not_used1)
-{
-	cfs_rq_util_change(cfs_rq);
-}
-
+static inline void update_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se, int not_used1) {}
 static inline void remove_entity_load_avg(struct sched_entity *se) {}
 
 static inline void
@@ -5203,14 +5169,6 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &p->se;
-
-	/*
-	 * If in_iowait is set, the code below may not trigger any cpufreq
-	 * utilization updates, so do it here explicitly with the IOWAIT flag
-	 * passed.
-	 */
-	if (p->in_iowait)
-		cpufreq_update_util(rq, SCHED_CPUFREQ_IOWAIT);
 
 	for_each_sched_entity(se) {
 		if (se->on_rq)

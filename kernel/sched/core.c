@@ -259,6 +259,7 @@ static enum hrtimer_restart hrtick(struct hrtimer *timer)
 	rq_lock(rq, &rf);
 	update_rq_clock(rq);
 	rq->curr->sched_class->task_tick(rq, rq->curr, 1);
+	cpufreq_update_util(rq);
 	rq_unlock(rq, &rf);
 
 	return HRTIMER_NORESTART;
@@ -788,6 +789,7 @@ void activate_task(struct rq *rq, struct task_struct *p, int flags)
 		rq->nr_uninterruptible--;
 
 	enqueue_task(rq, p, flags);
+	cpufreq_update_util(rq);
 }
 
 void deactivate_task(struct rq *rq, struct task_struct *p, int flags)
@@ -796,6 +798,7 @@ void deactivate_task(struct rq *rq, struct task_struct *p, int flags)
 		rq->nr_uninterruptible++;
 
 	dequeue_task(rq, p, flags);
+	cpufreq_update_util(rq);
 }
 
 /*
@@ -1059,6 +1062,8 @@ void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
 		enqueue_task(rq, p, ENQUEUE_RESTORE | ENQUEUE_NOCLOCK);
 	if (running)
 		set_curr_task(rq, p);
+
+	cpufreq_update_util(rq);
 }
 
 /*
@@ -3069,6 +3074,7 @@ void scheduler_tick(void)
 	curr->sched_class->task_tick(rq, curr, 0);
 	cpu_load_update_active(rq);
 	calc_global_load_tick(rq);
+	cpufreq_update_util(rq);
 
 	rq_unlock(rq, &rf);
 
@@ -3424,6 +3430,7 @@ static void __sched notrace __schedule(bool preempt)
 	}
 
 	balance_callback(rq);
+	cpufreq_update_util(rq);
 }
 
 void __noreturn do_task_dead(void)
@@ -3810,6 +3817,7 @@ void rt_mutex_setprio(struct task_struct *p, struct task_struct *pi_task)
 		set_curr_task(rq, p);
 
 	check_class_changed(rq, p, prev_class, oldprio);
+	cpufreq_update_util(rq);
 out_unlock:
 	/* Avoid rq from going away on us: */
 	preempt_disable();
@@ -4285,6 +4293,7 @@ change:
 		set_curr_task(rq, p);
 
 	check_class_changed(rq, p, prev_class, oldprio);
+	cpufreq_update_util(rq);
 
 	/* Avoid rq from going away on us: */
 	preempt_disable();
@@ -5469,6 +5478,8 @@ void sched_setnuma(struct task_struct *p, int nid)
 		enqueue_task(rq, p, ENQUEUE_RESTORE | ENQUEUE_NOCLOCK);
 	if (running)
 		set_curr_task(rq, p);
+
+	cpufreq_update_util(rq);
 	task_rq_unlock(rq, p, &rf);
 }
 #endif /* CONFIG_NUMA_BALANCING */
@@ -5607,6 +5618,7 @@ static void migrate_tasks(struct rq *dead_rq, struct rq_flags *rf)
 	}
 
 	rq->stop = stop;
+	cpufreq_update_util(rq);
 }
 #endif /* CONFIG_HOTPLUG_CPU */
 

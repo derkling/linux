@@ -201,9 +201,9 @@ static unsigned long sugov_aggregate_util(struct sugov_cpu *sg_cpu)
 	return min(util, sg_cpu->max);
 }
 
-static void sugov_set_iowait_boost(struct sugov_cpu *sg_cpu, u64 time, unsigned int flags)
+static void sugov_set_iowait_boost(struct sugov_cpu *sg_cpu, u64 time)
 {
-	if (flags & SCHED_CPUFREQ_IOWAIT) {
+	if (current->in_iowait) {
 		if (sg_cpu->iowait_boost_pending)
 			return;
 
@@ -267,8 +267,7 @@ static bool sugov_cpu_is_busy(struct sugov_cpu *sg_cpu)
 static inline bool sugov_cpu_is_busy(struct sugov_cpu *sg_cpu) { return false; }
 #endif /* CONFIG_NO_HZ_COMMON */
 
-static void sugov_update_single(struct update_util_data *hook, u64 time,
-				unsigned int flags)
+static void sugov_update_single(struct update_util_data *hook, u64 time)
 {
 	struct sugov_cpu *sg_cpu = container_of(hook, struct sugov_cpu, update_util);
 	struct sugov_policy *sg_policy = sg_cpu->sg_policy;
@@ -280,7 +279,7 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 	if (unlikely(current == sg_policy->thread))
 		return;
 
-	sugov_set_iowait_boost(sg_cpu, time, flags);
+	sugov_set_iowait_boost(sg_cpu, time);
 	sg_cpu->last_update = time;
 
 	if (!sugov_should_update_freq(sg_policy, time))
@@ -349,8 +348,7 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 	return get_next_freq(sg_policy, util, max);
 }
 
-static void sugov_update_shared(struct update_util_data *hook, u64 time,
-				unsigned int flags)
+static void sugov_update_shared(struct update_util_data *hook, u64 time)
 {
 	struct sugov_cpu *sg_cpu = container_of(hook, struct sugov_cpu, update_util);
 	struct sugov_policy *sg_policy = sg_cpu->sg_policy;
@@ -363,7 +361,7 @@ static void sugov_update_shared(struct update_util_data *hook, u64 time,
 	raw_spin_lock(&sg_policy->update_lock);
 
 	sugov_get_util(sg_cpu);
-	sugov_set_iowait_boost(sg_cpu, time, flags);
+	sugov_set_iowait_boost(sg_cpu, time);
 	sg_cpu->last_update = time;
 
 	if (sugov_should_update_freq(sg_policy, time)) {
@@ -483,7 +481,6 @@ static int sugov_kthread_create(struct sugov_policy *sg_policy)
 	struct sched_attr attr = {
 		.size = sizeof(struct sched_attr),
 		.sched_policy = SCHED_DEADLINE,
-		.sched_flags = SCHED_FLAG_SUGOV,
 		.sched_nice = 0,
 		.sched_priority = 0,
 		/*

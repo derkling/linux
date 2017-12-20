@@ -2078,7 +2078,6 @@ DECLARE_PER_CPU(struct update_util_data *, cpufreq_update_util_data);
 /**
  * cpufreq_update_util - Take a note about CPU utilization changes.
  * @rq: Runqueue to carry out the update for.
- * @flags: Update reason flags.
  *
  * This function is called by the scheduler on the CPU whose utilization is
  * being updated.
@@ -2097,14 +2096,14 @@ DECLARE_PER_CPU(struct update_util_data *, cpufreq_update_util_data);
  * but that really is a band-aid.  Going forward it should be replaced with
  * solutions targeted more specifically at RT tasks.
  */
-static inline void cpufreq_update_util(struct rq *rq, unsigned int flags)
+static inline void cpufreq_update_util(struct rq *rq)
 {
 	struct update_util_data *data;
 
 	data = rcu_dereference_sched(*per_cpu_ptr(&cpufreq_update_util_data,
 						  cpu_of(rq)));
 	if (data)
-		data->func(data, rq_clock(rq), flags);
+		data->func(data, rq_clock(rq));
 }
 #else
 static inline void cpufreq_update_util(struct rq *rq, unsigned int flags) {}
