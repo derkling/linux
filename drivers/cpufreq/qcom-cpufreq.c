@@ -142,6 +142,11 @@ static int msm_cpufreq_init(struct cpufreq_policy *policy)
 		if (cpu_clk[cpu] == cpu_clk[policy->cpu])
 			cpumask_set_cpu(cpu, policy->cpus);
 
+	ret = dev_pm_opp_set_sharing_cpus(cpu_dev, policy->cpus);
+	if (ret)
+		dev_err(cpu_dev, "%s: failed to mark OPPs as shared: %d\n",
+				__func__, ret);
+
 	ret = cpufreq_table_validate_and_show(policy, table);
 	if (ret) {
 		pr_err("cpufreq: failed to get policy min/max\n");
