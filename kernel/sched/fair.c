@@ -5401,6 +5401,14 @@ decay_load_missed(unsigned long load, unsigned long missed_updates, int idx)
 	}
 	return load;
 }
+
+static struct {
+	cpumask_var_t idle_cpus_mask;
+	atomic_t nr_cpus;
+	unsigned long next_balance;     /* in jiffy units */
+	unsigned long next_stats;
+} nohz ____cacheline_aligned;
+
 #endif /* CONFIG_NO_HZ_COMMON */
 
 /**
@@ -6958,6 +6966,7 @@ enum fbq_type { regular, remote, all };
 #define LBF_NEED_BREAK	0x02
 #define LBF_DST_PINNED  0x04
 #define LBF_SOME_PINNED	0x08
+#define LBF_NOHZ_STATS	0x10
 
 struct lb_env {
 	struct sched_domain	*sd;
@@ -7396,6 +7405,10 @@ static void update_blocked_averages(int cpu)
 		if (cfs_rq_is_decayed(cfs_rq))
 			list_del_leaf_cfs_rq(cfs_rq);
 	}
+
+#ifdef CONFIG_NO_HZ_COMMON
+	rq->last_blocked_load_update_tick = jiffies;
+#endif
 	rq_unlock_irqrestore(rq, &rf);
 }
 
@@ -7455,6 +7468,9 @@ static inline void update_blocked_averages(int cpu)
 	rq_lock_irqsave(rq, &rf);
 	update_rq_clock(rq);
 	update_cfs_rq_load_avg(cfs_rq_clock_task(cfs_rq), cfs_rq);
+#ifdef CONFIG_NO_HZ_COMMON
+	rq->last_blocked_load_update_tick = jiffies;
+#endif
 	rq_unlock_irqrestore(rq, &rf);
 }
 
@@ -7789,6 +7805,21 @@ group_type group_classify(struct sched_group *group,
 	return group_other;
 }
 
+static void update_nohz_stats(struct rq *rq)
+{
+#ifdef CONFIG_NO_HZ_COMMON
+	unsigned int cpu = rq->cpu;
+
+	if (!cpumask_test_cpu(cpu, nohz.idle_cpus_mask))
+		return;
+
+	if (!time_after(jiffies, rq->last_blocked_load_update_tick))
+		return;
+
+	update_blocked_averages(cpu);
+#endif
+}
+
 /**
  * update_sg_lb_stats - Update sched_group's statistics for load balancing.
  * @env: The load balancing environment.
@@ -7810,6 +7841,9 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 
 	for_each_cpu_and(i, sched_group_span(group), env->cpus) {
 		struct rq *rq = cpu_rq(i);
+
+		if (env->flags & LBF_NOHZ_STATS)
+			update_nohz_stats(rq);
 
 		/* Bias balancing toward cpus of our domain */
 		if (local_group)
@@ -7965,6 +7999,15 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 
 	if (child && child->flags & SD_PREFER_SIBLING)
 		prefer_sibling = 1;
+
+#ifdef CONFIG_NO_HZ_COMMON
+	if (env->idle == CPU_NEWLY_IDLE) {
+		env->flags |= LBF_NOHZ_STATS;
+
+		if (cpumask_subset(nohz.idle_cpus_mask, sched_domain_span(env->sd)))
+			nohz.next_stats = jiffies + msecs_to_jiffies(LOAD_AVG_PERIOD);
+	}
+#endif
 
 	load_idx = get_sd_load_idx(env->sd, env->idle);
 
@@ -8984,12 +9027,6 @@ static inline int on_null_domain(struct rq *rq)
  *   needed, they will kick the idle load balancer, which then does idle
  *   load balancing for all the idle CPUs.
  */
-static struct {
-	cpumask_var_t idle_cpus_mask;
-	atomic_t nr_cpus;
-	unsigned long next_balance;     /* in jiffy units */
-	unsigned long next_stats;
-} nohz ____cacheline_aligned;
 
 static inline int find_new_ilb(void)
 {
