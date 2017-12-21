@@ -5405,6 +5405,7 @@ decay_load_missed(unsigned long load, unsigned long missed_updates, int idx)
 static struct {
 	cpumask_var_t idle_cpus_mask;
 	atomic_t nr_cpus;
+	atomic_t stats_state;
 	unsigned long next_balance;     /* in jiffy units */
 	unsigned long next_stats;
 } nohz ____cacheline_aligned;
@@ -6967,6 +6968,7 @@ enum fbq_type { regular, remote, all };
 #define LBF_DST_PINNED  0x04
 #define LBF_SOME_PINNED	0x08
 #define LBF_NOHZ_STATS	0x10
+#define LBF_NOHZ_AGAIN	0x20
 
 struct lb_env {
 	struct sched_domain	*sd;
@@ -6992,6 +6994,8 @@ struct lb_env {
 
 	enum fbq_type		fbq_type;
 	struct list_head	tasks;
+
+	unsigned int		stats_seq;
 };
 
 /*
@@ -7351,8 +7355,6 @@ static void attach_tasks(struct lb_env *env)
 	rq_unlock(env->dst_rq, &rf);
 }
 
-#ifdef CONFIG_FAIR_GROUP_SCHED
-
 static inline bool cfs_rq_is_decayed(struct cfs_rq *cfs_rq)
 {
 	if (cfs_rq->load.weight)
@@ -7370,11 +7372,14 @@ static inline bool cfs_rq_is_decayed(struct cfs_rq *cfs_rq)
 	return true;
 }
 
+#ifdef CONFIG_FAIR_GROUP_SCHED
+
 static void update_blocked_averages(int cpu)
 {
 	struct rq *rq = cpu_rq(cpu);
 	struct cfs_rq *cfs_rq, *pos;
 	struct rq_flags rf;
+	bool done = true;
 
 	rq_lock_irqsave(rq, &rf);
 	update_rq_clock(rq);
@@ -7404,10 +7409,14 @@ static void update_blocked_averages(int cpu)
 		 */
 		if (cfs_rq_is_decayed(cfs_rq))
 			list_del_leaf_cfs_rq(cfs_rq);
+		else
+			done = false;
 	}
 
 #ifdef CONFIG_NO_HZ_COMMON
 	rq->last_blocked_load_update_tick = jiffies;
+	if (done)
+		rq->has_blocked_load = 0;
 #endif
 	rq_unlock_irqrestore(rq, &rf);
 }
@@ -7470,6 +7479,8 @@ static inline void update_blocked_averages(int cpu)
 	update_cfs_rq_load_avg(cfs_rq_clock_task(cfs_rq), cfs_rq);
 #ifdef CONFIG_NO_HZ_COMMON
 	rq->last_blocked_load_update_tick = jiffies;
+	if (cfs_rq_is_decayed(cfs_rq))
+		rq->has_blocked_load = 0;
 #endif
 	rq_unlock_irqrestore(rq, &rf);
 }
@@ -7805,18 +7816,25 @@ group_type group_classify(struct sched_group *group,
 	return group_other;
 }
 
-static void update_nohz_stats(struct rq *rq)
+static bool update_nohz_stats(struct rq *rq)
 {
 #ifdef CONFIG_NO_HZ_COMMON
 	unsigned int cpu = rq->cpu;
 
+	if (!rq->has_blocked_load)
+		return false;
+
 	if (!cpumask_test_cpu(cpu, nohz.idle_cpus_mask))
-		return;
+		return false;
 
 	if (!time_after(jiffies, rq->last_blocked_load_update_tick))
-		return;
+		return true;
 
 	update_blocked_averages(cpu);
+
+	return rq->has_blocked_load;
+#else
+	return false;
 #endif
 }
 
@@ -7842,8 +7860,8 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 	for_each_cpu_and(i, sched_group_span(group), env->cpus) {
 		struct rq *rq = cpu_rq(i);
 
-		if (env->flags & LBF_NOHZ_STATS)
-			update_nohz_stats(rq);
+		if ((env->flags & LBF_NOHZ_STATS) && update_nohz_stats(rq))
+			env->flags |= LBF_NOHZ_AGAIN;
 
 		/* Bias balancing toward cpus of our domain */
 		if (local_group)
@@ -8003,9 +8021,7 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 #ifdef CONFIG_NO_HZ_COMMON
 	if (env->idle == CPU_NEWLY_IDLE) {
 		env->flags |= LBF_NOHZ_STATS;
-
-		if (cpumask_subset(nohz.idle_cpus_mask, sched_domain_span(env->sd)))
-			nohz.next_stats = jiffies + msecs_to_jiffies(LOAD_AVG_PERIOD);
+		env->stats_seq = atomic_read(&nohz.stats_state);
 	}
 #endif
 
@@ -8061,6 +8077,16 @@ next_group:
 
 		sg = sg->next;
 	} while (sg != env->sd->groups);
+
+#ifdef CONFIG_NO_HZ_COMMON
+	if ((env->flags & LBF_NOHZ_STATS) &&
+	    cpumask_subset(nohz.idle_cpus_mask, sched_domain_span(env->sd))) {
+		nohz.next_stats = jiffies + msecs_to_jiffies(LOAD_AVG_PERIOD);
+
+		if (!(env->flags & LBF_NOHZ_AGAIN))
+			atomic_cmpxchg(&nohz.stats_state, env->stats_seq, 0);
+	}
+#endif
 
 	if (env->sd->flags & SD_NUMA)
 		env->fbq_type = fbq_classify_group(&sds->busiest_stat);
@@ -9102,7 +9128,7 @@ static void nohz_balancer_kick(struct rq *rq)
 	if (likely(!atomic_read(&nohz.nr_cpus)))
 		return;
 
-	if (time_after(now, nohz.next_stats))
+	if (atomic_read(&nohz.stats_state) && time_after(now, nohz.next_stats))
 		flags = NOHZ_STATS_KICK;
 
 	if (time_before(now, nohz.next_balance))
@@ -9210,6 +9236,7 @@ unlock:
 void nohz_balance_enter_idle(int cpu)
 {
 	struct rq *rq = cpu_rq(cpu);
+	unsigned int val, new;
 
 	SCHED_WARN_ON(cpu != smp_processor_id());
 
@@ -9229,13 +9256,19 @@ void nohz_balance_enter_idle(int cpu)
 	/*
 	 * If we're a completely isolated CPU, we don't play.
 	 */
-	if (on_null_domain(cpu_rq(cpu)))
+	if (on_null_domain(rq))
 		return;
 
 	rq->nohz_tick_stopped = 1;
 
 	cpumask_set_cpu(cpu, nohz.idle_cpus_mask);
 	atomic_inc(&nohz.nr_cpus);
+
+	val = atomic_read(&nohz.stats_state);
+	do {
+		new = val + 2;
+		new |= 1;
+	} while (!atomic_try_cmpxchg(&nohz.stats_state, &val, new));
 
 	set_cpu_sd_state_idle(cpu);
 }
