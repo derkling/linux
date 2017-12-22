@@ -5408,6 +5408,7 @@ static struct {
 	atomic_t stats_state;
 	unsigned long next_balance;     /* in jiffy units */
 	unsigned long next_stats;
+	struct timer_list timer;
 } nohz ____cacheline_aligned;
 
 #endif /* CONFIG_NO_HZ_COMMON */
@@ -8019,10 +8020,8 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 		prefer_sibling = 1;
 
 #ifdef CONFIG_NO_HZ_COMMON
-	if (env->idle == CPU_NEWLY_IDLE) {
+	if (env->idle == CPU_NEWLY_IDLE)
 		env->flags |= LBF_NOHZ_STATS;
-		env->stats_seq = atomic_read(&nohz.stats_state);
-	}
 #endif
 
 	load_idx = get_sd_load_idx(env->sd, env->idle);
@@ -8079,12 +8078,11 @@ next_group:
 	} while (sg != env->sd->groups);
 
 #ifdef CONFIG_NO_HZ_COMMON
-	if ((env->flags & LBF_NOHZ_STATS) &&
+	if ((env->flags & LBF_NOHZ_AGAIN) &&
 	    cpumask_subset(nohz.idle_cpus_mask, sched_domain_span(env->sd))) {
-		nohz.next_stats = jiffies + msecs_to_jiffies(LOAD_AVG_PERIOD);
 
-		if (!(env->flags & LBF_NOHZ_AGAIN))
-			atomic_cmpxchg(&nohz.stats_state, env->stats_seq, 0);
+		WRITE_ONCE(nohz.next_stats,
+				jiffies + msecs_to_jiffies(LOAD_AVG_PERIOD));
 	}
 #endif
 
@@ -9093,6 +9091,18 @@ static void kick_ilb(unsigned int flags)
 	smp_send_reschedule(ilb_cpu);
 }
 
+void nohz_balance_timer(struct timer_list *timer)
+{
+	unsigned long next = READ_ONCE(nohz.next_stats);
+
+	if (time_before(jiffies, next)) {
+		mod_timer(timer, next);
+		return;
+	}
+
+	kick_ilb(NOHZ_STATS_KICK);
+}
+
 /*
  * Current heuristic for kicking the idle load balancer in the presence
  * of an idle cpu in the system.
@@ -9127,9 +9137,6 @@ static void nohz_balancer_kick(struct rq *rq)
 	 */
 	if (likely(!atomic_read(&nohz.nr_cpus)))
 		return;
-
-	if (atomic_read(&nohz.stats_state) && time_after(now, nohz.next_stats))
-		flags = NOHZ_STATS_KICK;
 
 	if (time_before(now, nohz.next_balance))
 		goto out;
@@ -9264,13 +9271,24 @@ void nohz_balance_enter_idle(int cpu)
 	cpumask_set_cpu(cpu, nohz.idle_cpus_mask);
 	atomic_inc(&nohz.nr_cpus);
 
+	set_cpu_sd_state_idle(cpu);
+
+	/*
+	 * implies a barrier such that if the stats_state update is observed
+	 * the above updates are also visible. Pairs with stuff in
+	 * update_sd_lb_stats() and nohz_idle_balance().
+	 */
 	val = atomic_read(&nohz.stats_state);
 	do {
 		new = val + 2;
 		new |= 1;
 	} while (!atomic_try_cmpxchg(&nohz.stats_state, &val, new));
 
-	set_cpu_sd_state_idle(cpu);
+	/*
+	 * If the timer was stopped, restart the thing.
+	 */
+	if (!(val & 1))
+		mod_timer(&nohz.timer, jiffies + msecs_to_jiffies(LOAD_AVG_PERIOD));
 }
 #else
 static inline void nohz_balancer_kick(struct rq *rq) { }
@@ -9404,9 +9422,10 @@ static bool nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle)
 	/* Earliest time when we have to do rebalance again */
 	unsigned long now = jiffies;
 	unsigned long next_balance = now + 60*HZ;
-	unsigned long next_stats = now + msecs_to_jiffies(LOAD_AVG_PERIOD);
+	bool has_blocked_load = false;
 	int update_next_balance = 0;
 	int this_cpu = this_rq->cpu;
+	unsigned int stats_seq;
 	unsigned int flags;
 	int balance_cpu;
 	struct rq *rq;
@@ -9419,7 +9438,13 @@ static bool nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle)
 		return false;
 	}
 
+	stats_seq = atomic_read(&nohz.stats_state);
+	/*
+	 * barrier, pairs with nohz_balance_enter_idle(), ensures ...
+	 */
 	flags = atomic_fetch_andnot(NOHZ_KICK_MASK, nohz_flags(this_cpu));
+	if (!(flags & NOHZ_KICK_MASK))
+		return false;
 
 	SCHED_WARN_ON((flags & NOHZ_KICK_MASK) == NOHZ_BALANCE_KICK);
 
@@ -9437,6 +9462,9 @@ static bool nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle)
 
 		rq = cpu_rq(balance_cpu);
 
+		update_blocked_averages(rq->cpu);
+		has_blocked_load |= rq->has_blocked_load;
+
 		/*
 		 * If time for next balance is due,
 		 * do the balance.
@@ -9449,7 +9477,6 @@ static bool nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle)
 			cpu_load_update_idle(rq);
 			rq_unlock_irq(rq, &rf);
 
-			update_blocked_averages(rq->cpu);
 			if (flags & NOHZ_BALANCE_KICK)
 				rebalance_domains(rq, CPU_IDLE);
 		}
@@ -9461,10 +9488,17 @@ static bool nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle)
 	}
 
 	update_blocked_averages(this_cpu);
+	has_blocked_load |= this_rq->has_blocked_load;
+
 	if (flags & NOHZ_BALANCE_KICK)
 		rebalance_domains(this_rq, CPU_IDLE);
 
-	nohz.next_stats = next_stats;
+	if (has_blocked_load ||
+	    !atomic_try_cmpxchg(&nohz.stats_state, &stats_seq, 0)) {
+		WRITE_ONCE(nohz.next_stats,
+				now + msecs_to_jiffies(LOAD_AVG_PERIOD));
+		mod_timer(&nohz.timer, nohz.next_stats);
+	}
 
 	/*
 	 * next_balance will be updated only when there is a need.
@@ -10095,7 +10129,9 @@ __init void init_sched_fair_class(void)
 
 #ifdef CONFIG_NO_HZ_COMMON
 	nohz.next_balance = jiffies;
+	nohz.next_stats = jiffies;
 	zalloc_cpumask_var(&nohz.idle_cpus_mask, GFP_NOWAIT);
+	timer_setup(&nohz.timer, nohz_balance_timer, 0);
 #endif
 #endif /* SMP */
 
