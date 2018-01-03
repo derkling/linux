@@ -47,6 +47,7 @@ struct fb_dmabuf_export
 
 #define HISI_FB_ION_CLIENT_NAME	"hisi_fb_ion"
 
+#ifdef CONFIG_HISI_FB_ION_USED
 unsigned long kirin_alloc_fb_buffer(struct kirin_fbdev *fbdev, int size)
 {
 	struct ion_client *client = NULL;
@@ -119,6 +120,7 @@ err_ion_map:
 err_return:
 	return 0;
 }
+#endif
 
 static int kirin_fbdev_mmap(struct fb_info *info, struct vm_area_struct * vma)
 {
@@ -146,7 +148,7 @@ static int kirin_fbdev_mmap(struct fb_info *info, struct vm_area_struct * vma)
 		return -EINVAL;
 	}
 
-	table = ion_sg_table(fbdev->ion_client, fbdev->ion_handle);
+	//table = ion_sg_table(fbdev->ion_client, fbdev->ion_handle);
 	if ((table == NULL) || (vma == NULL)) {
 		DRM_ERROR("table or vma is NULL!\n");
 		return -EFAULT;
@@ -347,7 +349,9 @@ static int kirin_fbdev_create(struct drm_fb_helper *helper,
 	fbdev->screen_size = 0;
 	memset(&fbdev->iommu_format, 0, sizeof(struct iommu_map_format));
 
+#ifdef CONFIG_HISI_FB_ION_USED
 	kirin_alloc_fb_buffer(fbdev, size);
+#endif
 
 	fbi = drm_fb_helper_alloc_fbi(helper);
 	if (IS_ERR(fbi)) {
@@ -399,6 +403,7 @@ static const struct drm_fb_helper_funcs kirin_fb_helper_funcs = {
 	.fb_probe = kirin_fbdev_create,
 };
 
+#ifdef CONFIG_HISI_FB_ION_USED
 /* initialize fbdev helper */
 struct drm_fb_helper *kirin_drm_fbdev_init(struct drm_device *dev)
 {
@@ -470,3 +475,5 @@ void kirin_drm_fbdev_fini(struct drm_device *dev)
 
 	priv->fbdev = NULL;
 }
+#endif
+

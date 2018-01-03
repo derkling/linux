@@ -32,7 +32,7 @@ struct kirin_dc_ops {
 
 struct kirin_drm_private {
 	struct drm_fb_helper *fb_helper;
-	struct drm_fb_helper *fbdev;
+	struct drm_fbdev_cma *fbdev;
 	struct drm_crtc *crtc[MAX_CRTC];
 };
 

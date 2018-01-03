@@ -600,7 +600,7 @@ static int dss_dts_parse(struct platform_device *pdev, struct dss_hw_ctx *ctx)
 
 	/* regulator enable */
 
-	dss_enable_iommu(pdev, ctx);
+	//dss_enable_iommu(pdev, ctx);
 
 	return 0;
 }

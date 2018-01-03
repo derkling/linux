@@ -1026,9 +1026,9 @@ void hisifb_dss_on(struct dss_hw_ctx *ctx)
 	/* dss qos on*/
 	hisi_dss_qos_on(ctx);
 	/* mif on*/
-	hisi_dss_mif_on(ctx);
+//	hisi_dss_mif_on(ctx);
 	/* smmu on*/
-	hisi_dss_smmu_on(ctx);
+//	hisi_dss_smmu_on(ctx);
 }
 
 void hisi_dss_mctl_on(struct dss_hw_ctx *ctx)
@@ -1113,8 +1113,7 @@ void hisi_fb_pan_display(struct drm_plane *plane)
 	struct dss_crtc *acrtc = aplane->acrtc;
 	struct dss_hw_ctx *ctx = acrtc->ctx;
 
-	struct kirin_drm_private *priv = plane->dev->dev_private;
-	struct kirin_fbdev *fbdev = to_kirin_fbdev(priv->fbdev);
+	struct drm_gem_cma_object *obj = drm_fb_cma_get_gem_obj(state->fb, 0);
 
 	bool afbcd = false;
 	bool mmu_enable = true;
@@ -1142,10 +1141,7 @@ void hisi_fb_pan_display(struct drm_plane *plane)
 	bpp = fb->bits_per_pixel / 8;
 	stride = fb->pitches[0];
 
-	if (fbdev)
-		display_addr = (u32)fbdev->smem_start + src_y * stride;
-	else
-		printk("JDB: fbdev is null?\n");
+	display_addr = (u32)obj->paddr + src_y * stride;
 
 	rect.left = 0;
 	rect.right = src_w - 1;
