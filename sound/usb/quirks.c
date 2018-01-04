@@ -19,6 +19,7 @@
 #include <linux/usb.h>
 #include <linux/usb/audio.h>
 #include <linux/usb/midi.h>
+#include <linux/moduleparam.h>
 
 #include <sound/control.h>
 #include <sound/core.h>
@@ -1317,6 +1318,17 @@ void snd_usb_ctl_msg_quirk(struct usb_device *dev, unsigned int pipe,
 		mdelay(1);
 }
 
+static int force_dsd = 0;
+static int dsd_bytes = 4;	/* U8=1, U16=2, U32=4 */
+static int dsd_endian = 1;	/* LE=0, BE=1 */
+static int dsd_dop = 0;		/* DoP */
+static int dsd_bitrev = 0;
+
+module_param(force_dsd, int, 0444);
+module_param(dsd_bytes, int, 0444);
+module_param(dsd_endian, int, 0444);
+module_param(dsd_dop, int, 0444);
+
 /*
  * snd_usb_interface_dsd_format_quirks() is called from format.c to
  * augment the PCM format bit-field for DSD types. The UAC standards
@@ -1396,6 +1408,26 @@ u64 snd_usb_interface_dsd_format_quirks(struct snd_usb_audio *chip,
 	if (is_teac_dsd_dac(chip->usb_id)) {
 		if (fp->altsetting == 3)
 			return SNDRV_PCM_FMTBIT_DSD_U32_BE;
+	}
+
+	if (force_dsd && sample_bytes == dsd_bytes) {
+		if (dsd_dop)
+			fp->dsd_dop = true;
+
+		if (dsd_bitrev)
+			fp->dsd_bitrev = true;
+
+		switch (dsd_bytes) {
+		case 1: return SNDRV_PCM_FMTBIT_DSD_U8;
+
+		case 2: if (dsd_endian)
+			       return SNDRV_PCM_FMTBIT_DSD_U16_BE;
+			return SNDRV_PCM_FMTBIT_DSD_U16_LE;
+
+		case 4: if (dsd_endian)
+				return SNDRV_PCM_FMTBIT_DSD_U32_BE;
+			return SNDRV_PCM_FMTBIT_DSD_U32_LE;
+		}
 	}
 
 	return 0;
