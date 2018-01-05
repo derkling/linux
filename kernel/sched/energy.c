@@ -18,6 +18,7 @@
 #include <linux/sched/energy.h>
 #include <linux/arch_topology.h>
 #include <linux/pm_opp.h>
+#include <linux/device.h>
 
 #include "sched.h"
 
@@ -30,6 +31,27 @@ struct sched_energy_model __percpu *energy_model;
  * as we don't know how many frequency domains the system has.
  */
 LIST_HEAD(freq_domains);
+
+static ssize_t cpu_energy_model_show(struct device *dev,
+				     struct device_attribute *attr,
+				     char *buf)
+{
+	struct cpu *cpu = container_of(dev, struct cpu, dev);
+	struct sched_energy_model *em = per_cpu_ptr(energy_model, cpu->dev.id);
+	ssize_t char_cnt = 0;
+	int i;
+
+	for (i = 0; i < em->nb_cap_states; i++) {
+		struct capacity_state *cs = &(em->cap_states[i]);
+		unsigned long cap = cs->cap, power = cs->power;
+
+		char_cnt += sprintf(buf + char_cnt, "%lu\t%lu\n", cap, power);
+	}
+
+	return char_cnt;
+}
+
+static DEVICE_ATTR_RO(cpu_energy_model);
 
 static int build_energy_model(int cpu)
 {
@@ -97,6 +119,7 @@ static int build_energy_model(int cpu)
 	}
 
 	em->nb_cap_states = opp_cnt;
+	device_create_file(cpu_dev, &dev_attr_cpu_energy_model);
 
 	return 0;
 }
@@ -104,10 +127,14 @@ static int build_energy_model(int cpu)
 static void free_energy_model(void)
 {
 	struct freq_domain *tmp, *pos;
+	struct device *cpu_dev;
 	int cpu;
 
-	for_each_possible_cpu(cpu)
+	for_each_possible_cpu(cpu) {
 		kfree(per_cpu_ptr(energy_model, cpu)->cap_states);
+		cpu_dev = get_cpu_device(cpu);
+		device_remove_file(cpu_dev, &dev_attr_cpu_energy_model);
+	}
 
 	free_percpu(energy_model);
 
