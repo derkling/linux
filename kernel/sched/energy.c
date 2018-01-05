@@ -18,6 +18,7 @@
 #include <linux/sched/energy.h>
 #include <linux/arch_topology.h>
 #include <linux/pm_opp.h>
+#include <linux/device.h>
 
 #include "sched.h"
 
@@ -31,6 +32,26 @@ struct sched_energy_model __percpu **energy_model;
  */
 LIST_HEAD(freq_domains);
 
+static ssize_t cpu_energy_model_show(struct device *dev,
+				     struct device_attribute *attr,
+				     char *buf)
+{
+	struct cpu *cpu = container_of(dev, struct cpu, dev);
+	struct sched_energy_model *em = *per_cpu_ptr(energy_model, cpu->dev.id);
+	ssize_t char_cnt = 0;
+	int i;
+
+	for (i = 0; i < em->nr_cap_states; i++) {
+		struct capacity_state *cs = &(em->cap_states[i]);
+		unsigned long cap = cs->cap, power = cs->power;
+
+		char_cnt += sprintf(buf + char_cnt, "%lu\t%lu\n", cap, power);
+	}
+
+	return char_cnt;
+}
+
+static DEVICE_ATTR_RO(cpu_energy_model);
 
 static struct sched_energy_model *build_energy_model(int cpu)
 {
@@ -116,7 +137,13 @@ static void free_energy_model(void)
 {
 	struct sched_energy_model *em;
 	struct freq_domain *tmp, *pos;
+	struct device *cpu_dev;
 	int cpu;
+
+	for_each_possible_cpu(cpu) {
+		cpu_dev = get_cpu_device(cpu);
+		device_remove_file(cpu_dev, &dev_attr_cpu_energy_model);
+	}
 
 	list_for_each_entry_safe(pos, tmp, &freq_domains, next) {
 		cpu = cpumask_first(&(pos->span));
@@ -173,8 +200,11 @@ void init_sched_energy(void)
 		if (!em)
 			goto free_em;
 
-		for_each_cpu(fdom_cpu, &(fdom->span))
+		for_each_cpu(fdom_cpu, &(fdom->span)) {
 			*per_cpu_ptr(energy_model, fdom_cpu) = em;
+			cpu_dev = get_cpu_device(fdom_cpu);
+			device_create_file(cpu_dev, &dev_attr_cpu_energy_model);
+		}
 	}
 
 	static_branch_enable(&sched_energy_present);
