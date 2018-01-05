@@ -26,7 +26,6 @@
  *              Thomas Gleixner, Mike Kravetz
  */
 
-#include <linux/kasan.h>
 #include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/nmi.h>
@@ -5145,8 +5144,6 @@ void init_idle(struct task_struct *idle, int cpu)
 
 	idle->state = TASK_RUNNING;
 	idle->se.exec_start = sched_clock();
-
-	kasan_unpoison_task_stack(idle);
 
 #ifdef CONFIG_SMP
 	/*
