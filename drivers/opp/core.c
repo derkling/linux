@@ -128,10 +128,10 @@ unsigned long dev_pm_opp_get_freq(struct dev_pm_opp *opp)
 EXPORT_SYMBOL_GPL(dev_pm_opp_get_freq);
 
 /**
- * dev_pm_opp_get_power() - Gets the estimated power corresponding to an opp
- * @opp:	opp for which power has to be returned for
+ * dev_pm_opp_get_power() - Gets the estimated power corresponding to an OPP
+ * @opp:	OPP for which power has to be returned for
  *
- * Return: estimated power in mirco-watts corresponding to the opp, else
+ * Return: estimated power in mirco-watts corresponding to the OPP, else
  * return 0
  */
 unsigned long dev_pm_opp_get_power(struct dev_pm_opp *opp)
