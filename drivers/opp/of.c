@@ -663,6 +663,12 @@ int dev_pm_opp_of_estimate_power(struct device *cpu_dev)
 		return ret;
 	}
 
+	if (unlikely(opp_table->has_power)) {
+		ret = -EEXIST;
+		dev_warn(cpu_dev, "%s: OPP power already present\n", __func__);
+		goto out;
+	}
+
 	np = of_node_get(cpu_dev->of_node);
 	if (!np) {
 		dev_err(cpu_dev, "%s: no node for cpu\n", __func__);
