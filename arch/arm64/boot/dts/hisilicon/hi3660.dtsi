@@ -112,11 +112,7 @@
 			reg = <0x0 0x100>;
 			enable-method = "psci";
 			next-level-cache = <&A73_L2>;
-			cpu-idle-states = <
-					&CPU_NAP
-					&CPU_SLEEP
-					&CLUSTER_SLEEP_1
-			>;
+			cpu-idle-states = < &CPU_SLEEP &CLUSTER_SLEEP_1>;
 			capacity-dmips-mhz = <1024>;
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER1>;
 			operating-points-v2 = <&cluster1_opp>;
@@ -129,11 +125,7 @@
 			reg = <0x0 0x101>;
 			enable-method = "psci";
 			next-level-cache = <&A73_L2>;
-			cpu-idle-states = <
-					&CPU_NAP
-					&CPU_SLEEP
-					&CLUSTER_SLEEP_1
-			>;
+			cpu-idle-states = < &CPU_SLEEP &CLUSTER_SLEEP_1>;
 			capacity-dmips-mhz = <1024>;
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER1>;
 			operating-points-v2 = <&cluster1_opp>;
@@ -146,11 +138,7 @@
 			reg = <0x0 0x102>;
 			enable-method = "psci";
 			next-level-cache = <&A73_L2>;
-			cpu-idle-states = <
-					&CPU_NAP
-					&CPU_SLEEP
-					&CLUSTER_SLEEP_1
-			>;
+			cpu-idle-states = < &CPU_SLEEP &CLUSTER_SLEEP_1>;
 			capacity-dmips-mhz = <1024>;
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER1>;
 			operating-points-v2 = <&cluster1_opp>;
@@ -163,11 +151,7 @@
 			reg = <0x0 0x103>;
 			enable-method = "psci";
 			next-level-cache = <&A73_L2>;
-			cpu-idle-states = <
-					&CPU_NAP
-					&CPU_SLEEP
-					&CLUSTER_SLEEP_1
-			>;
+			cpu-idle-states = < &CPU_SLEEP &CLUSTER_SLEEP_1>;
 			capacity-dmips-mhz = <1024>;
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER1>;
 			operating-points-v2 = <&cluster1_opp>;
@@ -176,14 +160,6 @@
 
 		idle-states {
 			entry-method = "psci";
-
-			CPU_NAP: cpu-nap {
-				compatible = "arm,idle-state";
-				arm,psci-suspend-param = <0x0000001>;
-				entry-latency-us = <7>;
-				exit-latency-us = <2>;
-				min-residency-us = <15>;
-			};
 
 			CPU_SLEEP: cpu-sleep {
 				compatible = "arm,idle-state";
