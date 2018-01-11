@@ -589,12 +589,17 @@ static inline
 int __trace_sched_path(struct cfs_rq *cfs_rq, char *path, int len)
 {
 #ifdef CONFIG_FAIR_GROUP_SCHED
+#ifdef CONFIG_SCHED_DEBUG
 	int l = path ? len : 0;
 
+#ifdef CONFIG_SCHED_AUTOGROUP
 	if (cfs_rq && task_group_is_autogroup(cfs_rq->tg))
 		return autogroup_path(cfs_rq->tg, path, l) + 1;
-	else if (cfs_rq && cfs_rq->tg->css.cgroup)
+	else
+#endif
+	if (cfs_rq && cfs_rq->tg->css.cgroup)
 		return cgroup_path(cfs_rq->tg->css.cgroup, path, l) + 1;
+#endif
 #endif
 	if (path)
 		strcpy(path, "(null)");
