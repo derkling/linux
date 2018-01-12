@@ -8478,6 +8478,9 @@ static int need_active_balance(struct lb_env *env)
 			return 1;
 	}
 
+	if (env->src_grp_type == group_misfit_task)
+		return 1;
+
 	return unlikely(sd->nr_balance_failed > sd->cache_nice_tries+2);
 }
 
