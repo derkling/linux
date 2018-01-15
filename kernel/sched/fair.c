@@ -8594,18 +8594,24 @@ static int load_balance(int this_cpu, struct rq *this_rq,
 
 redo:
 	if (!should_we_balance(&env)) {
+		trace_printk("load_balance_tick: cpu=%i sd=%lx comm=!should_we_balance\n",
+				     this_cpu, *cpumask_bits(sched_domain_span(sd)));
 		*continue_balancing = 0;
 		goto out_balanced;
 	}
 
 	group = find_busiest_group(&env);
 	if (!group) {
+		trace_printk("load_balance_tick: cpu=%i sd=%lx comm=!find_busiest_group\n",
+				     this_cpu, *cpumask_bits(sched_domain_span(sd)));
 		schedstat_inc(sd->lb_nobusyg[idle]);
 		goto out_balanced;
 	}
 
 	busiest = find_busiest_queue(&env, group);
 	if (!busiest) {
+		trace_printk("load_balance_tick: cpu=%i sd=%lx comm=!find_busiest_queue\n",
+				     this_cpu, *cpumask_bits(sched_domain_span(sd)));
 		schedstat_inc(sd->lb_nobusyq[idle]);
 		goto out_balanced;
 	}
@@ -8619,6 +8625,8 @@ redo:
 
 	ld_moved = 0;
 	if (busiest->nr_running > 1) {
+		trace_printk("load_balance_tick: cpu=%i sd=%lx comm=busiest->nr_running > 1\n",
+			     this_cpu, *cpumask_bits(sched_domain_span(sd)));
 		/*
 		 * Attempt to move tasks. If find_busiest_group has found
 		 * an imbalance but busiest->nr_running <= 1, the group is
@@ -8723,11 +8731,15 @@ more_balance:
 				env.loop_break = sched_nr_migrate_break;
 				goto redo;
 			}
+			trace_printk("load_balance_tick: cpu=%i sd=%lx comm=goto out_one_pinned\n",
+				     this_cpu, *cpumask_bits(sched_domain_span(sd)));
 			goto out_all_pinned;
 		}
 	}
 
 	if (!ld_moved) {
+		trace_printk("load_balance_tick: cpu=%i sd=%lx idle=%i comm=!ld_moved\n",
+			     this_cpu, *cpumask_bits(sched_domain_span(sd)), idle);
 		schedstat_inc(sd->lb_failed[idle]);
 		/*
 		 * Increment the failure counter only on periodic balance.
@@ -8741,6 +8753,9 @@ more_balance:
 		if (need_active_balance(&env)) {
 			unsigned long flags;
 
+			trace_printk("load_balance_tick: cpu=%i sd=%lx comm=kicking active LB\n",
+				     this_cpu, *cpumask_bits(sched_domain_span(sd)));
+
 			raw_spin_lock_irqsave(&busiest->lock, flags);
 
 			/* don't kick the active_load_balance_cpu_stop,
@@ -8751,6 +8766,10 @@ more_balance:
 				raw_spin_unlock_irqrestore(&busiest->lock,
 							    flags);
 				env.flags |= LBF_ALL_PINNED;
+				trace_printk("load_balance_tick: cpu=%i sd=%lx "
+					     "comm=out_one_pinned allowed=%lx\n",
+					     this_cpu, *cpumask_bits(sched_domain_span(sd)),
+					     *cpumask_bits(&busiest->curr->cpus_allowed));
 				goto out_one_pinned;
 			}
 
@@ -8775,10 +8794,15 @@ more_balance:
 			/* We've kicked active balancing, force task migration. */
 			sd->nr_balance_failed = sd->cache_nice_tries+1;
 		}
-	} else
+	} else {
+		trace_printk("load_balance_tick: cpu=%i sd=%lx comm=resetting nr_bl_failed\n",
+				     this_cpu, *cpumask_bits(sched_domain_span(sd)));
 		sd->nr_balance_failed = 0;
+	}
 
 	if (likely(!active_balance)) {
+		trace_printk("load_balance_tick: cpu=%i sd=%lx comm=!active_balance\n",
+				     this_cpu, *cpumask_bits(sched_domain_span(sd)));
 		/* We were unbalanced, so reset the balancing interval */
 		sd->balance_interval = sd->min_interval;
 	} else {
