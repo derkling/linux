@@ -9598,6 +9598,9 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 		task_tick_numa(rq, curr);
 
 	rq->misfit_task = !task_fits_capacity(curr, capacity_of(rq->cpu));
+
+	trace_printk("misfit_flag_update: cpu=%i flag=%i\n",
+		     rq->cpu, (bool)rq->misfit_task);
 }
 
 /*
