@@ -9551,11 +9551,16 @@ void trigger_load_balance(struct rq *rq)
 	if (unlikely(on_null_domain(rq)))
 		return;
 
-	if (time_after_eq(jiffies, rq->next_balance))
+	if (time_after_eq(jiffies, rq->next_balance)) {
+		trace_printk("rebalance_kick: now=%lu cpu=%i type=periodic\n",
+			     jiffies, rq->cpu);
 		raise_softirq(SCHED_SOFTIRQ);
+	}
 #ifdef CONFIG_NO_HZ_COMMON
-	if (nohz_kick_needed(rq))
+	if (nohz_kick_needed(rq)) {
+		trace_printk("rebalance_kick: now=%lu cpu=%i type=nohz\n", jiffies, rq->cpu);
 		nohz_balancer_kick();
+	}
 #endif
 }
 
