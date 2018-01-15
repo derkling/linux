@@ -9339,8 +9339,13 @@ out:
 		 * balance for itself and we need to update the
 		 * nohz.next_balance accordingly.
 		 */
-		if ((idle == CPU_IDLE) && time_after(nohz.next_balance, rq->next_balance))
+		if ((idle == CPU_IDLE) && time_after(nohz.next_balance, rq->next_balance)) {
+			trace_printk("nohz_next_balance: cpu=%i now=%lu "
+				     "prev=%lu next=%lu type=rebalance\n",
+				     rq->cpu, jiffies,
+				     nohz.next_balance, rq->next_balance);
 			nohz.next_balance = rq->next_balance;
+		}
 #endif
 	}
 }
@@ -9403,8 +9408,13 @@ static void nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle)
 	 * When the CPU is attached to null domain for ex, it will not be
 	 * updated.
 	 */
-	if (likely(update_next_balance))
+	if (likely(update_next_balance)) {
+		trace_printk("nohz_next_balance: cpu=%i now=%lu "
+			     "prev=%lu next=%lu type=nohz\n",
+			     rq->cpu, jiffies,
+			     nohz.next_balance, next_balance);
 		nohz.next_balance = next_balance;
+	}
 end:
 	clear_bit(NOHZ_BALANCE_KICK, nohz_flags(this_cpu));
 }
