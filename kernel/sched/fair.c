@@ -8020,7 +8020,7 @@ check_cpu_capacity(struct rq *rq, struct sched_domain *sd)
  * Something like:
  *
  *	{ 0 1 2 3 } { 4 5 6 7 }
- *	        *     * * *
+ *		*     * * *
  *
  * If we were to balance group-wise we'd place two tasks in the first group and
  * two tasks in the second group. Clearly this is undesired as it will overload
@@ -8571,6 +8571,15 @@ static inline void calculate_imbalance(struct lb_env *env, struct sd_lb_stats *s
 			min(busiest->load_per_task, sds->avg_load);
 	}
 
+	trace_printk("calculate_imbalance: cpu=%i sd=%lx"
+		     "busiest -> avg_load=%lu load_per_task=%lu "
+		     "local -> avg_load=%lu load_per_task=%lu "
+		     "sds -> avg_load=%lu\n",
+		     env->dst_cpu, *cpumask_bits(sched_domain_span(env->sd)),
+		     busiest->avg_load, busiest->load_per_task,
+		     local->avg_load, local->load_per_task,
+		     sds->avg_load);
+
 	/*
 	 * Avg load of busiest sg can be less and avg load of local sg can
 	 * be greater than avg load across all sgs of sd because avg load
@@ -8613,10 +8622,17 @@ static inline void calculate_imbalance(struct lb_env *env, struct sd_lb_stats *s
 		(sds->avg_load - local->avg_load) * local->group_capacity
 	) / SCHED_CAPACITY_SCALE;
 
+	trace_printk("calculate_imbalance: cpu=%i sd=%lx imbalance=%lu\n",
+		     env->dst_cpu, *cpumask_bits(sched_domain_span(env->sd)),
+		     env->imbalance);
+
 	/* Boost imbalance to allow misfit task to be balanced. */
 	if (busiest->group_type == group_misfit_task) {
 		env->imbalance = max_t(long, env->imbalance,
 				       busiest->group_misfit_task_load);
+		trace_printk("calculate_imbalance: cpu=%i sd=%lx imbalance=%lu comm=misfit boosting\n",
+			     env->dst_cpu, *cpumask_bits(sched_domain_span(env->sd)),
+			     env->imbalance);
 	}
 
 	/*
@@ -8656,6 +8672,10 @@ static struct sched_group *find_busiest_group(struct lb_env *env)
 	update_sd_lb_stats(env, &sds);
 	local = &sds.local_stat;
 	busiest = &sds.busiest_stat;
+
+	trace_printk("cpu=%i sd=%lx imbalance_type=%i\n",
+		     env->dst_cpu, *cpumask_bits(sched_domain_span(env->sd)),
+		     busiest->group_type);
 
 	/* ASYM feature bypasses nice load balance check */
 	if (check_asym_packing(env, &sds))
