@@ -8243,10 +8243,17 @@ static inline void calculate_imbalance(struct lb_env *env, struct sd_lb_stats *s
 		(sds->avg_load - local->avg_load) * local->group_capacity
 	) / SCHED_CAPACITY_SCALE;
 
+	trace_printk("imbalance_computation: cpu=%i sd=%lx imbalance=%lu\n",
+		     env->dst_cpu, *cpumask_bits(sched_domain_span(env->sd)),
+		     env->imbalance);
+
 	/* Boost imbalance to allow misfit task to be balanced. */
 	if (busiest->group_type == group_misfit_task) {
 		env->imbalance = max_t(long, env->imbalance,
 				       busiest->group_misfit_task);
+		trace_printk("imbalance_computation: cpu=%i sd=%lx imbalance=%lu comm=misfit boosting\n",
+			     env->dst_cpu, *cpumask_bits(sched_domain_span(env->sd)),
+			     env->imbalance);
 	}
 
 	/*
@@ -8286,6 +8293,10 @@ static struct sched_group *find_busiest_group(struct lb_env *env)
 	update_sd_lb_stats(env, &sds);
 	local = &sds.local_stat;
 	busiest = &sds.busiest_stat;
+
+	trace_printk("imbalance_computation: cpu=%i sd=%lx imbalance_type=%i\n",
+		     env->dst_cpu, *cpumask_bits(sched_domain_span(env->sd)),
+		     busiest->group_type);
 
 	/* ASYM feature bypasses nice load balance check */
 	if (check_asym_packing(env, &sds))
