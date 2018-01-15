@@ -7973,8 +7973,10 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 			sgs->idle_cpus++;
 
 		if (env->sd->flags & SD_ASYM_CPUCAPACITY &&
-		    !sgs->group_misfit_task_load && rq->misfit_task_load)
+		    !sgs->group_misfit_task_load && rq->misfit_task_load) {
 			sgs->group_misfit_task_load = rq->misfit_task_load;
+			*should_idle_balance = true;
+		}
 	}
 
 	/* Adjust by relative CPU capacity of the group */
