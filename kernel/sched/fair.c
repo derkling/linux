@@ -8419,8 +8419,10 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 		 * For ASYM_CPUCAPACITY domains with misfit tasks we ignore
 		 * load.
 		 */
-		if (env->src_grp_type == group_misfit_task && rq->misfit_task)
+		if (env->src_grp_type == group_misfit_task && rq->misfit_task) {
+			trace_printk("fbq_tick: cpu=%i comm=busiest is misfit\n", i);
 			return rq;
+		}
 
 		capacity = capacity_of(i);
 
