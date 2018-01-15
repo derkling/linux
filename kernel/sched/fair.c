@@ -8493,9 +8493,15 @@ static int need_active_balance(struct lb_env *env)
 			return 1;
 	}
 
-	if (env->src_grp_type == group_misfit_task)
+	if (env->src_grp_type == group_misfit_task) {
+		trace_printk("need_active_balance: cpu=%i sd=%lx comm=misfit AB\n",
+			     env->dst_cpu, *cpumask_bits(sched_domain_span(sd)));
 		return 1;
+	}
 
+	trace_printk("need_active_balance: cpu=%i sd=%lx attempt=%i\n",
+		     env->dst_cpu, *cpumask_bits(sched_domain_span(sd)),
+		     sd->nr_balance_failed);
 	return unlikely(sd->nr_balance_failed > sd->cache_nice_tries+2);
 }
 
