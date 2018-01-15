@@ -8979,8 +8979,11 @@ static int idle_balance(struct rq *this_rq, struct rq_flags *rf)
 
 out:
 	/* Move the next balance forward */
-	if (time_after(this_rq->next_balance, next_balance))
+	if (time_after(this_rq->next_balance, next_balance)) {
+		trace_printk("rq_next_balance: cpu=%i next_balance=%lu type=idle\n",
+			     this_rq->cpu, next_balance);
 		this_rq->next_balance = next_balance;
+	}
 
 	/* Is there a task of a high priority class? */
 	if (this_rq->nr_running != this_rq->cfs.h_nr_running)
@@ -9324,6 +9327,8 @@ out:
 	 */
 	if (likely(update_next_balance)) {
 		rq->next_balance = next_balance;
+		trace_printk("rq_next_balance: cpu=%i next_balance=%lu type=rebalance\n",
+			     cpu, next_balance);
 
 #ifdef CONFIG_NO_HZ_COMMON
 		/*
