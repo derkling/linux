@@ -9287,6 +9287,11 @@ static void rebalance_domains(struct rq *rq, enum cpu_idle_type idle)
 
 		interval = get_sd_balance_interval(sd, idle != CPU_IDLE);
 
+		trace_printk("rebalance_tick: cpu=%i sd=%lx now=%lu "
+			     "prev=%lu next=%lu interval=%lu idle=%i\n",
+			     cpu, *cpumask_bits(sched_domain_span(sd)), jiffies,
+			     sd->last_balance, sd->last_balance + interval, interval, idle);
+
 		need_serialize = sd->flags & SD_SERIALIZE;
 		if (need_serialize) {
 			if (!spin_trylock(&balancing))
