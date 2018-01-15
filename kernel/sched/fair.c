@@ -8912,6 +8912,10 @@ static int idle_balance(struct rq *this_rq, struct rq_flags *rf)
 	 */
 	rq_unpin_lock(this_rq, rf);
 
+	trace_printk("idle_balance_tick: avg_idle=%llu, migration_cost=%u, should_ilb=%i\n",
+		     this_rq->avg_idle, sysctl_sched_migration_cost,
+		     this_rq->rd->should_idle_balance);
+
 	if (this_rq->avg_idle < sysctl_sched_migration_cost ||
 	    !this_rq->rd->should_idle_balance) {
 		rcu_read_lock();
