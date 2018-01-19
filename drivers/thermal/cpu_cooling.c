@@ -256,8 +256,8 @@ static int cpufreq_thermal_notifier(struct notifier_block *nb,
 /**
  * build_dyn_power_table() - create a dynamic power to frequency table
  * @cpufreq_device:	the cpufreq cooling device in which to store the table
- * @capacitance: dynamic power coefficient for these cpus
- *
+ * @found_power:	boolean indicating if a power model was available for
+ *			the cooling device
  * Build a dynamic power to frequency table for this cpu and store it
  * in @cpufreq_device.  This table will be used in cpu_power_to_freq() and
  * cpu_freq_to_power() to convert between power and frequency
@@ -269,7 +269,7 @@ static int cpufreq_thermal_notifier(struct notifier_block *nb,
  * added/enabled while the function was executing.
  */
 static int build_dyn_power_table(struct cpufreq_cooling_device *cpufreq_device,
-				 u32 capacitance)
+				 bool *found_power)
 {
 	struct power_table *power_table;
 	struct dev_pm_opp *opp;
@@ -301,10 +301,11 @@ static int build_dyn_power_table(struct cpufreq_cooling_device *cpufreq_device,
 
 	rcu_read_lock();
 
+	*found_power = true;
+
 	for (freq = 0, i = 0;
 	     opp = dev_pm_opp_find_freq_ceil(dev, &freq), !IS_ERR(opp);
 	     freq++, i++) {
-		u32 freq_mhz, voltage_mv;
 		u64 power;
 
 		if (i >= num_opps) {
@@ -313,24 +314,23 @@ static int build_dyn_power_table(struct cpufreq_cooling_device *cpufreq_device,
 			goto free_power_table;
 		}
 
-		freq_mhz = freq / 1000000;
-		voltage_mv = dev_pm_opp_get_voltage(opp) / 1000;
-
-		/*
-		 * Do the multiplication with MHz and millivolt so as
-		 * to not overflow.
-		 */
-		power = (u64)capacitance * freq_mhz * voltage_mv * voltage_mv;
-		do_div(power, 1000000000);
+		power = dev_pm_opp_get_power(opp) / 1000;
 
 		/* frequency is stored in power_table in KHz */
 		power_table[i].frequency = freq / 1000;
 
 		/* power is stored in mW */
 		power_table[i].power = power;
+
+		if (!power)
+			*found_power = false;
 	}
 
 	rcu_read_unlock();
+
+	if (!found_power)
+		dev_err(&cpufreq_device->cool_dev->device,
+			"The Dynamic power model contains invalid values!\n");
 
 	if (i != num_opps) {
 		ret = PTR_ERR(opp);
@@ -782,7 +782,6 @@ static unsigned int find_next_max(struct cpufreq_frequency_table *table,
  * @np: a valid struct device_node to the cooling device device tree node
  * @clip_cpus: cpumask of cpus where the frequency constraints will happen.
  * Normally this should be same as cpufreq policy->related_cpus.
- * @capacitance: dynamic power coefficient for these cpus
  * @plat_static_func: function to calculate the static power consumed by these
  *                    cpus (optional)
  *
@@ -796,7 +795,7 @@ static unsigned int find_next_max(struct cpufreq_frequency_table *table,
  */
 static struct thermal_cooling_device *
 __cpufreq_cooling_register(struct device_node *np,
-			const struct cpumask *clip_cpus, u32 capacitance,
+			const struct cpumask *clip_cpus,
 			get_static_t plat_static_func)
 {
 	struct cpufreq_policy *policy;
@@ -808,6 +807,7 @@ __cpufreq_cooling_register(struct device_node *np,
 	unsigned int freq, i, num_cpus;
 	int ret;
 	struct thermal_cooling_device_ops *cooling_ops;
+	bool found_power;
 
 	cpumask_and(&temp_mask, clip_cpus, cpu_online_mask);
 	policy = cpufreq_cpu_get(cpumask_first(&temp_mask));
@@ -862,15 +862,13 @@ __cpufreq_cooling_register(struct device_node *np,
 
 	cpumask_copy(&cpufreq_dev->allowed_cpus, clip_cpus);
 
-	if (capacitance) {
+	ret = build_dyn_power_table(cpufreq_dev, &found_power);
+	if (ret) {
+		cool_dev = ERR_PTR(ret);
+		goto free_table;
+	}
+	if (found_power) {
 		cpufreq_dev->plat_get_static_power = plat_static_func;
-
-		ret = build_dyn_power_table(cpufreq_dev, capacitance);
-		if (ret) {
-			cool_dev = ERR_PTR(ret);
-			goto free_table;
-		}
-
 		cooling_ops = &cpufreq_power_cooling_ops;
 	} else {
 		cooling_ops = &cpufreq_cooling_ops;
@@ -951,7 +949,7 @@ put_policy:
 struct thermal_cooling_device *
 cpufreq_cooling_register(const struct cpumask *clip_cpus)
 {
-	return __cpufreq_cooling_register(NULL, clip_cpus, 0, NULL);
+	return __cpufreq_cooling_register(NULL, clip_cpus, NULL);
 }
 EXPORT_SYMBOL_GPL(cpufreq_cooling_register);
 
@@ -975,14 +973,13 @@ of_cpufreq_cooling_register(struct device_node *np,
 	if (!np)
 		return ERR_PTR(-EINVAL);
 
-	return __cpufreq_cooling_register(np, clip_cpus, 0, NULL);
+	return __cpufreq_cooling_register(np, clip_cpus, NULL);
 }
 EXPORT_SYMBOL_GPL(of_cpufreq_cooling_register);
 
 /**
  * cpufreq_power_cooling_register() - create cpufreq cooling device with power extensions
  * @clip_cpus:	cpumask of cpus where the frequency constraints will happen
- * @capacitance:	dynamic power coefficient for these cpus
  * @plat_static_func:	function to calculate the static power consumed by these
  *			cpus (optional)
  *
@@ -1001,11 +998,10 @@ EXPORT_SYMBOL_GPL(of_cpufreq_cooling_register);
  * on failure, it returns a corresponding ERR_PTR().
  */
 struct thermal_cooling_device *
-cpufreq_power_cooling_register(const struct cpumask *clip_cpus, u32 capacitance,
+cpufreq_power_cooling_register(const struct cpumask *clip_cpus,
 			       get_static_t plat_static_func)
 {
-	return __cpufreq_cooling_register(NULL, clip_cpus, capacitance,
-				plat_static_func);
+	return __cpufreq_cooling_register(NULL, clip_cpus, plat_static_func);
 }
 EXPORT_SYMBOL(cpufreq_power_cooling_register);
 
@@ -1013,7 +1009,6 @@ EXPORT_SYMBOL(cpufreq_power_cooling_register);
  * of_cpufreq_power_cooling_register() - create cpufreq cooling device with power extensions
  * @np:	a valid struct device_node to the cooling device device tree node
  * @clip_cpus:	cpumask of cpus where the frequency constraints will happen
- * @capacitance:	dynamic power coefficient for these cpus
  * @plat_static_func:	function to calculate the static power consumed by these
  *			cpus (optional)
  *
@@ -1035,14 +1030,12 @@ EXPORT_SYMBOL(cpufreq_power_cooling_register);
 struct thermal_cooling_device *
 of_cpufreq_power_cooling_register(struct device_node *np,
 				  const struct cpumask *clip_cpus,
-				  u32 capacitance,
 				  get_static_t plat_static_func)
 {
 	if (!np)
 		return ERR_PTR(-EINVAL);
 
-	return __cpufreq_cooling_register(np, clip_cpus, capacitance,
-				plat_static_func);
+	return __cpufreq_cooling_register(np, clip_cpus, plat_static_func);
 }
 EXPORT_SYMBOL(of_cpufreq_power_cooling_register);
 
