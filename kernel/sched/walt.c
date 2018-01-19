@@ -69,7 +69,7 @@ static unsigned int max_possible_capacity = 1024;
 static cpumask_t mpc_mask = CPU_MASK_ALL;
 
 /* Window size (in ns) */
-__read_mostly unsigned int walt_ravg_window = 20000000;
+__read_mostly unsigned int walt_ravg_window = 10000000;
 
 /* Min window size (in ns) = 10ms */
 #ifdef CONFIG_HZ_300
