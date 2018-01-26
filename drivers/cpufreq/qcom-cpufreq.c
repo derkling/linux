@@ -104,6 +104,12 @@ static int msm_cpufreq_target(struct cpufreq_policy *policy,
 
 	ret = set_cpu_freq(policy, table[index].frequency,
 			   table[index].driver_data);
+
+	if (!ret) {
+		unsigned long freq = table[index].frequency;
+		arch_set_freq_scale(policy->related_cpus, freq,
+				    policy->cpuinfo.max_freq);
+	}
 done:
 	mutex_unlock(&per_cpu(suspend_data, policy->cpu).suspend_mutex);
 	return ret;
