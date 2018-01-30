@@ -51,8 +51,6 @@
 unsigned int sysctl_sched_latency = 6000000ULL;
 unsigned int normalized_sysctl_sched_latency = 6000000ULL;
 
-unsigned int sysctl_sched_cstate_aware = 1;
-
 /*
  * The initial- and re-scaling of tunables is configurable
  * (default SCHED_TUNABLESCALING_LOG = *(1+ilog(ncpus))
@@ -5471,25 +5469,21 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
 {
 	struct sched_domain *sd;
 	struct sched_group *sg;
-	int best_idle_cpu = -1;
-	int best_idle_cstate = INT_MAX;
-	unsigned long best_idle_capacity = ULONG_MAX;
+	int i;
 
 	schedstat_inc(p, se.statistics.nr_wakeups_sis_attempts);
 
-	if (!sysctl_sched_cstate_aware) {
-		if (idle_cpu(target)) {
-			schedstat_inc(p, se.statistics.nr_wakeups_sis_idle);
-			return target;
-		}
+	if (idle_cpu(target)) {
+		schedstat_inc(p, se.statistics.nr_wakeups_sis_idle);
+		return target;
+	}
 
-		/*
-		 * If the prevous cpu is cache affine and idle, don't be stupid.
-		 */
-		if (prev != target && cpus_share_cache(prev, target) && idle_cpu(prev)) {
-			schedstat_inc(p, se.statistics.nr_wakeups_sis_cache_affine);
-			return prev;
-		}
+	/*
+	 * If the prevous cpu is cache affine and idle, don't be stupid.
+	 */
+	if (prev != target && cpus_share_cache(prev, target) && idle_cpu(prev)) {
+	    schedstat_inc(p, se.statistics.nr_wakeups_sis_cache_affine);
+		return prev;
 	}
 
 	/*
@@ -5499,50 +5493,23 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
 	for_each_lower_domain(sd) {
 		sg = sd->groups;
 		do {
-			int i;
 			if (!cpumask_intersects(sched_group_cpus(sg),
 						tsk_cpus_allowed(p)))
 				goto next;
 
-			if (sysctl_sched_cstate_aware) {
-				for_each_cpu_and(i, tsk_cpus_allowed(p), sched_group_cpus(sg)) {
-					int idle_idx = idle_get_state_idx(cpu_rq(i));
-					unsigned long new_usage = task_util(p);
-					unsigned long capacity_orig = capacity_orig_of(i);
-
-					if (new_usage > capacity_orig || !idle_cpu(i))
-						goto next;
-
-					if (i == target && new_usage <= capacity_curr_of(target)) {
-						schedstat_inc(p, se.statistics.nr_wakeups_sis_suff_cap);
-						return target;
-					}
-
-					if (idle_idx < best_idle_cstate &&
-					    capacity_orig <= best_idle_capacity) {
-						best_idle_cpu = i;
-						best_idle_cstate = idle_idx;
-						best_idle_capacity = capacity_orig;
-					}
-				}
-			} else {
-				for_each_cpu(i, sched_group_cpus(sg)) {
-					if (i == target || !idle_cpu(i))
-						goto next;
-				}
-
-				target = cpumask_first_and(sched_group_cpus(sg),
-					tsk_cpus_allowed(p));
-				schedstat_inc(p, se.statistics.nr_wakeups_sis_idle_cpu);
-				goto done;
+			for_each_cpu(i, sched_group_cpus(sg)) {
+				if (i == target || !idle_cpu(i))
+					goto next;
 			}
+
+			target = cpumask_first_and(sched_group_cpus(sg),
+					tsk_cpus_allowed(p));
+			schedstat_inc(p, se.statistics.nr_wakeups_sis_idle_cpu);
+			goto done;
 next:
 			sg = sg->next;
 		} while (sg != sd->groups);
 	}
-
-	if (best_idle_cpu >= 0)
-		target = best_idle_cpu;
 
 done:
 	schedstat_inc(p, se.statistics.nr_wakeups_sis_count);
