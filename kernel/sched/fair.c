@@ -6757,7 +6757,6 @@ static void update_cpu_capacity(struct sched_domain *sd, int cpu)
 
 	cpu_rq(cpu)->cpu_capacity = capacity;
 	sdg->sgc->capacity = capacity;
-	sdg->sgc->max_capacity = capacity;
 	sdg->sgc->min_capacity = capacity;
 }
 
@@ -6765,7 +6764,7 @@ void update_group_capacity(struct sched_domain *sd, int cpu)
 {
 	struct sched_domain *child = sd->child;
 	struct sched_group *group, *sdg = sd->groups;
-	unsigned long capacity, max_capacity, min_capacity;
+	unsigned long capacity, min_capacity;
 	unsigned long interval;
 
 	interval = msecs_to_jiffies(sd->balance_interval);
@@ -6778,7 +6777,6 @@ void update_group_capacity(struct sched_domain *sd, int cpu)
 	}
 
 	capacity = 0;
-	max_capacity = 0;
 	min_capacity = ULONG_MAX;
 
 	if (child->flags & SD_OVERLAP) {
@@ -6809,7 +6807,6 @@ void update_group_capacity(struct sched_domain *sd, int cpu)
 				capacity += sgc->capacity;
 			}
 
-			max_capacity = max(capacity, max_capacity);
 			min_capacity = min(capacity, min_capacity);
 		}
 	} else  {
@@ -6823,14 +6820,12 @@ void update_group_capacity(struct sched_domain *sd, int cpu)
 			struct sched_group_capacity *sgc = group->sgc;
 
 			capacity += sgc->capacity;
-			max_capacity = max(sgc->max_capacity, max_capacity);
 			min_capacity = min(sgc->min_capacity, min_capacity);
 			group = group->next;
 		} while (group != child->groups);
 	}
 
 	sdg->sgc->capacity = capacity;
-	sdg->sgc->max_capacity = max_capacity;
 	sdg->sgc->min_capacity = min_capacity;
 }
 
