@@ -53,8 +53,8 @@
 
 			endpoint@0 {
 				remote-endpoint = <0x4>;
-				linux,phandle = <0x9>;
-				phandle = <0x9>;
+				linux,phandle = <0xa>;
+				phandle = <0xa>;
 			};
 		};
 	};
@@ -170,6 +170,11 @@
 		reg = <0x0 0x80000000 0x4 0x0>;
 	};
 
+	psci {
+		compatible = "arm,psci-1.0", "arm,psci-0.2";
+		method = "smc";
+	};
+
 	LITTLE_L2: l2-cache0 {
 		compatible = "cache";
 	};
@@ -200,7 +205,7 @@
 				547   287
 				731   497
 				876   741
-			       1024   1061
+				1024  1061
 			>;
 			idle-cost-data = <
 				4
@@ -230,7 +235,7 @@
 				675    0
 				849    0
 				937    0
-			       1024    0
+				1024   0
 			>;
 			idle-cost-data = <
 				 0
@@ -245,61 +250,85 @@
 		#address-cells = <0x1>;
 		#size-cells = <0x0>;
 
-                cpu-map {
-                        cluster0 {
-                                core0 {
-                                        cpu = <&cpu0>;
-                                };
+		idle-states {
+			entry-method = "arm,psci";
 
-                                core1 {
-                                        cpu = <&cpu1>;
-                                };
+			cpu-sleep-0 {
+				compatible = "arm,idle-state";
+				local-timer-stop;
+				arm,psci-suspend-param = <0x10000>;
+				entry-latency-us = <0x28>;
+				exit-latency-us = <0x64>;
+				min-residency-us = <0x96>;
+				linux,phandle = <0x9>;
+				phandle = <0x9>;
+				};
+			cpu-sleep-1 {
+				compatible = "arm,idle-state";
+				local-timer-stop;
+				arm,psci-suspend-param = <0x1010000>;
+				entry-latency-us = <0x50>;
+				exit-latency-us = <0xc8>;
+				min-residency-us = <0x12c>;
+				linux,phandle = <0x10>;
+				phandle = <0x10>;
+				};
+		};
 
-                                core2 {
-                                        cpu = <&cpu2>;
-                                };
+		cpu-map {
+			cluster0 {
+				core0 {
+					cpu = <&cpu0>;
+				};
 
-                                core3 {
-                                        cpu = <&cpu3>;
-                                };
-                        };
+				core1 {
+					cpu = <&cpu1>;
+				};
 
-                        cluster1 {
-                                core0 {
-                                        cpu = <&cpu4>;
-                                };
-
-                                core1 {
-                                        cpu = <&cpu5>;
-                                };
- 
 				core2 {
-                                        cpu = <&cpu6>;
-                                };
+					cpu = <&cpu2>;
+				};
 
-                                core3 {
-                                        cpu = <&cpu7>;
-                                };
-                        };
-                };
+				core3 {
+					cpu = <&cpu3>;
+				};
+			};
+
+			cluster1 {
+				core0 {
+					cpu = <&cpu4>;
+				};
+
+				core1 {
+					cpu = <&cpu5>;
+				};
+
+				core2 {
+					cpu = <&cpu6>;
+				};
+
+				core3 {
+					cpu = <&cpu7>;
+				};
+			};
+		};
 
 		cpu0: cpu@0 {
 			device_type = "cpu";
 			compatible = "gem5,armv8", "arm,armv8";
 			reg = <0x0>;
-			enable-method = "spin-table";
-			cpu-release-addr = <0x0 0x8000fff8>;
+			enable-method = "psci";
+			cpu-idle-states = <0x9 0x10>;
 			next-level-cache = <&LITTLE_L2>;
 			sched-energy-costs = <&CPU_COST_LITTLE &CLUSTER_COST_LITTLE>;
-
 		};
 
 		cpu1: cpu@1 {
 			device_type = "cpu";
 			compatible = "gem5,armv8", "arm,armv8";
 			reg = <0x1>;
-			enable-method = "spin-table";
-			cpu-release-addr = <0x0 0x8000fff8>;
+			enable-method = "psci";
+			cpu-idle-states = <0x9 0x10>;
 			next-level-cache = <&LITTLE_L2>;
 			sched-energy-costs = <&CPU_COST_LITTLE &CLUSTER_COST_LITTLE>;
 		};
@@ -308,8 +337,8 @@
 			device_type = "cpu";
 			compatible = "gem5,armv8", "arm,armv8";
 			reg = <0x2>;
-			enable-method = "spin-table";
-			cpu-release-addr = <0x0 0x8000fff8>;
+			enable-method = "psci";
+			cpu-idle-states = <0x9 0x10>;
 			next-level-cache = <&LITTLE_L2>;
 			sched-energy-costs = <&CPU_COST_LITTLE &CLUSTER_COST_LITTLE>;
 		};
@@ -318,8 +347,8 @@
 			device_type = "cpu";
 			compatible = "gem5,armv8", "arm,armv8";
 			reg = <0x3>;
-			enable-method = "spin-table";
-			cpu-release-addr = <0x0 0x8000fff8>;
+			enable-method = "psci";
+			cpu-idle-states = <0x9 0x10>;
 			next-level-cache = <&LITTLE_L2>;
 			sched-energy-costs = <&CPU_COST_LITTLE &CLUSTER_COST_LITTLE>;
 		};
@@ -328,8 +357,8 @@
 			device_type = "cpu";
 			compatible = "gem5,armv8", "arm,armv8";
 			reg = <0x104>;
-			enable-method = "spin-table";
-			cpu-release-addr = <0x0 0x8000fff8>;
+			enable-method = "psci";
+			cpu-idle-states = <0x9 0x10>;
 			next-level-cache = <&BIG_L2>;
 			sched-energy-costs = <&CPU_COST_BIG &CLUSTER_COST_BIG>;
 		};
@@ -338,8 +367,8 @@
 			device_type = "cpu";
 			compatible = "gem5,armv8", "arm,armv8";
 			reg = <0x105>;
-			enable-method = "spin-table";
-			cpu-release-addr = <0x0 0x8000fff8>;
+			enable-method = "psci";
+			cpu-idle-states = <0x9 0x10>;
 			next-level-cache = <&BIG_L2>;
 			sched-energy-costs = <&CPU_COST_BIG &CLUSTER_COST_BIG>;
 		};
@@ -348,8 +377,8 @@
 			device_type = "cpu";
 			compatible = "gem5,armv8", "arm,armv8";
 			reg = <0x106>;
-			enable-method = "spin-table";
-			cpu-release-addr = <0x0 0x8000fff8>;
+			enable-method = "psci";
+			cpu-idle-states = <0x9 0x10>;
 			next-level-cache = <&BIG_L2>;
 			sched-energy-costs = <&CPU_COST_BIG &CLUSTER_COST_BIG>;
 		};
@@ -358,8 +387,8 @@
 			device_type = "cpu";
 			compatible = "gem5,armv8", "arm,armv8";
 			reg = <0x107>;
-			enable-method = "spin-table";
-			cpu-release-addr = <0x0 0x8000fff8>;
+			enable-method = "psci";
+			cpu-idle-states = <0x9 0x10>;
 			next-level-cache = <&BIG_L2>;
 			sched-energy-costs = <&CPU_COST_BIG &CLUSTER_COST_BIG>;
 		};
@@ -371,14 +400,14 @@
 		port {
 
 			endpoint@0 {
-				remote-endpoint = <0x9>;
+				remote-endpoint = <0xa>;
 				linux,phandle = <0x4>;
 				phandle = <0x4>;
 			};
 		};
 
 		display-timings {
-			native-mode = <0xa>;
+			native-mode = <0xb>;
 
 			timing_1080p60 {
 				clock-frequency = <0x8d9ee20>;
@@ -390,9 +419,17 @@
 				vfront-porch = <0x24>;
 				vback-porch = <0x4>;
 				vsync-len = <0x5>;
-				linux,phandle = <0xa>;
-				phandle = <0xa>;
+				linux,phandle = <0xb>;
+				phandle = <0xb>;
 			};
 		};
+	};
+
+	pmu {
+		compatible = "arm, armv8-pmuv3";
+		interrupts = <0 60 4>,
+		             <0 61 4>,
+		             <0 62 4>,
+		             <0 63 4>;
 	};
 };
