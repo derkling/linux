@@ -7909,6 +7909,11 @@ static bool update_sd_pick_busiest(struct lb_env *env,
 	     !group_has_capacity(env, &sds->local_stat)))
 		return false;
 
+	if (sgs->group_type == group_overloaded &&
+	    group_smaller_cpu_capacity(sds->local, sg) &&
+	    (sgs->group_capacity * capacity_margin > sgs->group_load * 1024))
+		return false;
+
 	if (sgs->group_type > busiest->group_type)
 		return true;
 
