@@ -5581,6 +5581,8 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	int want_affine = 0;
 	int sync = wake_flags & WF_SYNC;
 
+	sync_entity_load_avg(&p->se);
+
 	if (sd_flag & SD_BALANCE_WAKE)
 		want_affine = !wake_wide(p) && !wake_cap(p, cpu, prev_cpu)
 			      && cpumask_test_cpu(cpu, tsk_cpus_allowed(p));
@@ -5610,15 +5612,6 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 		sd = NULL; /* Prefer wake_affine over balance flags */
 		if (cpu != prev_cpu && wake_affine(affine_sd, p, prev_cpu, sync))
 			new_cpu = cpu;
-	}
-
-	if (sd && !(sd_flag & SD_BALANCE_FORK)) {
-		/*
-		 * We're going to need the task's util for capacity_spare_wake
-		 * in find_idlest_group. Sync it up to prev_cpu's
-		 * last_update_time.
-		 */
-		sync_entity_load_avg(&p->se);
 	}
 
 	if (!sd) {
