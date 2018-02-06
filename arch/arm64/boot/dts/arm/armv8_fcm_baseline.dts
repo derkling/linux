@@ -170,11 +170,6 @@
 		reg = <0x0 0x80000000 0x4 0x0>;
 	};
 
-	psci {
-		compatible = "arm,psci-1.0", "arm,psci-0.2";
-		method = "smc";
-	};
-
 	LITTLE_L2: l2-cache0 {
 		compatible = "cache";
 	};
@@ -250,85 +245,61 @@
 		#address-cells = <0x1>;
 		#size-cells = <0x0>;
 
-		idle-states {
-			entry-method = "arm,psci";
+                cpu-map {
+                        cluster0 {
+                                core0 {
+                                        cpu = <&cpu0>;
+                                };
 
-			cpu-sleep-0 {
-				compatible = "arm,idle-state";
-				local-timer-stop;
-				arm,psci-suspend-param = <0x10000>;
-				entry-latency-us = <0x28>;
-				exit-latency-us = <0x64>;
-				min-residency-us = <0x96>;
-				linux,phandle = <0x9>;
-				phandle = <0x9>;
-				};
-			cpu-sleep-1 {
-				compatible = "arm,idle-state";
-				local-timer-stop;
-				arm,psci-suspend-param = <0x1010000>;
-				entry-latency-us = <0x50>;
-				exit-latency-us = <0xc8>;
-				min-residency-us = <0x12c>;
-				linux,phandle = <0x10>;
-				phandle = <0x10>;
-				};
-		};
+                                core1 {
+                                        cpu = <&cpu1>;
+                                };
 
-		cpu-map {
-			cluster0 {
-				core0 {
-					cpu = <&cpu0>;
-				};
+                                core2 {
+                                        cpu = <&cpu2>;
+                                };
 
-				core1 {
-					cpu = <&cpu1>;
-				};
+                                core3 {
+                                        cpu = <&cpu3>;
+                                };
+                        };
 
-				core2 {
-					cpu = <&cpu2>;
-				};
+                        cluster1 {
+                                core0 {
+                                        cpu = <&cpu4>;
+                                };
 
-				core3 {
-					cpu = <&cpu3>;
-				};
-			};
-
-			cluster1 {
-				core0 {
-					cpu = <&cpu4>;
-				};
-
-				core1 {
-					cpu = <&cpu5>;
-				};
+                                core1 {
+                                        cpu = <&cpu5>;
+                                };
 
 				core2 {
 					cpu = <&cpu6>;
 				};
 
-				core3 {
-					cpu = <&cpu7>;
-				};
-			};
-		};
+                                core3 {
+                                        cpu = <&cpu7>;
+                                };
+                        };
+                };
 
 		cpu0: cpu@0 {
 			device_type = "cpu";
 			compatible = "gem5,armv8", "arm,armv8";
 			reg = <0x0>;
-			enable-method = "psci";
-			cpu-idle-states = <0x9 0x10>;
+			enable-method = "spin-table";
+			cpu-release-addr = <0x0 0x8000fff8>;
 			next-level-cache = <&LITTLE_L2>;
 			sched-energy-costs = <&CPU_COST_LITTLE &CLUSTER_COST_LITTLE>;
+
 		};
 
 		cpu1: cpu@1 {
 			device_type = "cpu";
 			compatible = "gem5,armv8", "arm,armv8";
 			reg = <0x1>;
-			enable-method = "psci";
-			cpu-idle-states = <0x9 0x10>;
+			enable-method = "spin-table";
+			cpu-release-addr = <0x0 0x8000fff8>;
 			next-level-cache = <&LITTLE_L2>;
 			sched-energy-costs = <&CPU_COST_LITTLE &CLUSTER_COST_LITTLE>;
 		};
@@ -337,8 +308,8 @@
 			device_type = "cpu";
 			compatible = "gem5,armv8", "arm,armv8";
 			reg = <0x2>;
-			enable-method = "psci";
-			cpu-idle-states = <0x9 0x10>;
+			enable-method = "spin-table";
+			cpu-release-addr = <0x0 0x8000fff8>;
 			next-level-cache = <&LITTLE_L2>;
 			sched-energy-costs = <&CPU_COST_LITTLE &CLUSTER_COST_LITTLE>;
 		};
@@ -347,8 +318,8 @@
 			device_type = "cpu";
 			compatible = "gem5,armv8", "arm,armv8";
 			reg = <0x3>;
-			enable-method = "psci";
-			cpu-idle-states = <0x9 0x10>;
+			enable-method = "spin-table";
+			cpu-release-addr = <0x0 0x8000fff8>;
 			next-level-cache = <&LITTLE_L2>;
 			sched-energy-costs = <&CPU_COST_LITTLE &CLUSTER_COST_LITTLE>;
 		};
@@ -357,8 +328,8 @@
 			device_type = "cpu";
 			compatible = "gem5,armv8", "arm,armv8";
 			reg = <0x104>;
-			enable-method = "psci";
-			cpu-idle-states = <0x9 0x10>;
+			enable-method = "spin-table";
+			cpu-release-addr = <0x0 0x8000fff8>;
 			next-level-cache = <&BIG_L2>;
 			sched-energy-costs = <&CPU_COST_BIG &CLUSTER_COST_BIG>;
 		};
@@ -367,8 +338,8 @@
 			device_type = "cpu";
 			compatible = "gem5,armv8", "arm,armv8";
 			reg = <0x105>;
-			enable-method = "psci";
-			cpu-idle-states = <0x9 0x10>;
+			enable-method = "spin-table";
+			cpu-release-addr = <0x0 0x8000fff8>;
 			next-level-cache = <&BIG_L2>;
 			sched-energy-costs = <&CPU_COST_BIG &CLUSTER_COST_BIG>;
 		};
@@ -377,8 +348,8 @@
 			device_type = "cpu";
 			compatible = "gem5,armv8", "arm,armv8";
 			reg = <0x106>;
-			enable-method = "psci";
-			cpu-idle-states = <0x9 0x10>;
+			enable-method = "spin-table";
+			cpu-release-addr = <0x0 0x8000fff8>;
 			next-level-cache = <&BIG_L2>;
 			sched-energy-costs = <&CPU_COST_BIG &CLUSTER_COST_BIG>;
 		};
@@ -387,8 +358,8 @@
 			device_type = "cpu";
 			compatible = "gem5,armv8", "arm,armv8";
 			reg = <0x107>;
-			enable-method = "psci";
-			cpu-idle-states = <0x9 0x10>;
+			enable-method = "spin-table";
+			cpu-release-addr = <0x0 0x8000fff8>;
 			next-level-cache = <&BIG_L2>;
 			sched-energy-costs = <&CPU_COST_BIG &CLUSTER_COST_BIG>;
 		};
