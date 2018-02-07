@@ -7345,6 +7345,7 @@ static int build_sched_domains(const struct cpumask *cpu_map,
 	struct sched_domain *sd;
 	struct s_data d;
 	int i, ret = -ENOMEM;
+	int max_cpu, min_cpu;
 
 	alloc_state = __visit_domain_allocation_hell(&d, cpu_map);
 	if (alloc_state != sa_rootdomain)
@@ -7378,7 +7379,7 @@ static int build_sched_domains(const struct cpumask *cpu_map,
 		}
 	}
 
-	/* Calculate CPU capacity for physical packages and nodes */
+	/* Initialise energy information and claim allocations */
 	for (i = nr_cpumask_bits-1; i >= 0; i--) {
 		struct sched_domain_topology_level *tl = sched_domain_topology;
 
@@ -7388,16 +7389,26 @@ static int build_sched_domains(const struct cpumask *cpu_map,
 		for (sd = *per_cpu_ptr(d.sd, i); sd; sd = sd->parent, tl++) {
 			init_sched_energy(i, sd, tl->energy);
 			claim_allocations(i, sd);
-			init_sched_groups_capacity(i, sd);
 		}
 	}
 
 	/* Attach the domains */
 	rcu_read_lock();
-	for_each_cpu(i, cpu_map) {
-		int max_cpu = READ_ONCE(d.rd->max_cap_orig_cpu);
-		int min_cpu = READ_ONCE(d.rd->min_cap_orig_cpu);
+	for_each_cpu(i, cpu_map)
+		cpu_attach_domain(*per_cpu_ptr(d.sd, i), d.rd, i);
+	rcu_read_unlock();
 
+	/* Calculate CPU capacity for physical packages and nodes */
+	for (i = nr_cpumask_bits-1; i >= 0; i--) {
+		if (!cpumask_test_cpu(i, cpu_map))
+			continue;
+		max_cpu = READ_ONCE(d.rd->max_cap_orig_cpu);
+		min_cpu = READ_ONCE(d.rd->min_cap_orig_cpu);
+
+		for (sd = *per_cpu_ptr(d.sd, i); sd; sd = sd->parent)
+			init_sched_groups_capacity(i, sd);
+
+		/* cpu_capacity_orig was updated for min max and current CPU */
 		if ((max_cpu < 0) || (cpu_rq(i)->cpu_capacity_orig >
 		    cpu_rq(max_cpu)->cpu_capacity_orig))
 			WRITE_ONCE(d.rd->max_cap_orig_cpu, i);
@@ -7405,12 +7416,7 @@ static int build_sched_domains(const struct cpumask *cpu_map,
 		if ((min_cpu < 0) || (cpu_rq(i)->cpu_capacity_orig <
 		    cpu_rq(min_cpu)->cpu_capacity_orig))
 			WRITE_ONCE(d.rd->min_cap_orig_cpu, i);
-
-		sd = *per_cpu_ptr(d.sd, i);
-
-		cpu_attach_domain(sd, d.rd, i);
 	}
-	rcu_read_unlock();
 
 	ret = 0;
 error:
