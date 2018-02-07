@@ -6520,9 +6520,9 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 
 	rcu_read_lock();
 
+	want_energy = wake_energy(p, prev_cpu);
 	if (sd_flag & SD_BALANCE_WAKE) {
 		record_wakee(p);
-		want_energy = wake_energy(p, prev_cpu);
 		want_affine = !wake_wide(p) && !wake_cap(p, cpu, prev_cpu)
 			      && !want_energy &&
 			      cpumask_test_cpu(cpu, &p->cpus_allowed);
