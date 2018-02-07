@@ -5788,6 +5788,18 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 			break;
 	}
 
+	trace_printk("%s: %s, pid=%d, task_util=%lu, last_update_time=%llu, "
+		     "prev_cpu=%d, this_cpu=%d, prev_cpu_util=%d, this_cpu_util=%d, "
+		     "sd_flag=0x%x, wake_flags=0x%x, want_energy=%d",
+		     __func__, p->comm, p->pid, task_util(p), p->se.avg.last_update_time,
+		    prev_cpu, cpu, cpu_util_wake(prev_cpu, p), cpu_util_wake(cpu, p),
+		    sd_flag, wake_flags, want_energy);
+
+	if (energy_sd)
+		trace_printk("%s: %s, pid=%d, energy_sd=%s", __func__, p->comm, p->pid, energy_sd->name);
+	else
+		trace_printk("%s: %s, pid=%d, NO ENERGY SD", __func__, p->comm, p->pid);
+
 	if (affine_sd) {
 		sd = NULL; /* Prefer wake_affine over balance flags */
 		if (cpu != prev_cpu && wake_affine(affine_sd, p, prev_cpu, sync))
