@@ -9005,6 +9005,11 @@ static void set_curr_task_fair(struct rq *rq)
 {
 	struct sched_entity *se = &rq->curr->se;
 
+	if (entity_is_task(se)) {
+		trace_printk("%s: %s, pid=%d becomes FAIR",
+				__func__, task_of(se)->comm, task_of(se)->pid);
+	}
+
 	for_each_sched_entity(se) {
 		struct cfs_rq *cfs_rq = cfs_rq_of(se);
 

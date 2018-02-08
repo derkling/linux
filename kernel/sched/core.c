@@ -1031,6 +1031,21 @@ static inline void check_class_changed(struct rq *rq, struct task_struct *p,
 		if (prev_class->switched_from)
 			prev_class->switched_from(rq, p);
 
+
+		if (prev_class == &fair_sched_class)
+			trace_printk("%s: %s, pid=%d, prev class == FAIR ", __func__, p->comm, p->pid);
+		else if (prev_class == &rt_sched_class)
+			trace_printk("%s: %s, pid=%d, prev class == REAL TIME ", __func__, p->comm, p->pid);
+		else if (prev_class == &dl_sched_class)
+			trace_printk("%s: %s, pid=%d, prev class ==  DEADLINE", __func__, p->comm, p->pid);
+
+		if (p->sched_class == &fair_sched_class)
+			trace_printk("%s: %s, pid=%d, next class == FAIR ", __func__, p->comm, p->pid);
+		else if (p->sched_class == &rt_sched_class)
+			trace_printk("%s: %s, pid=%d, next class == REAL TIME ", __func__, p->comm, p->pid);
+		else if (p->sched_class == &dl_sched_class)
+			trace_printk("%s: %s, pid=%d, next class ==  DEADLINE", __func__, p->comm, p->pid);
+
 		p->sched_class->switched_to(rq, p);
 	} else if (oldprio != p->prio || dl_task(p))
 		p->sched_class->prio_changed(rq, p, oldprio);
@@ -3754,6 +3769,8 @@ static void __setscheduler_params(struct task_struct *p,
 	if (policy == SETPARAM_POLICY)
 		policy = p->policy;
 
+	trace_printk("%s: %s, pid=%d, prev_policy=%u, new_policy=%u",
+			__func__, p->comm, p->pid, p->policy, policy);
 	p->policy = policy;
 
 	if (dl_policy(policy))
@@ -4150,12 +4167,14 @@ static int _sched_setscheduler(struct task_struct *p, int policy,
 int sched_setscheduler(struct task_struct *p, int policy,
 		       const struct sched_param *param)
 {
+	trace_printk("%s: %s, pid=%d, policy=%d", __func__, p->comm, p->pid, policy);
 	return _sched_setscheduler(p, policy, param, true);
 }
 EXPORT_SYMBOL_GPL(sched_setscheduler);
 
 int sched_setattr(struct task_struct *p, const struct sched_attr *attr)
 {
+	trace_printk("%s: %s, pid=%d, policy=%u", __func__, p->comm, p->pid, attr->sched_policy);
 	return __sched_setscheduler(p, attr, true, true);
 }
 EXPORT_SYMBOL_GPL(sched_setattr);
@@ -4195,9 +4214,15 @@ do_sched_setscheduler(pid_t pid, int policy, struct sched_param __user *param)
 	rcu_read_lock();
 	retval = -ESRCH;
 	p = find_process_by_pid(pid);
-	if (p != NULL)
+	if (p != NULL) {
 		retval = sched_setscheduler(p, policy, &lparam);
+		if (!retval) {
+			trace_printk("%s: %s, pid=%d,  policy=%u, param.sched_priority=%d",
+				__func__, p->comm, pid, policy, lparam.sched_priority);
+		}
+	}
 	rcu_read_unlock();
+
 
 	return retval;
 }
@@ -4329,8 +4354,13 @@ SYSCALL_DEFINE3(sched_setattr, pid_t, pid, struct sched_attr __user *, uattr,
 	rcu_read_lock();
 	retval = -ESRCH;
 	p = find_process_by_pid(pid);
-	if (p != NULL)
+	if (p != NULL) {
 		retval = sched_setattr(p, &attr);
+		if (!retval) {
+			trace_printk("%s: %s, pid=%d, attr.{sched_policy=%u, sched_priority=%u, sched_nice=%d}",
+				__func__, p->comm, pid, attr.sched_policy, attr.sched_priority, attr.sched_nice);
+		}
+	}
 	rcu_read_unlock();
 
 	return retval;
@@ -7823,6 +7853,8 @@ void normalize_rt_tasks(void)
 			continue;
 		}
 
+		trace_printk("%s: %s, pid=%d, forcing task into FAIR",
+				__func__, p->comm, p->pid);
 		__sched_setscheduler(p, &attr, false, false);
 	}
 	read_unlock(&tasklist_lock);
