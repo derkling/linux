@@ -216,7 +216,7 @@ struct CounterData
  */
 static struct CounterData *virtAddress = NULL;
 
-#define PSCI_DEBUG 1
+#define PSCI_DEBUG 0
 /* debug related enum */
 enum DebugCallee {
     SUSPEND,
