@@ -767,16 +767,17 @@ void post_init_entity_util_avg(struct sched_entity *se)
 	struct cfs_rq *cfs_rq = cfs_rq_of(se);
 	struct sched_avg *sa = &se->avg;
 	long cap = (long)(SCHED_CAPACITY_SCALE - cfs_rq->avg.util_avg) / 2;
+	unsigned long util_avg;
 
 	if (cap > 0) {
 		if (cfs_rq->avg.util_avg != 0) {
-			sa->util_avg  = cfs_rq->avg.util_avg * se->load.weight;
-			sa->util_avg /= (cfs_rq->avg.load_avg + 1);
+			util_avg  =  cfs_rq->avg.util_avg * se->load.weight;
+			util_avg /= (cfs_rq->avg.load_avg + 1);
 
-			if (sa->util_avg > cap)
-				sa->util_avg = cap;
+			if (util_avg > cap)
+				WRITE_ONCE(sa->util_avg, cap);
 		} else {
-			sa->util_avg = cap;
+			WRITE_ONCE(sa->util_avg, cap);
 		}
 	}
 
@@ -2686,6 +2687,21 @@ account_entity_dequeue(struct cfs_rq *cfs_rq, struct sched_entity *se)
 }
 
 /*
+ * Unsigned add which allows lockless observations
+ *
+ * Explicitly do a load-store to ensure no tearing can be observed.
+ */
+#define add_once(_ptr, _val) do {                           \
+	typeof(_ptr) ptr = (_ptr);                              \
+	typeof(_val) val = (_val);                              \
+	typeof(*ptr) res, var = READ_ONCE(*ptr);                \
+								\
+	res = var + val;                                        \
+								\
+	WRITE_ONCE(*ptr, res);                                  \
+} while (0)
+
+/*
  * Signed add and clamp on underflow.
  *
  * Explicitly do a load-store to ensure the intermediate value never hits
@@ -3242,7 +3258,7 @@ ___update_load_avg(struct sched_avg *sa, unsigned long load, unsigned long runna
 	 */
 	sa->load_avg = div_u64(load * sa->load_sum, divider);
 	sa->runnable_load_avg =	div_u64(runnable * sa->runnable_load_sum, divider);
-	sa->util_avg = sa->util_sum / divider;
+	WRITE_ONCE(sa->util_avg, (sa->util_sum / divider));
 }
 
 /*
@@ -3485,7 +3501,7 @@ update_tg_cfs_util(struct cfs_rq *cfs_rq, struct sched_entity *se, struct cfs_rq
 	 */
 
 	/* Set new sched_entity's utilization */
-	se->avg.util_avg = gcfs_rq->avg.util_avg;
+	WRITE_ONCE(se->avg.util_avg, gcfs_rq->avg.util_avg);
 	se->avg.util_sum = se->avg.util_avg * LOAD_AVG_MAX;
 
 	/* Update parent cfs_rq utilization */
@@ -3733,8 +3749,8 @@ static void attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 	se->avg.runnable_load_sum = se->avg.load_sum;
 
 	enqueue_load_avg(cfs_rq, se);
-	cfs_rq->avg.util_avg += se->avg.util_avg;
 	cfs_rq->avg.util_sum += se->avg.util_sum;
+	add_once(&cfs_rq->avg.util_avg, se->avg.util_avg);
 
 	add_tg_cfs_propagate(cfs_rq, se->avg.load_sum);
 
@@ -6270,7 +6286,7 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
  */
 static unsigned long cpu_util(int cpu)
 {
-	unsigned long util = cpu_rq(cpu)->cfs.avg.util_avg;
+	unsigned long util = READ_ONCE(cpu_rq(cpu)->cfs.avg.util_avg);
 	unsigned long capacity = capacity_orig_of(cpu);
 
 	return (util >= capacity) ? capacity : util;
@@ -6278,7 +6294,7 @@ static unsigned long cpu_util(int cpu)
 
 static inline unsigned long task_util(struct task_struct *p)
 {
-	return p->se.avg.util_avg;
+	return READ_ONCE(p->se.avg.util_avg);
 }
 
 /*
@@ -6293,6 +6309,8 @@ static unsigned long cpu_util_wake(int cpu, struct task_struct *p)
 	if (cpu != task_cpu(p) || !p->se.avg.last_update_time)
 		return cpu_util(cpu);
 
+	util  = READ_ONCE(cpu_rq(cpu)->cfs.avg.util_avg);
+	util -= min(util, task_util(p));
 	capacity = capacity_orig_of(cpu);
 	util = max_t(long, cpu_rq(cpu)->cfs.avg.util_avg - task_util(p), 0);
 
