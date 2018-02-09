@@ -6289,7 +6289,7 @@ static unsigned long cpu_util(int cpu)
 	unsigned long util = READ_ONCE(cpu_rq(cpu)->cfs.avg.util_avg);
 	unsigned long capacity = capacity_orig_of(cpu);
 
-	return (util >= capacity) ? capacity : util;
+	return min(cpu_util, capacity);
 }
 
 static inline unsigned long task_util(struct task_struct *p)
@@ -6311,10 +6311,10 @@ static unsigned long cpu_util_wake(int cpu, struct task_struct *p)
 
 	util  = READ_ONCE(cpu_rq(cpu)->cfs.avg.util_avg);
 	util -= min(util, task_util(p));
-	capacity = capacity_orig_of(cpu);
-	util = max_t(long, cpu_rq(cpu)->cfs.avg.util_avg - task_util(p), 0);
 
-	return (util >= capacity) ? capacity : util;
+	capacity = capacity_orig_of(cpu);
+
+	return min(util, capacity);
 }
 
 /*
