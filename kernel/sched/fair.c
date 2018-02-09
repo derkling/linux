@@ -10195,6 +10195,12 @@ static void switched_to_fair(struct rq *rq, struct task_struct *p)
 			resched_curr(rq);
 		else
 			check_preempt_curr(rq, p, 0);
+
+		/*
+		 * Update CPU capacity and group capacity for groups
+		 * containing that CPU
+		 */
+		update_sched_groups_capacity(get_cpu_mask(cpu_of(rq)));
 	}
 }
 
