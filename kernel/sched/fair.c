@@ -5234,7 +5234,7 @@ static long effective_load(struct task_group *tg, int cpu, long wl, long wg)
  */
 unsigned long capacity_curr_of(int cpu)
 {
-	return cpu_rq(cpu)->cpu_capacity_orig *
+	return arch_scale_cpu_capacity(NULL, cpu) *
 	       arch_scale_freq_capacity(NULL, cpu)
 	       >> SCHED_CAPACITY_SHIFT;
 }
