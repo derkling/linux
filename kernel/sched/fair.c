@@ -794,7 +794,7 @@ void post_init_entity_util_avg(struct sched_entity *se)
 			 * such that the next switched_to_fair() has the
 			 * expected state.
 			 */
-			se->avg.last_update_time = cfs_rq_clock_task(cfs_rq);
+			WRITE_ONCE(se->avg.last_update_time, cfs_rq_clock_task(cfs_rq));
 			return;
 		}
 	}
@@ -3411,7 +3411,7 @@ void set_task_rq_fair(struct sched_entity *se,
 	n_last_update_time = next->avg.last_update_time;
 #endif
 	__update_load_avg_blocked_se(p_last_update_time, cpu_of(rq_of(prev)), se);
-	se->avg.last_update_time = n_last_update_time;
+	WRITE_ONCE(se->avg.last_update_time, n_last_update_time);
 }
 
 
@@ -3729,7 +3729,7 @@ static void attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 	 *
 	 * XXX illustrate
 	 */
-	se->avg.last_update_time = cfs_rq->avg.last_update_time;
+	WRITE_ONCE(se->avg.last_update_time, cfs_rq->avg.last_update_time);
 	se->avg.period_contrib = cfs_rq->avg.period_contrib;
 
 	/*
@@ -3827,7 +3827,7 @@ static inline u64 cfs_rq_last_update_time(struct cfs_rq *cfs_rq)
 #else
 static inline u64 cfs_rq_last_update_time(struct cfs_rq *cfs_rq)
 {
-	return cfs_rq->avg.last_update_time;
+	return READ_ONCE(cfs_rq->avg.last_update_time);
 }
 #endif
 
@@ -6306,7 +6306,7 @@ static unsigned long cpu_util_wake(int cpu, struct task_struct *p)
 	unsigned long util, capacity;
 
 	/* Task has no contribution or is new */
-	if (cpu != task_cpu(p) || !p->se.avg.last_update_time)
+	if (cpu != task_cpu(p) || !READ_ONCE(p->se.avg.last_update_time))
 		return cpu_util(cpu);
 
 	util  = READ_ONCE(cpu_rq(cpu)->cfs.avg.util_avg);
@@ -6478,7 +6478,7 @@ static void migrate_task_rq_fair(struct task_struct *p)
 	}
 
 	/* Tell new CPU we are migrated */
-	p->se.avg.last_update_time = 0;
+	WRITE_ONCE(p->se.avg.last_update_time, 0);
 
 	/* We have migrated, no longer consider this task hot */
 	p->se.exec_start = 0;
@@ -9710,7 +9710,7 @@ static void task_move_group_fair(struct task_struct *p)
 
 #ifdef CONFIG_SMP
 	/* Tell se's cfs_rq has been changed -- migrated */
-	p->se.avg.last_update_time = 0;
+	WRITE_ONCE(p->se.avg.last_update_time, 0);
 #endif
 	attach_task_cfs_rq(p);
 }
