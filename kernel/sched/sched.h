@@ -2132,7 +2132,7 @@ static inline unsigned long cpu_util_cfs(struct rq *rq)
 
 	return max_t(unsigned long,
 		     rq->cfs.avg.util_avg,
-		     rq->cfs.avg.util_est.enqueued);
+		     READ_ONCE(rq->cfs.avg.util_est.enqueued));
 }
 
 #endif
