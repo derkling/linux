@@ -6474,8 +6474,15 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 
 static inline bool wake_energy(struct task_struct *p, int prev_cpu)
 {
+	struct sched_domain *sd = NULL;
+
 	if (!static_branch_unlikely(&sched_energy_present))
 		return false;
+
+	sd = rcu_dereference_sched(cpu_rq(prev_cpu)->sd);
+	if (!sd || sd_overutilized(sd))
+		return false;
+
 	return true;
 }
 
@@ -6502,6 +6509,8 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	int want_energy = 0;
 	int sync = wake_flags & WF_SYNC;
 
+	rcu_read_lock();
+
 	want_energy = wake_energy(p, prev_cpu);
 	if (sd_flag & SD_BALANCE_WAKE) {
 		record_wakee(p);
@@ -6510,7 +6519,6 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 			      cpumask_test_cpu(cpu, &p->cpus_allowed);
 	}
 
-	rcu_read_lock();
 	for_each_domain(cpu, tmp) {
 		if (!(tmp->flags & SD_LOAD_BALANCE))
 			break;
