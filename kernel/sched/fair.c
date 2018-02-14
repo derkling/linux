@@ -5339,7 +5339,7 @@ static inline void util_est_dequeue(struct cfs_rq *cfs_rq,
 	ue.ewma <<= UTIL_EST_WEIGHT_SHIFT;
 	ue.ewma  += last_ewma_diff;
 	ue.ewma >>= UTIL_EST_WEIGHT_SHIFT;
-	p->se.avg.util_est = ue;
+	WRITE_ONCE(p->se.avg.util_est, ue);
 }
 
 static void set_next_buddy(struct sched_entity *se);
@@ -6394,7 +6394,7 @@ static inline unsigned long task_util(struct task_struct *p)
 
 static inline unsigned long _task_util_est(struct task_struct *p)
 {
-	struct util_est ue = p->se.avg.util_est;
+	struct util_est ue = READ_ONCE(p->se.avg.util_est);
 
 	return max(ue.ewma, ue.enqueued);
 }
