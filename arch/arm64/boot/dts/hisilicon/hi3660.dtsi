@@ -168,7 +168,7 @@
 				arm,psci-suspend-param = <0x0010000>;
 				entry-latency-us = <40>;
 				exit-latency-us = <70>;
-				min-residency-us = <3000>;
+				min-residency-us = <500>;
 			};
 
 			CLUSTER_SLEEP_0: cluster-sleep-0 {
@@ -177,7 +177,7 @@
 				arm,psci-suspend-param = <0x1010000>;
 				entry-latency-us = <500>;
 				exit-latency-us = <5000>;
-				min-residency-us = <20000>;
+				min-residency-us = <5500>;
 			};
 
 			CLUSTER_SLEEP_1: cluster-sleep-1 {
@@ -186,7 +186,7 @@
 				arm,psci-suspend-param = <0x1010000>;
 				entry-latency-us = <1000>;
 				exit-latency-us = <5000>;
-				min-residency-us = <20000>;
+				min-residency-us = <6000>;
 			};
 		};
 
