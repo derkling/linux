@@ -6378,6 +6378,12 @@ struct capacity_state *find_cap_state(int cpu, unsigned long util)
 	struct capacity_state *cs = NULL;
 	int i;
 
+	/*
+	 * As the goal is to estimate the OPP reached for a specific util
+	 * value, mimic the behaviour of schedutil with a 1.25 coefficient
+	 */
+	util += util >> 2;
+
 	for (i = 0; i < em->nb_cap_states; i++) {
 		cs = &em->cap_states[i];
 		if (cs->cap > util)
