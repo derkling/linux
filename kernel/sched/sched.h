@@ -680,6 +680,9 @@ static inline bool sched_asym_prefer(int a, int b)
 	return arch_asym_cpu_priority(a) > arch_asym_cpu_priority(b);
 }
 
+/* Load balance status flags */
+#define LBS_OVERLOAD 0x1
+
 /*
  * We add the notion of a root-domain which will be used to define per-domain
  * variables. Each exclusive cpuset essentially defines an island domain by
@@ -695,8 +698,12 @@ struct root_domain {
 	cpumask_var_t		span;
 	cpumask_var_t		online;
 
-	/* Indicate more than one runnable task for any CPU */
-	bool			overload;
+	/*
+	 * Balance information of the underlying groups & domains.
+	 * Can be used e.g. to determine whether idle_balance can
+	 * help solve imbalance.
+	 */
+	unsigned int balance_status;
 
 	/*
 	 * The bit corresponding to a CPU gets set here if such CPU has more
@@ -1663,13 +1670,15 @@ static inline void sched_update_tick_dependency(struct rq *rq) { }
 static inline void add_nr_running(struct rq *rq, unsigned count)
 {
 	unsigned prev_nr = rq->nr_running;
-
+#ifdef CONFIG_SMP
+	unsigned int balance_status = READ_ONCE(rq->rd->balance_status);
+#endif
 	rq->nr_running = prev_nr + count;
 
 	if (prev_nr < 2 && rq->nr_running >= 2) {
 #ifdef CONFIG_SMP
-		if (!rq->rd->overload)
-			rq->rd->overload = true;
+		if (!balance_status & LBS_OVERLOAD)
+			WRITE_ONCE(rq->rd->balance_status, balance_status | LBS_OVERLOAD);
 #endif
 	}
 
