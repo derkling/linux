@@ -9312,6 +9312,9 @@ static void nohz_balancer_kick(struct rq *rq)
 		goto out;
 	}
 
+	if (rq->misfit_task_load)
+		goto out;
+
 	rcu_read_lock();
 	sds = rcu_dereference(per_cpu(sd_llc_shared, cpu));
 	if (sds) {
