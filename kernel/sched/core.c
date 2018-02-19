@@ -6599,6 +6599,7 @@ static void init_sched_groups_capacity(int cpu, struct sched_domain *sd)
 		rb_link_node(&cpu_rq(cpu)->capacity_node, parent, link);
 		rb_insert_color(&cpu_rq(cpu)->capacity_node,
 				&cpu_rq(cpu)->rd->capacity_root);
+		pr_err("Inserted cpu %d in capacity rbtree.\n", cpu);
 	}
 
 	atomic_set(&sg->sgc->nr_busy_cpus, sg->group_weight);
@@ -7379,6 +7380,7 @@ static int build_sched_domains(const struct cpumask *cpu_map,
 	struct s_data d;
 	int i, ret = -ENOMEM;
 	int max_cpu, min_cpu;
+	struct rb_node *cpu_node;
 
 	alloc_state = __visit_domain_allocation_hell(&d, cpu_map);
 	if (alloc_state != sa_rootdomain)
@@ -7450,6 +7452,22 @@ static int build_sched_domains(const struct cpumask *cpu_map,
 		    cpu_rq(min_cpu)->cpu_capacity_orig))
 			WRITE_ONCE(d.rd->min_cap_orig_cpu, i);
 	}
+
+	cpu_node = d.rd->capacity_leftmost;
+	do {
+		struct rq *cpu_rq = rb_entry(cpu_node, struct rq, capacity_node);
+		pr_err("Found CPU %d with capacity %lu in capacity rbtree.\n",
+		       cpu_of(cpu_rq), cpu_rq->cpu_capacity_orig);
+		cpu_node = rb_next(cpu_node);
+	} while(cpu_node);
+
+	cpu_node = d.rd->capacity_rightmost;
+	do {
+		struct rq *cpu_rq = rb_entry(cpu_node, struct rq, capacity_node);
+		pr_err("Found CPU %d with capacity %lu in capacity rbtree.\n",
+		       cpu_of(cpu_rq), cpu_rq->cpu_capacity_orig);
+		cpu_node = rb_prev(cpu_node);
+	} while(cpu_node);
 
 	ret = 0;
 error:
