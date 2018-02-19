@@ -673,6 +673,7 @@ struct rq {
 	struct sched_domain *sd;
 
 	unsigned long cpu_capacity;
+	unsigned long max_capacity;
 	unsigned long cpu_capacity_orig;
 	struct rb_node capacity_node;
 

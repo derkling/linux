@@ -6546,6 +6546,38 @@ build_sched_groups(struct sched_domain *sd, int cpu)
 	return 0;
 }
 
+static void add_to_capacity_tree(int cpu)
+{
+	struct rb_node **link = &cpu_rq(cpu)->rd->capacity_root.rb_node;
+	struct rb_node *parent = NULL;
+	struct rq *entry;
+	int leftmost = 1;
+	int rightmost = 1;
+
+	while (*link) {
+		parent = *link;
+		entry = rb_entry(parent, struct rq, capacity_node);
+		if (entry->max_capacity > cpu_rq(cpu)->max_capacity) {
+			link = &parent->rb_left;
+			rightmost = 0;
+		} else {
+			link = &parent->rb_right;
+			leftmost = 0;
+		}
+	}
+	if (leftmost)
+		cpu_rq(cpu)->rd->capacity_leftmost =
+			&cpu_rq(cpu)->capacity_node;
+	if (rightmost)
+		cpu_rq(cpu)->rd->capacity_rightmost =
+			&cpu_rq(cpu)->capacity_node;
+	rb_link_node(&cpu_rq(cpu)->capacity_node, parent, link);
+	rb_insert_color(&cpu_rq(cpu)->capacity_node,
+			&cpu_rq(cpu)->rd->capacity_root);
+
+	pr_err("Inserted cpu %d in capacity rbtree.\n", cpu);
+}
+
 /*
  * Initialize sched groups cpu_capacity.
  *
@@ -6559,11 +6591,6 @@ build_sched_groups(struct sched_domain *sd, int cpu)
 static void init_sched_groups_capacity(int cpu, struct sched_domain *sd)
 {
 	struct sched_group *sg = sd->groups;
-	struct rb_node **link = &cpu_rq(cpu)->rd->capacity_root.rb_node;
-	struct rb_node *parent = NULL;
-	struct rq *entry;
-	int leftmost = 1;
-	int rightmost = 1;
 
 	WARN_ON(!sg);
 
@@ -6577,30 +6604,8 @@ static void init_sched_groups_capacity(int cpu, struct sched_domain *sd)
 
 	update_group_capacity(sd, cpu);
 
-	if (!sd->child) {
-		while (*link) {
-			parent = *link;
-			entry = rb_entry(parent, struct rq, capacity_node);
-			if (entry->cpu_capacity_orig >
-			    cpu_rq(cpu)->cpu_capacity_orig) {
-				link = &parent->rb_left;
-				rightmost = 0;
-			} else {
-				link = &parent->rb_right;
-				leftmost = 0;
-			}
-		}
-		if (leftmost)
-			cpu_rq(cpu)->rd->capacity_leftmost =
-				&cpu_rq(cpu)->capacity_node;
-		if (rightmost)
-			cpu_rq(cpu)->rd->capacity_rightmost =
-				&cpu_rq(cpu)->capacity_node;
-		rb_link_node(&cpu_rq(cpu)->capacity_node, parent, link);
-		rb_insert_color(&cpu_rq(cpu)->capacity_node,
-				&cpu_rq(cpu)->rd->capacity_root);
-		pr_err("Inserted cpu %d in capacity rbtree.\n", cpu);
-	}
+	if (!sd->child)
+		add_to_capacity_tree(cpu);
 
 	atomic_set(&sg->sgc->nr_busy_cpus, sg->group_weight);
 }
@@ -6623,6 +6628,8 @@ void update_sched_groups_capacity(const cpumask_t *cpus)
 
 	for (cpu = nr_cpumask_bits-1; cpu >= 0; cpu--) {
 
+                if (!cpu_active(cpu))
+			continue;
 		if (!cpumask_test_cpu(cpu, cpus))
 			continue;
 
@@ -6631,6 +6638,11 @@ void update_sched_groups_capacity(const cpumask_t *cpus)
 				continue;
 			update_group_capacity(sd, cpu);
 		}
+
+		/* Update capacity rbtree */
+		rb_erase(&cpu_rq(cpu)->capacity_node,
+			 &cpu_rq(cpu)->rd->capacity_root);
+		add_to_capacity_tree(cpu);
 	}
 }
 
@@ -7912,7 +7924,8 @@ void __init sched_init(void)
 #ifdef CONFIG_SMP
 		rq->sd = NULL;
 		rq->rd = NULL;
-		rq->cpu_capacity = rq->cpu_capacity_orig = SCHED_CAPACITY_SCALE;
+		rq->cpu_capacity = rq->max_capacity = rq->cpu_capacity_orig =
+			SCHED_CAPACITY_SCALE;
 		rq->balance_callback = NULL;
 		rq->active_balance = 0;
 		rq->next_balance = jiffies;
