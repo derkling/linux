@@ -6614,6 +6614,8 @@ void update_sched_groups_capacity(const cpumask_t *cpus)
 {
 	int cpu;
 	struct sched_domain *sd;
+	struct rb_node *cpu_node;
+	struct root_domain *rd;
 
 	/*
 	 * update_group_capacity updates the first group in the passed
@@ -6639,11 +6641,20 @@ void update_sched_groups_capacity(const cpumask_t *cpus)
 			update_group_capacity(sd, cpu);
 		}
 
+		rd = cpu_rq(cpu)->rd;
 		/* Update capacity rbtree */
 		rb_erase(&cpu_rq(cpu)->capacity_node,
 			 &cpu_rq(cpu)->rd->capacity_root);
 		add_to_capacity_tree(cpu);
 	}
+
+	cpu_node = rd->capacity_leftmost;
+	do {
+		struct rq *cpu_rq = rb_entry(cpu_node, struct rq, capacity_node);
+		pr_err("Found CPU %d with capacity %lu in capacity rbtree.\n",
+		       cpu_of(cpu_rq), cpu_rq->max_capacity);
+		cpu_node = rb_next(cpu_node);
+	} while(cpu_node);
 }
 
 /*
@@ -7469,7 +7480,7 @@ static int build_sched_domains(const struct cpumask *cpu_map,
 	do {
 		struct rq *cpu_rq = rb_entry(cpu_node, struct rq, capacity_node);
 		pr_err("Found CPU %d with capacity %lu in capacity rbtree.\n",
-		       cpu_of(cpu_rq), cpu_rq->cpu_capacity_orig);
+		       cpu_of(cpu_rq), cpu_rq->max_capacity);
 		cpu_node = rb_next(cpu_node);
 	} while(cpu_node);
 
@@ -7477,7 +7488,7 @@ static int build_sched_domains(const struct cpumask *cpu_map,
 	do {
 		struct rq *cpu_rq = rb_entry(cpu_node, struct rq, capacity_node);
 		pr_err("Found CPU %d with capacity %lu in capacity rbtree.\n",
-		       cpu_of(cpu_rq), cpu_rq->cpu_capacity_orig);
+		       cpu_of(cpu_rq), cpu_rq->max_capacity);
 		cpu_node = rb_prev(cpu_node);
 	} while(cpu_node);
 
