@@ -378,6 +378,7 @@ struct cfs_rq {
 #endif
 
 #ifdef CONFIG_SMP
+
 	/*
 	 * CFS load tracking
 	 */
@@ -579,6 +580,10 @@ struct root_domain {
 
 	/* Maximum cpu capacity in the system. */
 	struct max_cpu_capacity max_cpu_capacity;
+	struct rb_root capacity_root;
+	struct rb_node *capacity_leftmost;
+	struct rb_node *capacity_rightmost;
+
 
 	/* First cpu with maximum and minimum original capacity */
 	int max_cap_orig_cpu, min_cap_orig_cpu;
@@ -669,6 +674,7 @@ struct rq {
 
 	unsigned long cpu_capacity;
 	unsigned long cpu_capacity_orig;
+	struct rb_node capacity_node;
 
 	struct callback_head *balance_callback;
 

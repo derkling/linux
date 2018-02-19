@@ -6121,6 +6121,9 @@ static int init_rootdomain(struct root_domain *rd)
 	init_max_cpu_capacity(&rd->max_cpu_capacity);
 
 	rd->max_cap_orig_cpu = rd->min_cap_orig_cpu = -1;
+	rd->capacity_root = RB_ROOT;
+	rd->capacity_leftmost = NULL;
+	rd->capacity_rightmost = NULL;
 
 	return 0;
 
@@ -6556,6 +6559,11 @@ build_sched_groups(struct sched_domain *sd, int cpu)
 static void init_sched_groups_capacity(int cpu, struct sched_domain *sd)
 {
 	struct sched_group *sg = sd->groups;
+	struct rb_node **link = &cpu_rq(cpu)->rd->capacity_root.rb_node;
+	struct rb_node *parent = NULL;
+	struct rq *entry;
+	int leftmost = 1;
+	int rightmost = 1;
 
 	WARN_ON(!sg);
 
@@ -6568,6 +6576,31 @@ static void init_sched_groups_capacity(int cpu, struct sched_domain *sd)
 		return;
 
 	update_group_capacity(sd, cpu);
+
+	if (!sd->child) {
+		while (*link) {
+			parent = *link;
+			entry = rb_entry(parent, struct rq, capacity_node);
+			if (entry->cpu_capacity_orig >
+			    cpu_rq(cpu)->cpu_capacity_orig) {
+				link = &parent->rb_left;
+				rightmost = 0;
+			} else {
+				link = &parent->rb_right;
+				leftmost = 0;
+			}
+		}
+		if (leftmost)
+			cpu_rq(cpu)->rd->capacity_leftmost =
+				&cpu_rq(cpu)->capacity_node;
+		if (rightmost)
+			cpu_rq(cpu)->rd->capacity_rightmost =
+				&cpu_rq(cpu)->capacity_node;
+		rb_link_node(&cpu_rq(cpu)->capacity_node, parent, link);
+		rb_insert_color(&cpu_rq(cpu)->capacity_node,
+				&cpu_rq(cpu)->rd->capacity_root);
+	}
+
 	atomic_set(&sg->sgc->nr_busy_cpus, sg->group_weight);
 }
 
