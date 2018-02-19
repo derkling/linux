@@ -6320,12 +6320,10 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 	unsigned long best_active_util = ULONG_MAX;
 	unsigned long target_idle_max_spare_cap = 0;
 	int best_idle_cstate = INT_MAX;
-	struct sched_domain *sd;
-	struct sched_group *sg;
 	int best_active_cpu = -1;
 	int best_idle_cpu = -1;
 	int target_cpu = -1;
-	int cpu, i;
+	int cpu;
 	struct rb_node *cpu_node;
 
 	*backup_cpu = -1;
@@ -6341,28 +6339,20 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 		return -1;
 	}
 
-	cpu = cpu_of(rb_entry(cpu_node, struct rq, capacity_node));
+	for (; cpu_node; cpu_node = boosted ?
+			 rb_prev(cpu_node) : rb_next(cpu_node)) {
 
-	/* Find SD for the start CPU */
-	sd = rcu_dereference(per_cpu(sd_ea, cpu));
-	if (!sd) {
-		schedstat_inc(p, se.statistics.nr_wakeups_fbt_no_sd);
-		schedstat_inc(this_rq(), eas_stats.fbt_no_sd);
-		return -1;
-	}
+		cpu = cpu_of(rb_entry(cpu_node, struct rq, capacity_node));
 
-	/* Scan CPUs in all SDs */
-	sg = sd->groups;
-	do {
-		for_each_cpu_and(i, tsk_cpus_allowed(p), sched_group_cpus(sg)) {
-			unsigned long capacity_curr = capacity_curr_of(i);
-			unsigned long capacity_orig = capacity_orig_of(i);
+		if (cpumask_test_cpu(cpu, tsk_cpus_allowed(p))) {
+			unsigned long capacity_curr = capacity_curr_of(cpu);
+			unsigned long capacity_orig = capacity_orig_of(cpu);
 			unsigned long wake_util, new_util, min_capped_util;
 
-			if (!cpu_online(i))
+			if (!cpu_online(cpu))
 				continue;
 
-			if (walt_cpu_high_irqload(i))
+			if (walt_cpu_high_irqload(cpu))
 				continue;
 
 			/*
@@ -6370,7 +6360,7 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 			 * so prev_cpu will receive a negative bias due to the double
 			 * accounting. However, the blocked utilization may be zero.
 			 */
-			wake_util = cpu_util_wake(i, p);
+			wake_util = cpu_util_wake(cpu, p);
 			new_util = wake_util + task_util(p);
 
 			/*
@@ -6387,7 +6377,7 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 			 * minimum capacity cap imposed on the CPU by external
 			 * actors.
 			 */
-			min_capped_util = max(new_util, capacity_min_of(i));
+			min_capped_util = max(new_util, capacity_min_of(cpu));
 
 			if (new_util > capacity_orig)
 				continue;
@@ -6426,16 +6416,16 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 				 * Case A.1: IDLE CPU
 				 * Return the first IDLE CPU we find.
 				 */
-				if (idle_cpu(i)) {
+				if (idle_cpu(cpu)) {
 					schedstat_inc(p, se.statistics.nr_wakeups_fbt_pref_idle);
 					schedstat_inc(this_rq(), eas_stats.fbt_pref_idle);
 
 					trace_sched_find_best_target(p,
 							prefer_idle, min_util,
 							cpu, best_idle_cpu,
-							best_active_cpu, i);
+							best_active_cpu, cpu);
 
-					return i;
+					return cpu;
 				}
 
 				/*
@@ -6445,7 +6435,7 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 				if ((capacity_curr > new_util) &&
 					(capacity_orig - new_util > target_max_spare_cap)) {
 					target_max_spare_cap = capacity_orig - new_util;
-					target_cpu = i;
+					target_cpu = cpu;
 					continue;
 				}
 				if (target_cpu != -1)
@@ -6464,7 +6454,7 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 					continue;
 				min_wake_util = wake_util;
 				best_active_util = new_util;
-				best_active_cpu = i;
+				best_active_cpu = cpu;
 				continue;
 			}
 
@@ -6505,8 +6495,8 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 			 * will take care to ensure the minimization of energy
 			 * consumptions without affecting performance.
 			 */
-			if (idle_cpu(i)) {
-				int idle_idx = idle_get_state_idx(cpu_rq(i));
+			if (idle_cpu(cpu)) {
+				int idle_idx = idle_get_state_idx(cpu_rq(cpu));
 
 				/* Select idle CPU with lower cap_orig */
 				if (capacity_orig > best_idle_min_cap_orig)
@@ -6533,7 +6523,7 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 				target_idle_max_spare_cap = capacity_orig -
 							    min_capped_util;
 				best_idle_cstate = idle_idx;
-				best_idle_cpu = i;
+				best_idle_cpu = cpu;
 				continue;
 			}
 
@@ -6568,10 +6558,9 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 
 			target_max_spare_cap = capacity_orig - min_capped_util;
 			target_capacity = capacity_orig;
-			target_cpu = i;
+			target_cpu = cpu;
 		}
-
-	} while (sg = sg->next, sg != sd->groups);
+	}
 
 	/*
 	 * For non latency sensitive tasks, cases B and C in the previous loop,
