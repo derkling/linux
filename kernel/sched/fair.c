@@ -6301,11 +6301,12 @@ static int cpu_util_wake(int cpu, struct task_struct *p)
 	return (util >= capacity) ? capacity : util;
 }
 
-static int start_cpu(bool boosted)
+static struct rb_node *start_cpu(bool boosted)
 {
 	struct root_domain *rd = cpu_rq(smp_processor_id())->rd;
 
-	return boosted ? rd->max_cap_orig_cpu : rd->min_cap_orig_cpu;
+	return boosted ? rd->capacity_rightmost : rd->capacity_leftmost;
+
 }
 
 static inline int find_best_target(struct task_struct *p, int *backup_cpu,
@@ -6325,6 +6326,7 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 	int best_idle_cpu = -1;
 	int target_cpu = -1;
 	int cpu, i;
+	struct rb_node *cpu_node;
 
 	*backup_cpu = -1;
 
@@ -6332,12 +6334,14 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 	schedstat_inc(this_rq(), eas_stats.fbt_attempts);
 
 	/* Find start CPU based on boost value */
-	cpu = start_cpu(boosted);
-	if (cpu < 0) {
+	cpu_node = start_cpu(boosted);
+	if (!cpu_node) {
 		schedstat_inc(p, se.statistics.nr_wakeups_fbt_no_cpu);
 		schedstat_inc(this_rq(), eas_stats.fbt_no_cpu);
 		return -1;
 	}
+
+	cpu = cpu_of(rb_entry(cpu_node, struct rq, capacity_node));
 
 	/* Find SD for the start CPU */
 	sd = rcu_dereference(per_cpu(sd_ea, cpu));
