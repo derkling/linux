@@ -3059,7 +3059,7 @@ static inline void cfs_rq_util_change(struct cfs_rq *cfs_rq)
 static inline void cfs_se_util_change(struct sched_avg *avg)
 {
 	if (sched_feat(UTIL_EST)) {
-		struct util_est ue = avg->util_est;
+		struct util_est ue = READ_ONCE(avg->util_est);
 
 		if (!(ue.enqueued & UTIL_EST_NEED_UPDATE_FLAG))
 			return;
@@ -5241,7 +5241,7 @@ static inline void util_est_enqueue(struct cfs_rq *cfs_rq,
 		return;
 
 	/* Update root cfs_rq's estimated utilization */
-	enqueued  = cfs_rq->avg.util_est.enqueued;
+	enqueued  = READ_ONCE(cfs_rq->avg.util_est.enqueued);
 	enqueued += (_task_util_est(p) | 0x1);
 	WRITE_ONCE(cfs_rq->avg.util_est.enqueued, enqueued);
 }
@@ -5332,7 +5332,7 @@ static inline void util_est_dequeue(struct cfs_rq *cfs_rq,
 	 */
 	ue.enqueued = 0;
 	if (cfs_rq->nr_running) {
-		ue.enqueued  = cfs_rq->avg.util_est.enqueued;
+		ue.enqueued  = READ_ONCE(cfs_rq->avg.util_est.enqueued);
 		ue.enqueued -= min_t(unsigned int, ue.enqueued,
 				     (_task_util_est(p) | UTIL_EST_NEED_UPDATE_FLAG));
 	}
@@ -5349,7 +5349,7 @@ static inline void util_est_dequeue(struct cfs_rq *cfs_rq,
 	 * Skip update of task's estimated utilization if the PELT signal has
 	 * never been updated (at least once) since last enqueue time.
 	 */
-	ue = p->se.avg.util_est;
+	ue = READ_ONCE(p->se.avg.util_est);
 	if (ue.enqueued & UTIL_EST_NEED_UPDATE_FLAG)
 		return;
 
