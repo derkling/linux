@@ -5302,18 +5302,6 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	hrtick_update(rq);
 }
 
-/*
- * Check if a (signed) value is within a specified (unsigned) margin,
- * based on the observation that:
- *     abs(x) < y := (unsigned)(x + y - 1) < (2 * y - 1)
- *
- * NOTE: this only works when value + maring < INT_MAX.
- */
-static inline bool within_margin(int value, int margin)
-{
-	return ((unsigned int)(value + margin - 1) < (2 * margin - 1));
-}
-
 static inline void util_est_dequeue(struct cfs_rq *cfs_rq,
 				    struct task_struct *p,
 				    bool task_sleep)
@@ -5354,15 +5342,6 @@ static inline void util_est_dequeue(struct cfs_rq *cfs_rq,
 		return;
 
 	/*
-	 * Skip update of task's estimated utilization when its EWMA is
-	 * already ~1% close to its last activation value.
-	 */
-	ue.enqueued = (task_util(p) | UTIL_EST_NEED_UPDATE_FLAG);
-	last_ewma_diff = ue.enqueued - ue.ewma;
-	if (within_margin(last_ewma_diff, (SCHED_CAPACITY_SCALE / 100)))
-		return;
-
-	/*
 	 * Update Task's estimated utilization
 	 *
 	 * When *p completes an activation we can consolidate another sample
@@ -5379,6 +5358,8 @@ static inline void util_est_dequeue(struct cfs_rq *cfs_rq,
 	 * Where 'w' is the weight of new samples, which is configured to be
 	 * 0.25, thus making w=1/4 ( >>= UTIL_EST_WEIGHT_SHIFT)
 	 */
+	ue.enqueued = (task_util(p) | UTIL_EST_NEED_UPDATE_FLAG);
+	last_ewma_diff = ue.enqueued - ue.ewma;
 	ue.ewma <<= UTIL_EST_WEIGHT_SHIFT;
 	ue.ewma  += last_ewma_diff;
 	ue.ewma >>= UTIL_EST_WEIGHT_SHIFT;
