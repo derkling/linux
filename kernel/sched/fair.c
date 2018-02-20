@@ -3066,7 +3066,7 @@ static inline void cfs_se_util_change(struct sched_avg *avg)
 
 		/* Reset flag to report util_avg has been updated */
 		ue.enqueued &= ~UTIL_EST_NEED_UPDATE_FLAG;
-		WRITE_ONCE(avg->util_est, ue);
+		avg->util_est = ue;
 	}
 }
 
@@ -5243,7 +5243,7 @@ static inline void util_est_enqueue(struct cfs_rq *cfs_rq,
 	/* Update root cfs_rq's estimated utilization */
 	enqueued  = cfs_rq->avg.util_est.enqueued;
 	enqueued += (_task_util_est(p) | 0x1);
-	WRITE_ONCE(cfs_rq->avg.util_est.enqueued, enqueued);
+	cfs_rq->avg.util_est.enqueued = enqueued;
 }
 
 /*
@@ -5336,7 +5336,7 @@ static inline void util_est_dequeue(struct cfs_rq *cfs_rq,
 		ue.enqueued -= min_t(unsigned int, ue.enqueued,
 				     (_task_util_est(p) | UTIL_EST_NEED_UPDATE_FLAG));
 	}
-	WRITE_ONCE(cfs_rq->avg.util_est.enqueued, ue.enqueued);
+	cfs_rq->avg.util_est.enqueued = ue.enqueued;
 
 	/*
 	 * Skip update of task's estimated utilization when the task has not
@@ -5382,7 +5382,7 @@ static inline void util_est_dequeue(struct cfs_rq *cfs_rq,
 	ue.ewma <<= UTIL_EST_WEIGHT_SHIFT;
 	ue.ewma  += last_ewma_diff;
 	ue.ewma >>= UTIL_EST_WEIGHT_SHIFT;
-	WRITE_ONCE(p->se.avg.util_est, ue);
+	p->se.avg.util_est = ue;
 }
 
 static void set_next_buddy(struct sched_entity *se);
@@ -6501,8 +6501,8 @@ static inline unsigned long cpu_util_est(int cpu)
 		return cpu_util(cpu);
 
 	cfs_rq = &cpu_rq(cpu)->cfs;
-	util = READ_ONCE(cfs_rq->avg.util_avg);
-	util_est = READ_ONCE(cfs_rq->avg.util_est.enqueued);
+	util = cfs_rq->avg.util_avg;
+	util_est = cfs_rq->avg.util_est.enqueued;
 	util_est = max(util, util_est);
 
 	capacity = capacity_orig_of(cpu);
@@ -6519,14 +6519,14 @@ static inline unsigned long task_util(struct task_struct *p)
 
 static inline unsigned long _task_util_est(struct task_struct *p)
 {
-	struct util_est ue = READ_ONCE(p->se.avg.util_est);
+	struct util_est ue = p->se.avg.util_est;
 
 	return max(ue.ewma, ue.enqueued);
 }
 
 static inline unsigned long task_util_est(struct task_struct *p)
 {
-	return max(READ_ONCE(p->se.avg.util_avg), _task_util_est(p));
+	return max(p->se.avg.util_avg, _task_util_est(p));
 }
 
 /*
@@ -6569,7 +6569,7 @@ static unsigned long cpu_util_wake(int cpu, struct task_struct *p)
 	 *   estimation of the spare capacity on that CPU, by just considering
 	 *   the expected utilization of tasks already runnable on that CPU.
 	 */
-	util_est = READ_ONCE(cpu_rq(cpu)->cfs.avg.util_est.enqueued);
+	util_est = cpu_rq(cpu)->cfs.avg.util_est.enqueued;
 	util = max(util, util_est);
 
 	/*
