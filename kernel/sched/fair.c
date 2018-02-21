@@ -3067,6 +3067,8 @@ static inline void cfs_se_util_change(struct sched_avg *avg)
 		/* Reset flag to report util_avg has been updated */
 		ue.enqueued &= ~UTIL_EST_NEED_UPDATE_FLAG;
 		WRITE_ONCE(avg->util_est, ue);
+
+		trace_printk("UtilEst UPDATE REQUIRED");
 	}
 }
 
@@ -5419,6 +5421,8 @@ static inline void util_est_dequeue(struct cfs_rq *cfs_rq,
 	ue.ewma  += last_ewma_diff;
 	ue.ewma >>= UTIL_EST_WEIGHT_SHIFT;
 	WRITE_ONCE(p->se.avg.util_est, ue);
+
+	trace_printk("UtilEst UPDATE DONE");
 
 	/* Update plots for Task's estimated utilization */
 	trace_sched_util_est_task(p, &p->se.avg);
