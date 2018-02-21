@@ -3281,6 +3281,8 @@ static inline void cfs_se_util_change(struct sched_avg *avg)
 	/* Reset flag to report util_avg has been updated */
 	enqueued &= ~UTIL_AVG_UNCHANGED;
 	WRITE_ONCE(avg->util_est.enqueued, enqueued);
+
+	trace_printk("UtilEst UPDATE REQUIRED");
 }
 
 /*
@@ -3340,6 +3342,17 @@ __update_load_avg_se(u64 now, int cpu, struct cfs_rq *cfs_rq, struct sched_entit
 		cfs_se_util_change(&se->avg);
 
 		trace_sched_load_se(se);
+
+		/* Trace utilization only for actual tasks */
+		if (entity_is_task(se)) {
+			struct task_struct *tsk = task_of(se);
+
+			trace_sched_util_est_task(tsk, &se->avg);
+
+			/* Trace utilization only for top level CFS RQ */
+			cfs_rq = &(task_rq(tsk)->cfs);
+			trace_sched_util_est_cpu(cpu, cfs_rq);
+		}
 
 		return 1;
 	}
@@ -4044,6 +4057,8 @@ util_est_dequeue(struct cfs_rq *cfs_rq, struct task_struct *p, bool task_sleep)
 	ue.ewma  += last_ewma_diff;
 	ue.ewma >>= UTIL_EST_WEIGHT_SHIFT;
 	WRITE_ONCE(p->se.avg.util_est, ue);
+
+	trace_printk("UtilEst UPDATE DONE");
 
 	/* Update plots for Task's estimated utilization */
 	trace_sched_util_est_task(p, &p->se.avg);
