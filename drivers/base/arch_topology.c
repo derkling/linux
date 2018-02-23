@@ -15,6 +15,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/sched/topology.h>
+#include <linux/sched/energy.h>
 
 DEFINE_PER_CPU(unsigned long, freq_scale) = SCHED_CAPACITY_SCALE;
 
@@ -247,6 +248,7 @@ static void __init parsing_done_workfn(struct work_struct *work)
 	cpufreq_unregister_notifier(&init_cpu_capacity_notifier,
 					 CPUFREQ_POLICY_NOTIFIER);
 	free_cpumask_var(cpus_to_visit);
+	init_sched_energy();
 }
 
 #else
