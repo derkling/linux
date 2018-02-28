@@ -410,6 +410,32 @@ DECLARE_EVENT_CLASS(sched_stat_runtime,
 			(unsigned long long)__entry->vruntime)
 );
 
+/*
+ * Tracepoint for accounting cpu root cfs_rq
+ */
+TRACE_EVENT(sched_load_avg_cpu,
+        TP_PROTO(int cpu, struct cfs_rq *cfs_rq),
+        TP_ARGS(cpu, cfs_rq),
+        TP_STRUCT__entry(
+                __field( int,   cpu                             )
+                __field( unsigned long, load_avg                )
+                __field( unsigned long, util_avg                )
+                __field( unsigned long, util_avg_pelt           )
+                __field( unsigned long, util_avg_walt           )
+        ),
+        TP_fast_assign(
+                __entry->cpu                    = cpu;
+                __entry->load_avg               = cfs_rq->avg.load_avg;
+                __entry->util_avg               = cfs_rq->avg.util_avg;
+                __entry->util_avg_pelt  = cfs_rq->avg.util_avg;
+                __entry->util_avg_walt  = 0; /* Keep that crap for backward compat. */
+        ),
+        TP_printk("cpu=%d load_avg=%lu util_avg=%lu "
+                          "util_avg_pelt=%lu util_avg_walt=%lu",
+                  __entry->cpu, __entry->load_avg, __entry->util_avg,
+                  __entry->util_avg_pelt, __entry->util_avg_walt)
+);
+
 DEFINE_EVENT(sched_stat_runtime, sched_stat_runtime,
 	     TP_PROTO(struct task_struct *tsk, u64 runtime, u64 vruntime),
 	     TP_ARGS(tsk, runtime, vruntime));
