@@ -3258,10 +3258,6 @@ ___update_load_avg(struct sched_avg *sa, unsigned long load, unsigned long runna
 	sa->load_avg = div_u64(load * sa->load_sum, divider);
 	sa->runnable_load_avg =	div_u64(runnable * sa->runnable_load_sum, divider);
 	sa->util_avg = sa->util_sum / divider;
-	if (cfs_rq)
-		trace_sched_load_cfs_rq(cfs_rq);
-	else
-		trace_sched_load_se(container_of(sa, struct sched_entity, avg));
 }
 
 /*
@@ -3299,6 +3295,7 @@ __update_load_avg_blocked_se(u64 now, int cpu, struct sched_entity *se)
 
 	if (___update_load_sum(now, cpu, &se->avg, 0, 0, 0)) {
 		___update_load_avg(&se->avg, se_weight(se), se_runnable(se));
+		trace_sched_load_se(se);
 		return 1;
 	}
 
@@ -3315,6 +3312,7 @@ __update_load_avg_se(u64 now, int cpu, struct cfs_rq *cfs_rq, struct sched_entit
 				cfs_rq->curr == se)) {
 
 		___update_load_avg(&se->avg, se_weight(se), se_runnable(se));
+		trace_sched_load_se(se);
 		return 1;
 	}
 
@@ -3330,6 +3328,7 @@ __update_load_avg_cfs_rq(u64 now, int cpu, struct cfs_rq *cfs_rq)
 				cfs_rq->curr != NULL)) {
 
 		___update_load_avg(&cfs_rq->avg, 1, 1);
+		trace_sched_load_cfs_rq(cfs_rq);
 		return 1;
 	}
 
