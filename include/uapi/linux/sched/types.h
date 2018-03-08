@@ -70,6 +70,10 @@ struct sched_attr {
 	__u64 sched_runtime;
 	__u64 sched_deadline;
 	__u64 sched_period;
+
+	/* Utilization clamping for FAIR/RT tasks */
+	__u32 util_min;
+	__u32 util_max;
 };
 
 #endif /* _UAPI_LINUX_SCHED_TYPES_H */

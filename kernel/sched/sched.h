@@ -325,7 +325,7 @@ struct cfs_bandwidth {
  * Thus, the same "group_id" is used by all the TG's which enforce the same
  * clamp "value" for a given clamp index.
  */
-struct uclamp_tg {
+struct uclamp_se {
 	/* Utilization constraint for tasks in this group */
 	unsigned int value;
 	/* Utilization clamp group for this constraint */
@@ -376,7 +376,7 @@ struct task_group {
 	struct cfs_bandwidth cfs_bandwidth;
 
 #ifdef CONFIG_UTIL_CLAMP
-	struct uclamp_tg uclamp[UCLAMP_CNT];
+	struct uclamp_se uclamp[UCLAMP_CNT];
 #endif
 
 };
