@@ -6523,18 +6523,12 @@ static unsigned long compute_energy(struct task_struct *p, int dst_cpu)
 	return energy;
 }
 
-static bool task_fits(struct task_struct *p, int cpu)
-{
-	unsigned long next_util = cpu_util_next(cpu, p, cpu);
-
-	return util_fits_capacity(next_util, capacity_orig_of(cpu));
-}
-
 static int find_energy_efficient_cpu(struct sched_domain *sd,
 					struct task_struct *p, int prev_cpu)
 {
 	unsigned long cur_energy, prev_energy, best_energy;
-	int cpu, best_cpu = prev_cpu;
+	int cpu, best_energy_cpu = prev_cpu;
+	struct freq_domain *fdom;
 
 	if (!task_util(p))
 		return prev_cpu;
@@ -6542,14 +6536,37 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 	/* Compute the energy impact of leaving the task on prev_cpu. */
 	prev_energy = best_energy = compute_energy(p, prev_cpu);
 
-	/* Look for the CPU that minimizes the energy. */
-	for_each_cpu_and(cpu, &p->cpus_allowed, sched_domain_span(sd)) {
-		if (!task_fits(p, cpu) || cpu == prev_cpu)
-			continue;
-		cur_energy = compute_energy(p, cpu);
-		if (cur_energy < best_energy) {
-			best_energy = cur_energy;
-			best_cpu = cpu;
+	for_each_freq_domain(fdom) {
+		unsigned long spare_cap, max_spare_cap = 0;
+		int max_spare_cap_cpu = -1;
+		unsigned long util;
+
+		/* Find the CPU with the max spare capacity in the freq dom. */
+		for_each_cpu_and(cpu, &(fdom->span), sched_domain_span(sd)) {
+			if (!cpumask_test_cpu(cpu, &p->cpus_allowed))
+				continue;
+
+			if (cpu == prev_cpu)
+				continue;
+
+			util = cpu_util(cpu) + task_util(p);
+			if (!util_fits_capacity(util, capacity_of(cpu)))
+				continue;
+
+			spare_cap = capacity_of(cpu) - util;
+			if (spare_cap > max_spare_cap) {
+				max_spare_cap = spare_cap;
+				max_spare_cap_cpu = cpu;
+			}
+		}
+
+		/* Evaluate the energy impact of using this CPU. */
+		if (max_spare_cap_cpu >= 0) {
+			cur_energy = compute_energy(p, max_spare_cap_cpu);
+			if (cur_energy < best_energy) {
+				best_energy = cur_energy;
+				best_energy_cpu = max_spare_cap_cpu;
+			}
 		}
 	}
 
@@ -6558,7 +6575,7 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 	 * energy used by prev_cpu.
 	 */
 	if ((prev_energy - best_energy) > (prev_energy >> 6))
-		return best_cpu;
+		return best_energy_cpu;
 
 	return prev_cpu;
 }
