@@ -6489,17 +6489,19 @@ static struct capacity_state *find_cap_state(int cpu, unsigned long util)
 
 static unsigned long compute_energy(struct task_struct *p, int dst_cpu)
 {
-	unsigned long util, fdom_max_util;
+	unsigned long util, fdom_max_util, fdom_tot_util;
 	struct capacity_state *cs;
 	unsigned long energy = 0;
 	struct freq_domain *fdom;
 	int cpu;
 
 	for_each_freq_domain(fdom) {
-		fdom_max_util = 0;
+		fdom_max_util = fdom_tot_util = 0;
+
 		for_each_cpu_and(cpu, &(fdom->span), cpu_online_mask) {
 			util = cpu_util_next(cpu, p, dst_cpu);
 			fdom_max_util = max(util, fdom_max_util);
+			fdom_tot_util += util;
 		}
 
 		/*
@@ -6509,16 +6511,7 @@ static unsigned long compute_energy(struct task_struct *p, int dst_cpu)
 		 */
 		cpu = cpumask_first(&(fdom->span));
 		cs = find_cap_state(cpu, fdom_max_util);
-
-		/*
-		 * The energy consumed by each CPU is derived from the power
-		 * it dissipates at the expected OPP and its percentage of
-		 * busy time.
-		 */
-		for_each_cpu_and(cpu, &(fdom->span), cpu_online_mask) {
-			util = cpu_util_next(cpu, p, dst_cpu);
-			energy += cs->power * util / cs->cap;
-		}
+		energy += cs->power * fdom_tot_util / cs->cap;
 	}
 	return energy;
 }
