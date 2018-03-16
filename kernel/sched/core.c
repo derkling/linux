@@ -984,14 +984,27 @@ static inline void uclamp_cpu_get_id(struct task_struct *p, struct rq *rq, int c
 	int clamp_value;
 	int group_id;
 
-	/* No task specific clamp values: nothing to do */
 	group_id = p->uclamp[clamp_id].group_id;
+	clamp_value = p->uclamp[clamp_id].value;
+#ifdef CONFIG_UCLAMP_TASK_GROUP
+	/* Use TG's clamp value to limit task specific values */
+	if (group_id == UCLAMP_NONE ||
+	    clamp_value >= task_group(p)->uclamp[clamp_id].value) {
+		clamp_value = task_group(p)->uclamp[clamp_id].value;
+		group_id = task_group(p)->uclamp[clamp_id].group_id;
+	}
+#else
+	/* No task specific clamp values: nothing to do */
 	if (group_id == UCLAMP_NONE)
 		return;
+#endif
 
 	/* Reference count the task into its current group_id */
 	uc_grp = &rq->uclamp.group[clamp_id][0];
 	uc_grp[group_id].tasks += 1;
+
+	/* Track the effective clamp group */
+	p->uclamp_group_id[clamp_id] = group_id;
 
 	/*
 	 * If this is the new max utilization clamp value, then we can update
@@ -999,7 +1012,6 @@ static inline void uclamp_cpu_get_id(struct task_struct *p, struct rq *rq, int c
 	 * value is still valid and we are done.
 	 */
 	uc_cpu = &rq->uclamp;
-	clamp_value = p->uclamp[clamp_id].value;
 	if (uc_cpu->value[clamp_id] < clamp_value)
 		uc_cpu->value[clamp_id] = clamp_value;
 
@@ -1026,13 +1038,16 @@ static inline void uclamp_cpu_put_id(struct task_struct *p, struct rq *rq, int c
 	int group_id;
 
 	/* No task specific clamp values: nothing to do */
-	group_id = p->uclamp[clamp_id].group_id;
+	group_id = p->uclamp_group_id[clamp_id];
 	if (group_id == UCLAMP_NONE)
 		return;
 
 	/* Decrement the task's reference counted group index */
 	uc_grp = &rq->uclamp.group[clamp_id][0];
 	uc_grp[group_id].tasks -= 1;
+
+	/* Flag the task as not affecting any clamp index */
+	p->uclamp_group_id[clamp_id] = UCLAMP_NONE;
 
 	/* If this is not the last task, no updates are required */
 	if (uc_grp[group_id].tasks > 0)
@@ -2847,6 +2862,7 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
 #endif
 
 #ifdef CONFIG_UCLAMP_TASK
+	memset(&p->uclamp_group_id, UCLAMP_NONE, sizeof(p->uclamp_group_id));
 	p->uclamp[UCLAMP_MIN].value = 0;
 	p->uclamp[UCLAMP_MIN].group_id = UCLAMP_NONE;
 	p->uclamp[UCLAMP_MAX].value = SCHED_CAPACITY_SCALE;
@@ -5438,6 +5454,16 @@ SYSCALL_DEFINE4(sched_getattr, pid_t, pid, struct sched_attr __user *, uattr,
 #ifdef CONFIG_UCLAMP_TASK
 	attr.sched_util_min = p->uclamp[UCLAMP_MIN].value;
 	attr.sched_util_max = p->uclamp[UCLAMP_MAX].value;
+#ifdef CONFIG_UCLAMP_TASK_GROUP
+	/*
+	 * CGroup enforced clamps have higher priority then
+	 * task specific clamps.
+	 */
+	if (task_group(p)->uclamp[UCLAMP_MIN].value < attr.sched_util_min)
+		attr.sched_util_min = task_group(p)->uclamp[UCLAMP_MIN].value;
+	if (task_group(p)->uclamp[UCLAMP_MAX].value < attr.sched_util_max)
+		attr.sched_util_max = task_group(p)->uclamp[UCLAMP_MAX].value;
+#endif
 #endif
 
 	rcu_read_unlock();
