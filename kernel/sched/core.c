@@ -876,15 +876,39 @@ static inline void uclamp_cpu_update(struct rq *rq, unsigned int clamp_id,
 }
 
 /**
+ * uclamp_apply_defaults: check if p is subject to system default clamps
+ * @p: the task to check
+ *
+ * Tasks in the root group or autogroups are always and only limited by system
+ * defaults. All others instead are limited by their TG's specific value.
+ * This method checks the conditions under witch a task is subject to system
+ * default clamps.
+ */
+#ifdef CONFIG_UCLAMP_TASK_GROUP
+static inline bool uclamp_apply_defaults(struct task_struct *p)
+{
+	if (task_group_is_autogroup(task_group(p)))
+		return true;
+	if (task_group(p) == &root_task_group)
+		return true;
+	return false;
+}
+#else
+#define uclamp_apply_defaults(p) true
+#endif
+
+/**
  * uclamp_effective_group_id: get the effective clamp group index of a task
  * @p: the task to get the effective clamp value for
  * @clamp_id: the clamp index to consider
  *
  * The effective clamp group index of a task depends on:
  * - the task specific clamp value, explicitly requested from userspace
+ * - the task group effective clamp value, for tasks not in the root group or
+ *   in an autogroup
  * - the system default clamp value, defined by the sysadmin
- * and tasks specific's clamp values are always restricted by system
- * defaults clamp values.
+ * and tasks specific's clamp values are always restricted, with increasing
+ * priority, by their task group first and the system defaults after.
  *
  * This method returns the effective group index for a task, depending on its
  * status and a proper aggregation of the clamp values listed above.
@@ -908,6 +932,22 @@ static inline unsigned int uclamp_effective_group_id(struct task_struct *p,
 	clamp_value = p->uclamp[clamp_id].value;
 	group_id = p->uclamp[clamp_id].group_id;
 
+	if (!uclamp_apply_defaults(p)) {
+#ifdef CONFIG_UCLAMP_TASK_GROUP
+		unsigned int clamp_max =
+			task_group(p)->uclamp[clamp_id].effective.value;
+		unsigned int group_max =
+			task_group(p)->uclamp[clamp_id].effective.group_id;
+
+		if (!p->uclamp[clamp_id].user_defined ||
+		    clamp_value > clamp_max) {
+			clamp_value = clamp_max;
+			group_id = group_max;
+		}
+#endif
+		goto done;
+	}
+
 	/* RT tasks have different default values */
 	default_clamp = task_has_rt_policy(p)
 		? uclamp_default_perf
@@ -924,6 +964,8 @@ static inline unsigned int uclamp_effective_group_id(struct task_struct *p,
 		group_id = default_clamp[clamp_id].group_id;
 	}
 
+done:
+
 	p->uclamp[clamp_id].effective.value = clamp_value;
 	p->uclamp[clamp_id].effective.group_id = group_id;
 
@@ -936,8 +978,10 @@ static inline unsigned int uclamp_effective_group_id(struct task_struct *p,
  * @rq: the CPU's rq where the clamp group has to be reference counted
  * @clamp_id: the clamp index to update
  *
- * Once a task is enqueued on a CPU's rq, the clamp group currently defined by
- * the task's uclamp::group_id is reference counted on that CPU.
+ * Once a task is enqueued on a CPU's rq, with increasing priority, we
+ * reference count the most restrictive clamp group between the task specific
+ * clamp value, the clamp value of its task group and the system default clamp
+ * value.
  */
 static inline void uclamp_cpu_get_id(struct task_struct *p, struct rq *rq,
 				     unsigned int clamp_id)
@@ -1310,10 +1354,12 @@ static int __setscheduler_uclamp(struct task_struct *p,
 
 	/* Update each required clamp group */
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN) {
+		p->uclamp[UCLAMP_MIN].user_defined = true;
 		uclamp_group_get(p, &p->uclamp[UCLAMP_MIN],
 				 UCLAMP_MIN, lower_bound);
 	}
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX) {
+		p->uclamp[UCLAMP_MAX].user_defined = true;
 		uclamp_group_get(p, &p->uclamp[UCLAMP_MAX],
 				 UCLAMP_MAX, upper_bound);
 	}
@@ -1357,8 +1403,10 @@ static void uclamp_fork(struct task_struct *p, bool reset)
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
 		unsigned int clamp_value = p->uclamp[clamp_id].value;
 
-		if (unlikely(reset))
+		if (unlikely(reset)) {
 			clamp_value = uclamp_none(clamp_id);
+			p->uclamp[clamp_id].user_defined = false;
+		}
 
 		p->uclamp[clamp_id].mapped = false;
 		p->uclamp[clamp_id].active = false;
