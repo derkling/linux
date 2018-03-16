@@ -990,9 +990,18 @@ static inline void uclamp_cpu_get(struct task_struct *p, int cpu, int clamp_id)
 	clamp_value = p->uclamp[clamp_id].value;
 	group_id = p->uclamp[clamp_id].group_id;
 
+#ifdef CONFIG_UCLAMP_TASK_GROUP
+	/* Use TG's clamp value to limit task specific values */
+	if (group_id == UCLAMP_NONE ||
+	    clamp_value >= task_group(p)->uclamp[clamp_id].value) {
+		clamp_value = task_group(p)->uclamp[clamp_id].value;
+		group_id = task_group(p)->uclamp[clamp_id].group_id;
+	}
+#else
 	/* No task specific clamp values: nothing to do */
 	if (group_id == UCLAMP_NONE)
 		return;
+#endif
 
 	/* Increment the current group_id */
 	uc_cpu->group[group_id].tasks += 1;
@@ -5337,6 +5346,12 @@ SYSCALL_DEFINE4(sched_getattr, pid_t, pid, struct sched_attr __user *, uattr,
 #ifdef CONFIG_UCLAMP_TASK
 	attr.sched_util_min = p->uclamp[UCLAMP_MIN].value;
 	attr.sched_util_max = p->uclamp[UCLAMP_MAX].value;
+#ifdef CONFIG_UCLAMP_TASK_GROUP
+	if (task_group(p)->uclamp[UCLAMP_MIN].value < attr.sched_util_min)
+		attr.sched_util_min = task_group(p)->uclamp[UCLAMP_MIN].value;
+	if (task_group(p)->uclamp[UCLAMP_MAX].value < attr.sched_util_max)
+		attr.sched_util_max = task_group(p)->uclamp[UCLAMP_MAX].value;
+#endif
 #endif
 
 	rcu_read_unlock();
