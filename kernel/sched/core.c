@@ -1205,6 +1205,41 @@ static inline int uclamp_group_get(struct task_struct *p,
 	return 0;
 }
 
+static inline int __setscheduler_uclamp(struct task_struct *p,
+					const struct sched_attr *attr)
+{
+	struct uclamp_se *uc_se;
+	int retval = 0;
+
+	if (attr->sched_util_min > attr->sched_util_max)
+		return -EINVAL;
+	if (attr->sched_util_max > SCHED_CAPACITY_SCALE)
+		return -EINVAL;
+
+	mutex_lock(&uclamp_mutex);
+
+	/* Update min utilization clamp */
+	uc_se = &p->uclamp[UCLAMP_MIN];
+	retval |= uclamp_group_get(p, UCLAMP_MIN, uc_se,
+				   attr->sched_util_min);
+
+	/* Update max utilization clamp */
+	uc_se = &p->uclamp[UCLAMP_MAX];
+	retval |= uclamp_group_get(p, UCLAMP_MAX, uc_se,
+				   attr->sched_util_max);
+
+	mutex_unlock(&uclamp_mutex);
+
+	/*
+	 * If one of the two clamp values should fail,
+	 * let's the userspace know
+	 */
+	if (retval)
+		return -ENOSPC;
+
+	return 0;
+}
+
 /**
  * init_uclamp: initialize data structures required for utilization clamping
  */
@@ -1236,6 +1271,11 @@ static inline void init_uclamp(void)
 
 #else /* CONFIG_UCLAMP_TASK */
 static inline void uclamp_task_update(struct rq *rq, struct task_struct *p) { }
+static inline int __setscheduler_uclamp(struct task_struct *p,
+					const struct sched_attr *attr)
+{
+	return -EINVAL;
+}
 static inline void init_uclamp(void) { }
 #endif /* CONFIG_UCLAMP_TASK */
 
@@ -4662,6 +4702,13 @@ recheck:
 			return retval;
 	}
 
+	/* Configure utilization clamps for the task */
+	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP) {
+		retval = __setscheduler_uclamp(p, attr);
+		if (retval)
+			return retval;
+	}
+
 	/*
 	 * Make sure no PI-waiters arrive (or leave) while we are
 	 * changing the priority of the task:
@@ -5161,6 +5208,11 @@ SYSCALL_DEFINE4(sched_getattr, pid_t, pid, struct sched_attr __user *, uattr,
 		attr.sched_priority = p->rt_priority;
 	else
 		attr.sched_nice = task_nice(p);
+
+#ifdef CONFIG_UCLAMP_TASK
+	attr.sched_util_min = p->uclamp[UCLAMP_MIN].value;
+	attr.sched_util_max = p->uclamp[UCLAMP_MAX].value;
+#endif
 
 	rcu_read_unlock();
 
