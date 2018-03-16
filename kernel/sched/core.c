@@ -836,10 +836,44 @@ static inline void uclamp_rq_update(struct rq *rq, unsigned int clamp_id,
 	WRITE_ONCE(rq->uclamp[clamp_id].value, max_value);
 }
 
+static inline bool
+uclamp_tg_restricted(struct task_struct *p, unsigned int clamp_id,
+		     unsigned int *clamp_value, unsigned int *bucket_id)
+{
+#ifdef CONFIG_UCLAMP_TASK_GROUP
+	unsigned int clamp_max, bucket_max;
+	struct uclamp_se *tg_clamp;
+
+	/*
+	 * Tasks in an autogroup or the root task group are restricted by
+	 * system defaults.
+	 */
+	if (task_group_is_autogroup(task_group(p)))
+		return false;
+	if (task_group(p) == &root_task_group)
+		return false;
+
+	tg_clamp = &task_group(p)->uclamp[clamp_id];
+	bucket_max = tg_clamp->effective.bucket_id;
+	clamp_max = tg_clamp->effective.value;
+
+	if (!p->uclamp[clamp_id].user_defined || *clamp_value > clamp_max) {
+		*clamp_value = clamp_max;
+		*bucket_id = bucket_max;
+	}
+
+	return true;
+#else
+	return false;
+#endif
+}
+
 /*
  * The effective clamp bucket index of a task depends on, by increasing
  * priority:
  * - the task specific clamp value, when explicitly requested from userspace
+ * - the task group effective clamp value, for tasks not either in the root
+ *   group or in an autogroup
  * - the system default clamp value, defined by the sysadmin
  *
  * As a side effect, update the task's effective value:
@@ -854,7 +888,13 @@ uclamp_effective_get(struct task_struct *p, unsigned int clamp_id,
 	*bucket_id = p->uclamp[clamp_id].bucket_id;
 	*clamp_value = p->uclamp[clamp_id].value;
 
-	/* Always apply system default restrictions */
+	/*
+	 * If we have task groups and we are running in a child group, system
+	 * default are already affecting the group's clamp values.
+	 */
+	if (uclamp_tg_restricted(p, clamp_id, clamp_value, bucket_id))
+		return;
+
 	if (unlikely(*clamp_value > uclamp_default[clamp_id].value)) {
 		*clamp_value = uclamp_default[clamp_id].value;
 		*bucket_id = uclamp_default[clamp_id].bucket_id;
