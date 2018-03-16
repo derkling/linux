@@ -279,6 +279,17 @@ struct vtime {
 	u64			gtime;
 };
 
+enum uclamp_id {
+	/* No utilization clamp group assigned */
+	UCLAMP_NONE = -1,
+
+	UCLAMP_MIN = 0, /* Minimum utilization */
+	UCLAMP_MAX,     /* Maximum utilization */
+
+	/* Utilization clamping constraints count */
+	UCLAMP_CNT
+};
+
 struct sched_info {
 #ifdef CONFIG_SCHED_INFO
 	/* Cumulative counters: */
@@ -648,6 +659,11 @@ struct task_struct {
 	struct task_group		*sched_task_group;
 #endif
 	struct sched_dl_entity		dl;
+
+#ifdef CONFIG_UCLAMP_TASK
+	/* Utlization clamp values for this task */
+	int				uclamp[UCLAMP_CNT];
+#endif
 
 #ifdef CONFIG_PREEMPT_NOTIFIERS
 	/* List of struct preempt_notifier: */
