@@ -586,6 +586,7 @@ struct sched_dl_entity {
  * @bucket_id:		clamp bucket corresponding to the "requested" value
  * @effective:		clamp value and bucket actually "assigned" to the se
  * @active:		the se is currently refcounted in a rq's bucket
+ * @user_defined:	the requested clamp value comes from user-space
  *
  * Both bucket_id and effective::bucket_id are the index of the clamp bucket
  * matching the corresponding clamp value which are pre-computed and stored to
@@ -594,12 +595,20 @@ struct sched_dl_entity {
  * The active bit is set whenever a task has got an effective::value assigned,
  * which can be different from the user requested clamp value. This allows to
  * know a task is actually refcounting the rq's effective::bucket_id bucket.
+ *
+ * The user_defined bit is set whenever a task has got a task-specific clamp
+ * value requested from userspace, i.e. the system defaults apply to this task
+ * just as a restriction. This allows to relax default clamps when a less
+ * restrictive task-specific value has been requested, thus allowing to
+ * implement a "nice" semantic. For example, a task running with a 20%
+ * default boost can still drop its own boosting to 0%.
  */
 struct uclamp_se {
 	/* Clamp value "requested" by a scheduling entity */
 	unsigned int value		: bits_per(SCHED_CAPACITY_SCALE);
 	unsigned int bucket_id		: bits_per(UCLAMP_BUCKETS);
 	unsigned int active		: 1;
+	unsigned int user_defined	: 1;
 	/*
 	 * Clamp value "obtained" by a scheduling entity.
 	 *
