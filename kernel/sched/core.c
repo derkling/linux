@@ -808,23 +808,47 @@ unsigned int uclamp_rq_max_value(struct rq *rq, unsigned int clamp_id,
 	return uclamp_idle_value(rq, clamp_id, clamp_value);
 }
 
+static inline bool
+uclamp_tg_restricted(struct task_struct *p)
+{
+	/*
+	 * Tasks in an autogroup or the root task group are restricted
+	 * by system defaults.
+	 */
+#ifdef CONFIG_UCLAMP_TASK_GROUP
+	if (task_group_is_autogroup(task_group(p)))
+		return false;
+	if (task_group(p) == &root_task_group)
+		return false;
+	return true;
+#else
+	return false;
+#endif
+}
+
 /*
  * The effective clamp bucket index of a task depends on, by increasing
  * priority:
  * - the task specific clamp value, when explicitly requested from userspace
+ * - the task group effective clamp value, for tasks not either in the root
+ *   group or in an autogroup
  * - the system default clamp value, defined by the sysadmin
- *
- * As a side effect, update the task's effective value:
- *    task_struct::uclamp::effective::value
- * to represent the clamp value of the task effective bucket index.
  */
 static inline struct uclamp_se
 uclamp_eff_get(struct task_struct *p, unsigned int clamp_id)
 {
 	struct uclamp_se uc_req = p->uclamp_req[clamp_id];
-	struct uclamp_se uc_max = uclamp_default[clamp_id];
+	struct uclamp_se uc_max;
+
+	/* Task group restrictions apply only for subgroups */
+	if (uclamp_tg_restricted(p)) {
+		uc_max = task_group(p)->uclamp[clamp_id];
+		if (uc_req.value > uc_max.value || !uc_req.user_defined)
+			return uc_max;
+	}
 
 	/* System default restrictions always apply */
+	uc_max = uclamp_default[clamp_id];
 	if (unlikely(uc_req.value > uc_max.value))
 		return uc_max;
 
