@@ -1040,6 +1040,50 @@ done:
 	return result;
 }
 
+static int uclamp_validate(struct task_struct *p,
+			   const struct sched_attr *attr)
+{
+	unsigned int lower_bound = p->uclamp[UCLAMP_MIN].value;
+	unsigned int upper_bound = p->uclamp[UCLAMP_MAX].value;
+
+	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN)
+		lower_bound = attr->sched_util_min;
+	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX)
+		upper_bound = attr->sched_util_max;
+
+	if (lower_bound > upper_bound)
+		return -EINVAL;
+	if (upper_bound > SCHED_CAPACITY_SCALE)
+		return -EINVAL;
+
+	return 0;
+}
+
+static void __setscheduler_uclamp(struct task_struct *p,
+				  const struct sched_attr *attr)
+{
+	if (likely(!(attr->sched_flags & SCHED_FLAG_UTIL_CLAMP)))
+		return;
+
+	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN) {
+		unsigned int lower_bound = attr->sched_util_min;
+
+		p->uclamp[UCLAMP_MIN].user_defined = true;
+		p->uclamp[UCLAMP_MIN].value = lower_bound;
+		p->uclamp[UCLAMP_MIN].bucket_id =
+			uclamp_bucket_id(lower_bound);
+	}
+
+	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX) {
+		unsigned int upper_bound =  attr->sched_util_max;
+
+		p->uclamp[UCLAMP_MAX].user_defined = true;
+		p->uclamp[UCLAMP_MAX].value = upper_bound;
+		p->uclamp[UCLAMP_MAX].bucket_id =
+			uclamp_bucket_id(upper_bound);
+	}
+}
+
 static void uclamp_fork(struct task_struct *p)
 {
 	unsigned int clamp_id;
@@ -1086,6 +1130,13 @@ static void __init init_uclamp(void)
 #else /* CONFIG_UCLAMP_TASK */
 static inline void uclamp_rq_inc(struct rq *rq, struct task_struct *p) { }
 static inline void uclamp_rq_dec(struct rq *rq, struct task_struct *p) { }
+static inline int uclamp_validate(struct task_struct *p,
+				  const struct sched_attr *attr)
+{
+	return -ENODEV;
+}
+static void __setscheduler_uclamp(struct task_struct *p,
+				  const struct sched_attr *attr) { }
 static inline void uclamp_fork(struct task_struct *p) { }
 static inline void init_uclamp(void) { }
 #endif /* CONFIG_UCLAMP_TASK */
@@ -4454,6 +4505,13 @@ static void __setscheduler_params(struct task_struct *p,
 static void __setscheduler(struct rq *rq, struct task_struct *p,
 			   const struct sched_attr *attr, bool keep_boost)
 {
+	/*
+	 * If params cannot change we don't allow scheduling class
+	 * changes too.
+	 */
+	if (attr->sched_flags & SCHED_FLAG_KEEP_PARAMS)
+		return;
+
 	__setscheduler_params(p, attr);
 
 	/*
@@ -4591,6 +4649,13 @@ recheck:
 			return retval;
 	}
 
+	/* Update task specific "requested" clamps */
+	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP) {
+		retval = uclamp_validate(p, attr);
+		if (retval)
+			return retval;
+	}
+
 	/*
 	 * Make sure no PI-waiters arrive (or leave) while we are
 	 * changing the priority of the task:
@@ -4619,6 +4684,8 @@ recheck:
 		if (rt_policy(policy) && attr->sched_priority != p->rt_priority)
 			goto change;
 		if (dl_policy(policy) && dl_param_changed(p, attr))
+			goto change;
+		if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP)
 			goto change;
 
 		p->sched_reset_on_fork = reset_on_fork;
@@ -4700,7 +4767,9 @@ change:
 		put_prev_task(rq, p);
 
 	prev_class = p->sched_class;
+
 	__setscheduler(rq, p, attr, pi);
+	__setscheduler_uclamp(p, attr);
 
 	if (queued) {
 		/*
@@ -4876,6 +4945,10 @@ static int sched_copy_attr(struct sched_attr __user *uattr, struct sched_attr *a
 	if (ret)
 		return -EFAULT;
 
+	if ((attr->sched_flags & SCHED_FLAG_UTIL_CLAMP) &&
+	    size < SCHED_ATTR_SIZE_VER1)
+		return -EINVAL;
+
 	/*
 	 * XXX: Do we want to be lenient like existing syscalls; or do we want
 	 * to be strict and return an error on out-of-bounds values?
@@ -4952,9 +5025,14 @@ SYSCALL_DEFINE3(sched_setattr, pid_t, pid, struct sched_attr __user *, uattr,
 	rcu_read_lock();
 	retval = -ESRCH;
 	p = find_process_by_pid(pid);
-	if (p != NULL)
-		retval = sched_setattr(p, &attr);
+	if (likely(p))
+		get_task_struct(p);
 	rcu_read_unlock();
+
+	if (likely(p)) {
+		retval = sched_setattr(p, &attr);
+		put_task_struct(p);
+	}
 
 	return retval;
 }
@@ -5105,6 +5183,11 @@ SYSCALL_DEFINE4(sched_getattr, pid_t, pid, struct sched_attr __user *, uattr,
 		attr.sched_priority = p->rt_priority;
 	else
 		attr.sched_nice = task_nice(p);
+
+#ifdef CONFIG_UCLAMP_TASK
+	attr.sched_util_min = p->uclamp[UCLAMP_MIN].value;
+	attr.sched_util_max = p->uclamp[UCLAMP_MAX].value;
+#endif
 
 	rcu_read_unlock();
 
