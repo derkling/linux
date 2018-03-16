@@ -602,6 +602,7 @@ struct sched_dl_entity {
  * @bucket_id:		the bucket index used by the fast-path
  * @mapped:		the bucket index is valid
  * @active:		the se is currently refcounted in a CPU's clamp bucket
+ * @user_defined:	calmp value explicitly required from user-space
  *
  * A utilization clamp bucket maps a:
  *   clamp value (value), i.e.
@@ -619,12 +620,21 @@ struct sched_dl_entity {
  * The active bit is set whenever a task has got an effective clamp bucket
  * and value assigned, and it allows to know a task is actually refcounting a
  * CPU's clamp bucket.
+ *
+ * The user_defined bit is set whenever a task has got a task-specific clamp
+ * value requested from userspace, i.e. the system defaults apply to this
+ * task just as a restriction. This allows to relax TG's clamps when a less
+ * restrictive task specific value has been defined, thus allowing to
+ * implement a "nice" semantic when both task bucket and task specific values
+ * are used. For example, a task running on a 20% boosted TG can still drop
+ * its own boosting to 0%.
  */
 struct uclamp_se {
 	unsigned int value		: bits_per(SCHED_CAPACITY_SCALE);
 	unsigned int bucket_id		: bits_per(UCLAMP_BUCKETS);
 	unsigned int mapped		: 1;
 	unsigned int active		: 1;
+	unsigned int user_defined	: 1;
 	/*
 	 * Clamp bucket and value actually used by a scheduling entity,
 	 * i.e. a (RUNNABLE) task or a task group.
