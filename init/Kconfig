@@ -595,7 +595,7 @@ config HAVE_UNSTABLE_SCHED_CLOCK
 config GENERIC_SCHED_CLOCK
 	bool
 
-menu "FAIR Scheuler tunables"
+menu "Scheduler features"
 
 choice
 	prompt "Utilization's PELT half-Life"
@@ -628,7 +628,25 @@ config PELT_UTIL_HALFLIFE_8
 
 endchoice
 
-endmenu # FAIR Scheduler tunables"
+config UCLAMP_TASK
+	bool "Enable utilization clamping for RT/FAIR tasks"
+	depends on CPU_FREQ_GOV_SCHEDUTIL
+	help
+	  This feature enables the scheduler to track the clamped utilization
+	  of each CPU based on RUNNABLE tasks currently scheduled on that CPU.
+
+	  When this option is enabled, the user can specify a min and max CPU
+	  utilization which is allowed for RUNNABLE tasks.
+	  The max utilization allows to request a maximum frequency a task should
+	  use, while the min utilization allows to request a minimum frequency a
+	  task should use.
+	  Both min and max utilization clamp values are hints to the scheduler,
+	  aiming at improving its frequency selection policy, but they do not
+	  enforce or grant any specific bandwidth for tasks.
+
+	  If in doubt, say N.
+
+endmenu # Scheduler features"
 
 #
 # For architectures that want to enable the support for NUMA-affine scheduler
@@ -1006,6 +1024,7 @@ config SCHED_AUTOGROUP
 config SCHED_TUNE
 	bool "Boosting for CFS tasks (EXPERIMENTAL)"
 	depends on SMP
+	depends on !UCLAMP_TASK
 	help
 	  This option enables support for task classification using a new
 	  cgroup controller, schedtune. Schedtune allows tasks to be given

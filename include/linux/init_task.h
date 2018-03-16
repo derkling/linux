@@ -154,6 +154,15 @@ extern struct cred init_cred;
 # define INIT_CGROUP_SCHED(tsk)
 #endif
 
+
+#ifdef CONFIG_UCLAMP_TASK
+# define INIT_UCLAMP_TASK(tsk)						\
+	.uclamp[UCLAMP_MIN] = 0,					\
+	.uclamp[UCLAMP_MAX] = SCHED_CAPACITY_SCALE,
+#else
+# define INIT_UCLAMP_TASK(tsk)
+#endif
+
 #ifdef CONFIG_PERF_EVENTS
 # define INIT_PERF_EVENTS(tsk)						\
 	.perf_event_mutex = 						\
@@ -251,6 +260,7 @@ extern struct cred init_cred;
 	.tasks		= LIST_HEAD_INIT(tsk.tasks),			\
 	INIT_PUSHABLE_TASKS(tsk)					\
 	INIT_CGROUP_SCHED(tsk)						\
+	INIT_UCLAMP_TASK(tsk)						\
 	.ptraced	= LIST_HEAD_INIT(tsk.ptraced),			\
 	.ptrace_entry	= LIST_HEAD_INIT(tsk.ptrace_entry),		\
 	.real_parent	= &tsk,						\
