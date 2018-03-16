@@ -890,6 +890,8 @@ static inline void uclamp_cpu_update(struct rq *rq, int clamp_id,
  *
  * The effective clamp group index of a task depends on:
  * - the task specific clamp value
+ * - its task group effective clamp value
+ *   for tasks not in the root group or in an autogroup
  * - the system default clamp value
  *
  * This method returns the effective group index for a task, depending on its
@@ -913,6 +915,28 @@ static inline int uclamp_effective_group_id(struct task_struct *p, int clamp_id)
 	/* Task specific clamp value */
 	clamp_value = p->uclamp[clamp_id].value;
 	group_id = p->uclamp[clamp_id].group_id;
+
+#ifdef CONFIG_UCLAMP_TASK_GROUP
+	/*
+	 * Tasks in the root group or autogroups are always and only limited
+	 * by system defaults. All others instead are limited by their TG's
+	 * specific value.
+	 */
+	if (!(task_group_is_autogroup(task_group(p))) ||
+	     (task_group(p) == &root_task_group)) {
+		unsigned int clamp_max =
+			task_group(p)->uclamp[clamp_id].effective.value;
+		unsigned int group_max =
+			task_group(p)->uclamp[clamp_id].effective.group_id;
+
+		if (!p->uclamp[clamp_id].user_defined ||
+		    clamp_value > clamp_max) {
+			clamp_value = clamp_max;
+			group_id = group_max;
+		}
+
+	}
+#endif
 
 	/* RT tasks have different default values */
 	if (task_has_rt_policy(p)) {
@@ -943,8 +967,10 @@ static inline int uclamp_effective_group_id(struct task_struct *p, int clamp_id)
  * @rq: the CPU's rq where the clamp group has to be reference counted
  * @clamp_id: the utilization clamp (e.g. min or max utilization) to reference
  *
- * Once a task is enqueued on a CPU's RQ, the clamp group currently defined by
- * the task's uclamp.group_id is reference counted on that CPU.
+ * Once a task is enqueued on a CPU's RQ, with increasing priority, we
+ * reference count the most restrictive clamp group between the task specific
+ * clamp value, the clamp value of its task group and the system default clamp
+ * value.
  */
 static inline void uclamp_cpu_get_id(struct task_struct *p,
 				     struct rq *rq, int clamp_id)
@@ -1317,10 +1343,12 @@ static int __setscheduler_uclamp(struct task_struct *p,
 
 	/* Update each required clamp group */
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN) {
+		p->uclamp[UCLAMP_MIN].user_defined = true;
 		uclamp_group_get(p, UCLAMP_MIN, &p->uclamp[UCLAMP_MIN],
 				 lower_bound);
 	}
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX) {
+		p->uclamp[UCLAMP_MAX].user_defined = true;
 		uclamp_group_get(p, UCLAMP_MAX, &p->uclamp[UCLAMP_MAX],
 				 upper_bound);
 	}
@@ -1356,8 +1384,10 @@ static void uclamp_fork(struct task_struct *p, bool reset)
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
 		unsigned int clamp_value = p->uclamp[clamp_id].value;
 
-		if (unlikely(reset))
+		if (unlikely(reset)) {
 			clamp_value = uclamp_none(clamp_id);
+			p->uclamp[clamp_id].user_defined = false;
+		}
 
 		p->uclamp[clamp_id].active = 0;
 		uclamp_group_get(NULL, clamp_id, &p->uclamp[clamp_id],
