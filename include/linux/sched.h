@@ -610,12 +610,21 @@ struct sched_dl_entity {
  * The active bit is set whenever a task has got an effective clamp group
  * and value assigned, which can be different from the user requested ones.
  * This allows to know a task is actually refcounting a CPU's clamp group.
+ *
+ * The user_defined bit is set whenever a task has got a task-specific clamp
+ * value requested from userspace, i.e. the system defaults applies to this
+ * task just as a restriction. This allows to relax TG's clamps when a less
+ * restrictive task specific value has been defined, thus allowing to
+ * implement a "nice" semantic when both task group and task specific values
+ * are used. For example, a task running on a 20% boosted TG can still drop
+ * its own boosting to 0%.
  */
 struct uclamp_se {
 	unsigned int value		: SCHED_CAPACITY_SHIFT + 1;
 	unsigned int group_id		: order_base_2(UCLAMP_GROUPS);
 	unsigned int mapped		: 1;
 	unsigned int active		: 1;
+	unsigned int user_defined	: 1;
 	/*
 	 * Clamp group and value actually used by a scheduling entity,
 	 * i.e. a (RUNNABLE) task or a task group.
