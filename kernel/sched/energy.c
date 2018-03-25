@@ -25,7 +25,6 @@ struct sched_energy_model ** __percpu energy_model;
  */
 LIST_HEAD(freq_domains);
 
-#ifdef CONFIG_PM_OPP
 static ssize_t cpu_energy_model_show(struct device *dev,
 				     struct device_attribute *attr,
 				     char *buf)
@@ -210,6 +209,3 @@ free_em:
 exit_fail:
 	pr_err("Energy Aware Scheduling initialization failed.\n");
 }
-#else
-void init_sched_energy(void) {}
-#endif
