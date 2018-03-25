@@ -6723,8 +6723,10 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 	if (!task_util_est(p))
 		return prev_cpu;
 
-	/* Compute the energy impact of leaving the task on prev_cpu. */
-	prev_energy = best_energy = compute_energy(p, prev_cpu);
+	if (cpumask_test_cpu(prev_cpu, &p->cpus_allowed))
+		prev_energy = best_energy = compute_energy(p, prev_cpu);
+	else
+		prev_energy = best_energy = ULONG_MAX;
 
 	/* Look for the CPU that minimizes the energy. */
 	for_each_cpu_and(cpu, &p->cpus_allowed, sched_domain_span(sd)) {
