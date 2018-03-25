@@ -1,15 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Released under the GPLv2 only.
- * SPDX-License-Identifier: GPL-2.0
- *
  * Energy-aware scheduling models
  *
  * Copyright (C) 2018, Arm Ltd.
  * Written by: Quentin Perret, Arm Ltd.
- *
- * This file is subject to the terms and conditions of the GNU General Public
- * License.  See the file "COPYING" in the main directory of this archive
- * for more details.
  */
 
 #define pr_fmt(fmt) "sched-energy: " fmt
