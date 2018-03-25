@@ -6613,7 +6613,8 @@ static inline int cpu_overutilized(int cpu)
  */
 static unsigned long cpu_util_next(int cpu, struct task_struct *p, int dst_cpu)
 {
-	unsigned long util = cpu_rq(cpu)->cfs.avg.util_avg;
+	struct rq *rq = cpu_rq(cpu);
+	unsigned long util = cpu_util_cfs(rq) + cpu_util_dl(rq);
 	unsigned long capacity = capacity_orig_of(cpu);
 
 	/*
@@ -6624,9 +6625,9 @@ static unsigned long cpu_util_next(int cpu, struct task_struct *p, int dst_cpu)
 		goto clamp_util;
 
 	if (dst_cpu == cpu)
-		util += task_util(p);
+		util += task_util_est(p);
 	else
-		util = max_t(long, util - task_util(p), 0);
+		util = max_t(long, util - task_util_est(p), 0);
 
 clamp_util:
 	return (util >= capacity) ? capacity : util;
@@ -6710,7 +6711,7 @@ static bool task_fits(struct task_struct *p, int cpu)
 {
 	unsigned long next_util = cpu_util_next(cpu, p, cpu);
 
-	return util_fits_capacity(next_util, capacity_orig_of(cpu));
+	return util_fits_capacity(next_util, capacity_of(cpu));
 }
 
 static int find_energy_efficient_cpu(struct sched_domain *sd,
@@ -6719,7 +6720,7 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 	unsigned long cur_energy, prev_energy, best_energy;
 	int cpu, best_cpu = prev_cpu;
 
-	if (!task_util(p))
+	if (!task_util_est(p))
 		return prev_cpu;
 
 	/* Compute the energy impact of leaving the task on prev_cpu. */
