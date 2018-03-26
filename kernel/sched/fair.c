@@ -6657,27 +6657,6 @@ static int wake_cap(struct task_struct *p, int cpu, int prev_cpu)
 	return !util_fits_capacity(task_util(p), min_cap);
 }
 
-static struct capacity_state *find_cap_state(int cpu, unsigned long util)
-{
-	struct sched_energy_model *em = *per_cpu_ptr(energy_model, cpu);
-	struct capacity_state *cs = NULL;
-	int i;
-
-	/*
-	 * As the goal is to estimate the OPP reached for a specific util
-	 * value, mimic the behaviour of schedutil with a 1.25 coefficient
-	 */
-	util += util >> 2;
-
-	for (i = 0; i < em->nr_cap_states; i++) {
-		cs = &em->cap_states[i];
-		if (cs->cap >= util)
-			break;
-	}
-
-	return cs;
-}
-
 static unsigned long compute_energy(struct task_struct *p, int dst_cpu)
 {
 	unsigned long util, fdom_max_util, fdom_tot_util;
@@ -6770,7 +6749,7 @@ static inline bool wake_energy(struct task_struct *p, int prev_cpu)
 {
 	struct sched_domain *sd;
 
-	if (!static_branch_unlikely(&sched_energy_present))
+	if (!sched_energy_enabled())
 		return false;
 
 	sd = rcu_dereference_sched(cpu_rq(prev_cpu)->sd);
@@ -9465,8 +9444,7 @@ static void rebalance_domains(struct rq *rq, enum cpu_idle_type idle)
 		}
 		max_cost += sd->max_newidle_lb_cost;
 
-		if (static_branch_unlikely(&sched_energy_present) &&
-		    !sd_overutilized(sd))
+		if (sched_energy_enabled() && !sd_overutilized(sd))
 			continue;
 
 		if (!(sd->flags & SD_LOAD_BALANCE))
@@ -10036,8 +10014,7 @@ static int idle_balance(struct rq *this_rq, struct rq_flags *rf)
 			break;
 		}
 
-		if (static_branch_unlikely(&sched_energy_present) &&
-		    !sd_overutilized(sd))
+		if (sched_energy_enabled() && !sd_overutilized(sd))
 			continue;
 
 		if (sd->flags & SD_BALANCE_NEWIDLE) {

@@ -24,7 +24,6 @@ struct sched_energy_model ** __percpu energy_model;
  */
 LIST_HEAD(freq_domains);
 
-#ifdef CONFIG_PM_OPP
 static struct sched_energy_model *build_energy_model(int cpu)
 {
 	unsigned long cap_scale = arch_scale_cpu_capacity(NULL, cpu);
@@ -179,6 +178,3 @@ free_em:
 exit_fail:
 	pr_err("Energy Aware Scheduling initialization failed.\n");
 }
-#else
-void init_sched_energy(void) {}
-#endif

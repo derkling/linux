@@ -21,12 +21,49 @@ struct freq_domain {
 extern struct sched_energy_model ** __percpu energy_model;
 extern struct static_key_false sched_energy_present;
 extern struct list_head freq_domains;
-#define for_each_freq_domain(fdom) \
-			list_for_each_entry(fdom, &freq_domains, next)
 
-void init_sched_energy(void);
-#else
+#ifdef CONFIG_PM_OPP
+static inline bool sched_energy_enabled(void)
+{
+	return static_branch_unlikely(&sched_energy_present);
+}
+
+static inline struct list_head *get_freq_domains(void)
+{
+	return &freq_domains;
+}
+
+static inline
+struct capacity_state *find_cap_state(int cpu, unsigned long util)
+{
+	struct sched_energy_model *em = *per_cpu_ptr(energy_model, cpu);
+	struct capacity_state *cs = NULL;
+	int i;
+
+	util += util >> 2;
+
+	for (i = 0; i < em->nr_cap_states; i++) {
+		cs = &em->cap_states[i];
+		if (cs->cap >= util)
+			break;
+	}
+
+	return cs;
+}
+
+extern void init_sched_energy(void);
+#endif
+#endif /* CONFIG_SMP */
+
+#if !defined(CONFIG_SMP) || !defined(CONFIG_PM_OPP)
+static inline bool sched_energy_enabled(void) { return false; }
+static inline struct list_head *get_freq_domains(void) { return NULL; }
+static inline struct capacity_state *
+find_cap_state(int cpu, unsigned long util) { return NULL; }
 static inline void init_sched_energy(void) { }
 #endif
 
-#endif
+#define for_each_freq_domain(fdom) \
+			list_for_each_entry(fdom, get_freq_domains(), next)
+
+#endif /* _LINUX_SCHED_ENERGY_H */
