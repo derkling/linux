@@ -184,6 +184,8 @@ static unsigned long sugov_aggregate_util(struct sugov_cpu *sg_cpu)
 {
 	unsigned long util = sg_cpu->util_dl;
 	struct rq *rq = cpu_rq(sg_cpu->cpu);
+	unsigned long rt = 0, rt_clamped = 0;
+	unsigned long cfs = 0, cfs_clamped = 0;
 
 	/*
 	 * RT and CFS utilization are clamped, according to the current CPU
@@ -193,17 +195,40 @@ static unsigned long sugov_aggregate_util(struct sugov_cpu *sg_cpu)
 	 * required bandwidth on top of that required by higher priority
 	 * classes.
 	 */
-	if (rq->rt.rt_nr_running)
-		util += uclamp_util(sg_cpu->cpu, sg_cpu->max);
-	if (rq->cfs.h_nr_running)
-		util += uclamp_util(sg_cpu->cpu, sg_cpu->util_cfs);
+	if (rq->rt.rt_nr_running) {
+		rt = sg_cpu->max;
+		rt_clamped = uclamp_util(sg_cpu->cpu, sg_cpu->max);
+		util += rt_clamped;
+	}
+	if (rq->cfs.h_nr_running) {
+		cfs = sg_cpu->util_cfs;
+		cfs_clamped = uclamp_util(sg_cpu->cpu, sg_cpu->util_cfs);
+		util += cfs_clamped;
+	}
 
 	/*
 	 * Ideally we would like to set util_dl as min/guaranteed freq and
 	 * util_cfs + util_dl as requested freq. However, cpufreq is not yet
 	 * ready for such an interface. So, we only do the latter for now.
 	 */
-	return min(util, sg_cpu->max);
+	util = min(util, sg_cpu->max);
+
+	trace_printk("cpu_util: cpu=%d util=%lu "
+		     "cpu_cmin=%d cpu_cmax=%d "
+		     "cfs=%lu cfs_clamped=%lu cfs_nr=%d "
+		     "rt=%lu rt_clamped=%lu rt_nr=%d "
+		     "dl=%lu max=%lu",
+		     sg_cpu->cpu, util,
+		     uclamp_value(sg_cpu->cpu, UCLAMP_MIN),
+		     uclamp_value(sg_cpu->cpu, UCLAMP_MAX),
+		     cfs, cfs_clamped,
+		     rq->cfs.h_nr_running,
+		     rt, rt_clamped,
+		     rq->rt.rt_nr_running,
+		     sg_cpu->util_dl,
+		     sg_cpu->max);
+
+	return util;
 }
 
 /**
@@ -377,6 +402,7 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 	struct sugov_policy *sg_policy = sg_cpu->sg_policy;
 	struct cpufreq_policy *policy = sg_policy->policy;
 	unsigned long util = 0, max = 1;
+	unsigned int next_f;
 	unsigned int j;
 
 	for_each_cpu(j, policy->cpus) {
@@ -394,7 +420,13 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 		}
 	}
 
-	return get_next_freq(sg_policy, util, max);
+	next_f = get_next_freq(sg_policy, util, max);
+
+	trace_printk("sugov_next_freq_shared: cpu=%d util=%lu "
+		     "curr_freq=%d next_freq=%d",
+		     sg_cpu->cpu, util, policy->cur, next_f);
+
+	return next_f;
 }
 
 static void
@@ -408,6 +440,9 @@ sugov_update_shared(struct update_util_data *hook, u64 time, unsigned int flags)
 
 	sugov_set_iowait_boost(sg_cpu, flags);
 	sg_cpu->last_update = time;
+
+	trace_printk("sugov_update_shared: flags=%u iow_boost=%u",
+		     flags, sg_cpu->iowait_boost);
 
 	ignore_dl_rate_limit(sg_cpu, sg_policy);
 
