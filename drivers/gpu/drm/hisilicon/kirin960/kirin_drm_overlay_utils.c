@@ -952,6 +952,7 @@ static void hisi_dss_qos_on(struct dss_hw_ctx *ctx)
 	outp32(noc_dss_base + 0x18c, 0x2);
 }
 
+#if 0
 static void hisi_dss_mif_on(struct dss_hw_ctx *ctx)
 {
 	char __iomem *dss_base;
@@ -1020,6 +1021,7 @@ void hisi_dss_smmu_on(struct dss_hw_ctx *ctx)
 	phy_pgd_base = (uint32_t)(domain_data->phy_pgd_base);
 	set_reg(smmu_base + SMMU_CB_TTBR0, phy_pgd_base, 32, 0);
 }
+#endif
 
 void hisifb_dss_on(struct dss_hw_ctx *ctx)
 {
