@@ -981,6 +981,7 @@ static inline void uclamp_cpu_get(struct task_struct *p, int cpu, int clamp_id)
 
 	/* Increment the current group_id */
 	uc_cpu->group[group_id].tasks += 1;
+	p->uclamp_trace_id[clamp_id] = group_id;
 
 	/* Mark task as enqueued for this clamp index */
 	p->uclamp_group_id[clamp_id] = group_id;
@@ -1015,6 +1016,7 @@ static inline void uclamp_cpu_put(struct task_struct *p, int cpu, int clamp_id)
 	/* Decrement the task's reference counted group index */
 	group_id = p->uclamp_group_id[clamp_id];
 	uc_cpu->group[group_id].tasks -= 1;
+	p->uclamp_trace_id[clamp_id] = group_id;
 
 	/* Mark task as dequeued for this clamp IDX */
 	p->uclamp_group_id[clamp_id] = UCLAMP_NONE;
@@ -1064,6 +1066,23 @@ static inline void uclamp_task_update(struct rq *rq, struct task_struct *p)
 			uclamp_cpu_put(p, cpu, clamp_id);
 		else
 			uclamp_cpu_get(p, cpu, clamp_id);
+	}
+
+	{
+		int grp_min = p->uclamp_trace_id[UCLAMP_MIN];
+		int grp_max = p->uclamp_trace_id[UCLAMP_MAX];
+		bool get = uclamp_task_affects(p, UCLAMP_MIN);
+
+		trace_printk("uclamp_task_update: cpu=%d pid=%d comm=%s op=%s "
+			     "task_min=%d task_max=%d cpu_min=%d cpu_max=%d "
+			     "cnt_min=%d cnt_max=%d",
+			     cpu, p->pid, p->comm, get ? "get" : "put",
+			     cpu_rq(cpu)->uclamp[UCLAMP_MIN].group[grp_min].value,
+			     cpu_rq(cpu)->uclamp[UCLAMP_MAX].group[grp_max].value,
+			     cpu_rq(cpu)->uclamp[UCLAMP_MIN].value,
+			     cpu_rq(cpu)->uclamp[UCLAMP_MAX].value,
+			     cpu_rq(cpu)->uclamp[UCLAMP_MIN].group[grp_min].tasks,
+			     cpu_rq(cpu)->uclamp[UCLAMP_MAX].group[grp_max].tasks);
 	}
 }
 
