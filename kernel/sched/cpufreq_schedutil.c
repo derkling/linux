@@ -184,6 +184,9 @@ static unsigned long sugov_aggregate_util(struct sugov_cpu *sg_cpu)
 {
 	unsigned long util = sg_cpu->util_dl;
 	struct rq *rq = cpu_rq(sg_cpu->cpu);
+	unsigned long rt = 0, rt_clamped = 0;
+	unsigned long cfs = 0, cfs_clamped = 0;
+	int cpu = smp_processor_id();
 
 	/*
 	 * RT and CFS utilization are clamped, according to the current CPU
@@ -193,17 +196,37 @@ static unsigned long sugov_aggregate_util(struct sugov_cpu *sg_cpu)
 	 * required bandwidth on top of that required by higher priority
 	 * classes.
 	 */
-	if (rq->rt.rt_nr_running)
-		util += uclamp_util(sg_cpu->cpu, sg_cpu->max);
-	if (rq->cfs.h_nr_running)
-		util += uclamp_util(sg_cpu->cpu, sg_cpu->util_cfs);
+	if (rq->rt.rt_nr_running) {
+		rt = sg_cpu->max;
+		rt_clamped = uclamp_util(sg_cpu->cpu, sg_cpu->max);
+		util += rt_clamped;
+	}
+	if (rq->cfs.h_nr_running) {
+		cfs = sg_cpu->util_cfs;
+		cfs_clamped = uclamp_util(sg_cpu->cpu, sg_cpu->util_cfs);
+		util += cfs_clamped;
+	}
 
 	/*
 	 * Ideally we would like to set util_dl as min/guaranteed freq and
 	 * util_cfs + util_dl as requested freq. However, cpufreq is not yet
 	 * ready for such an interface. So, we only do the latter for now.
 	 */
-	return min(util, sg_cpu->max);
+	util = min(util, sg_cpu->max);
+
+	trace_printk("cpu_util: cpu=%d util=%lu max=%lu "
+		     "cpu_cmin=%d cpu_cmax=%d "
+		     "cfs=%lu cfs_clamped=%lu "
+		     "rt=%lu rt_clamped=%lu "
+		     "dl=%lu",
+		     cpu, util, sg_cpu->max,
+		     uclamp_value(cpu, UCLAMP_MIN),
+		     uclamp_value(cpu, UCLAMP_MAX),
+		     cfs, cfs_clamped,
+		     rt, rt_clamped,
+		     sg_cpu->util_dl);
+
+	return util;
 }
 
 /**
