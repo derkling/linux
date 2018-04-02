@@ -2,7 +2,6 @@
 #ifndef _LINUX_SCHED_ENERGY_H
 #define _LINUX_SCHED_ENERGY_H
 
-#ifdef CONFIG_SMP
 struct capacity_state {
 	unsigned long cap;	/* compute capacity */
 	unsigned long power;	/* power consumption at this compute capacity */
@@ -18,11 +17,11 @@ struct freq_domain {
 	cpumask_t span;
 };
 
+#if defined(CONFIG_SMP) && defined(CONFIG_PM_OPP)
 extern struct sched_energy_model ** __percpu energy_model;
 extern struct static_key_false sched_energy_present;
 extern struct list_head freq_domains;
 
-#ifdef CONFIG_PM_OPP
 static inline bool sched_energy_enabled(void)
 {
 	return static_branch_unlikely(&sched_energy_present);
@@ -52,10 +51,7 @@ struct capacity_state *find_cap_state(int cpu, unsigned long util)
 }
 
 extern void init_sched_energy(void);
-#endif
-#endif /* CONFIG_SMP */
-
-#if !defined(CONFIG_SMP) || !defined(CONFIG_PM_OPP)
+#else
 static inline bool sched_energy_enabled(void) { return false; }
 static inline struct list_head *get_freq_domains(void) { return NULL; }
 static inline struct capacity_state *
