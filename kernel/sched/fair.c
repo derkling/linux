@@ -6667,7 +6667,7 @@ static unsigned long compute_energy(struct task_struct *p, int dst_cpu)
 
 	for_each_freq_domain(fdom) {
 		fdom_max_util = fdom_tot_util = 0;
-		for_each_cpu_and(cpu, &(fdom->span), cpu_online_mask) {
+		for_each_cpu_and(cpu, freq_domain_span(fdom), cpu_online_mask) {
 			util = cpu_util_next(cpu, p, dst_cpu);
 			fdom_max_util = max(util, fdom_max_util);
 			fdom_tot_util += util;
@@ -6678,7 +6678,7 @@ static unsigned long compute_energy(struct task_struct *p, int dst_cpu)
 		 * the same frequency domains are shared. Hence, we look at the
 		 * capacity state of the first CPU and re-use it for all.
 		 */
-		cpu = cpumask_first(&(fdom->span));
+		cpu = cpumask_first(freq_domain_span(fdom));
 		cs = find_cap_state(cpu, fdom_max_util);
 		energy += cs->power * fdom_tot_util / cs->cap;
 	}
@@ -6707,7 +6707,7 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 		unsigned long util;
 
 		/* Find the CPU with the max spare cap in the freq. dom. */
-		for_each_cpu_and(cpu, &fdom->span, sched_domain_span(sd)) {
+		for_each_cpu_and(cpu, freq_domain_span(fdom), sched_domain_span(sd)) {
 			if (!cpumask_test_cpu(cpu, &p->cpus_allowed))
 				continue;
 

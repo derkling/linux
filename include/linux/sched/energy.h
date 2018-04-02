@@ -27,11 +27,6 @@ static inline bool sched_energy_enabled(void)
 	return static_branch_unlikely(&sched_energy_present);
 }
 
-static inline struct list_head *get_freq_domains(void)
-{
-	return &freq_domains;
-}
-
 static inline
 struct capacity_state *find_cap_state(int cpu, unsigned long util)
 {
@@ -50,16 +45,25 @@ struct capacity_state *find_cap_state(int cpu, unsigned long util)
 	return cs;
 }
 
+static inline struct cpumask *freq_domain_span(struct freq_domain *fd)
+{
+	return &fd->span;
+}
+
 extern void init_sched_energy(void);
+
+#define for_each_freq_domain(fdom) \
+	list_for_each_entry(fdom, &freq_domains, next)
+
 #else
+struct freq_domain;
 static inline bool sched_energy_enabled(void) { return false; }
-static inline struct list_head *get_freq_domains(void) { return NULL; }
+static inline struct cpumask
+*freq_domain_span(struct freq_domain *fd) { return NULL; }
 static inline struct capacity_state *
 find_cap_state(int cpu, unsigned long util) { return NULL; }
 static inline void init_sched_energy(void) { }
+#define for_each_freq_domain(fdom) for (; fdom; fdom = NULL)
 #endif
-
-#define for_each_freq_domain(fdom) \
-			list_for_each_entry(fdom, get_freq_domains(), next)
 
 #endif /* _LINUX_SCHED_ENERGY_H */
