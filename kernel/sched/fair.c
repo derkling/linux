@@ -6659,18 +6659,18 @@ static int wake_cap(struct task_struct *p, int cpu, int prev_cpu)
 
 static unsigned long compute_energy(struct task_struct *p, int dst_cpu)
 {
-	unsigned long util, fdom_max_util, fdom_tot_util;
+	unsigned long util, max_util, sum_util;
 	struct capacity_state *cs;
 	unsigned long energy = 0;
-	struct freq_domain *fdom;
+	struct freq_domain *fd;
 	int cpu;
 
-	for_each_freq_domain(fdom) {
-		fdom_max_util = fdom_tot_util = 0;
-		for_each_cpu_and(cpu, freq_domain_span(fdom), cpu_online_mask) {
+	for_each_freq_domain(fd) {
+		max_util = sum_util = 0;
+		for_each_cpu_and(cpu, freq_domain_span(fd), cpu_online_mask) {
 			util = cpu_util_next(cpu, p, dst_cpu);
-			fdom_max_util = max(util, fdom_max_util);
-			fdom_tot_util += util;
+			max_util = max(util, max_util);
+			sum_util += util;
 		}
 
 		/*
@@ -6678,9 +6678,9 @@ static unsigned long compute_energy(struct task_struct *p, int dst_cpu)
 		 * the same frequency domains are shared. Hence, we look at the
 		 * capacity state of the first CPU and re-use it for all.
 		 */
-		cpu = cpumask_first(freq_domain_span(fdom));
-		cs = find_cap_state(cpu, fdom_max_util);
-		energy += cs->power * fdom_tot_util / cs->cap;
+		cpu = cpumask_first(freq_domain_span(fd));
+		cs = find_cap_state(cpu, max_util);
+		energy += cs->power * sum_util / cs->cap;
 	}
 
 	return energy;
@@ -6691,7 +6691,7 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 {
 	unsigned long cur_energy, prev_energy, best_energy;
 	int cpu, best_energy_cpu = prev_cpu;
-	struct freq_domain *fdom;
+	struct freq_domain *fd;
 
 	if (!task_util_est(p))
 		return prev_cpu;
@@ -6701,13 +6701,13 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 	else
 		prev_energy = best_energy = ULONG_MAX;
 
-	for_each_freq_domain(fdom) {
+	for_each_freq_domain(fd) {
 		unsigned long spare_cap, max_spare_cap = 0;
 		int max_spare_cap_cpu = -1;
 		unsigned long util;
 
 		/* Find the CPU with the max spare cap in the freq. dom. */
-		for_each_cpu_and(cpu, freq_domain_span(fdom), sched_domain_span(sd)) {
+		for_each_cpu_and(cpu, freq_domain_span(fd), sched_domain_span(sd)) {
 			if (!cpumask_test_cpu(cpu, &p->cpus_allowed))
 				continue;
 
