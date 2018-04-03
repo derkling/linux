@@ -20,7 +20,7 @@ struct freq_domain {
 #if defined(CONFIG_SMP) && defined(CONFIG_PM_OPP)
 extern struct sched_energy_model ** __percpu energy_model;
 extern struct static_key_false sched_energy_present;
-extern struct list_head freq_domains;
+extern struct list_head sched_freq_domains;
 
 static inline bool sched_energy_enabled(void)
 {
@@ -53,7 +53,7 @@ static inline struct cpumask *freq_domain_span(struct freq_domain *fd)
 extern void init_sched_energy(void);
 
 #define for_each_freq_domain(fdom) \
-	list_for_each_entry(fdom, &freq_domains, next)
+	list_for_each_entry(fdom, &sched_freq_domains, next)
 
 #else
 struct freq_domain;

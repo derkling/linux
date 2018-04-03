@@ -23,7 +23,7 @@ struct sched_energy_model ** __percpu energy_model;
  * to the scheduler. They are stacked in a dynamically allocated linked list
  * as we don't know how many frequency domains the system has.
  */
-LIST_HEAD(freq_domains);
+LIST_HEAD(sched_freq_domains);
 
 static ssize_t cpu_energy_model_show(struct device *dev,
 				     struct device_attribute *attr,
@@ -138,7 +138,7 @@ static void free_energy_model(void)
 		device_remove_file(cpu_dev, &dev_attr_cpu_energy_model);
 	}
 
-	list_for_each_entry_safe(pos, tmp, &freq_domains, next) {
+	list_for_each_entry_safe(pos, tmp, &sched_freq_domains, next) {
 		cpu = cpumask_first(&(pos->span));
 		em = *per_cpu_ptr(energy_model, cpu);
 		if (em) {
@@ -181,7 +181,7 @@ void init_sched_energy(void)
 		ret = dev_pm_opp_get_sharing_cpus(cpu_dev, &(fdom->span));
 		if (ret)
 			goto free_em;
-		list_add(&(fdom->next), &freq_domains);
+		list_add(&(fdom->next), &sched_freq_domains);
 
 		/*
 		 * Build the energy model of one CPU, and link it to all CPUs
