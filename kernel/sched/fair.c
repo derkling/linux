@@ -772,7 +772,7 @@ void post_init_entity_util_avg(struct sched_entity *se)
 			 * For !fair tasks do:
 			 *
 			update_cfs_rq_load_avg(now, cfs_rq);
-			attach_entity_load_avg(cfs_rq, se, 0);
+			attach_entity_load_avg(cfs_rq, se);
 			switched_from_fair(rq, p);
 			 *
 			 * such that the next switched_to_fair() has the
@@ -3038,29 +3038,6 @@ static inline void update_cfs_group(struct sched_entity *se)
 }
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 
-static inline void cfs_rq_util_change(struct cfs_rq *cfs_rq, int flags)
-{
-	struct rq *rq = rq_of(cfs_rq);
-
-	if (&rq->cfs == cfs_rq || (flags & SCHED_CPUFREQ_MIGRATION)) {
-		/*
-		 * There are a few boundary cases this might miss but it should
-		 * get called often enough that that should (hopefully) not be
-		 * a real problem.
-		 *
-		 * It will not get called when we go idle, because the idle
-		 * thread is a different class (!fair), nor will the utilization
-		 * number include things like RT tasks.
-		 *
-		 * As is, the util number is not freq-invariant (we'd have to
-		 * implement arch_scale_freq_capacity() for that).
-		 *
-		 * See cpu_util().
-		 */
-		cpufreq_update_util(rq, flags);
-	}
-}
-
 #ifdef CONFIG_SMP
 /*
  * Approximate:
@@ -3741,9 +3718,6 @@ update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq)
 	cfs_rq->load_last_update_time_copy = sa->last_update_time;
 #endif
 
-	if (decayed)
-		cfs_rq_util_change(cfs_rq, 0);
-
 	return decayed;
 }
 
@@ -3755,7 +3729,7 @@ update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq)
  * Must call update_cfs_rq_load_avg() before this, since we rely on
  * cfs_rq->avg.last_update_time being current.
  */
-static void attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
+static void attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
 	u32 divider = LOAD_AVG_MAX - 1024 + cfs_rq->avg.period_contrib;
 
@@ -3790,8 +3764,6 @@ static void attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 	cfs_rq->avg.util_sum += se->avg.util_sum;
 
 	add_tg_cfs_propagate(cfs_rq, se->avg.load_sum);
-
-	cfs_rq_util_change(cfs_rq, flags);
 }
 
 /**
@@ -3809,8 +3781,6 @@ static void detach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 	sub_positive(&cfs_rq->avg.util_sum, se->avg.util_sum);
 
 	add_tg_cfs_propagate(cfs_rq, -se->avg.load_sum);
-
-	cfs_rq_util_change(cfs_rq, 0);
 }
 
 /*
@@ -3847,7 +3817,7 @@ static inline void update_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 		 *
 		 * IOW we're enqueueing a task on a new CPU.
 		 */
-		attach_entity_load_avg(cfs_rq, se, SCHED_CPUFREQ_MIGRATION);
+		attach_entity_load_avg(cfs_rq, se);
 		update_tg_load_avg(cfs_rq, 0);
 
 	} else if (decayed && (flags & UPDATE_TG))
@@ -4057,13 +4027,12 @@ update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq)
 
 static inline void update_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se, int not_used1)
 {
-	cfs_rq_util_change(cfs_rq, 0);
 }
 
 static inline void remove_entity_load_avg(struct sched_entity *se) {}
 
 static inline void
-attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags) {}
+attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se) {}
 static inline void
 detach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se) {}
 
@@ -5374,6 +5343,28 @@ static inline void hrtick_update(struct rq *rq)
 }
 #endif
 
+static void
+cpufreq_enqueue(struct rq *rq, struct task_struct *p)
+{
+	unsigned int flags = 0;
+
+	if (p->in_iowait)
+		flags |= SCHED_CPUFREQ_IOWAIT;
+
+#ifdef CONFIG_SMP
+	/*
+	 * !last_update_time means we've passed through
+	 * migrate_task_rq_fair() indicating we migrated.
+	 *
+	 * IOW we're enqueueing a task on a new CPU.
+	 */
+	if (!p->se.avg.last_update_time)
+		flags |= SCHED_CPUFREQ_MIGRATION;
+#endif
+
+	cpufreq_update_util(rq, flags);
+}
+
 /*
  * The enqueue_task method is called before nr_running is
  * increased. Here we update the fair scheduling stats and
@@ -5384,22 +5375,6 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &p->se;
-
-	/*
-	 * The code below (indirectly) updates schedutil which looks at
-	 * the cfs_rq utilization to select a frequency.
-	 * Let's add the task's estimated utilization to the cfs_rq's
-	 * estimated utilization, before we update schedutil.
-	 */
-	util_est_enqueue(&rq->cfs, p);
-
-	/*
-	 * If in_iowait is set, the code below may not trigger any cpufreq
-	 * utilization updates, so do it here explicitly with the IOWAIT flag
-	 * passed.
-	 */
-	if (p->in_iowait)
-		cpufreq_update_util(rq, SCHED_CPUFREQ_IOWAIT);
 
 	for_each_sched_entity(se) {
 		if (se->on_rq)
@@ -5433,6 +5408,32 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 	if (!se)
 		add_nr_running(rq, 1);
+
+	/*
+	 * The (estimated) utilization of a task already accounts for the
+	 * effects of it running into a throttled TG.
+	 * For example, a 100% task running alone in a TG with:
+	 *   cpu.cfs_period_us : 16 [ms]
+	 *   cpu.cfs_quota_us  :  8 [ms]
+	 * will never generated more then 50% utilization.
+	 *
+	 * Thus, in the following code, we unconditionally update the
+	 * estimated utilization of the cfs_rq and then call schedutil.
+	 *
+	 * This makes sense also if the task is enqueued into a currently
+	 * throttled cfs_rq. Indeed, depending on the TG bandwidth allocated
+	 * it is still expected to generate the estimated utilization.
+	 *
+	 * In general however, we should be aware that the estimated
+	 * utilization is less accurate if the TG configuration (e.g.
+	 * allocated bandwidth, average number of its RUNNABLE tasks, etc.) is
+	 * quite volatile.
+	 *
+	 * All that considered, it's still worth to trigger a schedutil update
+	 * whenever a task is enqueued into a CPU.
+	 */
+	util_est_enqueue(&rq->cfs, p);
+	cpufreq_enqueue(rq, p);
 
 	hrtick_update(rq);
 }
@@ -7686,6 +7687,9 @@ static void update_blocked_averages(int cpu)
 	if (done)
 		rq->has_blocked_load = 0;
 #endif
+
+	cpufreq_update_util(rq, SCHED_CPUFREQ_IDLE);
+
 	rq_unlock_irqrestore(rq, &rf);
 }
 
@@ -9936,6 +9940,8 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 
 	if (static_branch_unlikely(&sched_numa_balancing))
 		task_tick_numa(rq, curr);
+
+	cpufreq_update_util(rq, 0);
 }
 
 /*
@@ -10073,7 +10079,7 @@ static void attach_entity_cfs_rq(struct sched_entity *se)
 
 	/* Synchronize entity with its cfs_rq */
 	update_load_avg(cfs_rq, se, sched_feat(ATTACH_AGE_LOAD) ? 0 : SKIP_AGE_LOAD);
-	attach_entity_load_avg(cfs_rq, se, 0);
+	attach_entity_load_avg(cfs_rq, se);
 	update_tg_load_avg(cfs_rq, false);
 	propagate_entity_cfs_rq(se);
 }
