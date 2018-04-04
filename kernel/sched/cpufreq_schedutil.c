@@ -215,11 +215,14 @@ static unsigned long sugov_aggregate_util(struct sugov_cpu *sg_cpu)
 	util = min(util, sg_cpu->max);
 
 	trace_printk("cpu_util: cpu=%d util=%lu max=%lu "
+		     "rt_nr=%d cfs_nr=%d "
 		     "cpu_cmin=%d cpu_cmax=%d "
 		     "cfs=%lu cfs_clamped=%lu "
 		     "rt=%lu rt_clamped=%lu "
 		     "dl=%lu",
 		     cpu, util, sg_cpu->max,
+		     rq->rt.rt_nr_running,
+		     rq->cfs.h_nr_running,
 		     uclamp_value(cpu, UCLAMP_MIN),
 		     uclamp_value(cpu, UCLAMP_MAX),
 		     cfs, cfs_clamped,
@@ -431,6 +434,9 @@ sugov_update_shared(struct update_util_data *hook, u64 time, unsigned int flags)
 
 	sugov_set_iowait_boost(sg_cpu, flags);
 	sg_cpu->last_update = time;
+
+	trace_printk("sugov_update_shared: flags=%u iow_boost=%u",
+		     flags, sg_cpu->iowait_boost);
 
 	ignore_dl_rate_limit(sg_cpu, sg_policy);
 

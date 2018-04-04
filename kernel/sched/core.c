@@ -968,7 +968,8 @@ static inline void uclamp_cpu_get(struct task_struct *p, int cpu, int clamp_id)
 
 #if CONFIG_UCLAMP_TASK_GROUP
 	/* Use TG's clamp value to limit task specific values */
-	if (clamp_value >= task_group(p)->uclamp[clamp_id].value) {
+	if (group_id == UCLAMP_NONE ||
+	    clamp_value >= task_group(p)->uclamp[clamp_id].value) {
 		clamp_value = task_group(p)->uclamp[clamp_id].value;
 		group_id = task_group(p)->uclamp[clamp_id].group_id;
 	}

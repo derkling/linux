@@ -238,9 +238,11 @@ struct vtime {
 	u64			gtime;
 };
 
+#define UCLAMP_NONE -1
+
 enum uclamp_id {
 	/* No utilization clamp group assigned */
-	UCLAMP_NONE = -1,
+	//UCLAMP_NONE = -1,
 
 	UCLAMP_MIN = 0, /* Minimum utilization */
 	UCLAMP_MAX,     /* Maximum utilization */
