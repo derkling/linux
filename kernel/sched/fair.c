@@ -3028,6 +3028,7 @@ static inline void cfs_rq_util_change(struct cfs_rq *cfs_rq, int flags)
 		 *
 		 * See cpu_util().
 		 */
+		trace_printk("call: fn=cpufreq_update_util args=0");
 		cpufreq_update_util(rq, flags);
 	}
 }
@@ -5389,12 +5390,16 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	 * utilization updates, so do it here explicitly with the IOWAIT flag
 	 * passed.
 	 */
-	if (p->in_iowait)
+	if (p->in_iowait) {
+		trace_printk("call: fn=cpufreq_update_util args=IOWAIT");
 		cpufreq_update_util(rq, SCHED_CPUFREQ_IOWAIT);
+	}
 
 	for_each_sched_entity(se) {
+		trace_printk("call: fn=enqueue_task args=1st_loop");
 		if (se->on_rq)
 			break;
+
 		cfs_rq = cfs_rq_of(se);
 		enqueue_entity(cfs_rq, se, flags);
 
@@ -5408,12 +5413,18 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 			break;
 		cfs_rq->h_nr_running++;
 
+		trace_printk("call: fn=enqueue_task args=1st_loop,%u",
+			     cfs_rq->h_nr_running);
+
 		flags = ENQUEUE_WAKEUP;
 	}
 
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
 		cfs_rq->h_nr_running++;
+
+		trace_printk("call: fn=enqueue_task args=2st_loop,%u",
+			     cfs_rq->h_nr_running);
 
 		if (cfs_rq_throttled(cfs_rq))
 			break;
