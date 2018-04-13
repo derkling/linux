@@ -201,9 +201,26 @@ static unsigned long sugov_aggregate_util(struct sugov_cpu *sg_cpu)
 	return min(util, sg_cpu->max);
 }
 
+/**
+ * sugov_iowait_reset resets the iowait boost if the CPU appears to have been
+ *                    idle enough.
+ * @sg_cpu: the sugov data for the cpu to boost
+ * @time:   the update time from the caller
+ */
+static bool sugov_iowait_reset(struct sugov_cpu *sg_cpu, u64 time,
+			       bool iowait_boost)
 {
+	s64 delta_ns = time - sg_cpu->last_update;
 
+	if (delta_ns <= TICK_NSEC)
+		return false;
 
+	sg_cpu->iowait_boost = iowait_boost
+		? sg_cpu->sg_policy->policy->min : 0;
+	sg_cpu->iowait_boost_pending = iowait_boost;
+
+	return true;
+}
 
 /**
  * sugov_iowait_init initialize the IO boost at each wakeup from IO.
@@ -220,6 +237,11 @@ static void sugov_iowait_init(struct sugov_cpu *sg_cpu, u64 time,
 				   unsigned int flags)
 {
 	bool iowait = flags & SCHED_CPUFREQ_IOWAIT;
+
+	/* Reset boost if the CPU appears to have been idle enough */
+	if (sg_cpu->iowait_boost &&
+	    sugov_iowait_reset(sg_cpu, time, iowait))
+		return;
 
 	/* Boost only tasks waking up after IO */
 	if (!iowait)
@@ -273,6 +295,18 @@ static void sugov_iowait_boost(struct sugov_cpu *sg_cpu, u64 time,
 	/* Clear boost if the CPU appears to have been idle enough */
 	if (sugov_iowait_reset(sg_cpu, time, false))
 		return;
+
++       /* Clear boost if the CPU appears to have been idle enough */
++       delta_ns = time - sg_cpu->last_update;
++       if (delta_ns > TICK_NSEC) {
++               sg_cpu->iowait_boost = 0;
++               sg_cpu->iowait_boost_pending = false;
++               return;
++       }
++
+
+
+
 
 	/* An IO waiting task has just woken up, use the boost value */
 	if (sg_cpu->iowait_boost_pending) {
