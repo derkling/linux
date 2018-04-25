@@ -297,3 +297,21 @@ config PM_GENERIC_DOMAINS_OF
 
 config CPU_PM
 	bool
+
+config ENERGY_MODEL
+	bool "Framework managing Energy Models of CPUs"
+	depends on SMP
+	depends on CPU_FREQ
+	default n
+	help
+	  Several subsystems (thermal and/or the scheduler for example) can,
+	  under specific conditions, leverage information about the energy
+	  consumed by CPUs to make smarter decisions. This config option
+	  enables the framework from which the subsystems can fetch the energy
+	  models.
+
+	  The exact usage of the energy model is subsystem-dependent, and might
+	  or might not have an impact the power and/or performance of your
+	  system.
+
+	  If in doubt, say N.
