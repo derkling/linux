@@ -297,3 +297,13 @@ config PM_GENERIC_DOMAINS_OF
 
 config CPU_PM
 	bool
+
+config ENERGY_MODEL
+	bool "Energy Models of CPUs"
+	depends on SMP
+	depends on CPU_FREQ
+	default n
+	help
+	  XXX: To be used by EAS and/or the thermal subsystem.
+
+	  If in doubt, say N.
