@@ -4,6 +4,11 @@
 
 menu "Misc devices"
 
+config CYCLE_THIEF
+	tristate "Enable cycle thief frequency emulation"
+	depends on !PERF_EVENTS && !ARM_PMU
+	default n
+
 config SENSORS_LIS3LV02D
 	tristate
 	depends on INPUT

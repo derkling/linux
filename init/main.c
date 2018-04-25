@@ -939,6 +939,11 @@ static inline void mark_readonly(void)
 }
 #endif
 
+#ifdef CONFIG_CYCLE_THIEF
+int cycle_thief_init(void);
+void cycle_thief_exit(void);
+#endif // CONFIG_CYCLE_THIEF
+
 static int __ref kernel_init(void *unused)
 {
 	int ret;
@@ -952,6 +957,10 @@ static int __ref kernel_init(void *unused)
 	numa_default_policy();
 
 	rcu_end_inkernel_boot();
+
+#ifdef CONFIG_CYCLE_THIEF
+	cycle_thief_init();
+#endif
 
 	if (ramdisk_execute_command) {
 		ret = run_init_process(ramdisk_execute_command);
