@@ -30,6 +30,7 @@
 #include <linux/scpi_protocol.h>
 #include <linux/slab.h>
 #include <linux/types.h>
+#include <linux/energy_model.h>
 
 struct scpi_data {
 	struct clk *clk;
@@ -98,7 +99,7 @@ scpi_get_sharing_cpus(struct device *cpu_dev, struct cpumask *cpumask)
 
 static int scpi_cpufreq_init(struct cpufreq_policy *policy)
 {
-	int ret;
+	int ret, nr_opp;
 	unsigned int latency;
 	struct device *cpu_dev;
 	struct scpi_data *priv;
@@ -135,6 +136,7 @@ static int scpi_cpufreq_init(struct cpufreq_policy *policy)
 		ret = -EPROBE_DEFER;
 		goto out_free_opp;
 	}
+	nr_opp = ret;
 
 	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
 	if (!priv) {
@@ -170,6 +172,10 @@ static int scpi_cpufreq_init(struct cpufreq_policy *policy)
 	policy->cpuinfo.transition_latency = latency;
 
 	policy->fast_switch_possible = false;
+
+	em_register_freq_domain(policy->cpus, nr_opp,
+			&dev_pm_opp_of_estimate_power);
+
 	return 0;
 
 out_free_cpufreq_table:
