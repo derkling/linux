@@ -217,7 +217,6 @@ struct clk_ops {
 	int		(*set_phase)(struct clk_hw *hw, int degrees);
 	void		(*init)(struct clk_hw *hw);
 	int		(*debug_init)(struct clk_hw *hw, struct dentry *dentry);
-    void    (*cpu_vote)(u32, u32, u32);
 };
 
 /**

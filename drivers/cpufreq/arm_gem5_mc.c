@@ -65,9 +65,6 @@ mc_cpufreq_set_rate(u32 cpu, u32 new_cluster, u32 rate)
 		 __func__, cpu, new_cluster, rate);
 
 	mutex_lock(&cluster_lock[new_cluster]);
-
-    clk_cpu_vote(clk[new_cluster], cpu, new_cluster, rate);
-
 	ret = clk_set_rate(clk[new_cluster], rate * 1000);
 	mutex_unlock(&cluster_lock[new_cluster]);
 
