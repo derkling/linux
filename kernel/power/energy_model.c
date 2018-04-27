@@ -8,6 +8,7 @@
 
 #define pr_fmt(fmt) "energy_model: " fmt
 
+#include <linux/cpu.h>
 #include <linux/slab.h>
 #include <linux/cpumask.h>
 #include <linux/energy_model.h>
@@ -117,6 +118,39 @@ free_new_em:
 	return NULL;
 }
 
+static ssize_t cpu_energy_model_show(struct device *dev,
+				     struct device_attribute *attr,
+				     char *buf)
+{
+	struct cpu *cpu = container_of(dev, struct cpu, dev);
+	struct em_cap_state_table *table;
+	struct energy_model *em;
+	ssize_t char_cnt = 0;
+	int i;
+
+	rcu_read_lock();
+	em = dereference_energy_model();
+	if (!em)
+		goto unlock;
+
+	table = *per_cpu_ptr(em->cap_tables, cpu->dev.id);
+	if (!table)
+		goto unlock;
+
+	for (i = 0; i < table->nr_cap_states; i++) {
+		struct em_cap_state *cs = &table->cap_states[i];
+
+		char_cnt += sprintf(buf + char_cnt, "%lu\t%lu\t%lu\n",
+				cs->cap, cs->power, cs->freq);
+	}
+
+unlock:
+	rcu_read_unlock();
+	return char_cnt;
+}
+
+static DEVICE_ATTR_RO(cpu_energy_model);
+
 /*
  * The complexity of the Energy Model is defined as the product of the number
  * of CPUs by the number of frequency domains. It is generally not a good idea
@@ -148,6 +182,11 @@ static void check_start(void)
 
 	static_branch_enable(&_energy_model_ready);
 	pr_info("Loaded successfully\n");
+
+	for_each_online_cpu(cpu) {
+		struct device *cpu_dev = get_cpu_device(cpu);
+		device_create_file(cpu_dev, &dev_attr_cpu_energy_model);
+	}
 }
 
 static void cap_state_table_normalize(struct em_cap_state_table *v, int cpu)
