@@ -345,6 +345,7 @@ long clk_round_rate(struct clk *clk, unsigned long rate);
  */
 int clk_set_rate(struct clk *clk, unsigned long rate);
 
+void clk_cpu_vote(struct clk *clk, u32 cpu, u32 cluster, u32 rate);
 /**
  * clk_has_parent - check if a clock is a possible parent for another
  * @clk: clock source

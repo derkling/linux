@@ -871,6 +871,11 @@ static int clk_core_round_rate_nolock(struct clk_core *core,
 	return 0;
 }
 
+void clk_cpu_vote(struct clk *clk, u32 cpu, u32 cluster, u32 rate)
+{
+    clk->core->ops->cpu_vote(cpu, cluster, rate);
+}
+
 /**
  * __clk_determine_rate - get the closest rate actually supported by a clock
  * @hw: determine the rate of this clock

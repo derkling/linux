@@ -24,5 +24,6 @@ extern u32 gem5_energy_ctrl_get_trans_latency(void);
 extern int gem5_energy_ctrl_get_opp_table(u32, u32 **, u32 **);
 extern int gem5_energy_ctrl_get_performance(u32, u32 *);
 extern int gem5_energy_ctrl_set_performance(u32, u32);
+extern void gem5_energy_ctrl_set_cpu_vote(u32, u32, u32);
 
 #endif

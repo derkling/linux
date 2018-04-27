@@ -40,6 +40,9 @@
 #define PERF_LEVEL_TO_READ 0x20
 #define FREQ_AT_PERF_LEVEL 0x24
 #define VOLT_AT_PERF_LEVEL 0x28
+/*#define PIO_NUM_FIELDS 0x2C*/
+#define CPU_ID 0x30
+#define CPU_VOTE 0x34
 
 #define TIME_OUT	100
 #define GEM5_MAX_NUM_DOMAINS	32
@@ -187,6 +190,37 @@ int gem5_energy_ctrl_set_performance(u32 domain_id, u32 freq)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(gem5_energy_ctrl_set_performance);
+
+void gem5_energy_ctrl_set_cpu_vote(u32 cpu, u32 domain_id, u32 vote)
+{
+	int perf;
+	u32 domain_index;
+
+    if (!gem5_energy_ctrl_initialized() || !info->dvfs_handler_status) {
+
+        pr_warn("%s: energy ctrl is not initialized\n", __func__);
+        return;
+    }
+
+    domain_index = index_of_domain_id(domain_id);
+    if(domain_index >= info->num_gem5_domains) {
+
+        pr_err("%s: domain index out of bounds %d\n", __func__, domain_index);
+        return;
+    }
+
+    perf = gem5_energy_ctrl_find_perf_index(domain_index, vote);
+    if (perf < 0)
+        return;
+
+    spin_lock(&info->lock);
+    writel(domain_id, info->baseaddr + DOMAIN_ID);
+    writel(cpu, info->baseaddr + CPU_ID);
+    writel(vote, info->baseaddr + CPU_VOTE);
+
+    spin_unlock(&info->lock);
+}
+EXPORT_SYMBOL_GPL(gem5_energy_ctrl_set_cpu_vote);
 
 /**
  * gem5_energy_ctrl_populate_opps() - initialize opp tables from energy ctrl

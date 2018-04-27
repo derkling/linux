@@ -14,6 +14,7 @@
 
 /* PE Controller clock programming interface for Gem5 Platform cpus */
 
+#define DEBUG 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/clk.h>
@@ -62,10 +63,18 @@ static int energy_ctrl_set_rate(struct clk_hw *hw, unsigned long rate,
 	return gem5_energy_ctrl_set_performance(energy_ctrl->cluster, rate / 1000);
 }
 
+void energy_ctrl_cpu_vote (u32 cpu, u32 cluster, u32 rate)
+{
+    pr_debug("------- CPU_VOTE cluster %d, core %d rate %d\n", cluster, cpu, rate);
+
+    gem5_energy_ctrl_set_cpu_vote(cpu, cluster, rate);
+}
+
 static struct clk_ops clk_energy_ctrl_ops = {
 	.recalc_rate = energy_ctrl_recalc_rate,
 	.round_rate = energy_ctrl_round_rate,
 	.set_rate = energy_ctrl_set_rate,
+    .cpu_vote = energy_ctrl_cpu_vote
 };
 
 struct clk *gem5_clk_register_energy_ctrl(const char *name, int cluster_id)
