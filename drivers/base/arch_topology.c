@@ -73,6 +73,8 @@ static ssize_t cpu_capacity_store(struct device *dev,
 		topology_set_cpu_scale(i, new_capacity);
 	mutex_unlock(&cpu_scale_mutex);
 
+	em_normalize_cpu_capacity();
+
 	return count;
 }
 
