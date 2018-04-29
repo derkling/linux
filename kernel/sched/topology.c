@@ -428,8 +428,10 @@ static void update_top_cache_domain(int cpu)
 
 static void update_asym_cpucapacity(int cpu)
 {
-	if (lowest_flag_domain(cpu, SD_ASYM_CPUCAPACITY))
-		static_branch_enable(&sched_asym_cpucapacity);
+	if (lowest_flag_domain(cpu, SD_ASYM_CPUCAPACITY)) {
+		/* This expects to be hotplug-safe */
+		static_branch_enable_cpuslocked(&sched_asym_cpucapacity);
+	}
 }
 
 /*
