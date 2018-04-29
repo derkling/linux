@@ -2,7 +2,7 @@
 VERSION = 4
 PATCHLEVEL = 16
 SUBLEVEL = 0
-EXTRAVERSION = -rc6
+EXTRAVERSION =
 NAME = Fearless Coyote
 
 # *DOCUMENTATION*
@@ -188,15 +188,15 @@ ifeq ("$(origin M)", "command line")
 endif
 
 ifeq ($(KBUILD_SRC),)
-        # building in the source tree
-        srctree := .
+	# building in the source tree
+	srctree := .
 else
-        ifeq ($(KBUILD_SRC)/,$(dir $(CURDIR)))
-                # building in a subdirectory of the source tree
-                srctree := ..
-        else
-                srctree := $(KBUILD_SRC)
-        endif
+	ifeq ($(KBUILD_SRC)/,$(dir $(CURDIR)))
+		# building in a subdirectory of the source tree
+		srctree := ..
+	else
+		srctree := $(KBUILD_SRC)
+	endif
 endif
 
 export KBUILD_CHECKSRC KBUILD_EXTMOD KBUILD_SRC
@@ -236,18 +236,18 @@ ifneq ($(filter $(no-dot-config-targets), $(MAKECMDGOALS)),)
 endif
 
 ifeq ($(KBUILD_EXTMOD),)
-        ifneq ($(filter config %config,$(MAKECMDGOALS)),)
-                config-targets := 1
-                ifneq ($(words $(MAKECMDGOALS)),1)
-                        mixed-targets := 1
-                endif
-        endif
+	ifneq ($(filter config %config,$(MAKECMDGOALS)),)
+		config-targets := 1
+		ifneq ($(words $(MAKECMDGOALS)),1)
+			mixed-targets := 1
+		endif
+	endif
 endif
 # install and modules_install need also be processed one by one
 ifneq ($(filter install,$(MAKECMDGOALS)),)
-        ifneq ($(filter modules_install,$(MAKECMDGOALS)),)
-	        mixed-targets := 1
-        endif
+	ifneq ($(filter modules_install,$(MAKECMDGOALS)),)
+		mixed-targets := 1
+	endif
 endif
 
 ifeq ($(mixed-targets),1)
@@ -315,15 +315,15 @@ ARCH		?= $(SUBARCH)
 CROSS_COMPILE	?= $(CONFIG_CROSS_COMPILE:"%"=%)
 
 # Architecture as present in compile.h
-UTS_MACHINE 	:= $(ARCH)
-SRCARCH 	:= $(ARCH)
+UTS_MACHINE	:= $(ARCH)
+SRCARCH		:= $(ARCH)
 
 # Additional ARCH settings for x86
 ifeq ($(ARCH),i386)
-        SRCARCH := x86
+	SRCARCH := x86
 endif
 ifeq ($(ARCH),x86_64)
-        SRCARCH := x86
+	SRCARCH := x86
 endif
 
 # Additional ARCH settings for sparc
@@ -403,7 +403,7 @@ USERINCLUDE    := \
 		-I$(objtree)/arch/$(SRCARCH)/include/generated/uapi \
 		-I$(srctree)/include/uapi \
 		-I$(objtree)/include/generated/uapi \
-                -include $(srctree)/include/linux/kconfig.h
+		-include $(srctree)/include/linux/kconfig.h
 
 # Use LINUXINCLUDE when you must reference the include/ directory.
 # Needed to be compatible with the O= option
@@ -673,8 +673,8 @@ ifdef CONFIG_READABLE_ASM
 # ipa clone creates specialized cloned functions
 # partial inlining inlines only parts of functions
 KBUILD_CFLAGS += $(call cc-option,-fno-reorder-blocks,) \
-                 $(call cc-option,-fno-ipa-cp-clone,) \
-                 $(call cc-option,-fno-partial-inlining)
+		 $(call cc-option,-fno-ipa-cp-clone,) \
+		 $(call cc-option,-fno-partial-inlining)
 endif
 
 ifneq ($(CONFIG_FRAME_WARN),0)
@@ -781,7 +781,7 @@ KBUILD_CFLAGS	+= $(call cc-option, -gdwarf-4,)
 endif
 
 ifdef CONFIG_DEBUG_INFO_REDUCED
-KBUILD_CFLAGS 	+= $(call cc-option, -femit-struct-debug-baseonly) \
+KBUILD_CFLAGS	+= $(call cc-option, -femit-struct-debug-baseonly) \
 		   $(call cc-option,-fno-var-tracking)
 endif
 
@@ -1087,7 +1087,7 @@ endif
 prepare2: prepare3 prepare-compiler-check outputmakefile asm-generic
 
 prepare1: prepare2 $(version_h) include/generated/utsrelease.h \
-                   include/config/auto.conf
+		   include/config/auto.conf
 	$(cmd_crmodverdir)
 
 archprepare: archheaders archscripts prepare1 scripts_basic
@@ -1102,10 +1102,10 @@ prepare: prepare0 prepare-objtool
 PHONY += asm-generic uapi-asm-generic
 asm-generic: uapi-asm-generic
 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.asm-generic \
-	            src=asm obj=arch/$(SRCARCH)/include/generated/asm
+		    src=asm obj=arch/$(SRCARCH)/include/generated/asm
 uapi-asm-generic:
 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.asm-generic \
-	            src=uapi/asm obj=arch/$(SRCARCH)/include/generated/uapi/asm
+		    src=uapi/asm obj=arch/$(SRCARCH)/include/generated/uapi/asm
 
 PHONY += prepare-objtool
 prepare-objtool: $(objtool_target)
@@ -1139,10 +1139,10 @@ endif
 ifdef stackp-broken
   ifeq ($(stackp-name),AUTO)
 	@echo CONFIG_CC_STACKPROTECTOR_$(stackp-name): \
-                  $(stackp-flag) available but compiler is broken: disabling >&2
+		  $(stackp-flag) available but compiler is broken: disabling >&2
   else
 	@echo Cannot use CONFIG_CC_STACKPROTECTOR_$(stackp-name): \
-                  $(stackp-flag) available but compiler is broken >&2 && exit 1
+		  $(stackp-flag) available but compiler is broken >&2 && exit 1
   endif
 endif
 	@:
@@ -1688,12 +1688,12 @@ tools/%: FORCE
 #  build-dir  => directory in kernel source tree to use
 
 ifeq ($(KBUILD_EXTMOD),)
-        build-dir  = $(patsubst %/,%,$(dir $@))
-        target-dir = $(dir $@)
+	build-dir  = $(patsubst %/,%,$(dir $@))
+	target-dir = $(dir $@)
 else
-        zap-slash=$(filter-out .,$(patsubst %/,%,$(dir $@)))
-        build-dir  = $(KBUILD_EXTMOD)$(if $(zap-slash),/$(zap-slash))
-        target-dir = $(if $(KBUILD_EXTMOD),$(dir $<),$(dir $@))
+	zap-slash=$(filter-out .,$(patsubst %/,%,$(dir $@)))
+	build-dir  = $(KBUILD_EXTMOD)$(if $(zap-slash),/$(zap-slash))
+	target-dir = $(if $(KBUILD_EXTMOD),$(dir $<),$(dir $@))
 endif
 
 %.s: %.c prepare scripts FORCE
@@ -1742,12 +1742,12 @@ quiet_cmd_rmfiles = $(if $(wildcard $(rm-files)),CLEAN   $(wildcard $(rm-files))
 # Run depmod only if we have System.map and depmod is executable
 quiet_cmd_depmod = DEPMOD  $(KERNELRELEASE)
       cmd_depmod = $(CONFIG_SHELL) $(srctree)/scripts/depmod.sh $(DEPMOD) \
-                   $(KERNELRELEASE) "$(patsubst y,_,$(CONFIG_HAVE_UNDERSCORE_SYMBOL_PREFIX))"
+		   $(KERNELRELEASE) "$(patsubst y,_,$(CONFIG_HAVE_UNDERSCORE_SYMBOL_PREFIX))"
 
 # Create temporary dir for module support files
 # clean it up only when building all modules
 cmd_crmodverdir = $(Q)mkdir -p $(MODVERDIR) \
-                  $(if $(KBUILD_MODULES),; rm -f $(MODVERDIR)/*)
+		  $(if $(KBUILD_MODULES),; rm -f $(MODVERDIR)/*)
 
 # read all saved command lines
 
