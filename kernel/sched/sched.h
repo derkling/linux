@@ -63,6 +63,7 @@
 #include <linux/syscalls.h>
 #include <linux/task_work.h>
 #include <linux/tsacct_kern.h>
+#include <linux/energy_model.h>
 
 #include <asm/tlb.h>
 
@@ -1147,6 +1148,7 @@ DECLARE_PER_CPU(int, sd_llc_id);
 DECLARE_PER_CPU(struct sched_domain_shared *, sd_llc_shared);
 DECLARE_PER_CPU(struct sched_domain *, sd_numa);
 DECLARE_PER_CPU(struct sched_domain *, sd_asym);
+DECLARE_PER_CPU(struct sched_domain *, sd_ea);
 
 struct sched_group_capacity {
 	atomic_t		ref;
@@ -2161,4 +2163,30 @@ static inline unsigned long cpu_util_cfs(struct rq *rq)
 
 	return util;
 }
+#endif
+
+struct sched_energy_fd {
+	struct em_freq_domain *fd;
+	struct list_head next;
+	struct rcu_head rcu;
+};
+
+#ifdef CONFIG_ENERGY_MODEL
+extern struct static_key_false sched_energy_present;
+static inline bool sched_energy_enabled(void)
+{
+	return static_branch_unlikely(&sched_energy_present);
+}
+
+extern struct list_head sched_energy_fd_list;
+#define for_each_freq_domain(sfd) \
+		list_for_each_entry_rcu(sfd, &sched_energy_fd_list, next)
+#define freq_domain_span(sfd) (&((sfd)->fd->cpus))
+#else
+static inline bool sched_energy_enabled(void)
+{
+	return false;
+}
+#define for_each_freq_domain(sfd) for (sfd = NULL; sfd;)
+#define freq_domain_span(sfd) NULL
 #endif
