@@ -243,4 +243,9 @@ static inline int task_node(const struct task_struct *p)
 	return cpu_to_node(task_cpu(p));
 }
 
+#ifdef CONFIG_ENERGY_MODEL
+void init_sched_energy(void);
+#else
+static inline void init_sched_energy(void) { }
+#endif
 #endif /* _LINUX_SCHED_TOPOLOGY_H */

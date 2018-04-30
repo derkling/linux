@@ -1635,6 +1635,69 @@ static struct sched_domain *build_sched_domain(struct sched_domain_topology_leve
 	return sd;
 }
 
+#ifdef CONFIG_ENERGY_MODEL
+
+/*
+ * The complexity of the Energy Model is defined as the product of the number
+ * of CPUs by the number of frequency domains. It is generally not a good idea
+ * to use such a model on very complex platform because of the associated
+ * scheduling overheads. The abritrary constraint below makes it usable up to
+ * 16 CPUs with per-CPU DVFS.
+ */
+#define EM_MAX_COMPLEXITY 256
+
+DEFINE_STATIC_KEY_FALSE(sched_energy_present);
+
+static int _init_sched_energy(void)
+{	struct em_freq_domain *fd;
+	struct energy_model *em;
+	struct sched_domain *sd;
+	int cpu, nb_fd = 0;
+
+	/* EAS is used for asymmetric systems only. */
+	sd = lowest_flag_domain(smp_processor_id(), SD_ASYM_CPUCAPACITY);
+	if (!sd)
+		return -1;
+
+	/* Check the presence of the Energy Model */
+	em = rcu_dereference(energy_model);
+	if (!em)
+		return -1;
+
+	/* Check that all online CPUs are linked to a capacity state table */
+	for_each_online_cpu(cpu) {
+		if (!*per_cpu_ptr(em->cap_tables, cpu))
+			return -1;
+	}
+
+	/* Make sure the complexity of the Energy Model is acceptable */
+	for_each_freq_domain(fd, em)
+		nb_fd++;
+	if (nb_fd * num_online_cpus() > EM_MAX_COMPLEXITY) {
+		pr_warn("Energy Model complexity too high, stopping EAS");
+		return -1;
+	}
+
+	return 0;
+}
+
+static void init_sched_energy_cpuslocked(void)
+{
+	if (!_init_sched_energy())
+		static_branch_enable_cpuslocked(&sched_energy_present);
+	else
+		static_branch_disable_cpuslocked(&sched_energy_present);
+}
+
+void init_sched_energy(void)
+{
+	if (!_init_sched_energy())
+		static_branch_enable(&sched_energy_present);
+	else
+		static_branch_disable(&sched_energy_present);
+}
+#endif
+
 /*
  * Build sched domains for a given set of CPUs and attach the sched domains
  * to the individual CPUs
@@ -1705,6 +1768,9 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 
 		cpu_attach_domain(sd, d.rd, i);
 	}
+
+	init_sched_energy_cpuslocked();
+
 	rcu_read_unlock();
 
 	if (rq && sched_debug_enabled) {
