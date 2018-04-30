@@ -398,6 +398,7 @@ DEFINE_PER_CPU(int, sd_llc_id);
 DEFINE_PER_CPU(struct sched_domain_shared *, sd_llc_shared);
 DEFINE_PER_CPU(struct sched_domain *, sd_numa);
 DEFINE_PER_CPU(struct sched_domain *, sd_asym);
+DEFINE_PER_CPU(struct sched_domain *, sd_ea);
 
 static void update_top_cache_domain(int cpu)
 {
@@ -423,6 +424,9 @@ static void update_top_cache_domain(int cpu)
 
 	sd = highest_flag_domain(cpu, SD_ASYM_PACKING);
 	rcu_assign_pointer(per_cpu(sd_asym, cpu), sd);
+
+	sd = lowest_flag_domain(cpu, SD_ASYM_CPUCAPACITY);
+	rcu_assign_pointer(per_cpu(sd_ea, cpu), sd);
 }
 
 /*
@@ -1500,6 +1504,120 @@ void sched_domains_numa_masks_clear(unsigned int cpu)
 
 #endif /* CONFIG_NUMA */
 
+#ifdef CONFIG_ENERGY_MODEL
+
+/*
+ * The complexity of the Energy Model is defined as the product of the number
+ * of frequency domains with the sum of the number of CPUs and the total
+ * number of performance states in all frequency domains. It is generally not
+ * a good idea to use such a model on very complex platforms because of the
+ * associated  * scheduling overheads. The arbitrary constraint below prevents
+ * that. It makes EAS usable up to 16 CPUs with per-CPU DVFS and less than 8
+ * performance states each, for example.
+ */
+#define EM_MAX_COMPLEXITY 2048
+
+DEFINE_STATIC_KEY_FALSE(sched_energy_present);
+LIST_HEAD(sched_energy_fd_list);
+
+static struct sched_energy_fd *find_sched_energy_fd(int cpu)
+{
+	struct sched_energy_fd *sfd;
+
+	for_each_freq_domain(sfd) {
+		if (cpumask_test_cpu(cpu, freq_domain_span(sfd)))
+			return sfd;
+	}
+
+	return NULL;
+}
+
+static void free_sched_energy_fd(struct rcu_head *rp)
+{
+	struct sched_energy_fd *sfd;
+
+	sfd = container_of(rp, struct sched_energy_fd, rcu);
+	kfree(sfd);
+}
+
+static void build_sched_energy(void)
+{
+	struct sched_energy_fd *sfd, *tmp;
+	struct em_freq_domain *fd;
+	struct sched_domain *sd;
+	int cpu, nr_fd = 0, nr_opp = 0;
+
+	rcu_read_lock();
+
+	/* Disable EAS entirely when we can't find sd_ea */
+	sd = rcu_dereference(per_cpu(sd_ea, cpumask_first(cpu_online_mask)));
+	if (!sd) {
+		printk(KERN_DEBUG "%s: no sd_ea\n", __func__);
+		goto disable;
+	}
+
+	/* Make sure to have an energy model for all CPUs. */
+	for_each_online_cpu(cpu) {
+		/* Skip CPUs with a known energy model. */
+		sfd = find_sched_energy_fd(cpu);
+		if (sfd)
+			continue;
+
+		/* Add the energy model of others. */
+		fd = em_cpu_get(cpu);
+		if (!fd) {
+			printk(KERN_DEBUG "%s: CPU%d: no fd\n", __func__, cpu);
+			goto disable;
+		}
+		sfd = kzalloc(sizeof(*sfd), GFP_NOWAIT);
+		if (!sfd)
+			goto disable;
+		sfd->fd = fd;
+		list_add_rcu(&sfd->next, &sched_energy_fd_list);
+	}
+
+	list_for_each_entry_safe(sfd, tmp, &sched_energy_fd_list, next) {
+		if (cpumask_intersects(freq_domain_span(sfd),
+							cpu_online_mask)) {
+			nr_opp += em_fd_nr_cap_states(sfd->fd);
+			nr_fd++;
+			continue;
+		}
+
+		/* Remove hotplugged frequency domains */
+		list_del_rcu(&sfd->next);
+		call_rcu(&sfd->rcu, free_sched_energy_fd);
+	}
+
+	/* Bail out if the Energy Model complexity is too high. */
+	if (nr_fd * (nr_opp + num_online_cpus()) > EM_MAX_COMPLEXITY) {
+		printk(KERN_DEBUG "%s: high EM complexity", __func__);
+		goto disable;
+	}
+
+	rcu_read_unlock();
+
+	static_branch_enable_cpuslocked(&sched_energy_present);
+	printk(KERN_DEBUG "%s: EAS started\n", __func__);
+
+	return;
+
+disable:
+	/* Destroy the list */
+	list_for_each_entry_safe(sfd, tmp, &sched_energy_fd_list, next) {
+		list_del_rcu(&sfd->next);
+		call_rcu(&sfd->rcu, free_sched_energy_fd);
+	}
+
+	rcu_read_unlock();
+
+	static_branch_disable_cpuslocked(&sched_energy_present);
+	printk(KERN_DEBUG "%s: EAS stopped\n", __func__);
+}
+#else
+static void build_sched_energy(void) { }
+#endif
+
 static int __sdt_alloc(const struct cpumask *cpu_map)
 {
 	struct sched_domain_topology_level *tl;
@@ -1912,6 +2030,9 @@ match1:
 match2:
 		;
 	}
+
+	/* Try to start sched energy. */
+	build_sched_energy();
 
 	/* Remember the new sched domains: */
 	if (doms_cur != &fallback_doms)
