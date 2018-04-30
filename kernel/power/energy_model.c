@@ -8,12 +8,46 @@
 
 #define pr_fmt(fmt) "energy_model: " fmt
 
+#include <linux/cpu.h>
 #include <linux/slab.h>
 #include <linux/cpumask.h>
 #include <linux/energy_model.h>
 #include <linux/sched/topology.h>
 
 struct energy_model *energy_model;
+
+static ssize_t cpu_energy_model_show(struct device *dev,
+				     struct device_attribute *attr,
+				     char *buf)
+{
+	struct cpu *cpu = container_of(dev, struct cpu, dev);
+	struct em_cap_state_table *table;
+	struct energy_model *em;
+	ssize_t char_cnt = 0;
+	int i;
+
+	rcu_read_lock();
+	em = dereference_energy_model();
+	if (!em)
+		goto unlock;
+
+	table = *per_cpu_ptr(em->cap_tables, cpu->dev.id);
+	if (!table)
+		goto unlock;
+
+	for (i = 0; i < table->nr_cap_states; i++) {
+		struct em_cap_state *cs = &table->cap_states[i];
+
+		char_cnt += sprintf(buf + char_cnt, "%lu\t%lu\t%lu\n",
+				cs->cap, cs->power, cs->freq);
+	}
+
+unlock:
+	rcu_read_unlock();
+	return char_cnt;
+}
+
+static DEVICE_ATTR_RO(cpu_energy_model);
 
 static void free_em(struct energy_model *em)
 {
@@ -238,6 +272,11 @@ int em_build_freq_domain(cpumask_t *span, int nr_states, long (*fun)(long*, int)
 	free_em(old_em);
 
 	pr_info("Added freq domain %*pbl\n", cpumask_pr_args(span));
+
+	for_each_cpu(cpu, span) {
+		struct device *cpu_dev = get_cpu_device(cpu);
+		device_create_file(cpu_dev, &dev_attr_cpu_energy_model);
+	}
 
 	return 0;
 
