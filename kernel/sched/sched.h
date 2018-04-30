@@ -44,6 +44,7 @@
 #include <linux/ctype.h>
 #include <linux/debugfs.h>
 #include <linux/delayacct.h>
+#include <linux/energy_model.h>
 #include <linux/init_task.h>
 #include <linux/kprobes.h>
 #include <linux/kthread.h>
@@ -673,6 +674,12 @@ static inline bool sched_asym_prefer(int a, int b)
 	return arch_asym_cpu_priority(a) > arch_asym_cpu_priority(b);
 }
 
+struct sched_energy_fd {
+	struct em_freq_domain *fd;
+	struct sched_energy_fd *next;
+	struct rcu_head rcu;
+};
+
 /*
  * We add the notion of a root-domain which will be used to define per-domain
  * variables. Each exclusive cpuset essentially defines an island domain by
@@ -721,6 +728,14 @@ struct root_domain {
 	struct cpupri		cpupri;
 
 	unsigned long		max_cpu_capacity;
+
+#ifdef CONFIG_ENERGY_MODEL
+	/*
+	 * NULL-terminated list of frequency domains intersecting with the
+	 * CPUs of the rd. Protected by RCU.
+	 */
+	struct sched_energy_fd *sfd;
+#endif
 };
 
 extern struct root_domain def_root_domain;
@@ -2168,4 +2183,14 @@ static inline unsigned long cpu_util_cfs(struct rq *rq)
 
 	return util;
 }
+#endif
+
+#ifdef CONFIG_ENERGY_MODEL
+#define for_each_freq_domain(cpu, __sfd) \
+		for (__sfd = rcu_dereference(cpu_rq(cpu)->rd->sfd); \
+				__sfd; __sfd = __sfd->next)
+#define freq_domain_span(sfd) (to_cpumask(((sfd)->fd->cpus)))
+#else
+#define for_each_freq_domain(cpu, sfd) for (sfd = NULL; sfd;)
+#define freq_domain_span(sfd) NULL
 #endif
