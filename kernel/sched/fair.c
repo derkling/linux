@@ -5345,6 +5345,65 @@ static inline void hrtick_update(struct rq *rq)
 }
 #endif
 
+static inline int util_fits_capacity(unsigned long util, unsigned long capacity)
+{
+	return capacity * 1024 >= util * capacity_margin;
+}
+
+#ifdef CONFIG_SMP
+static inline int test_overutilized(int cpu)
+{
+	struct sched_domain_shared *sds;
+
+	sds = rcu_dereference(per_cpu(sd_ea_shared, cpu));
+	if (sds)
+		return READ_ONCE(sds->overutilized);
+
+	return -1;
+}
+
+static inline void set_overutilized(int cpu, int val)
+{
+	struct sched_domain_shared *sds;
+
+	sds = rcu_dereference(per_cpu(sd_ea_shared, cpu));
+	if (sds)
+		WRITE_ONCE(sds->overutilized, val);
+}
+
+static inline unsigned long cpu_util(int cpu);
+
+static inline void update_overutilized(int cpu)
+{
+	rcu_read_lock();
+
+	if (!test_overutilized(cpu) &&
+	    !util_fits_capacity(cpu_util(cpu), capacity_of(cpu)))
+		set_overutilized(cpu, 1);
+
+	rcu_read_unlock();
+}
+
+static inline void
+update_overutilized_lb(struct sched_domain *sd, int cpu, int val)
+{
+	int overutilized, span_weight, ea_span_weight;
+
+	overutilized = test_overutilized(cpu);
+	if (overutilized == -1)
+		return;
+
+	span_weight = sd->span_weight;
+	ea_span_weight = this_cpu_read(sd_ea_size);
+
+	if ((span_weight < ea_span_weight && !overutilized && val) ||
+	    (span_weight == ea_span_weight && overutilized != val))
+		set_overutilized(cpu, val);
+}
+#else
+static inline void update_overutilized(int cpu) {}
+#endif
+
 /*
  * The enqueue_task method is called before nr_running is
  * increased. Here we update the fair scheduling stats and
@@ -5394,8 +5453,10 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		update_cfs_group(se);
 	}
 
-	if (!se)
+	if (!se) {
 		add_nr_running(rq, 1);
+		update_overutilized(cpu_of(rq));
+	}
 
 	util_est_enqueue(&rq->cfs, p);
 	hrtick_update(rq);
@@ -6572,11 +6633,6 @@ static unsigned long cpu_util_wake(int cpu, struct task_struct *p)
 	 * the cpu_util call.
 	 */
 	return min_t(unsigned long, util, capacity_orig_of(cpu));
-}
-
-static inline int util_fits_capacity(unsigned long util, unsigned long capacity)
-{
-	return capacity * 1024 >= util * capacity_margin;
 }
 
 /*
@@ -8133,11 +8189,12 @@ static bool update_nohz_stats(struct rq *rq, bool force)
  * @local_group: Does group contain this_cpu.
  * @sgs: variable to hold the statistics for this group.
  * @overload: Indicate more than one runnable task for any CPU.
+ * @overutilized: Indicate overutilization for any CPU.
  */
 static inline void update_sg_lb_stats(struct lb_env *env,
 			struct sched_group *group, int load_idx,
 			int local_group, struct sg_lb_stats *sgs,
-			bool *overload)
+			bool *overload, int *overutilized)
 {
 	unsigned long load;
 	int i, nr_running;
@@ -8174,6 +8231,9 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 		 */
 		if (!nr_running && idle_cpu(i))
 			sgs->idle_cpus++;
+
+		if (!util_fits_capacity(cpu_util(i), capacity_of(i)))
+			*overutilized = 1;
 	}
 
 	/* Adjust by relative CPU capacity of the group */
@@ -8301,6 +8361,7 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 	struct sg_lb_stats tmp_sgs;
 	int load_idx, prefer_sibling = 0;
 	bool overload = false;
+	int overutilized = 0;
 
 	if (child && child->flags & SD_PREFER_SIBLING)
 		prefer_sibling = 1;
@@ -8327,7 +8388,7 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 		}
 
 		update_sg_lb_stats(env, sg, load_idx, local_group, sgs,
-						&overload);
+				   &overload, &overutilized);
 
 		if (local_group)
 			goto next_group;
@@ -8380,6 +8441,8 @@ next_group:
 		if (env->dst_rq->rd->overload != overload)
 			env->dst_rq->rd->overload = overload;
 	}
+
+	update_overutilized_lb(env->sd, env->dst_cpu, overutilized);
 }
 
 /**
@@ -8598,6 +8661,10 @@ static struct sched_group *find_busiest_group(struct lb_env *env)
 	 * this level.
 	 */
 	update_sd_lb_stats(env, &sds);
+
+	if (test_overutilized(env->dst_cpu))
+		goto out_balanced;
+
 	local = &sds.local_stat;
 	busiest = &sds.busiest_stat;
 
@@ -9955,6 +10022,8 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 
 	if (static_branch_unlikely(&sched_numa_balancing))
 		task_tick_numa(rq, curr);
+
+	update_overutilized(cpu_of(rq));
 }
 
 /*

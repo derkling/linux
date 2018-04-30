@@ -398,6 +398,8 @@ DEFINE_PER_CPU(int, sd_llc_id);
 DEFINE_PER_CPU(struct sched_domain_shared *, sd_llc_shared);
 DEFINE_PER_CPU(struct sched_domain *, sd_numa);
 DEFINE_PER_CPU(struct sched_domain *, sd_asym);
+DEFINE_PER_CPU(struct sched_domain_shared *, sd_ea_shared);
+DEFINE_PER_CPU(int, sd_ea_size);
 
 static void update_top_cache_domain(int cpu)
 {
@@ -423,6 +425,18 @@ static void update_top_cache_domain(int cpu)
 
 	sd = highest_flag_domain(cpu, SD_ASYM_PACKING);
 	rcu_assign_pointer(per_cpu(sd_asym, cpu), sd);
+
+	sds = NULL;
+	size = 0;
+
+	sd = lowest_flag_domain(cpu, SD_ASYM_CPUCAPACITY);
+	if (sd) {
+		size = cpumask_weight(sched_domain_span(sd));
+		sds = sd->shared;
+	}
+
+	per_cpu(sd_ea_size, cpu) = size;
+	rcu_assign_pointer(per_cpu(sd_ea_shared, cpu), sds);
 }
 
 /*
@@ -1185,14 +1199,16 @@ sd_init(struct sched_domain_topology_level *tl,
 	}
 
 	/*
-	 * For all levels sharing cache; connect a sched_domain_shared
-	 * instance.
+         * For all levels sharing cache or containing mixed cpu capacities;
+         * connect a sched_domain_shared instance.
 	 */
-	if (sd->flags & SD_SHARE_PKG_RESOURCES) {
+	if (sd->flags & (SD_SHARE_PKG_RESOURCES | SD_ASYM_CPUCAPACITY)) {
 		sd->shared = *per_cpu_ptr(sdd->sds, sd_id);
 		atomic_inc(&sd->shared->ref);
-		atomic_set(&sd->shared->nr_busy_cpus, sd_weight);
 	}
+
+	if (sd->flags & SD_SHARE_PKG_RESOURCES)
+		atomic_set(&sd->shared->nr_busy_cpus, sd_weight);
 
 	sd->private = sdd;
 
