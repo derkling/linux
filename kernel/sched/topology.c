@@ -1635,6 +1635,122 @@ static struct sched_domain *build_sched_domain(struct sched_domain_topology_leve
 	return sd;
 }
 
+#ifdef CONFIG_ENERGY_MODEL
+
+/*
+ * The complexity of the Energy Model is defined as the product of the number
+ * of frequency domains with the sum of the number of CPUs and the total
+ * number of OPPs in all frequency domains. It is generally not a good idea
+ * to use such a model on very complex platform because of the associated
+ * scheduling overheads. The abritrary constraint below prevents that. It
+ * makes EAS usable up to 16 CPUs with per-CPU DVFS and 7 OPPs each, for
+ * example.
+ */
+#define EM_MAX_COMPLEXITY 2048
+
+DEFINE_STATIC_KEY_FALSE(sched_energy_present);
+LIST_HEAD(sched_energy_fd_list);
+
+static struct sched_energy_fd *find_sched_energy_fd(int cpu)
+{
+	struct sched_energy_fd *sfd;
+
+	for_each_freq_domain(sfd) {
+		if (cpumask_test_cpu(cpu, freq_domain_span(sfd)))
+			return sfd;
+	}
+
+	return NULL;
+}
+
+static void free_sched_energy_fd(struct rcu_head *rp)
+{
+	struct sched_energy_fd *sfd;
+
+	sfd = container_of(rp, struct sched_energy_fd, rcu);
+	em_cpu_put(sfd->fd);
+	kfree(sfd);
+}
+
+int sched_energy_reference(const struct cpumask *cpu_map)
+{
+	struct sched_energy_fd *sfd, *tmp;
+	struct em_freq_domain *fd;
+	int cpu, ret;
+
+	/* Take references on newly online freq domains. */
+	for_each_cpu(cpu, cpu_map) {
+		sfd = find_sched_energy_fd(cpu);
+		if (sfd)
+			continue;
+
+		/* All CPUs must be covered by the EM to start EAS */
+		fd = em_cpu_get(cpu);
+		if (!fd) {
+			pr_debug("%s: no em for CPU%d\n", __func__, cpu);
+			ret = -ENODEV;
+			goto disable;
+		}
+
+		sfd = kzalloc(sizeof(*sfd), GFP_KERNEL);
+		if (!sfd) {
+			ret = -ENOMEM;
+			goto disable;
+		}
+
+		sfd->fd = fd;
+		list_add_rcu(&sfd->next, &sched_energy_fd_list);
+	}
+
+	/* Release the unused EM references */
+	list_for_each_entry_safe(sfd, tmp, &sched_energy_fd_list, next) {
+		if (cpumask_intersects(freq_domain_span(sfd), cpu_map))
+			continue;
+		list_del_rcu(&sfd->next);
+		call_rcu(&sfd->rcu, free_sched_energy_fd);
+	}
+
+	return 0;
+
+disable:
+	static_branch_disable_cpuslocked(&sched_energy_present);
+
+	return ret;
+}
+
+int sched_energy_checkstart(const struct cpumask *cpu_map)
+{
+	struct sched_energy_fd *sfd;
+	struct sched_domain *sd;
+	int nr_fd = 0, nr_opp = 0;
+
+	/* EAS is used for asymmetric systems only. */
+	sd = lowest_flag_domain(cpumask_first(cpu_map), SD_ASYM_CPUCAPACITY);
+	if (!sd) {
+		pr_debug("%s: no SD_ASYM_CPUCAPACITY\n", __func__);
+		static_branch_disable_cpuslocked(&sched_energy_present);
+		return -EINVAL;
+	}
+
+	/* Abort when the Energy Model is too complex */
+	for_each_freq_domain(sfd) {
+		nr_fd++;
+		nr_opp += sfd->fd->nr_cap_states;
+	}
+
+	if (nr_fd * (nr_opp + cpumask_weight(cpu_map)) > EM_MAX_COMPLEXITY) {
+		pr_warn("Energy Model complexity too high, stopping EAS");
+		static_branch_disable_cpuslocked(&sched_energy_present);
+		return -EINVAL;
+	}
+
+	static_branch_enable_cpuslocked(&sched_energy_present);
+	pr_debug("Energy Aware Scheduling started\n");
+
+	return 0;
+}
+#endif
+
 /*
  * Build sched domains for a given set of CPUs and attach the sched domains
  * to the individual CPUs
@@ -1693,8 +1809,12 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 		}
 	}
 
-	/* Attach the domains */
 	rcu_read_lock();
+
+	/* Disable EAS now if newly online CPUs aren't covered by the EM */
+	ret = sched_energy_reference(cpu_map);
+
+	/* Attach the domains */
 	for_each_cpu(i, cpu_map) {
 		rq = cpu_rq(i);
 		sd = *per_cpu_ptr(d.sd, i);
@@ -1705,6 +1825,9 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 
 		cpu_attach_domain(sd, d.rd, i);
 	}
+
+	if (!ret)
+		sched_energy_checkstart(cpu_map);
 	rcu_read_unlock();
 
 	if (rq && sched_debug_enabled) {

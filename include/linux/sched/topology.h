@@ -243,4 +243,18 @@ static inline int task_node(const struct task_struct *p)
 	return cpu_to_node(task_cpu(p));
 }
 
+#ifdef CONFIG_ENERGY_MODEL
+int sched_energy_reference(const struct cpumask *cpu_map);
+int sched_energy_checkstart(const struct cpumask *cpu_map);
+#else
+static inline int sched_energy_reference(const struct cpumask *cpu_map)
+{
+	return -ENOTSUPP;
+}
+static inline int sched_energy_checkstart(const struct cpumask *cpu_map)
+{
+	return -ENOTSUPP;
+}
+#endif
+
 #endif /* _LINUX_SCHED_TOPOLOGY_H */
