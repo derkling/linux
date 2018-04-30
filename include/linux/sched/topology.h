@@ -242,5 +242,4 @@ static inline int task_node(const struct task_struct *p)
 {
 	return cpu_to_node(task_cpu(p));
 }
-
-#endif /* _LINUX_SCHED_TOPOLOGY_H */
+#endif

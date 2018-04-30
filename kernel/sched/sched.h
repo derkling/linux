@@ -2155,3 +2155,16 @@ static inline unsigned long cpu_util_cfs(struct rq *rq)
 	return util;
 }
 #endif
+
+#ifdef CONFIG_ENERGY_MODEL
+extern struct static_key_false sched_energy_present;
+static inline bool sched_energy_enabled(void)
+{
+	return static_branch_unlikely(&sched_energy_present);
+}
+#else
+static inline bool sched_energy_enabled(void)
+{
+	return false;
+}
+#endif
