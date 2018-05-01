@@ -8,12 +8,48 @@
 
 #define pr_fmt(fmt) "energy_model: " fmt
 
+#include <linux/cpu.h>
 #include <linux/slab.h>
 #include <linux/cpumask.h>
 #include <linux/energy_model.h>
 #include <linux/sched/topology.h>
 
 LIST_HEAD(freq_domain_list);
+
+static ssize_t cpu_energy_model_show(struct device *dev,
+				     struct device_attribute *attr,
+				     char *buf)
+{
+	struct cpu *cpu = container_of(dev, struct cpu, dev);
+	struct em_freq_domain *fd;
+	struct em_cap_state *cs;
+	ssize_t char_cnt = 0;
+	int i;
+
+	fd = em_fd_of(cpu->dev.id);
+	if (!fd)
+		return 0;
+
+	for (i = 0; i < fd->nr_cap_states; i++) {
+		cs = &fd->cs_table[i];
+		char_cnt += sprintf(buf + char_cnt, "%lu\t%lu\t%lu\n",
+						cs->cap, cs->power, cs->freq);
+	}
+
+	return char_cnt;
+}
+
+static DEVICE_ATTR_RO(cpu_energy_model);
+
+static void fd_show_sysfs(struct em_freq_domain *fd)
+{
+	int cpu;
+
+	for_each_cpu(cpu, freq_domain_span(fd)) {
+		struct device *cpu_dev = get_cpu_device(cpu);
+		device_create_file(cpu_dev, &dev_attr_cpu_energy_model);
+	}
+}
 
 static void fd_update_capacity(struct em_freq_domain *fd)
 {
@@ -106,6 +142,7 @@ int em_register_freq_domain(cpumask_t *span, int nr_states,
 	list_add(&fd->next, &freq_domain_list);
 
 	pr_info("Added freq domain %*pbl\n", cpumask_pr_args(span));
+	fd_show_sysfs(fd);
 
 	return 0;
 
