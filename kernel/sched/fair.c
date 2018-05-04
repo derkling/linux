@@ -6673,19 +6673,19 @@ static unsigned long cpu_util_next(int cpu, struct task_struct *p, int dst_cpu)
 static long compute_energy(struct task_struct *p, int dst_cpu)
 {
 	long util, max_util, sum_util, energy = 0;
-	struct em_freq_domain *fd;
+	struct sched_energy_fd *sfd;
 	int cpu;
 
-	for_each_freq_domain(fd) {
+	for_each_freq_domain(sfd) {
 		max_util = sum_util = 0;
-		for_each_cpu_and(cpu, freq_domain_span(fd), cpu_online_mask) {
+		for_each_cpu_and(cpu, freq_domain_span(sfd), cpu_online_mask) {
 			util = cpu_util_next(cpu, p, dst_cpu);
 			util += cpu_util_dl(cpu_rq(cpu));
 			max_util = max(util, max_util);
 			sum_util += util;
 		}
 
-		energy += em_fd_energy(fd, max_util, sum_util);
+		energy += em_fd_energy(sfd->fd, max_util, sum_util);
 	}
 
 	return energy;
