@@ -96,20 +96,22 @@ static void em_core_init(void)
 	BUG_ON(!em_kobject);
 }
 
-static void fd_update_capacity(struct em_freq_domain *fd)
+static void fd_update_cs_table(struct em_cap_state *table, int nr_cap_states,
+									int cpu)
 {
-	long fmax = fd->cs_table[fd->nr_cap_states-1].freq;
-	long cmax = arch_scale_cpu_capacity(NULL, cpumask_first(&fd->span));
+	long cmax = arch_scale_cpu_capacity(NULL, cpu);
+	long fmax = table[nr_cap_states-1].freq;
 	int i;
 
-	for (i = 0; i < fd->nr_cap_states; i++)
-		fd->cs_table[i].cap = cmax * fd->cs_table[i].freq / fmax;
+	for (i = 0; i < nr_cap_states; i++)
+		table[i].cap = cmax * table[i].freq / fmax;
 }
 
 static struct em_freq_domain *em_create_fd(cpumask_t *span, int nr_states,
 						long (*get_power)(long*, int))
 {
 	unsigned long opp_eff, prev_opp_eff = ULONG_MAX;
+	struct em_cap_state *cs_table;
 	struct em_freq_domain *fd;
 	long power, freq;
 	int i;
@@ -121,9 +123,10 @@ static struct em_freq_domain *em_create_fd(cpumask_t *span, int nr_states,
 	if (!fd)
 		return fd;
 
-	fd->cs_table = kcalloc(nr_states, sizeof(*fd->cs_table), GFP_KERNEL);
-	if (!fd->cs_table)
+	cs_table = kcalloc(nr_states, sizeof(*fd->cs_table), GFP_KERNEL);
+	if (!cs_table)
 		goto free_fd;
+
 
 	/* Copy the span of the frequency domain */
 	cpumask_copy(&fd->span, span);
@@ -131,11 +134,13 @@ static struct em_freq_domain *em_create_fd(cpumask_t *span, int nr_states,
 	/* Build the list of capacity states for this freq domain */
 	for (i = 0, freq = 0; i < nr_states; i++, freq++) {
 		power = get_power(&freq, cpumask_first(span));
-		if (power <= 0 || freq <= 0)
-			goto free_cs_table;
+		if (power <= 0 || freq <= 0) {
+			kfree(cs_table);
+			goto free_fd;
+		}
 
-		fd->cs_table[i].power = power;
-		fd->cs_table[i].freq = freq;
+		cs_table[i].power = power;
+		cs_table[i].freq = freq;
 
 		/*
 		 * The hertz/watts efficiency ratio should decrease as the
@@ -150,13 +155,13 @@ static struct em_freq_domain *em_create_fd(cpumask_t *span, int nr_states,
 		}
 		prev_opp_eff = opp_eff;
 	}
+
+	fd_update_cs_table(cs_table, nr_states, cpumask_first(span));
+	rcu_assign_pointer(fd->cs_table, cs_table);
 	fd->nr_cap_states = nr_states;
-	fd_update_capacity(fd);
 
 	return fd;
 
-free_cs_table:
-	kfree(fd->cs_table);
 free_fd:
 	kfree(fd);
 
@@ -165,17 +170,31 @@ free_fd:
 
 /**
  * em_rescale_cpu_capacity() - Re-scale capacity values of the Energy Model
- *
- * This should be used on platforms where the CPU capacities can be updated
- * at run time. This code can update the capacity state tables while they are
- * in use. This can lead to transient inaccuracies in the model.
  */
 void em_rescale_cpu_capacity(void)
 {
+	struct em_cap_state *old_table, *new_table;
 	struct em_freq_domain *fd;
+	int nr_states, cpu;
 
-	list_for_each_entry(fd, &freq_domain_list, next)
-		fd_update_capacity(fd);
+	list_for_each_entry(fd, &freq_domain_list, next) {
+		old_table = rcu_dereference(fd->cs_table);
+		if (!old_table)
+			continue;
+
+		nr_states = fd->nr_cap_states;
+		new_table = kcalloc(nr_states, sizeof(*new_table), GFP_KERNEL);
+		if (!new_table)
+			return;
+
+		memcpy(new_table, old_table, nr_states * sizeof(*new_table));
+		cpu = cpumask_first(&fd->span);
+		fd_update_cs_table(new_table, nr_states, cpu);
+
+		rcu_assign_pointer(fd->cs_table, new_table);
+		synchronize_rcu();
+		kfree(old_table);
+	}
 
 	pr_info("Re-scaled CPU capacities\n");
 }

@@ -34,12 +34,16 @@ void em_fd_put(struct em_freq_domain *fd);
 static inline unsigned long em_fd_energy(struct em_freq_domain *fd,
 				unsigned long max_util, unsigned long sum_util)
 {
-	struct em_cap_state *cs = NULL;
+	struct em_cap_state *cs, *table;
 	unsigned long freq;
 	int i;
 
+	table = rcu_dereference(fd->cs_table);
+	if (!table)
+		return 0;
+
 	/* Map the utilization value to a frequency */
-	cs = &fd->cs_table[fd->nr_cap_states-1];
+	cs = &table[fd->nr_cap_states-1];
 	freq = map_util_freq(max_util, cs->freq, cs->cap);
 
 	/* Find the lowest capacity state above this frequency */
