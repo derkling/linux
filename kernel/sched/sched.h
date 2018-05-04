@@ -2157,15 +2157,28 @@ static inline unsigned long cpu_util_cfs(struct rq *rq)
 }
 #endif
 
+struct sched_energy_fd {
+	struct em_freq_domain *fd;
+	struct list_head next;
+	struct rcu_head rcu;
+};
+
 #ifdef CONFIG_ENERGY_MODEL
 extern struct static_key_false sched_energy_present;
 static inline bool sched_energy_enabled(void)
 {
 	return static_branch_unlikely(&sched_energy_present);
 }
+
+extern struct list_head sched_energy_fd_list;
+#define for_each_freq_domain(sfd) \
+		list_for_each_entry_rcu(sfd, &sched_energy_fd_list, next)
+#define freq_domain_span(sfd) &(sfd->fd->span)
 #else
 static inline bool sched_energy_enabled(void)
 {
 	return false;
 }
+#define for_each_freq_domain(sfd) \
+		for (sfd=NULL; sfd;)
 #endif
