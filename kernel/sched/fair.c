@@ -6697,7 +6697,7 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 	unsigned long cur_energy, prev_energy, best_energy, cpu_cap;
 	unsigned long task_util = task_util_est(p);
 	int cpu, best_energy_cpu = prev_cpu;
-	struct em_freq_domain *fd;
+	struct sched_energy_fd *sfd;
 
 	if (!task_util)
 		return prev_cpu;
@@ -6707,13 +6707,13 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 	else
 		prev_energy = best_energy = ULONG_MAX;
 
-	for_each_freq_domain(fd) {
+	for_each_freq_domain(sfd) {
 		unsigned long spare_cap, max_spare_cap = 0;
 		int max_spare_cap_cpu = -1;
 		unsigned long util;
 
 		/* Find the CPU with the max spare cap in the freq. dom. */
-		for_each_cpu_and(cpu, freq_domain_span(fd), sched_domain_span(sd)) {
+		for_each_cpu_and(cpu, freq_domain_span(sfd), sched_domain_span(sd)) {
 			if (!cpumask_test_cpu(cpu, &p->cpus_allowed))
 				continue;
 
