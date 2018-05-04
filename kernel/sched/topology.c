@@ -1643,6 +1643,7 @@ static struct sched_domain *build_sched_domain(struct sched_domain_topology_leve
 #define EM_MAX_COMPLEXITY 256
 
 DEFINE_STATIC_KEY_FALSE(sched_energy_present);
+DEFINE_PER_CPU(struct em_freq_domain *, sched_energy_model);
 
 static int init_sched_energy(void)
 {
@@ -1656,27 +1657,59 @@ static int init_sched_energy(void)
 	/* EAS is used for asymmetric systems only. */
 	sd = lowest_flag_domain(smp_processor_id(), SD_ASYM_CPUCAPACITY);
 	if (!sd)
-		return -1;
-
-	for_each_online_cpu(cpu) {
-		fd = em_fd_of(cpu);
-		/* All online CPUs must be covered by the EM to start EAS. */
-		if (!fd)
-			return -1;
-	}
+		goto release_all;
 
 	/* Abort when the Energy Model is too complex */
 	for_each_freq_domain(fd)
 		nr_fd++;
 	if (nr_fd * num_online_cpus() > EM_MAX_COMPLEXITY) {
 		pr_warn("Energy Model complexity too high, stopping EAS");
-		return -1;
+		goto release_all;
+	}
+
+	/* Take an energy model reference for newly online CPUs. */
+	for_each_online_cpu(cpu) {
+		fd = per_cpu(sched_energy_model, cpu);
+		if (fd)
+			continue;
+
+		fd = em_fd_of(cpu);
+		/* All online CPUs must be covered by the EM to start EAS. */
+		if (!fd)
+			goto release_all;
+
+		per_cpu(sched_energy_model, cpu) = fd;
+	}
+
+	/* Release the energy model reference for newly offline CPUs. */
+	for_each_possible_cpu(cpu) {
+		if (cpu_online(cpu))
+			continue;
+
+		fd = per_cpu(sched_energy_model, cpu);
+		if (!fd)
+			continue;
+
+		per_cpu(sched_energy_model, cpu) = NULL;
+		em_fd_put(fd);
 	}
 
 	static_branch_enable_cpuslocked(&sched_energy_present);
 	pr_debug("Energy Aware Scheduling started\n");
 
 	return 0;
+
+release_all:
+	for_each_possible_cpu(cpu) {
+		fd = per_cpu(sched_energy_model, cpu);
+		if (!fd)
+			continue;
+
+		per_cpu(sched_energy_model, cpu) = NULL;
+		em_fd_put(fd);
+	}
+
+	return -1;
 }
 #endif
 
@@ -1738,6 +1771,8 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 		}
 	}
 
+	init_sched_energy();
+
 	/* Attach the domains */
 	rcu_read_lock();
 	for_each_cpu(i, cpu_map) {
@@ -1750,8 +1785,6 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 
 		cpu_attach_domain(sd, d.rd, i);
 	}
-
-	init_sched_energy();
 
 	rcu_read_unlock();
 
