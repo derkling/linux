@@ -8,13 +8,104 @@
 
 #define pr_fmt(fmt) "energy_model: " fmt
 
+#include <linux/cpu.h>
 #include <linux/slab.h>
 #include <linux/cpumask.h>
 #include <linux/energy_model.h>
 #include <linux/sched/topology.h>
 
 
+static struct kobject *em_kobject;
 LIST_HEAD(freq_domain_list);
+static DEFINE_PER_CPU(struct em_freq_domain *, em_cpu_data);
+
+static DEFINE_MUTEX(em_mutex);
+
+/* Getters for the attributes of em_freq_domain objects */
+struct em_fd_attr {
+	struct attribute attr;
+	ssize_t (*show)(struct em_freq_domain *fd, char *buf);
+	ssize_t (*store)(struct em_freq_domain *fd, const char *buf, size_t count);
+};
+
+#define show_em_fd_cs_attr(attr) \
+static ssize_t show_em_fd_cs_##attr(struct em_freq_domain *fd, char *buf) \
+{ \
+	ssize_t cnt = 0; \
+	int i; \
+	for (i = 0; i < fd->nr_cap_states; i++) \
+		cnt += sprintf(buf + cnt, "%lu\n", fd->cs_table[i].attr); \
+	return cnt; \
+}
+
+show_em_fd_cs_attr(power);
+show_em_fd_cs_attr(freq);
+show_em_fd_cs_attr(cap);
+
+static ssize_t show_em_fd_span(struct em_freq_domain *fd, char *buf) {
+	return sprintf(buf, "%*pbl\n", cpumask_pr_args(freq_domain_span(fd)));
+}
+
+static struct em_fd_attr em_fd_power_attr = __ATTR(power, 0444, show_em_fd_cs_power, NULL);
+static struct em_fd_attr em_fd_freq_attr = __ATTR(frequency, 0444, show_em_fd_cs_freq, NULL);
+static struct em_fd_attr em_fd_cap_attr = __ATTR(capacity, 0444, show_em_fd_cs_cap, NULL);
+static struct em_fd_attr em_fd_cpus_attr = __ATTR(cpus, 0444, show_em_fd_span, NULL);
+
+static struct attribute *em_fd_default_attrs[] = {
+	&em_fd_power_attr.attr,
+	&em_fd_freq_attr.attr,
+	&em_fd_cap_attr.attr,
+	&em_fd_cpus_attr.attr,
+	NULL
+};
+
+#define to_fd(k) container_of(k, struct em_freq_domain, kobj)
+#define to_fd_attr(a) container_of(a, struct em_fd_attr, attr)
+
+static ssize_t show(struct kobject *kobj, struct attribute *attr, char *buf)
+{
+	struct em_freq_domain *fd = to_fd(kobj);
+	struct em_fd_attr *fd_attr = to_fd_attr(attr);
+	ssize_t ret;
+
+	ret = fd_attr->show(fd, buf);
+
+	return ret;
+}
+
+static const struct sysfs_ops em_fd_sysfs_ops = {
+	.show	= show,
+};
+
+static void rcu_free_callback(struct rcu_head *rp)
+{
+	struct em_freq_domain *fd;
+
+	fd = container_of(rp, struct em_freq_domain, rcu);
+	pr_info("%s: %*pbl\n", __func__, cpumask_pr_args(&fd->span));
+	kfree(fd->cs_table);
+	kfree(fd);
+}
+
+static void em_fd_release(struct kobject *kobj)
+{
+	struct em_freq_domain *fd = to_fd(kobj);
+
+	list_del_rcu(&fd->next);
+	call_rcu(&fd->rcu, rcu_free_callback);
+}
+
+static struct kobj_type ktype_em_fd = {
+	.sysfs_ops	= &em_fd_sysfs_ops,
+	.default_attrs	= em_fd_default_attrs,
+	.release	= em_fd_release,
+};
+
+static void em_core_init(void)
+{
+	em_kobject = kobject_create_and_add("energy_model", &cpu_subsys.dev_root->kobj);
+	BUG_ON(!em_kobject);
+}
 
 static void fd_update_capacity(struct em_freq_domain *fd)
 {
@@ -94,12 +185,56 @@ void em_rescale_cpu_capacity(void)
 {
 	struct em_freq_domain *fd;
 
+	mutex_lock(&em_mutex);
+
 	for_each_freq_domain(fd)
 		fd_update_capacity(fd);
+
+	mutex_unlock(&em_mutex);
 
 	pr_info("Re-scaled CPU capacities\n");
 }
 
+
+static int cpuhp_em_online(unsigned int cpu)
+{
+	struct em_freq_domain *fd;
+
+	mutex_lock(&em_mutex);
+	fd = em_fd_of_raw(cpu);
+	per_cpu(em_cpu_data, cpu) = fd;
+	//if (fd)
+	//	pr_info("CPU%d online\n", cpu); /* XXX: debug */
+	mutex_unlock(&em_mutex);
+
+	return 0;
+}
+
+static int cpuhp_em_offline(unsigned int cpu)
+{
+	struct em_freq_domain *fd;
+
+	mutex_lock(&em_mutex);
+
+	fd = per_cpu(em_cpu_data, cpu);
+	if (fd) {
+		//pr_info("CPU%d offline\n", cpu); /* XXX: debug */
+		per_cpu(em_cpu_data, cpu) = NULL;
+
+		/* Check if "cpu" is the last in the freq domain. */
+		for_each_cpu(cpu, &fd->span) {
+			if (per_cpu(em_cpu_data, cpu))
+				goto unlock;
+		}
+		kobject_put(&fd->kobj);
+		pr_info("No CPU online in %*pbl, release kobj\n", cpumask_pr_args(&fd->span)); /* XXX: debug */
+	}
+
+unlock:
+	mutex_unlock(&em_mutex);
+
+	return 0;
+}
 
 /**
  * em_register_freq_domain() - Register the Energy Model of a frequency domain
@@ -118,23 +253,72 @@ int em_register_freq_domain(cpumask_t *span, int nr_states,
 						long (*get_power)(long*, int))
 {
 	struct em_freq_domain *fd;
+	bool new_fd = true;
+	int ret, cpu;
+
+	mutex_lock(&em_mutex);
 
 	/* Make sure we don't register again an existing freq domain. */
 	for_each_freq_domain(fd) {
 		if (!cpumask_equal(freq_domain_span(fd), span))
 			continue;
-		return 0;
+		new_fd = false;
+
+		/* Take a kobj reference if we don't have one */
+		for_each_cpu(cpu, span) {
+			if (per_cpu(em_cpu_data, cpu))
+				goto add_fd;
+		}
+
+		kobject_get(&fd->kobj);
+		goto add_fd;
 	}
 
-	/* Create a new frequency domain */
 	fd = em_create_fd(span, nr_states, get_power);
-	if (!fd)
-		return -EINVAL;
+	if (!fd) {
+		ret = -EINVAL;
+		goto unlock;
+	}
 
+	if (!em_kobject)
+		em_core_init();
 
-	list_add(&fd->next, &freq_domain_list);
+	ret = kobject_init_and_add(&fd->kobj, &ktype_em_fd, em_kobject,
+				"fd%u", cpumask_first(freq_domain_span(fd)));
+	if (ret) {
+		pr_err("%s: Failed to init fd->kobj: %d\n", __func__, ret);
+		goto free_fd;
+	}
+
+	ret = cpuhp_setup_state_nocalls_cpuslocked(CPUHP_AP_ONLINE_DYN,
+						   "energy_model:online",
+						   cpuhp_em_online,
+						   cpuhp_em_offline);
+	if (ret < 0) {
+		pr_err("%s: Failed cpuhp registration: %d\n", __func__, ret);
+		goto unreg_kobj;
+	}
 
 	pr_info("Created freq domain %*pbl\n", cpumask_pr_args(span));
 
+add_fd:
+	for_each_cpu_and(cpu, span, cpu_online_mask)
+		per_cpu(em_cpu_data, cpu) = fd;
+
+	if (new_fd)
+		list_add_rcu(&fd->next, &freq_domain_list);
+
+	mutex_unlock(&em_mutex);
+
 	return 0;
+
+unreg_kobj:
+	/* TODO */
+free_fd:
+	kfree(fd->cs_table);
+	kfree(fd);
+unlock:
+	mutex_unlock(&em_mutex);
+
+	return ret;
 }

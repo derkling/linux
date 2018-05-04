@@ -17,20 +17,36 @@ struct em_freq_domain {
 	struct em_cap_state *cs_table;
 	int nr_cap_states;
 	cpumask_t span;
+	struct kobject kobj;
 	struct list_head next;
+	struct rcu_head rcu;
 };
 
 extern struct list_head freq_domain_list;
 
 #define freq_domain_span(fd) &((fd)->span)
+
+/**
+ * for_each_freq_domain() - Iterates over all available frequency domains.
+ *
+ * A client holding references on some frequency domains is guaranteed to see
+ * _at least_ those in the list. Other frequency domains referenced by other
+ * clients will also be visible in the list.
+ *
+ * If a client A traverses the list and sees a domain X on which it has no
+ * reference, there is a risk of concurrent deletion of that domain if client
+ * B releases its reference on X. This problem is avoided using RCU
+ * synchronization mechanisms impling that for_each_freq_domain() must be used
+ * under rcu_read_lock() protection.
+ */
 #define for_each_freq_domain(fd) \
-			list_for_each_entry(fd, &freq_domain_list, next)
+			list_for_each_entry_rcu(fd, &freq_domain_list, next)
 
 int em_register_freq_domain(cpumask_t *span, int nr_states,
 						long (*get_power)(long*, int));
 void em_rescale_cpu_capacity(void);
 
-static inline struct em_freq_domain *em_fd_of(int cpu)
+static inline struct em_freq_domain *em_fd_of_raw(int cpu)
 {
 	struct em_freq_domain *fd;
 
@@ -43,7 +59,23 @@ static inline struct em_freq_domain *em_fd_of(int cpu)
 	}
 
 	return NULL;
+}
 
+static inline struct em_freq_domain *em_fd_of(int cpu)
+{
+	struct em_freq_domain *fd = em_fd_of_raw(cpu);
+
+	if (fd)
+		kobject_get(&fd->kobj);
+
+	return fd;
+}
+
+static inline void em_fd_put(struct em_freq_domain *fd)
+{
+	if (!fd)
+		return;
+	kobject_put(&fd->kobj);
 }
 
 /* XXX: Documentation here */
