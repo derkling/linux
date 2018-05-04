@@ -1666,7 +1666,7 @@ static void free_sched_energy_fd(struct rcu_head *rp)
 	kfree(sfd);
 }
 
-static int init_sched_energy(void)
+int init_sched_energy(void)
 {
 	struct sched_energy_fd *sfd, *tmp;
 	struct em_freq_domain *fd;
