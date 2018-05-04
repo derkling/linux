@@ -14,12 +14,9 @@
 #include <linux/energy_model.h>
 #include <linux/sched/topology.h>
 
-
 static struct kobject *em_kobject;
-LIST_HEAD(freq_domain_list);
+static LIST_HEAD(freq_domain_list);
 static DEFINE_PER_CPU(struct em_freq_domain *, em_cpu_data);
-
-static DEFINE_MUTEX(em_mutex);
 
 /* Getters for the attributes of em_freq_domain objects */
 struct em_fd_attr {
@@ -43,7 +40,7 @@ show_em_fd_cs_attr(freq);
 show_em_fd_cs_attr(cap);
 
 static ssize_t show_em_fd_span(struct em_freq_domain *fd, char *buf) {
-	return sprintf(buf, "%*pbl\n", cpumask_pr_args(freq_domain_span(fd)));
+	return sprintf(buf, "%*pbl\n", cpumask_pr_args(&fd->span));
 }
 
 static struct em_fd_attr em_fd_power_attr = __ATTR(power, 0444, show_em_fd_cs_power, NULL);
@@ -77,22 +74,14 @@ static const struct sysfs_ops em_fd_sysfs_ops = {
 	.show	= show,
 };
 
-static void rcu_free_callback(struct rcu_head *rp)
-{
-	struct em_freq_domain *fd;
-
-	fd = container_of(rp, struct em_freq_domain, rcu);
-	pr_info("%s: %*pbl\n", __func__, cpumask_pr_args(&fd->span));
-	kfree(fd->cs_table);
-	kfree(fd);
-}
-
 static void em_fd_release(struct kobject *kobj)
 {
 	struct em_freq_domain *fd = to_fd(kobj);
 
-	list_del_rcu(&fd->next);
-	call_rcu(&fd->rcu, rcu_free_callback);
+	list_del(&fd->next);
+	kfree(fd->cs_table);
+	kfree(fd);
+	pr_info("%s: %*pbl\n", __func__, cpumask_pr_args(&fd->span));
 }
 
 static struct kobj_type ktype_em_fd = {
@@ -185,27 +174,50 @@ void em_rescale_cpu_capacity(void)
 {
 	struct em_freq_domain *fd;
 
-	mutex_lock(&em_mutex);
-
-	for_each_freq_domain(fd)
+	list_for_each_entry(fd, &freq_domain_list, next)
 		fd_update_capacity(fd);
-
-	mutex_unlock(&em_mutex);
 
 	pr_info("Re-scaled CPU capacities\n");
 }
 
+static struct em_freq_domain *em_fd_of_raw(int cpu)
+{
+	struct em_freq_domain *fd;
+
+	if (list_empty(&freq_domain_list))
+		return NULL;
+
+	list_for_each_entry(fd, &freq_domain_list, next) {
+		if (cpumask_test_cpu(cpu, &fd->span))
+			return fd;
+	}
+
+	return NULL;
+}
+
+struct em_freq_domain *em_fd_of(int cpu)
+{
+	struct em_freq_domain *fd = em_fd_of_raw(cpu);
+
+	if (fd)
+		kobject_get(&fd->kobj);
+
+	return fd;
+}
+
+void em_fd_put(struct em_freq_domain *fd)
+{
+	if (!fd)
+		return;
+	kobject_put(&fd->kobj);
+}
 
 static int cpuhp_em_online(unsigned int cpu)
 {
 	struct em_freq_domain *fd;
 
-	mutex_lock(&em_mutex);
 	fd = em_fd_of_raw(cpu);
 	per_cpu(em_cpu_data, cpu) = fd;
-	//if (fd)
-	//	pr_info("CPU%d online\n", cpu); /* XXX: debug */
-	mutex_unlock(&em_mutex);
 
 	return 0;
 }
@@ -213,8 +225,6 @@ static int cpuhp_em_online(unsigned int cpu)
 static int cpuhp_em_offline(unsigned int cpu)
 {
 	struct em_freq_domain *fd;
-
-	mutex_lock(&em_mutex);
 
 	fd = per_cpu(em_cpu_data, cpu);
 	if (fd) {
@@ -224,14 +234,11 @@ static int cpuhp_em_offline(unsigned int cpu)
 		/* Check if "cpu" is the last in the freq domain. */
 		for_each_cpu(cpu, &fd->span) {
 			if (per_cpu(em_cpu_data, cpu))
-				goto unlock;
+				return 0;
 		}
 		kobject_put(&fd->kobj);
 		pr_info("No CPU online in %*pbl, release kobj\n", cpumask_pr_args(&fd->span)); /* XXX: debug */
 	}
-
-unlock:
-	mutex_unlock(&em_mutex);
 
 	return 0;
 }
@@ -256,11 +263,9 @@ int em_register_freq_domain(cpumask_t *span, int nr_states,
 	bool new_fd = true;
 	int ret, cpu;
 
-	mutex_lock(&em_mutex);
-
 	/* Make sure we don't register again an existing freq domain. */
-	for_each_freq_domain(fd) {
-		if (!cpumask_equal(freq_domain_span(fd), span))
+	list_for_each_entry(fd, &freq_domain_list, next) {
+		if (!cpumask_equal(&fd->span, span))
 			continue;
 		new_fd = false;
 
@@ -275,16 +280,14 @@ int em_register_freq_domain(cpumask_t *span, int nr_states,
 	}
 
 	fd = em_create_fd(span, nr_states, get_power);
-	if (!fd) {
-		ret = -EINVAL;
-		goto unlock;
-	}
+	if (!fd)
+		return -EINVAL;
 
 	if (!em_kobject)
 		em_core_init();
 
 	ret = kobject_init_and_add(&fd->kobj, &ktype_em_fd, em_kobject,
-				"fd%u", cpumask_first(freq_domain_span(fd)));
+				"fd%u", cpumask_first(&fd->span));
 	if (ret) {
 		pr_err("%s: Failed to init fd->kobj: %d\n", __func__, ret);
 		goto free_fd;
@@ -296,7 +299,8 @@ int em_register_freq_domain(cpumask_t *span, int nr_states,
 						   cpuhp_em_offline);
 	if (ret < 0) {
 		pr_err("%s: Failed cpuhp registration: %d\n", __func__, ret);
-		goto unreg_kobj;
+		kobject_put(&fd->kobj);
+		goto free_fd;
 	}
 
 	pr_info("Created freq domain %*pbl\n", cpumask_pr_args(span));
@@ -306,19 +310,13 @@ add_fd:
 		per_cpu(em_cpu_data, cpu) = fd;
 
 	if (new_fd)
-		list_add_rcu(&fd->next, &freq_domain_list);
-
-	mutex_unlock(&em_mutex);
+		list_add(&fd->next, &freq_domain_list);
 
 	return 0;
 
-unreg_kobj:
-	/* TODO */
 free_fd:
 	kfree(fd->cs_table);
 	kfree(fd);
-unlock:
-	mutex_unlock(&em_mutex);
 
 	return ret;
 }
