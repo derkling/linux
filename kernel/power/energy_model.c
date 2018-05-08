@@ -17,6 +17,7 @@
 static struct kobject *em_kobject;
 static LIST_HEAD(freq_domain_list);
 static DEFINE_PER_CPU(struct em_freq_domain *, em_cpu_data);
+static DEFINE_RWLOCK(em_lock);
 
 /* Getters for the attributes of em_freq_domain objects */
 struct em_fd_attr {
@@ -78,7 +79,9 @@ static void em_fd_release(struct kobject *kobj)
 {
 	struct em_freq_domain *fd = to_fd(kobj);
 
+	write_lock_irqsave(&em_lock, flags);
 	list_del(&fd->next);
+	write_unlock_irqrestore(&em_lock, flags);
 	kfree(fd->cs_table);
 	kfree(fd);
 	pr_info("%s: %*pbl\n", __func__, cpumask_pr_args(&fd->span));
@@ -216,27 +219,32 @@ static struct em_freq_domain *em_fd_of_raw(int cpu)
 
 struct em_freq_domain *em_fd_of(int cpu)
 {
-	struct em_freq_domain *fd = em_fd_of_raw(cpu);
+	struct em_freq_domain *fd;
+	unsigned long flags;
 
+	read_lock_irqsave(&em_lock, flags);
+	fd = em_fd_of_raw(cpu);
 	if (fd)
 		kobject_get(&fd->kobj);
+	read_unlock_irqrestore(&em_lock, flags);
 
 	return fd;
 }
 
 void em_fd_put(struct em_freq_domain *fd)
 {
-	if (!fd)
-		return;
 	kobject_put(&fd->kobj);
 }
 
 static int cpuhp_em_online(unsigned int cpu)
 {
 	struct em_freq_domain *fd;
+	unsigned long flags;
 
+	read_lock_irqsave(&em_lock, flags);
 	fd = em_fd_of_raw(cpu);
 	per_cpu(em_cpu_data, cpu) = fd;
+	read_unlock_irqrestore(&em_lock, flags);
 
 	return 0;
 }
@@ -244,17 +252,22 @@ static int cpuhp_em_online(unsigned int cpu)
 static int cpuhp_em_offline(unsigned int cpu)
 {
 	struct em_freq_domain *fd;
+	unsigned long flags;
 
 	fd = per_cpu(em_cpu_data, cpu);
 	if (fd) {
+		write_lock_irqsave(&em_lock, flags);
 		//pr_info("CPU%d offline\n", cpu); /* XXX: debug */
 		per_cpu(em_cpu_data, cpu) = NULL;
 
 		/* Check if "cpu" is the last in the freq domain. */
 		for_each_cpu(cpu, &fd->span) {
-			if (per_cpu(em_cpu_data, cpu))
+			if (per_cpu(em_cpu_data, cpu)) {
+				write_unlock_irqrestore(&em_lock, flags);
 				return 0;
+			}
 		}
+		write_unlock_irqrestore(&em_lock, flags);
 		kobject_put(&fd->kobj);
 		pr_info("No CPU online in %*pbl, release kobj\n", cpumask_pr_args(&fd->span)); /* XXX: debug */
 	}
@@ -279,6 +292,7 @@ int em_register_freq_domain(cpumask_t *span, int nr_states,
 						long (*get_power)(long*, int))
 {
 	struct em_freq_domain *fd;
+	unsigned long flags;
 	bool new_fd = true;
 	int ret, cpu;
 
@@ -325,11 +339,13 @@ int em_register_freq_domain(cpumask_t *span, int nr_states,
 	pr_info("Created freq domain %*pbl\n", cpumask_pr_args(span));
 
 add_fd:
+	write_lock_irqsave(&em_lock, flags);
 	for_each_cpu_and(cpu, span, cpu_online_mask)
 		per_cpu(em_cpu_data, cpu) = fd;
 
 	if (new_fd)
 		list_add(&fd->next, &freq_domain_list);
+	write_unlock_irqrestore(&em_lock, flags);
 
 	return 0;
 
