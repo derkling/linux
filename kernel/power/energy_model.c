@@ -78,6 +78,7 @@ static const struct sysfs_ops em_fd_sysfs_ops = {
 static void em_fd_release(struct kobject *kobj)
 {
 	struct em_freq_domain *fd = to_fd(kobj);
+	unsigned long flags;
 
 	write_lock_irqsave(&em_lock, flags);
 	list_del(&fd->next);
