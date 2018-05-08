@@ -36,7 +36,6 @@
 #define DWC3_OCFG_OTGHIBDISMASK		BIT(4)
 #define DWC3_OCFG_OTGSFTRSTMSK		BIT(3)
 #define DWC3_OCFG_HNPCAP		BIT(1)
-#define DWC3_OCFG_SRPCAP		1
 
 /*  OTG Control Register */
 #define	DWC3_OCTL_OTG3_GOERR		BIT(7)

@@ -94,7 +94,7 @@ static int dwc3_get_dr_mode(struct dwc3 *dwc)
 static void dwc3_event_buffers_cleanup(struct dwc3 *dwc);
 static int dwc3_event_buffers_setup(struct dwc3 *dwc);
 
-static void dwc3_set_prtcap(struct dwc3 *dwc, u32 mode)
+void dwc3_set_prtcap(struct dwc3 *dwc, u32 mode)
 {
 	u32 reg;
 
@@ -1481,7 +1481,6 @@ static int dwc3_resume_common(struct dwc3 *dwc, pm_message_t msg)
 static int dwc3_runtime_checks(struct dwc3 *dwc)
 {
 	switch (dwc->current_dr_role) {
-	case DWC3_GCTL_PRTCAP_DEVICE:
 	case USB_DR_MODE_PERIPHERAL:
 	case USB_DR_MODE_OTG:
 #ifndef CONFIG_USB_DWC3_HISI
