@@ -142,7 +142,7 @@
 			next-level-cache = <&A73_L2>;
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP_1>;
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER1>;
-			operating-points-v2 = <&cluster1_opp>;
+			operating-points-v2 = <&cluster2_opp>;
 			sched-energy-costs = <&CPU_COST_A72 &CLUSTER_COST_A72>;
 		};
 
@@ -154,7 +154,7 @@
 			next-level-cache = <&A73_L2>;
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP_1>;
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER1>;
-			operating-points-v2 = <&cluster1_opp>;
+			operating-points-v2 = <&cluster2_opp>;
 			sched-energy-costs = <&CPU_COST_A72 &CLUSTER_COST_A72>;
 		};
 
@@ -203,6 +203,7 @@
 	cluster0_opp: opp_table0 {
 		compatible = "operating-points-v2";
 		opp-shared;
+		cycle-thief-id = <0>;
 
 		opp00 {
 			opp-hz = /bits/ 64 <533000000>;
@@ -221,23 +222,12 @@
 			opp-microvolt = <900000>;
 			clock-latency-ns = <300000>;
 		};
-
-		opp03 {
-			opp-hz = /bits/ 64 <1709000000>;
-			opp-microvolt = <1000000>;
-			clock-latency-ns = <300000>;
-		};
-
-		opp04 {
-			opp-hz = /bits/ 64 <1844000000>;
-			opp-microvolt = <1100000>;
-			clock-latency-ns = <300000>;
-		};
 	};
 
 	cluster1_opp: opp_table1 {
 		compatible = "operating-points-v2";
 		opp-shared;
+		cycle-thief-id = <1>;
 
 		opp10 {
 			opp-hz = /bits/ 64 <903000000>;
@@ -250,24 +240,19 @@
 			opp-microvolt = <800000>;
 			clock-latency-ns = <300000>;
 		};
+	};
 
-		opp12 {
+	cluster2_opp: opp_table2 {
+		compatible = "operating-points-v2";
+		opp-shared;
+		cycle-thief-id = <2>;
+
+		opp20 {
 			opp-hz = /bits/ 64 <1805000000>;
 			opp-microvolt = <900000>;
 			clock-latency-ns = <300000>;
 		};
 
-		opp13 {
-			opp-hz = /bits/ 64 <2112000000>;
-			opp-microvolt = <1000000>;
-			clock-latency-ns = <300000>;
-		};
-
-		opp14 {
-			opp-hz = /bits/ 64 <2362000000>;
-			opp-microvolt = <1100000>;
-			clock-latency-ns = <300000>;
-		};
 	};
 
 	gic: interrupt-controller@e82b0000 {
