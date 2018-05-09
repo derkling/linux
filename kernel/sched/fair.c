@@ -24,6 +24,7 @@
 
 #include <trace/events/sched.h>
 
+#include <linux/energy_model.h>
 /*
  * Targeted preemption latency for CPU-bound tasks:
  *
