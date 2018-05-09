@@ -766,6 +766,8 @@ static struct opp_table *_add_opp_table(struct device *dev)
 
 	INIT_LIST_HEAD(&opp_table->dev_list);
 
+	opp_table->cycle_thief_id = 0;
+
 	opp_dev = _add_opp_dev(dev, opp_table);
 	if (!opp_dev) {
 		kfree(opp_table);
