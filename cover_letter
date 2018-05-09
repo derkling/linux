@@ -1,0 +1,112 @@
+The Energy Aware Scheduler (EAS) based on Morten Rasmussen's posting on
+LKML [1] is currently part of the AOSP Common Kernel and runs on
+today's smartphones with Arm's big.LITTLE CPUs. This patch-set implements
+a largely simplified version of EAS based on a Energy Model (EM) of the
+platform with only costs for the active states of the CPUs.
+
+Previous versions of this patch-set (i.e. [2]) relied on the PM_OPP
+framework to provide the scheduler with an Energy Model. As agreed during
+the 2nd OSPM sumit, this new revision removes this dependency by
+implementing a new independent EM framework, currently located under
+kernel/power/. This framework aggregates the power values provided by
+drivers into a table for each frequency domain in the system. Those tables
+are then made available to interested clients (e.g. the scheduler, or the
+thermal subsystem) through platform-agnostic APIs, and protected by
+reference counting on kobjects. The topology code of the scheduler is
+modified accordingly to take a reference on the kobjects of online
+frequency domains, hence guaranteeing a safe access to the shared EM data
+structures without further checks in latency-sensitive code paths. The
+modifications required to make the thermal subsystem use the new Energy
+Model framework are not covered by this patch-set.
+
+Previous versions of this patch-set also used a per-scheduling domain
+overutilization flag, which has now been abandoned in favour of a simpler
+(but equally efficient) system-wide implementation attached to the root
+domain. Consequently, the integration of EAS in the wake-up path has
+been reworked to accommodate this change using a scheduling domain
+shortcut.
+
+The patch-set is now arranged as follows:
+
+ - Patches 1 & 2 refactor code from schedutil and the scheduler to
+   simplify the implementation of the EM framework;
+ - Patch 3 introduces the core code of the EM framework;
+ - Patch 4 changes the scheduler topology code to make it aware of the EM;
+ - Patches 5-7 implement the overutilization mechanism;
+ - Patches 8-10 introduce the energy-aware wake-up path in the scheduler;
+ - Patch 11 starts EAS from the arch_topology driver.
+
+
+*** TBD: TEST RESULTS ***
+
+
+Changes v2[2]->v3:
+- Removed the PM_OPP dependency by implementing a new EM framework
+- Modified the scheduler topology code to take references on the EM data
+  structures
+- Simplified the overutilization mechanism into a system-wide flag
+- Reworked the integration in the wake-up path using the sd_ea shortcut
+- Rebased on tip/sched/core (247f2f6f3c70 "sched/core: Don't schedule
+  threads on pre-empted vCPUs")
+
+Changes v1[3]->v2[2]:
+
+- Reworked interface between fair.c and energy.[ch] (Remove #ifdef
+  CONFIG_PM_OPP from energy.c) (Greg KH)
+- Fixed licence & header issue in energy.[ch] (Greg KH)
+- Reordered EAS path in select_task_rq_fair() (Joel)
+- Avoid prev_cpu if not allowed in select_task_rq_fair() (Morten/Joel)
+- Refactored compute_energy() (Patrick)
+- Account for RT/IRQ pressure in task_fits() (Patrick)
+- Use UTIL_EST and DL utilization during OPP estimation (Patrick/Juri)
+- Optimize selection of CPU candidates in the energy-aware wake-up path
+- Rebased on top of tip/sched/core (commit b720342849fe “sched/core:
+  Update Preempt_notifier_key to modern API”)
+
+[1] https://lkml.org/lkml/2015/7/7/754
+[2] https://marc.info/?l=linux-kernel&m=152302902427143&w=2
+[3] https://marc.info/?l=linux-kernel&m=152153905805048&w=2
+
+
+
+***********
+* CC list *
+***********
+
+Maintainers
+  Peter Zijlstra <peterz@infradead.org>
+  "Rafael J. Wysocki" <rjw@rjwysocki.net>
+  Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+  Ingo Molnar <mingo@redhat.com>
+
+Because of kernel/power (supporter ?)
+  Pavel Machek <pavel@ucw.cz>
+  Len Brown <len.brown@intel.com>
+
+Arm
+  Dietmar Eggemann <dietmar.eggemann@arm.com>
+  Morten Rasmussen <morten.rasmussen@arm.com>
+  Chris Redpath <chris.redpath@arm.com>
+  Patrick Bellasi <patrick.bellasi@arm.com>
+  Valentin Schneider <valentin.schneider@arm.com>
+
+Linaro
+  Vincent Guittot <vincent.guittot@linaro.org>
+  Thara Gopinath <thara.gopinath@linaro.org>
+  Viresh Kumar <viresh.kumar@linaro.org>
+
+Google
+  Todd Kjos <tkjos@google.com>
+  Joel Fernandes <joelaf@google.com>
+  Steve Muckle <smuckle@google.com>
+
+QCOM
+  Abhijeet Dharmapurikar <adharmap@quicinc.com>
+  Saravana Kannan <skannan@quicinc.com>
+  Pavankumar Kondeti <pkondeti@codeaurora.org>
+
+Others
+  Juri Lelli <juri.lelli@redhat.com>
+  Eduardo Valentin <edubezval@gmail.com>
+  Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>
+
