@@ -327,6 +327,7 @@ static int _of_add_opp_table_v2(struct device *dev, struct device_node *opp_np)
 	struct device_node *np;
 	struct opp_table *opp_table;
 	int ret = 0, count = 0;
+	u32 val;
 
 	mutex_lock(&opp_table_lock);
 
@@ -371,6 +372,9 @@ static int _of_add_opp_table_v2(struct device *dev, struct device_node *opp_np)
 		opp_table->shared_opp = OPP_TABLE_ACCESS_SHARED;
 	else
 		opp_table->shared_opp = OPP_TABLE_ACCESS_EXCLUSIVE;
+
+	if (!of_property_read_u32(opp_np, "cycle-thief-id", &val))
+		opp_table->cycle_thief_id = val;
 
 	mutex_unlock(&opp_table_lock);
 
