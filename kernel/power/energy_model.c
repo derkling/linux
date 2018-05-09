@@ -94,12 +94,6 @@ static struct kobj_type ktype_em_fd = {
 	.release	= em_fd_release,
 };
 
-static void em_core_init(void)
-{
-	em_kobject = kobject_create_and_add("energy_model", &cpu_subsys.dev_root->kobj);
-	BUG_ON(!em_kobject);
-}
-
 static void fd_update_cs_table(struct em_cap_state *table, int nr_cap_states,
 									int cpu)
 {
@@ -276,6 +270,26 @@ static int cpuhp_em_offline(unsigned int cpu)
 	return 0;
 }
 
+static int em_core_init(void)
+{
+	int ret;
+
+	em_kobject = kobject_create_and_add("energy_model",
+						&cpu_subsys.dev_root->kobj);
+	BUG_ON(!em_kobject);
+
+	ret = cpuhp_setup_state_nocalls_cpuslocked(CPUHP_AP_ONLINE_DYN,
+						   "energy_model:online",
+						   cpuhp_em_online,
+						   cpuhp_em_offline);
+	if (ret < 0) {
+		pr_err("%s: Failed cpuhp registration: %d\n", __func__, ret);
+		return ret;
+	}
+
+	return 0;
+}
+
 /**
  * em_register_freq_domain() - Register the Energy Model of a frequency domain
  * @span	: Mask of CPUs in the frequency domain
@@ -317,23 +331,17 @@ int em_register_freq_domain(cpumask_t *span, int nr_states,
 	if (!fd)
 		return -EINVAL;
 
-	if (!em_kobject)
-		em_core_init();
+	if (!em_kobject) {
+		ret = em_core_init();
+		if (ret)
+			goto free_fd;
+
+	}
 
 	ret = kobject_init_and_add(&fd->kobj, &ktype_em_fd, em_kobject,
 				"fd%u", cpumask_first(&fd->span));
 	if (ret) {
 		pr_err("%s: Failed to init fd->kobj: %d\n", __func__, ret);
-		goto free_fd;
-	}
-
-	ret = cpuhp_setup_state_nocalls_cpuslocked(CPUHP_AP_ONLINE_DYN,
-						   "energy_model:online",
-						   cpuhp_em_online,
-						   cpuhp_em_offline);
-	if (ret < 0) {
-		pr_err("%s: Failed cpuhp registration: %d\n", __func__, ret);
-		kobject_put(&fd->kobj);
 		goto free_fd;
 	}
 
