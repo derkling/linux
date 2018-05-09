@@ -2184,5 +2184,5 @@ static inline bool sched_energy_enabled(void)
 }
 #define for_each_freq_domain(sfd) \
 		for (sfd=NULL; sfd;)
-#define freq_domain_span(sfd) NULL
+//#define freq_domain_span(sfd) NULL
 #endif

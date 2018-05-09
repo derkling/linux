@@ -6739,7 +6739,7 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 
 static inline bool wake_energy(struct task_struct *p, int prev_cpu)
 {
-	struct sched_domain *sd;
+//	struct sched_domain *sd;
 
 	if (!sched_energy_enabled())
 		return false;
@@ -6749,9 +6749,9 @@ static inline bool wake_energy(struct task_struct *p, int prev_cpu)
 	 * to get it here and get it again in find_energy_efficient_cpu().
 	 * We should pass the pointer around ...
 	 */
-	sd = rcu_dereference_sched(cpu_rq(prev_cpu)->sd);
-	if (!sd || sd_overutilized(sd))
-		return false;
+//	sd = rcu_dereference_sched(cpu_rq(prev_cpu)->sd);
+//	if (!sd || sd_overutilized(sd))
+//		return false;
 	return true;
 }
 
@@ -6805,9 +6805,9 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 		 * Energy-aware task placement is performed on the highest
 		 * non-overutilized domain spanning over cpu and prev_cpu.
 		 */
-		if (want_energy && !sd_overutilized(tmp) &&
-		    cpumask_test_cpu(prev_cpu, sched_domain_span(tmp)))
-			energy_sd = tmp;
+//		if (want_energy && !sd_overutilized(tmp) &&
+//		    cpumask_test_cpu(prev_cpu, sched_domain_span(tmp)))
+//			energy_sd = tmp;
 
 		if (tmp->flags & sd_flag)
 			sd = tmp;
