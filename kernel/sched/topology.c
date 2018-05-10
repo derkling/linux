@@ -1679,7 +1679,7 @@ int init_sched_energy(void)
 	struct sched_energy_fd *sfd, *tmp;
 	struct em_freq_domain *fd;
 	struct sched_domain *sd;
-	int cpu, nr_fd = 0;
+	int cpu, nr_fd = 0, nr_opp = 0;
 
 	/* EAS is used for asymmetric systems only. */
 	sd = lowest_flag_domain(smp_processor_id(), SD_ASYM_CPUCAPACITY);
@@ -1710,9 +1710,11 @@ int init_sched_energy(void)
 	}
 
 	/* Abort when the Energy Model is too complex */
-	for_each_freq_domain(sfd)
+	for_each_freq_domain(sfd) {
 		nr_fd++;
-	if (nr_fd * num_online_cpus() > EM_MAX_COMPLEXITY) {
+		nr_opp += sfd->fd->nr_cap_states;
+	}
+	if (nr_fd * (nr_opp + num_online_cpus()) > EM_MAX_COMPLEXITY) {
 		pr_warn("Energy Model complexity too high, stopping EAS");
 		goto disable_eas;
 	}
