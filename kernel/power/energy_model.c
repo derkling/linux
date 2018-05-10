@@ -23,7 +23,7 @@ static DEFINE_RWLOCK(em_lock);
 struct em_fd_attr {
 	struct attribute attr;
 	ssize_t (*show)(struct em_freq_domain *fd, char *buf);
-	ssize_t (*store)(struct em_freq_domain *fd, const char *buf, size_t count);
+	ssize_t (*store)(struct em_freq_domain *fd, const char *buf, size_t s);
 };
 
 #define show_em_fd_cs_attr(attr) \
@@ -256,7 +256,6 @@ static int cpuhp_em_offline(unsigned int cpu)
 	fd = per_cpu(em_cpu_data, cpu);
 	if (fd) {
 		write_lock_irqsave(&em_lock, flags);
-		//pr_info("CPU%d offline\n", cpu); /* XXX: debug */
 		per_cpu(em_cpu_data, cpu) = NULL;
 
 		/* Check if "cpu" is the last in the freq domain. */
@@ -268,7 +267,6 @@ static int cpuhp_em_offline(unsigned int cpu)
 		}
 		write_unlock_irqrestore(&em_lock, flags);
 		kobject_put(&fd->kobj);
-		pr_info("No CPU online in %*pbl, release kobj\n", cpumask_pr_args(&fd->span)); /* XXX: debug */
 	}
 
 	return 0;
@@ -280,7 +278,8 @@ static int em_core_init(void)
 
 	em_kobject = kobject_create_and_add("energy_model",
 						&cpu_subsys.dev_root->kobj);
-	BUG_ON(!em_kobject);
+	if (!em_kobject)
+		return -ENODEV;
 
 	ret = cpuhp_setup_state_nocalls_cpuslocked(CPUHP_AP_ONLINE_DYN,
 						   "energy_model:online",
