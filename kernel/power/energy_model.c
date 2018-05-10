@@ -40,19 +40,23 @@ show_em_fd_cs_attr(power);
 show_em_fd_cs_attr(freq);
 show_em_fd_cs_attr(cap);
 
-static ssize_t show_em_fd_span(struct em_freq_domain *fd, char *buf) {
+static ssize_t show_em_fd_span(struct em_freq_domain *fd, char *buf)
+{
 	return sprintf(buf, "%*pbl\n", cpumask_pr_args(&fd->span));
 }
 
-static struct em_fd_attr em_fd_power_attr = __ATTR(power, 0444, show_em_fd_cs_power, NULL);
-static struct em_fd_attr em_fd_freq_attr = __ATTR(frequency, 0444, show_em_fd_cs_freq, NULL);
-static struct em_fd_attr em_fd_cap_attr = __ATTR(capacity, 0444, show_em_fd_cs_cap, NULL);
-static struct em_fd_attr em_fd_cpus_attr = __ATTR(cpus, 0444, show_em_fd_span, NULL);
+#define em_fd_declare_attr(name, fun) struct em_fd_attr em_fd_##name##_attr = \
+		__ATTR(name, 0444, fun, NULL);
+
+em_fd_declare_attr(power, show_em_fd_cs_power);
+em_fd_declare_attr(frequency, show_em_fd_cs_freq);
+em_fd_declare_attr(capacity, show_em_fd_cs_cap);
+em_fd_declare_attr(cpus, show_em_fd_span);
 
 static struct attribute *em_fd_default_attrs[] = {
 	&em_fd_power_attr.attr,
-	&em_fd_freq_attr.attr,
-	&em_fd_cap_attr.attr,
+	&em_fd_frequency_attr.attr,
+	&em_fd_capacity_attr.attr,
 	&em_fd_cpus_attr.attr,
 	NULL
 };
