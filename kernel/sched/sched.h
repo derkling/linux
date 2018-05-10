@@ -2185,13 +2185,12 @@ static inline bool sched_energy_enabled(void)
 extern struct list_head sched_energy_fd_list;
 #define for_each_freq_domain(sfd) \
 		list_for_each_entry_rcu(sfd, &sched_energy_fd_list, next)
-#define freq_domain_span(sfd) &(sfd->fd->span)
+#define freq_domain_span(sfd) &((sfd)->fd->span)
 #else
 static inline bool sched_energy_enabled(void)
 {
 	return false;
 }
-#define for_each_freq_domain(sfd) \
-		for (sfd=NULL; sfd;)
+#define for_each_freq_domain(sfd) for (sfd = NULL; sfd;)
 #define freq_domain_span(sfd) NULL
 #endif
