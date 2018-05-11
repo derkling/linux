@@ -8515,7 +8515,7 @@ static bool update_nohz_stats(struct rq *rq, bool force)
 static inline void update_sg_lb_stats(struct lb_env *env,
 			struct sched_group *group, int load_idx,
 			int local_group, struct sg_lb_stats *sgs,
-			int *overload, int *overutilized)
+			int *overload, int *overutilized, int *misfit_task)
 {
 	unsigned long load;
 	int i, nr_running;
@@ -8559,8 +8559,12 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 			*overload = 1;
 		}
 
-		if (cpu_overutilized(i))
+		if (cpu_overutilized(i)) {
 			*overutilized = 1;
+
+			if (rq->misfit_task_load)
+				*misfit_task = 1;
+		}
 	}
 
 	/* Adjust by relative CPU capacity of the group */
@@ -8698,6 +8702,7 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 	struct sg_lb_stats *local = &sds->local_stat;
 	struct sg_lb_stats tmp_sgs;
 	int load_idx, prefer_sibling, overload = 0, overutilized = 0;
+	int misfit_task = 0;
 
 	if (child && child->flags & SD_PREFER_SIBLING)
 		prefer_sibling = 1;
@@ -8724,7 +8729,8 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 		}
 
 		update_sg_lb_stats(env, sg, load_idx, local_group, sgs,
-						&overload, &overutilized);
+						&overload, &overutilized,
+						&misfit_task);
 
 		if (local_group)
 			goto next_group;
@@ -8784,6 +8790,32 @@ next_group:
 		if (sd_overutilized(env->sd) != overutilized)
 			WRITE_ONCE(env->sd->shared->overutilized, overutilized);
 	} else {
+		/*
+		 * If there is a misfit task in one cpu in this sched_domain
+		 * it is likely that the imbalance cannot be sorted out among
+		 * the cpu's in this sched_domain. In this case set the
+		 * overutilized flag at the parent sched_domain.
+		 */
+		if (misfit_task) {
+			struct sched_domain *sd = env->sd->parent;
+
+			/*
+			 * In case of a misfit task, load balance at the parent
+			 * sched domain level will make sense only if the the cpus
+			 * have a different capacity. If cpus at a domain level have
+			 * the same capacity, the misfit task cannot be well
+			 * accomodated  in any of the cpus and there in no point in
+			 * trying a load balance at this level.
+			 */
+			while (sd) {
+				if (sd->flags & SD_ASYM_CPUCAPACITY) {
+					WRITE_ONCE(sd->shared->overutilized, 1);
+					break;
+				}
+				sd = sd->parent;
+			}
+		}
+
 		if (sds->total_capacity * 1024 < sds->total_util * capacity_margin)
 			WRITE_ONCE(env->sd->parent->shared->overutilized, 1);
 	}
