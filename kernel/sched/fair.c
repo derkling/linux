@@ -8208,7 +8208,7 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 			sgs->idle_cpus++;
 
 		if (env->sd->flags & SD_ASYM_CPUCAPACITY &&
-		    !sgs->group_misfit_task_load && rq->misfit_task_load) {
+		    sgs->group_misfit_task_load < rq->misfit_task_load) {
 			sgs->group_misfit_task_load = rq->misfit_task_load;
 			*overload = 1;
 		}
@@ -8771,12 +8771,15 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 			continue;
 
 		/*
-		 * For ASYM_CPUCAPACITY domains with misfit tasks we ignore
-		 * load.
+		 * For ASYM_CPUCAPACITY domains with misfit tasks we simply
+		 * seek the "biggest" misfit task.
 		 */
 		if (env->src_grp_type == group_misfit_task &&
-		    rq->misfit_task_load)
-			return rq;
+		    rq->misfit_task_load > busiest_load) {
+			busiest_load = rq->misfit_task_load;
+			busiest = rq;
+			continue;
+		}
 
 		capacity = capacity_of(i);
 
