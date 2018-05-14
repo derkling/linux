@@ -26,13 +26,21 @@ struct em_fd_attr {
 	ssize_t (*store)(struct em_freq_domain *fd, const char *buf, size_t s);
 };
 
+#define EM_ATTR_LEN 13
 #define show_table_attr(_attr) \
 static ssize_t show_##_attr(struct em_freq_domain *fd, char *buf) \
 { \
 	ssize_t cnt = 0; \
 	int i; \
-	for (i = 0; i < fd->nr_cap_states; i++) \
-		cnt += sprintf(buf + cnt, "%lu\n", fd->cs_table[i]._attr); \
+	for (i = 0; i < fd->nr_cap_states; i++) { \
+		if (cnt >= (ssize_t) (PAGE_SIZE / sizeof(char) \
+				      - (EM_ATTR_LEN + 2))) \
+			goto out; \
+		cnt += scnprintf(&buf[cnt], EM_ATTR_LEN + 1, "%lu ", \
+				 fd->cs_table[i]._attr); \
+	} \
+out: \
+	cnt += sprintf(&buf[cnt], "\n"); \
 	return cnt; \
 }
 
@@ -169,6 +177,13 @@ free_fd:
 
 /**
  * em_rescale_cpu_capacity() - Re-scale capacity values of the Energy Model
+ *
+ * This re-scales the capacity values for all capacity states of all frequency
+ * domains of the Energy Model. This should be used when the capacity values
+ * of the CPUs are updated at run-time, after the EM was registered.
+ *
+ * The update occurs even for frequency domains currently marked as busy by
+ * readers, thanks to RCU protection on the capacity state table.
  */
 void em_rescale_cpu_capacity(void)
 {
@@ -318,18 +333,18 @@ static int em_core_init(void)
  * em_register_freq_domain() - Register the Energy Model of a frequency domain
  * @span	: Mask of CPUs in the frequency domain
  * @nr_states	: Number of capacity states to register
- * @get_power	: Callback returning the power of capacity states
+ * @get_power	: Callback providing the power of capacity states
  *
- * Create a capacity state table for a frequency domain, and  extends the
+ * Create a capacity state table for a frequency domain, and extends the
  * em_freq_domain linked list with it.
  *
  * The callback prototype is:
- *    int get_power(unsigned long *power, unsigned long *freq, int cpu)
+ *       int get_power(unsigned long *power, unsigned long *freq, int cpu)
  *
- * It must find the lowest capacity state of 'cpu' above 'freq' and update
- * 'power' and 'freq' to the matching power and frequency values of that
- * capacity state. get_power() should return non-zero values in case of an
- * error.
+ * get_power() must find the lowest capacity state of 'cpu' above 'freq'
+ * and update 'power' and 'freq' to the matching power and frequency values
+ * of that capacity state. get_power() should return 0 on success or non-zero
+ * values otherwise.
  */
 int em_register_freq_domain(cpumask_t *span, int nr_states,
 			int (*get_power)(unsigned long*, unsigned long*, int))
