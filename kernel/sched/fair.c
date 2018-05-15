@@ -9045,6 +9045,9 @@ static struct sched_group *find_busiest_group(struct lb_env *env)
 	 */
 	update_sd_lb_stats(env, &sds);
 
+	if (energy_aware() && !sd_overutilized(env->sd))
+		goto out_balanced;
+
 	local = &sds.local_stat;
 	busiest = &sds.busiest_stat;
 
@@ -9726,9 +9729,6 @@ static void rebalance_domains(struct rq *rq, enum cpu_idle_type idle)
 		}
 		max_cost += sd->max_newidle_lb_cost;
 
-		if (energy_aware() && !sd_overutilized(sd))
-			continue;
-
 		if (!(sd->flags & SD_LOAD_BALANCE))
 			continue;
 
@@ -10297,9 +10297,6 @@ static int idle_balance(struct rq *this_rq, struct rq_flags *rf)
 			update_next_balance(sd, &next_balance);
 			break;
 		}
-
-		if (energy_aware() && !sd_overutilized(sd))
-			continue;
 
 		if (sd->flags & SD_BALANCE_NEWIDLE) {
 			t0 = sched_clock_cpu(this_cpu);
