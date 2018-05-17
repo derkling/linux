@@ -19,6 +19,7 @@ struct em_cap_state {
 struct em_perf_domain {
 	struct em_cap_state *table; /* Capacity states, in ascending order. */
 	int nr_cap_states;
+	struct kobject kobj;
 	unsigned long cpus[0]; /* CPUs of the frequency domain. */
 };
 
