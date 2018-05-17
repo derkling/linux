@@ -24,6 +24,7 @@ struct em_cs_table {
 struct em_freq_domain {
 	struct em_cs_table *cs_table; /* Cap. state table, RCU-protected */
 	cpumask_t cpus; /* CPUs of the frequency domain. */
+	struct kobject kobj;
 };
 
 #define EM_CPU_MAX_POWER 0xFFFF
