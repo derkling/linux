@@ -36,7 +36,7 @@
 #define DWC3_OCFG_OTGHIBDISMASK		BIT(4)
 #define DWC3_OCFG_OTGSFTRSTMSK		BIT(3)
 #define DWC3_OCFG_HNPCAP		BIT(1)
-#define DWC3_OCFG_SRPCAP		1
+#define DWC3_OCFG_SRPCAP_OLD		1
 
 /*  OTG Control Register */
 #define	DWC3_OCTL_OTG3_GOERR		BIT(7)
@@ -92,20 +92,20 @@ struct dwc3_otg {
 
 #ifdef CONFIG_USB_DWC3_OTG
 extern struct dwc3_otg *dwc_otg_handler;
-int dwc3_otg_init(struct dwc3 *dwc);
-void dwc3_otg_exit(struct dwc3 *dwc);
+int dwc3_hisi_otg_init(struct dwc3 *dwc);
+void dwc3_hisi_otg_exit(struct dwc3 *dwc);
 int dwc3_otg_work(struct dwc3_otg *dwc_otg, int evt);
 int dwc3_otg_resume(struct dwc3 *dwc);
 int dwc3_otg_suspend(struct dwc3 *dwc);
 int dwc3_otg_id_value(struct dwc3_otg *dwc_otg);
 #else
 #define dwc_otg_handler ((struct dwc3_otg *)NULL)
-static inline int dwc3_otg_init(struct dwc3 *dwc)
+static inline int dwc3_hisi_otg_init(struct dwc3 *dwc)
 {
 	return 0;
 }
 
-static inline void dwc3_otg_exit(struct dwc3 *dwc)
+static inline void dwc3_hisi_otg_exit(struct dwc3 *dwc)
 {
 }
 
