@@ -296,7 +296,7 @@ static void dwc3_otg_work_fun(struct work_struct *w)
 	mutex_unlock(&dwc_otg->lock);
 }
 
-int dwc3_otg_init(struct dwc3 *dwc)
+int dwc3_hisi_otg_init(struct dwc3 *dwc)
 {
 	struct dwc3_otg *dwc_otg;
 	u32 reg;
@@ -352,7 +352,7 @@ int dwc3_otg_init(struct dwc3 *dwc)
 	return 0;
 }
 
-void dwc3_otg_exit(struct dwc3 *dwc)
+void dwc3_hisi_otg_exit(struct dwc3 *dwc)
 {
 	DBG("+\n");
 	dwc_otg_handler = NULL;
