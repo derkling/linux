@@ -51,6 +51,12 @@ arm64-obj-$(CONFIG_HIBERNATION)		+= hibernate.o hibernate-asm.o
 arm64-obj-$(CONFIG_KEXEC)		+= machine_kexec.o relocate_kernel.o	\
 					   cpu-reset.o
 
+# We include the actmon sources twice here. We can do this because
+# only one of the two flags should be enabled. If not, this will go
+# bang!
+arm64-obj-$(CONFIG_JUNO_ACTMON)		+= actmon.o
+arm64-obj-$(CONFIG_GEM5_ACTMON)		+= actmon.o
+
 obj-y					+= $(arm64-obj-y) vdso/ probes/
 obj-m					+= $(arm64-obj-m)
 head-y					:= head.o

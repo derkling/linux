@@ -34,6 +34,8 @@
 #endif
 #include <trace/events/power.h>
 
+#define read_cpuid(reg)                 read_sysreg_s(SYS_ ## reg)
+
 static LIST_HEAD(cpufreq_policy_list);
 
 static inline bool policy_is_inactive(struct cpufreq_policy *policy)
@@ -320,33 +322,39 @@ static DEFINE_PER_CPU(unsigned long, max_freq_scale) = SCHED_CAPACITY_SCALE;
 static void
 scale_freq_capacity(struct cpufreq_policy *policy, struct cpufreq_freqs *freqs)
 {
-	unsigned long cur = freqs ? freqs->new : policy->cur;
-	unsigned long scale = (cur << SCHED_CAPACITY_SHIFT) / policy->max;
-	struct cpufreq_cpuinfo *cpuinfo = &policy->cpuinfo;
-	int cpu;
+        unsigned long cur = freqs ? freqs->new : policy->cur;
+        unsigned long scale = (cur << SCHED_CAPACITY_SHIFT) / policy->max;
+        struct cpufreq_cpuinfo *cpuinfo = &policy->cpuinfo;
+        int cpu;
 
-	pr_debug("cpus %*pbl cur/cur max freq %lu/%u kHz freq scale %lu\n",
-		 cpumask_pr_args(policy->cpus), cur, policy->max, scale);
+        pr_debug("cpus %*pbl cur/cur max freq %lu/%u kHz freq scale %lu\n",
+                 cpumask_pr_args(policy->cpus), cur, policy->max, scale);
 
-	for_each_cpu(cpu, policy->cpus)
-		per_cpu(freq_scale, cpu) = scale;
+        for_each_cpu(cpu, policy->cpus) {
+                per_cpu(freq_scale, cpu) = scale;
+		if (freqs) {
+			trace_cpu_capacity(scale, cpu);
+		}
+	}
 
-	if (freqs)
-		return;
+        if (freqs)
+                return;
 
-	scale = (policy->max << SCHED_CAPACITY_SHIFT) / cpuinfo->max_freq;
+        scale = (policy->max << SCHED_CAPACITY_SHIFT) / cpuinfo->max_freq;
 
-	pr_debug("cpus %*pbl cur max/max freq %u/%u kHz max freq scale %lu\n",
-		 cpumask_pr_args(policy->cpus), policy->max, cpuinfo->max_freq,
-		 scale);
+        pr_debug("cpus %*pbl cur max/max freq %u/%u kHz max freq scale %lu\n",
+                 cpumask_pr_args(policy->cpus), policy->max, cpuinfo->max_freq,
+                 scale);
 
-	for_each_cpu(cpu, policy->cpus)
-		per_cpu(max_freq_scale, cpu) = scale;
+        for_each_cpu(cpu, policy->cpus)
+                per_cpu(max_freq_scale, cpu) = scale;
 }
 
 unsigned long cpufreq_scale_freq_capacity(struct sched_domain *sd, int cpu)
 {
-	return per_cpu(freq_scale, cpu);
+	unsigned long scale = per_cpu(freq_scale, cpu);
+	trace_cpu_capacity(scale, cpu);
+	return scale;
 }
 
 unsigned long cpufreq_scale_max_freq_capacity(int cpu)
@@ -463,8 +471,8 @@ wait:
 
 	scale_freq_capacity(policy, freqs);
 #ifdef CONFIG_SMP
-	for_each_cpu(cpu, policy->cpus)
-		trace_cpu_capacity(capacity_curr_of(cpu), cpu);
+	/* for_each_cpu(cpu, policy->cpus) */
+	/* 	trace_cpu_capacity(capacity_curr_of(cpu), cpu); */
 #endif
 
 	cpufreq_notify_transition(policy, freqs, CPUFREQ_PRECHANGE);
@@ -2365,6 +2373,7 @@ unlock:
 	up_write(&policy->rwsem);
 
 	cpufreq_cpu_put(policy);
+
 	return ret;
 }
 EXPORT_SYMBOL(cpufreq_update_policy);
@@ -2376,6 +2385,8 @@ static int cpufreq_boost_set_sw(int state)
 {
 	struct cpufreq_policy *policy;
 	int ret = -EINVAL;
+
+	printk("%s\n", __func__);
 
 	for_each_active_policy(policy) {
 		if (!policy->freq_table)

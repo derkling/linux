@@ -237,7 +237,7 @@ uint64_t get_constant_frequency_counter_debug(enum DebugCallee debug_callee, uin
     uint64_t linearCpuId = getLinearCpuId(mpidr);
     uint64_t offset = virtAddress[linearCpuId ].constantFrequencyOffset;
 
-    uint64_t counterValue =  read_sysreg(cntpct_el0)- offset;
+    volatile uint64_t counterValue =  read_sysreg(cntpct_el0) - offset;
 
 #if PSCI_DEBUG
     /* "debug infrastructure" */
@@ -268,7 +268,7 @@ uint64_t get_constant_frequency_counter_debug(enum DebugCallee debug_callee, uin
 }
 
 /* sample the constant frequency counter */
-uint64_t get_constant_frequency_counter(void)
+volatile uint64_t get_constant_frequency_counter(void)
 {
  #if CONFIG_GEM5_ACTMON
     return read_sysreg(pmevcntr0_el0);

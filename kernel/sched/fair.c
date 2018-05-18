@@ -2849,7 +2849,7 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 	u64 delta, scaled_delta, periods;
 	u32 contrib;
 	unsigned int delta_w, scaled_delta_w, decayed = 0;
-	unsigned long scale_freq, scale_cpu;
+	unsigned long scale_freq = 1024, scale_cpu; /* TODO: Is this a good default? */
 
 	delta = now - sa->last_update_time;
 	/*
@@ -2870,7 +2870,13 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		return 0;
 	sa->last_update_time = now;
 
+	if (weight) {
+#if defined(CONFIG_JUNO_ACTMON) || defined(CONFIG_GEM5_ACTMON)
+	scale_freq = arch_scale_freq_capacity(sa, cpu);
+#else
 	scale_freq = arch_scale_freq_capacity(NULL, cpu);
+#endif
+	}
 	scale_cpu = arch_scale_cpu_capacity(NULL, cpu);
 	trace_sched_contrib_scale_f(cpu, scale_freq, scale_cpu);
 
@@ -3333,6 +3339,20 @@ static void attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 	cfs_rq->avg.load_sum += se->avg.load_sum;
 	cfs_rq->avg.util_avg += se->avg.util_avg;
 	cfs_rq->avg.util_sum += se->avg.util_sum;
+
+#if defined(CONFIG_JUNO_ACTMON) || defined(CONFIG_GEM5_ACTMON)
+
+	/*
+	 * We are now on a new run queue, and therefore we need to
+	 * update the reference counters for calculating the frequency
+	 * scale. TODO: Change this to JUST update the references.
+	 */
+	se->avg.const_freq_ref = 0;
+	se->avg.core_cycle_ref = 0;
+	arch_scale_freq_capacity(&se->avg, cfs_rq->rq->cpu);
+
+#endif
+
 	set_tg_cfs_propagate(cfs_rq);
 
 	cfs_rq_util_change(cfs_rq);
@@ -5428,15 +5448,33 @@ static void record_wakee(struct task_struct *p)
 	}
 }
 
+
 /*
  * Returns the current capacity of cpu after applying both
  * cpu and freq scaling.
  */
 unsigned long capacity_curr_of(int cpu)
 {
+#if defined(CONFIG_JUNO_ACTMON) || defined(CONFIG_GEM5_ACTMON)
+        /*
+	 * We need to make sure that we get the sched_avg for the
+	 * particular CPU here. How do we do this? Which run-queue or
+	 * simular to we need to get and query here? Ask Morten or
+	 * Ionela.
+	 */
+
+	// Use the cached value here, or fall back to the Ccpufreq value.
+	return cpu_rq(cpu)->cpu_capacity_orig *
+		actmon_get_cached_capacity(cpu)
+		>> SCHED_CAPACITY_SHIFT;
+#else
+	/*
+	 * This is the original implementation.
+	 */
 	return cpu_rq(cpu)->cpu_capacity_orig *
 	       arch_scale_freq_capacity(NULL, cpu)
 	       >> SCHED_CAPACITY_SHIFT;
+#endif
 }
 
 static inline bool energy_aware(void)
@@ -6542,7 +6580,7 @@ done:
 
 	return target;
 }
- 
+
 /*
  * cpu_util_wake: Compute cpu utilization with any contributions from
  * the waking task p removed.
@@ -6853,7 +6891,7 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 /*
  * Disable WAKE_AFFINE in the case where task @p doesn't fit in the
  * capacity of either the waking CPU @cpu or the previous CPU @prev_cpu.
- * 
+ *
  * In that case WAKE_AFFINE doesn't make sense and we'll let
  * BALANCE_WAKE sort things out.
  */

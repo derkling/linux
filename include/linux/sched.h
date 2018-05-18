@@ -1382,6 +1382,15 @@ struct sched_avg {
 	u64 last_update_time, load_sum;
 	u32 util_sum, period_contrib;
 	unsigned long load_avg, util_avg;
+
+#if defined(CONFIG_JUNO_ACTMON) || defined(CONFIG_GEM5_ACTMON)
+	/*
+	 * These two are references for use with the activity
+	 * monitors. We need to make sure we update these whenever we
+	 * update the load_avg, or migrate a task between cores.
+	 */
+	u64 const_freq_ref, core_cycle_ref;
+#endif
 };
 
 #ifdef CONFIG_SCHEDSTATS

@@ -179,7 +179,54 @@ DEFINE_EVENT(cpu, cpu_capacity,
 	TP_ARGS(capacity, cpu_id)
 );
 
-TRACE_EVENT(device_pm_callback_start,
+TRACE_EVENT(cpu_capacity_actmon,
+
+	    TP_PROTO(unsigned int capacity,
+		     unsigned int cpu_id,
+		     u64 const_freq_count,
+		     u64 core_cycle_count,
+		     u64 const_freq_ratio,
+		     u32 on_tick),
+
+	    TP_ARGS(capacity,
+		    cpu_id,
+		    const_freq_count,
+		    core_cycle_count,
+		    const_freq_ratio,
+		    on_tick),
+
+	    TP_STRUCT__entry(
+		    __field(unsigned int, capacity)
+		    __field(unsigned int, cpu_id)
+		    __field(u64, const_freq_count)
+		    __field(u64, core_cycle_count)
+		    __field(u64, const_freq_ratio)
+		    __field(u32, on_tick)
+		    ),
+
+	    TP_fast_assign(
+		    __entry->capacity = capacity;
+		    __entry->cpu_id = cpu_id;
+		    __entry->const_freq_count = const_freq_count;
+		    __entry->core_cycle_count = core_cycle_count;
+		    __entry->const_freq_ratio = const_freq_ratio;
+		    __entry->on_tick = on_tick;
+		    ),
+
+	    TP_printk("capacity=%u cpu=%u const_freq_count=%llu core_cycle_count=%llu const_freq_ratio=%llu on_tick=%u",
+		      __entry->capacity, __entry->cpu_id, __entry->const_freq_count,
+		      __entry->core_cycle_count, __entry->const_freq_ratio,
+		      __entry->on_tick)
+);
+
+DEFINE_EVENT(cpu, orig_cpu_capacity,
+
+	TP_PROTO(unsigned int orig_capacity, unsigned int cpu_id),
+
+	TP_ARGS(orig_capacity, cpu_id)
+);
+
+ TRACE_EVENT(device_pm_callback_start,
 
 	TP_PROTO(struct device *dev, const char *pm_ops, int event),
 

@@ -92,6 +92,10 @@
 #include <trace/events/sched.h>
 #include "walt.h"
 
+#if defined(CONFIG_JUNO_ACTMON) || defined(CONFIG_GEM5_ACTMON)
+#include <asm/actmon.h>
+#endif
+
 DEFINE_MUTEX(sched_domains_mutex);
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 
@@ -3252,6 +3256,10 @@ void scheduler_tick(void)
 	raw_spin_unlock(&rq->lock);
 
 	perf_event_task_tick();
+
+#if defined(CONFIG_JUNO_ACTMON) || defined(CONFIG_GEM5_ACTMON)
+	actmon_scale_freq_capacity_tick(cpu);
+#endif
 
 #ifdef CONFIG_SMP
 	rq->idle_balance = idle_cpu(cpu);

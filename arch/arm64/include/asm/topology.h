@@ -32,10 +32,18 @@ int pcibus_to_node(struct pci_bus *bus);
 
 #endif /* CONFIG_NUMA */
 struct sched_domain;
+struct sched_avg;
 #ifdef CONFIG_CPU_FREQ
+extern unsigned long cpufreq_scale_max_freq_capacity(int cpu);
+#if defined(CONFIG_JUNO_ACTMON) || defined(CONFIG_GEM5_ACTMON)
+#define arch_scale_freq_capacity actmon_scale_freq_capacity
+extern unsigned long actmon_scale_freq_capacity(struct sched_avg *sa, int cpu);
+extern void actmon_scale_freq_capacity_tick(int cpu);
+extern unsigned long actmon_get_cached_capacity(int cpu);
+#else
 #define arch_scale_freq_capacity cpufreq_scale_freq_capacity
 extern unsigned long cpufreq_scale_freq_capacity(struct sched_domain *sd, int cpu);
-extern unsigned long cpufreq_scale_max_freq_capacity(int cpu);
+#endif
 #endif
 #define arch_scale_cpu_capacity scale_cpu_capacity
 extern unsigned long scale_cpu_capacity(struct sched_domain *sd, int cpu);
