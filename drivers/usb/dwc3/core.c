@@ -93,9 +93,6 @@ static int dwc3_get_dr_mode(struct dwc3 *dwc)
 	return 0;
 }
 
-static void dwc3_event_buffers_cleanup(struct dwc3 *dwc);
-static int dwc3_event_buffers_setup(struct dwc3 *dwc);
-
 void dwc3_set_prtcap(struct dwc3 *dwc, u32 mode)
 {
 	u32 reg;
@@ -1080,7 +1077,7 @@ static int dwc3_core_init_mode(struct dwc3 *dwc)
 		#else
 		dwc3_set_prtcap(dwc, DWC3_GCTL_PRTCAP_OTG);
 
-		ret = dwc3_otg_init(dwc);
+		ret = dwc3_hisi_otg_init(dwc);
 		if (ret) {
 			dev_err(dev, "failed to initialize otg\n");
 			return ret;
@@ -1540,6 +1537,7 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
 		phy_pm_runtime_put_sync(dwc->usb2_generic_phy);
 		phy_pm_runtime_put_sync(dwc->usb3_generic_phy);
 		break;
+#if 0
 	case DWC3_GCTL_PRTCAP_OTG:
 		/* do nothing during runtime_suspend */
 		if (PMSG_IS_AUTO(msg))
@@ -1554,6 +1552,7 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
 		dwc3_otg_exit(dwc);
 		dwc3_core_exit(dwc);
 		break;
+#endif
 	default:
 		/* do nothing */
 		break;
@@ -1606,7 +1605,7 @@ static int dwc3_resume_common(struct dwc3 *dwc, pm_message_t msg)
 		phy_pm_runtime_get_sync(dwc->usb2_generic_phy);
 		phy_pm_runtime_get_sync(dwc->usb3_generic_phy);
 		break;
-	case DWC3_GCTL_PRTCAP_OTG:
+#if 0
 		/* nothing to do on runtime_resume */
 		if (PMSG_IS_AUTO(msg))
 			break;
@@ -1627,6 +1626,7 @@ static int dwc3_resume_common(struct dwc3 *dwc, pm_message_t msg)
 		}
 
 		break;
+#endif
 	default:
 		/* do nothing */
 		break;
