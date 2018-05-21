@@ -3349,7 +3349,7 @@ static void attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 	 */
 	se->avg.const_freq_ref = 0;
 	se->avg.core_cycle_ref = 0;
-	arch_scale_freq_capacity(&se->avg, cfs_rq->rq->cpu);
+	arch_scale_freq_capacity(&se->avg, cpu_of(rq_of(cfs_rq)));
 
 #endif
 
