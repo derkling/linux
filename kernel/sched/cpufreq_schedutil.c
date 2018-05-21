@@ -383,11 +383,14 @@ sugov_update_shared(struct update_util_data *hook, u64 time, unsigned int flags)
 	raw_spin_unlock(&sg_policy->update_lock);
 }
 
-static void sugov_work(struct kthread_work *work)
+#define SUGOV_FREQ_NONE 0
+
+static unsigned int sugov_work_update(struct sugov_policy *sg_policy,
+				      unsigned int prev_freq)
 {
-	struct sugov_policy *sg_policy = container_of(work, struct sugov_policy, work);
-	unsigned int freq;
-	unsigned long flags;
+	unsigned long irq_flags;
+	bool update_freq = true;
+	unsigned int next_freq;
 
 	/*
 	 * Hold sg_policy->update_lock shortly to handle the case where:
@@ -399,14 +402,39 @@ static void sugov_work(struct kthread_work *work)
 	 * sugov_work will just be called again by kthread_work code; and the
 	 * request will be proceed before the sugov thread sleeps.
 	 */
-	raw_spin_lock_irqsave(&sg_policy->update_lock, flags);
-	freq = sg_policy->next_freq;
+	raw_spin_lock_irqsave(&sg_policy->update_lock, irq_flags);
+	next_freq = sg_policy->next_freq;
 	sg_policy->work_in_progress = false;
-	raw_spin_unlock_irqrestore(&sg_policy->update_lock, flags);
+	if (prev_freq == next_freq)
+		update_freq = false;
+	raw_spin_unlock_irqrestore(&sg_policy->update_lock, irq_flags);
 
-	mutex_lock(&sg_policy->work_lock);
-	__cpufreq_driver_target(sg_policy->policy, freq, CPUFREQ_RELATION_L);
-	mutex_unlock(&sg_policy->work_lock);
+	/*
+	 * Update the frequency only if it has changed since the last call.
+	 */
+	if (update_freq) {
+		mutex_lock(&sg_policy->work_lock);
+		__cpufreq_driver_target(sg_policy->policy, next_freq, CPUFREQ_RELATION_L);
+		mutex_unlock(&sg_policy->work_lock);
+
+		return next_freq;
+	}
+
+	return SUGOV_FREQ_NONE;
+}
+
+static void sugov_work(struct kthread_work *work)
+{
+	struct sugov_policy *sg_policy = container_of(work, struct sugov_policy, work);
+	unsigned int prev_freq = 0;
+
+	/*
+	 * Keep updating the frequency until we end up with a frequency which
+	 * satisfies the most recent request we got meanwhile.
+	 */
+	do {
+		prev_freq = sugov_work_update(sg_policy, prev_freq);
+	} while (prev_freq != SUGOV_FREQ_NONE);
 }
 
 static void sugov_irq_work(struct irq_work *irq_work)
