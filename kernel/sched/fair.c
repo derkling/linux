@@ -6075,8 +6075,6 @@ static int wake_affine(struct sched_domain *sd, struct task_struct *p,
 	return target;
 }
 
-static inline int task_util(struct task_struct *p);
-
 #ifdef CONFIG_SCHED_TUNE
 struct reciprocal_value schedtune_spc_rdiv;
 
@@ -6133,6 +6131,15 @@ schedtune_task_margin(struct task_struct *task)
 	return margin;
 }
 
+unsigned long
+boosted_cpu_util(int cpu)
+{
+	unsigned long util = cpu_util_cfs(cpu_rq(cpu));
+	long margin = schedtune_cpu_margin(util, cpu);
+
+	return util + margin;
+}
+
 #else /* CONFIG_SCHED_TUNE */
 
 static inline int
@@ -6149,24 +6156,13 @@ schedtune_task_margin(struct task_struct *task)
 
 #endif /* CONFIG_SCHED_TUNE */
 
-unsigned long
-boosted_cpu_util(int cpu)
-{
-	unsigned long util = cpu_util(cpu);
-	long margin = schedtune_cpu_margin(util, cpu);
 
-	trace_sched_boost_cpu(cpu, util, margin);
-
-	return util + margin;
-}
 
 static inline unsigned long
 boosted_task_util(struct task_struct *task)
 {
 	unsigned long util = task_util(task);
 	long margin = schedtune_task_margin(task);
-
-	trace_sched_boost_task(task, util, margin);
 
 	return util + margin;
 }
