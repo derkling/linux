@@ -6080,9 +6080,9 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 	/*
 	 * The cross-over point between using spare capacity or least load
 	 * is too conservative for high utilization tasks on partially
-	 * utilized systems if we require spare_capacity > task_util(p),
+	 * utilized systems if we require spare_capacity > task_util_est(p),
 	 * so we allow for some task stuffing by using
-	 * spare_capacity > task_util(p)/2.
+	 * spare_capacity > task_util_est(p)/2.
 	 *
 	 * Spare capacity can't be used for fork because the utilization has
 	 * not been set yet, we must first select a rq to compute the initial
@@ -6091,11 +6091,11 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 	if (sd_flag & SD_BALANCE_FORK)
 		goto skip_spare;
 
-	if (this_spare > task_util(p) / 2 &&
+	if (this_spare > task_util_est(p) / 2 &&
 	    imbalance_scale*this_spare > 100*most_spare)
 		return NULL;
 
-	if (most_spare > task_util(p) / 2)
+	if (most_spare > task_util_est(p) / 2)
 		return most_spare_sg;
 
 skip_spare:
