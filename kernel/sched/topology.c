@@ -1864,9 +1864,11 @@ void partition_sched_domains(int ndoms_new, cpumask_var_t doms_new[],
 	unregister_sched_domain_sysctl();
 
 	/* Let the architecture update CPU core mappings: */
+	pr_debug("arch_update_cpu_topology()...\n");
 	new_topology = arch_update_cpu_topology();
 
 	if (!doms_new) {
+		pr_debug("doms_new=NULL\n");
 		WARN_ON_ONCE(dattr_new);
 		n = 0;
 		doms_new = alloc_sched_domains(1);
@@ -1876,6 +1878,7 @@ void partition_sched_domains(int ndoms_new, cpumask_var_t doms_new[],
 				    housekeeping_cpumask(HK_FLAG_DOMAIN));
 		}
 	} else {
+		pr_debug("doms_new=%d\n", n);
 		n = ndoms_new;
 	}
 

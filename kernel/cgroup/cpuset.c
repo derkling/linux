@@ -675,6 +675,7 @@ static int generate_sched_domains(cpumask_var_t **domains,
 
 	/* Special case for the 99% of systems with one, full, sched domain */
 	if (is_sched_load_balance(&top_cpuset)) {
+		pr_debug("generate_sched_domains: one, full, sched domain\n");
 		ndoms = 1;
 		doms = alloc_sched_domains(ndoms);
 		if (!doms)
@@ -748,6 +749,8 @@ restart:
 			}
 		}
 	}
+
+	pr_debug("generate_sched_domains: creating %d domains...\n", ndoms);
 
 	/*
 	 * Now we know how many domains to create.
@@ -836,6 +839,8 @@ static void rebuild_sched_domains_locked(void)
 	struct sched_domain_attr *attr;
 	cpumask_var_t *doms;
 	int ndoms;
+
+	pr_debug("rebuild_sched_domains_locked...\n");
 
 	lockdep_assert_held(&cpuset_mutex);
 	get_online_cpus();
@@ -2312,6 +2317,8 @@ static void cpuset_hotplug_workfn(struct work_struct *work)
 	bool cpus_updated, mems_updated;
 	bool on_dfl = is_in_v2_mode();
 
+	pr_debug("cpuset_hotplug_workfn()...\n");
+
 	mutex_lock(&cpuset_mutex);
 
 	/* fetch the available cpus/mems and find out which changed how */
@@ -2323,6 +2330,7 @@ static void cpuset_hotplug_workfn(struct work_struct *work)
 
 	/* synchronize cpus_allowed to cpu_active_mask */
 	if (cpus_updated) {
+		pr_debug("   synchronize cpus_allowed to cpu_active_mask\n");
 		spin_lock_irq(&callback_lock);
 		if (!on_dfl)
 			cpumask_copy(top_cpuset.cpus_allowed, &new_cpus);
@@ -2347,6 +2355,8 @@ static void cpuset_hotplug_workfn(struct work_struct *work)
 	if (cpus_updated || mems_updated) {
 		struct cpuset *cs;
 		struct cgroup_subsys_state *pos_css;
+
+		pr_debug("   propagate to descendants...\n");
 
 		rcu_read_lock();
 		cpuset_for_each_descendant_pre(cs, pos_css, &top_cpuset) {
