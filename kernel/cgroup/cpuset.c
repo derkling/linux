@@ -223,6 +223,14 @@ static struct cpuset top_cpuset = {
 		  (1 << CS_MEM_EXCLUSIVE)),
 };
 
+static bool top_cpuset_balance(void)
+{
+	/* Special case for the 99% of systems with one, full, sched domain */
+	if (!is_sched_load_balance(&top_cpuset))
+		return false;
+	return true;
+}
+
 /**
  * cpuset_for_each_child - traverse online children of a cpuset
  * @child_cs: loop cursor pointing to the current child
@@ -838,6 +846,10 @@ static void rebuild_sched_domains_locked(void)
 	 * Anyways, hotplug work item will rebuild sched domains.
 	 */
 	if (!cpumask_equal(top_cpuset.effective_cpus, cpu_active_mask))
+		goto out;
+
+	/* Special case for the 99% of systems with one, full, sched domain */
+	if (top_cpuset_balance())
 		goto out;
 
 	/* Generate domain masks and attrs */
