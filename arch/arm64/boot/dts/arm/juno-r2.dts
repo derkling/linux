@@ -134,7 +134,7 @@
 			next-level-cache = <&A53_L2>;
 			clocks = <&scpi_dvfs 1>;
 			cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>;
-			capacity-dmips-mhz = <485>;
+			capacity-dmips-mhz = <749>;
 			dynamic-power-coefficient = <140>;
 		};
 
@@ -152,7 +152,7 @@
 			next-level-cache = <&A53_L2>;
 			clocks = <&scpi_dvfs 1>;
 			cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>;
-			capacity-dmips-mhz = <485>;
+			capacity-dmips-mhz = <749>;
 			dynamic-power-coefficient = <140>;
 		};
 
@@ -170,7 +170,7 @@
 			next-level-cache = <&A53_L2>;
 			clocks = <&scpi_dvfs 1>;
 			cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>;
-			capacity-dmips-mhz = <485>;
+			capacity-dmips-mhz = <749>;
 			dynamic-power-coefficient = <140>;
 		};
 
@@ -188,7 +188,7 @@
 			next-level-cache = <&A53_L2>;
 			clocks = <&scpi_dvfs 1>;
 			cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>;
-			capacity-dmips-mhz = <485>;
+			capacity-dmips-mhz = <749>;
 			dynamic-power-coefficient = <140>;
 		};
 
