@@ -142,6 +142,8 @@ struct cpuset {
 	int isolation_count;
 };
 
+static bool force_rebuild;
+
 static inline struct cpuset *css_cs(struct cgroup_subsys_state *css)
 {
 	return css ? container_of(css, struct cpuset, css) : NULL;
@@ -874,11 +876,20 @@ static void rebuild_sched_domains_locked(void)
 	   !cpumask_subset(top_cpuset.effective_cpus, cpu_active_mask))
 		goto out;
 
+	/* Special case for the 99% of systems with one, full, sched domain */
+	if (!top_cpuset.isolation_count &&
+	    is_sched_load_balance(&top_cpuset)) {
+		if (!force_rebuild)
+			goto out;
+		force_rebuild = false;
+	}
+
 	/* Generate domain masks and attrs */
 	ndoms = generate_sched_domains(&doms, &attr);
 
 	/* Have scheduler rebuild the domains */
 	partition_sched_domains(ndoms, doms, attr);
+
 out:
 	put_online_cpus();
 }
@@ -2607,8 +2618,6 @@ retry:
 
 	mutex_unlock(&cpuset_mutex);
 }
-
-static bool force_rebuild;
 
 void cpuset_force_rebuild(void)
 {
