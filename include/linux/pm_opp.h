@@ -338,7 +338,7 @@ static inline struct device_node *dev_pm_opp_of_get_opp_desc_node(struct device 
 	return NULL;
 }
 
-static inline int dev_pm_opp_of_estimate_power(unsigned long *power, unsigned long *freq, int cpu);
+static inline int dev_pm_opp_of_estimate_power(unsigned long *power, unsigned long *freq, int cpu)
 {
 	return -ENOTSUPP;
 }
