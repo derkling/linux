@@ -1600,14 +1600,14 @@ static void build_sched_energy(void)
 	return;
 
 disable:
-	rcu_read_unlock();
-	static_branch_disable_cpuslocked(&sched_energy_present);
-
 	/* Destroy the list */
 	list_for_each_entry_safe(sfd, tmp, &sched_energy_fd_list, next) {
 		list_del_rcu(&sfd->next);
 		call_rcu(&sfd->rcu, free_sched_energy_fd);
 	}
+	rcu_read_unlock();
+	static_branch_disable_cpuslocked(&sched_energy_present);
+
 	pr_debug("%s: EAS stopped\n", __func__);
 }
 #else
