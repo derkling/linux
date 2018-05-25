@@ -2194,7 +2194,11 @@ static inline void cpufreq_update_util(struct rq *rq, unsigned int flags) {}
 #ifdef CONFIG_CPU_FREQ_GOV_SCHEDUTIL
 static inline unsigned long cpu_util_dl(struct rq *rq)
 {
-	return (rq->dl.running_bw * SCHED_CAPACITY_SCALE) >> BW_SHIFT;
+	unsigned long util = (rq->dl.running_bw * SCHED_CAPACITY_SCALE) >> BW_SHIFT;
+
+	util = max_t(unsigned long, util, READ_ONCE(rq->avg_dl.util_avg));
+
+	return util;
 }
 
 static inline unsigned long cpu_util_cfs(struct rq *rq)
