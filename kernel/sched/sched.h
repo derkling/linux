@@ -850,6 +850,7 @@ struct rq {
 	u64			age_stamp;
 	struct sched_avg	avg_rt;
 	struct sched_avg	avg_dl;
+	struct sched_avg	avg_irq;
 	u64			idle_stamp;
 	u64			avg_idle;
 

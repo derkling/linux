@@ -5,6 +5,7 @@ int __update_load_avg_se(u64 now, int cpu, struct cfs_rq *cfs_rq, struct sched_e
 int __update_load_avg_cfs_rq(u64 now, int cpu, struct cfs_rq *cfs_rq);
 int update_rt_rq_load_avg(u64 now, struct rq *rq, int running);
 int update_dl_rq_load_avg(u64 now, struct rq *rq, int running);
+int update_irq_load_avg(struct rq *rq, u64 running);
 
 /*
  * When a task is dequeued, its estimated utilization should not be update if
@@ -48,6 +49,12 @@ update_rt_rq_load_avg(u64 now, struct rq *rq, int running)
 
 static inline int
 update_dl_rq_load_avg(u64 now, struct rq *rq, int running)
+{
+	return 0;
+}
+
+static inline int
+update_irq_load_avg(struct rq *rq, u64 running)
 {
 	return 0;
 }
