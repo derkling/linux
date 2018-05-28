@@ -737,6 +737,7 @@ void init_entity_runnable_average(struct sched_entity *se)
 	struct sched_avg *sa = &se->avg;
 
 	sa->last_update_time = 0;
+	sa->stolen_idle_time = 0;
 	/*
 	 * sched_avg's period_contrib should be strictly less then 1024, so
 	 * we give it 1023 to make sure it is almost a period (1024us), and
@@ -2814,6 +2815,75 @@ static u32 __compute_runnable_contrib(u64 n)
 
 #define cap_scale(v, s) ((v)*(s) >> SCHED_CAPACITY_SHIFT)
 
+
+/*
+ * Scale the time to reflect the effective amount of computation done during
+ * this delta time.
+ */
+static __always_inline u64
+scale_time(u64 delta, int cpu, struct sched_avg *sa,
+		unsigned long weight, int running)
+{
+	unsigned long scale_freq, scale_cpu;
+
+	if (running) {
+		/*
+		 * When an entity runs at a lower compute capacity, it will
+		 * need more time to do the same amount of work than at max
+		 * capacity. In order to be invariant, we scale the delta to
+		 * reflect how much work has been really done.
+		 * Running at lower capacity also means running longer to do
+		 * the same amount of work and this results in stealing some
+		 * idle time that will disturbed the load signal compared to
+		 * max capacity; We also track this amount of stolen time to
+		 * reflect it when the entity will go back to sleep.
+		 *
+		 * stolen time = (current run time) - (effective time at max
+		 * capacity)
+		 */
+		sa->stolen_idle_time += delta;
+
+		/*
+		 * scale the elapsed time to reflect the real amount of
+		 * computation
+		 */
+#if defined(CONFIG_JUNO_ACTMON) || defined(CONFIG_GEM5_ACTMON)
+		scale_freq = arch_scale_freq_capacity(sa, cpu);
+#else
+		scale_freq = arch_scale_freq_capacity(NULL, cpu);
+#endif
+		scale_cpu = arch_scale_cpu_capacity(NULL, cpu);
+		delta = cap_scale(delta, scale_freq);
+		delta = cap_scale(delta, scale_cpu);
+		trace_sched_contrib_scale_f(cpu, scale_freq, scale_cpu);
+
+		/*
+		 * Track the amount of stolen idle time due to running at
+		 * lower capacity
+		 */
+		sa->stolen_idle_time -= delta;
+	} else if (!weight) {
+		/*
+		 * Entity is sleeping so both utilization and load will decay
+		 * and we can safely add the stolen time. Reflecting some
+		 * stolen time make sense only if this idle phase would be
+		 * present at max capacity. As soon as the utilization of an
+		 * entity has reached the maximum value, it is considered as
+		 * an always runnnig entity without idle time to steal.
+		 */
+		if (sa->util_avg < (SCHED_CAPACITY_SCALE - 1)) {
+			/*
+			 * Add the idle time stolen by running at lower compute
+			 * capacity
+			 */
+			delta += sa->stolen_idle_time;
+		}
+		sa->stolen_idle_time = 0;
+	}
+
+	return delta;
+}
+
 /*
  * We can represent the historical contribution to runnable average as the
  * coefficients of a geometric series.  To do this we sub-divide our runnable
@@ -2846,10 +2916,9 @@ static __always_inline int
 __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		  unsigned long weight, int running, struct cfs_rq *cfs_rq)
 {
-	u64 delta, scaled_delta, periods;
+	u64 delta, periods;
 	u32 contrib;
-	unsigned int delta_w, scaled_delta_w, decayed = 0;
-	unsigned long scale_freq = 1024, scale_cpu; /* TODO: Is this a good default? */
+	unsigned int delta_w, decayed = 0;
 
 	delta = now - sa->last_update_time;
 	/*
@@ -2870,15 +2939,7 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		return 0;
 	sa->last_update_time = now;
 
-	if (weight) {
-#if defined(CONFIG_JUNO_ACTMON) || defined(CONFIG_GEM5_ACTMON)
-	scale_freq = arch_scale_freq_capacity(sa, cpu);
-#else
-	scale_freq = arch_scale_freq_capacity(NULL, cpu);
-#endif
-	}
-	scale_cpu = arch_scale_cpu_capacity(NULL, cpu);
-	trace_sched_contrib_scale_f(cpu, scale_freq, scale_cpu);
+	delta = scale_time(delta, cpu, sa, weight, running);
 
 	/* delta_w is the amount already accumulated against our next period */
 	delta_w = sa->period_contrib;
@@ -2894,16 +2955,15 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		 * period and accrue it.
 		 */
 		delta_w = 1024 - delta_w;
-		scaled_delta_w = cap_scale(delta_w, scale_freq);
 		if (weight) {
-			sa->load_sum += weight * scaled_delta_w;
+			sa->load_sum += weight * delta_w;
 			if (cfs_rq) {
 				cfs_rq->runnable_load_sum +=
-						weight * scaled_delta_w;
+						weight * delta_w;
 			}
 		}
 		if (running)
-			sa->util_sum += scaled_delta_w * scale_cpu;
+			sa->util_sum += delta_w << SCHED_CAPACITY_SHIFT;
 
 		delta -= delta_w;
 
@@ -2920,25 +2980,23 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 
 		/* Efficiently calculate \sum (1..n_period) 1024*y^i */
 		contrib = __compute_runnable_contrib(periods);
-		contrib = cap_scale(contrib, scale_freq);
 		if (weight) {
 			sa->load_sum += weight * contrib;
 			if (cfs_rq)
 				cfs_rq->runnable_load_sum += weight * contrib;
 		}
 		if (running)
-			sa->util_sum += contrib * scale_cpu;
+			sa->util_sum += contrib << SCHED_CAPACITY_SHIFT;
 	}
 
 	/* Remainder of delta accrued against u_0` */
-	scaled_delta = cap_scale(delta, scale_freq);
 	if (weight) {
-		sa->load_sum += weight * scaled_delta;
+		sa->load_sum += weight * delta;
 		if (cfs_rq)
-			cfs_rq->runnable_load_sum += weight * scaled_delta;
+			cfs_rq->runnable_load_sum += weight * delta;
 	}
 	if (running)
-		sa->util_sum += scaled_delta * scale_cpu;
+		sa->util_sum += delta << SCHED_CAPACITY_SHIFT;
 
 	sa->period_contrib += delta;
 
