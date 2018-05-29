@@ -43,15 +43,6 @@
 				core0 {
 					cpu = <&cpu4>;
 				};
-				core1 {
-					cpu = <&cpu5>;
-				};
-				core2 {
-					cpu = <&cpu6>;
-				};
-				core3 {
-					cpu = <&cpu7>;
-				};
 			};
 		};
 
@@ -120,42 +111,6 @@
 			cooling-max-level = <0>;
 			#cooling-cells = <2>; /* min followed by max */
 			dynamic-power-coefficient = <550>;
-			sched-energy-costs = <&CPU_COST_A72 &CLUSTER_COST_A72 &SYSTEM_COST>;
-		};
-
-		cpu5: cpu@101 {
-			compatible = "arm,cortex-a73", "arm,armv8";
-			device_type = "cpu";
-			reg = <0x0 0x101>;
-			enable-method = "psci";
-			next-level-cache = <&A73_L2>;
-			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP_1>;
-			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER1>;
-			operating-points-v2 = <&cluster1_opp>;
-			sched-energy-costs = <&CPU_COST_A72 &CLUSTER_COST_A72 &SYSTEM_COST>;
-		};
-
-		cpu6: cpu@102 {
-			compatible = "arm,cortex-a73", "arm,armv8";
-			device_type = "cpu";
-			reg = <0x0 0x102>;
-			enable-method = "psci";
-			next-level-cache = <&A73_L2>;
-			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP_1>;
-			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER1>;
-			operating-points-v2 = <&cluster1_opp>;
-			sched-energy-costs = <&CPU_COST_A72 &CLUSTER_COST_A72 &SYSTEM_COST>;
-		};
-
-		cpu7: cpu@103 {
-			compatible = "arm,cortex-a73", "arm,armv8";
-			device_type = "cpu";
-			reg = <0x0 0x103>;
-			enable-method = "psci";
-			next-level-cache = <&A73_L2>;
-			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP_1>;
-			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER1>;
-			operating-points-v2 = <&cluster1_opp>;
 			sched-energy-costs = <&CPU_COST_A72 &CLUSTER_COST_A72 &SYSTEM_COST>;
 		};
 
@@ -298,10 +253,7 @@
 				     <&cpu1>,
 				     <&cpu2>,
 				     <&cpu3>,
-				     <&cpu4>,
-				     <&cpu5>,
-				     <&cpu6>,
-				     <&cpu7>;
+				     <&cpu4>;
 	};
 
 	timer {
