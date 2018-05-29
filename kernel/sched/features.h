@@ -90,3 +90,10 @@ SCHED_FEAT(WA_BIAS, true)
  * UtilEstimation. Use estimated CPU utilization.
  */
 SCHED_FEAT(UTIL_EST, true)
+
+/*
+ * Request max frequency from schedutil as soon as one RT task is running.
+ * False means frequency requests for RT tasks are done according to the
+ * util_avg of RT runqueues.
+ */
+SCHED_FEAT(SUGOV_RT_MAX, false)
