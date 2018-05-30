@@ -637,6 +637,69 @@ TRACE_EVENT(sched_load_cfs_rq,
 		  __entry->cpu, __get_str(path), __entry->load,
 		  __entry->rbl_load,__entry->util)
 );
+
+struct rq;
+
+TRACE_EVENT(sched_load_rt_rq,
+
+	TP_PROTO(struct rq *rq),
+
+	TP_ARGS(rq),
+
+	TP_STRUCT__entry(
+		__field(	int,		cpu			)
+		__field(	unsigned long,	util			)
+	),
+
+	TP_fast_assign(
+		__entry->cpu		= cpu_of(rq);
+		__entry->util		= rq->avg_rt.util_avg;
+	),
+
+	TP_printk("cpu=%d util=%lu",
+		  __entry->cpu, __entry->util)
+);
+
+TRACE_EVENT(sched_load_dl_rq,
+
+	TP_PROTO(struct rq *rq),
+
+	TP_ARGS(rq),
+
+	TP_STRUCT__entry(
+		__field(	int,		cpu			)
+		__field(	unsigned long,	util			)
+	),
+
+	TP_fast_assign(
+		__entry->cpu		= cpu_of(rq);
+		__entry->util		= rq->avg_dl.util_avg;
+	),
+
+	TP_printk("cpu=%d util=%lu",
+		  __entry->cpu, __entry->util)
+);
+
+TRACE_EVENT(sched_load_irq,
+
+	TP_PROTO(struct rq *rq),
+
+	TP_ARGS(rq),
+
+	TP_STRUCT__entry(
+		__field(	int,		cpu			)
+		__field(	unsigned long,	util			)
+	),
+
+	TP_fast_assign(
+		__entry->cpu		= cpu_of(rq);
+		__entry->util		= rq->avg_irq.util_avg;
+	),
+
+	TP_printk("cpu=%d util=%lu",
+		  __entry->cpu, __entry->util)
+);
+#endif /* CONFIG_SMP */
 #endif /* _TRACE_SCHED_H */
 
 /* This part must be outside protection */

@@ -332,6 +332,9 @@ int update_rt_rq_load_avg(u64 now, struct rq *rq, int running)
 				running)) {
 
 		___update_load_avg(&rq->avg_rt, 1, 1);
+
+		trace_sched_load_rt_rq(rq);
+
 		return 1;
 	}
 
@@ -355,6 +358,9 @@ int update_dl_rq_load_avg(u64 now, struct rq *rq, int running)
 				running)) {
 
 		___update_load_avg(&rq->avg_dl, 1, 1);
+
+		trace_sched_load_dl_rq(rq);
+
 		return 1;
 	}
 
@@ -393,8 +399,12 @@ int update_irq_load_avg(struct rq *rq, u64 running)
 				1,
 				1);
 
-	if (ret)
+	if (ret) {
 		___update_load_avg(&rq->avg_irq, 1, 1);
+
+		trace_sched_load_irq(rq);
+
+	}
 
 	return ret;
 }
