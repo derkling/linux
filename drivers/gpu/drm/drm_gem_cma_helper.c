@@ -443,13 +443,16 @@ drm_gem_cma_prime_import_sg_table(struct drm_device *dev,
 {
 	struct drm_gem_cma_object *cma_obj;
 
-	if (sgt->nents != 1)
+	if (sgt->nents != 1) {
+		printk("JDB: %s failed due to sgt->nents: %i\n", __func__, sgt->nents);
 		return ERR_PTR(-EINVAL);
-
+	}
 	/* Create a CMA GEM buffer. */
 	cma_obj = __drm_gem_cma_create(dev, attach->dmabuf->size);
-	if (IS_ERR(cma_obj))
+	if (IS_ERR(cma_obj)) {
+		printk("JDB: %s failed from __drm_gem_cma_create\n", __func__);
 		return ERR_CAST(cma_obj);
+	}
 
 	cma_obj->paddr = sg_dma_address(sgt->sgl);
 	cma_obj->sgt = sgt;

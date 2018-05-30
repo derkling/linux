@@ -218,12 +218,12 @@ static int framebuffer_check(const struct drm_mode_fb_cmd2 *r)
 	num_planes = drm_format_num_planes(r->pixel_format);
 
 	if (r->width == 0 || r->width % hsub) {
-		DRM_DEBUG_KMS("bad framebuffer width %u\n", r->width);
+		printk("bad framebuffer width %u\n", r->width);
 		return -EINVAL;
 	}
 
 	if (r->height == 0 || r->height % vsub) {
-		DRM_DEBUG_KMS("bad framebuffer height %u\n", r->height);
+		printk("bad framebuffer height %u\n", r->height);
 		return -EINVAL;
 	}
 
@@ -233,7 +233,7 @@ static int framebuffer_check(const struct drm_mode_fb_cmd2 *r)
 		unsigned int cpp = drm_format_plane_cpp(r->pixel_format, i);
 
 		if (!r->handles[i]) {
-			DRM_DEBUG_KMS("no buffer object handle for plane %d\n", i);
+			printk("no buffer object handle for plane %d\n", i);
 			return -EINVAL;
 		}
 
@@ -244,12 +244,12 @@ static int framebuffer_check(const struct drm_mode_fb_cmd2 *r)
 			return -ERANGE;
 
 		if (r->pitches[i] < width * cpp) {
-			DRM_DEBUG_KMS("bad pitch %u for plane %d\n", r->pitches[i], i);
+			printk("bad pitch %u for plane %d\n", r->pitches[i], i);
 			return -EINVAL;
 		}
 
 		if (r->modifier[i] && !(r->flags & DRM_MODE_FB_MODIFIERS)) {
-			DRM_DEBUG_KMS("bad fb modifier %llu for plane %d\n",
+			printk("bad fb modifier %llu for plane %d\n",
 				      r->modifier[i], i);
 			return -EINVAL;
 		}
@@ -263,7 +263,7 @@ static int framebuffer_check(const struct drm_mode_fb_cmd2 *r)
 			if (r->pixel_format != DRM_FORMAT_NV12 ||
 					width % 128 || height % 32 ||
 					r->pitches[i] % 128) {
-				DRM_DEBUG_KMS("bad modifier data for plane %d\n", i);
+				printk("bad modifier data for plane %d\n", i);
 				return -EINVAL;
 			}
 			break;
@@ -275,7 +275,7 @@ static int framebuffer_check(const struct drm_mode_fb_cmd2 *r)
 
 	for (i = num_planes; i < 4; i++) {
 		if (r->modifier[i]) {
-			DRM_DEBUG_KMS("non-zero modifier for unused plane %d\n", i);
+			printk("non-zero modifier for unused plane %d\n", i);
 			return -EINVAL;
 		}
 
@@ -284,17 +284,17 @@ static int framebuffer_check(const struct drm_mode_fb_cmd2 *r)
 			continue;
 
 		if (r->handles[i]) {
-			DRM_DEBUG_KMS("buffer object handle for unused plane %d\n", i);
+			printk("buffer object handle for unused plane %d\n", i);
 			return -EINVAL;
 		}
 
 		if (r->pitches[i]) {
-			DRM_DEBUG_KMS("non-zero pitch for unused plane %d\n", i);
+			printk("non-zero pitch for unused plane %d\n", i);
 			return -EINVAL;
 		}
 
 		if (r->offsets[i]) {
-			DRM_DEBUG_KMS("non-zero offset for unused plane %d\n", i);
+			printk("non-zero offset for unused plane %d\n", i);
 			return -EINVAL;
 		}
 	}
