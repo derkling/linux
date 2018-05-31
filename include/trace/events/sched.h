@@ -647,6 +647,8 @@ TRACE_EVENT(sched_load_cfs_rq,
 		  __entry->rbl_load,__entry->util)
 );
 
+#define LOAD_AVG_MAX 47742
+
 /*
  * Tracepoint for sched_entity load tracking:
  */
@@ -665,6 +667,7 @@ TRACE_EVENT(sched_load_se,
 		__field(	unsigned long,	load			      )
 		__field(	unsigned long,	rbl_load		      )
 		__field(	unsigned long,	util			      )
+		__field(	unsigned long,	running			      )
 	),
 
 	TP_fast_assign(
@@ -680,11 +683,13 @@ TRACE_EVENT(sched_load_se,
 		__entry->load = se->avg.load_avg;
 		__entry->rbl_load = se->avg.runnable_load_avg;
 		__entry->util = se->avg.util_avg;
+		__entry->running = se->avg.running_sum / LOAD_AVG_MAX;
 	),
 
-	TP_printk("cpu=%d path=%s comm=%s pid=%d load=%lu rbl_load=%lu util=%lu",
+	TP_printk("cpu=%d path=%s comm=%s pid=%d load=%lu rbl_load=%lu util=%lu running=%lu",
 		  __entry->cpu, __get_str(path), __entry->comm, __entry->pid,
-		  __entry->load, __entry->rbl_load, __entry->util)
+		  __entry->load, __entry->rbl_load, __entry->util,
+		  __entry->running)
 );
 #endif /* CONFIG_SMP */
 #endif /* _TRACE_SCHED_H */
