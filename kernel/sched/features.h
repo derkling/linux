@@ -98,3 +98,12 @@ SCHED_FEAT(MIN_CAPACITY_CAPPING, false)
  * OFF: Use whichever of target or backup saves most.
  */
 SCHED_FEAT(FBT_STRICT_ORDER, true)
+
+/*
+ * Energy aware scheduling algorithm choices:
+ * EAS_PREFER_IDLE
+ *   Direct tasks in a schedtune.prefer_idle=1 group through
+ *   the EAS path for wakeup task placement. Otherwise, put
+ *   those tasks through the mainline slow path.
+ */
+SCHED_FEAT(EAS_PREFER_IDLE, true)

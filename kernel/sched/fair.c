@@ -6374,6 +6374,9 @@ static inline int find_idlest_cpu(struct sched_domain *sd, struct task_struct *p
 		schedstat_inc(this_rq()->eas_stats.cas_attempts);
 	}
 
+	if (!(sd_flag & SD_BALANCE_FORK))
+		sync_entity_load_avg(&p->se);
+
 	if (!cpumask_intersects(sched_domain_span(sd), &p->cpus_allowed))
 		return prev_cpu;
 
@@ -7106,8 +7109,6 @@ static int select_energy_cpu_brute(struct task_struct *p, int prev_cpu, int sync
 	prefer_idle = 0;
 #endif
 
-	rcu_read_lock();
-
 	sd = rcu_dereference(per_cpu(sd_ea, prev_cpu));
 	if (!sd) {
 		target_cpu = prev_cpu;
@@ -7183,7 +7184,6 @@ static int select_energy_cpu_brute(struct task_struct *p, int prev_cpu, int sync
 	schedstat_inc(this_rq()->eas_stats.secb_count);
 
 unlock:
-	rcu_read_unlock();
 	return target_cpu;
 }
 
@@ -7202,33 +7202,44 @@ unlock:
 static int
 select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_flags)
 {
-	struct sched_domain *tmp, *affine_sd = NULL, *sd = NULL;
+	struct sched_domain *tmp, *sd = NULL;
 	int cpu = smp_processor_id();
 	int new_cpu = prev_cpu;
-	int want_affine = 0;
+	int want_affine = 0, want_energy = 0;
 	int sync = wake_flags & WF_SYNC;
+	bool prefer_idle = schedtune_prefer_idle(p);
+
+	rcu_read_lock();
 
 	if (sd_flag & SD_BALANCE_WAKE) {
 		record_wakee(p);
-		want_affine = (!wake_wide(p) && !wake_cap(p, cpu, prev_cpu) &&
-			cpumask_test_cpu(cpu, tsk_cpus_allowed(p)));
+		if (sync || !prefer_idle || sched_feat(EAS_PREFER_IDLE)) {
+			want_energy = energy_aware() &&
+				!READ_ONCE(cpu_rq(cpu)->rd->overutilized);
+			want_affine = !wake_wide(p) &&
+				!wake_cap(p, cpu, prev_cpu) &&
+				cpumask_test_cpu(cpu, &p->cpus_allowed);
+		 }
 	}
 
-	if (energy_aware() && !(cpu_rq(prev_cpu)->rd->overutilized))
-		return select_energy_cpu_brute(p, prev_cpu, sync);
+	if (want_energy) {
+		new_cpu = select_energy_cpu_brute(p, prev_cpu, sync);
+		goto unlock;
+	}
 
-	rcu_read_lock();
 	for_each_domain(cpu, tmp) {
 		if (!(tmp->flags & SD_LOAD_BALANCE))
 			break;
 
 		/*
-		 * If both cpu and prev_cpu are part of this domain,
+		 * If both 'cpu' and 'prev_cpu' are part of this domain,
 		 * cpu is a valid SD_WAKE_AFFINE target.
 		 */
 		if (want_affine && (tmp->flags & SD_WAKE_AFFINE) &&
 		    cpumask_test_cpu(prev_cpu, sched_domain_span(tmp))) {
-			affine_sd = tmp;
+			if (cpu != prev_cpu)
+				new_cpu = wake_affine(tmp, p, prev_cpu, sync);
+			sd = NULL; /* Prefer wake_affine over balance flags */
 			break;
 		}
 
@@ -7238,28 +7249,15 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 			break;
 	}
 
-	if (affine_sd) {
-		sd = NULL; /* Prefer wake_affine over balance flags */
-		if (cpu != prev_cpu && wake_affine(affine_sd, p, prev_cpu, sync))
-			new_cpu = cpu;
-	}
-
-	if (sd && !(sd_flag & SD_BALANCE_FORK)) {
-		/*
-		 * We're going to need the task's util for capacity_spare_wake
-		 * in find_idlest_group. Sync it up to prev_cpu's
-		 * last_update_time.
-		 */
-		sync_entity_load_avg(&p->se);
-	}
-
-	if (!sd) {
-		if (sd_flag & SD_BALANCE_WAKE) /* XXX always ? */
-			new_cpu = select_idle_sibling(p, prev_cpu, new_cpu);
-
-	} else {
+	if (unlikely(sd)) {
+		/* Slow path */
 		new_cpu = find_idlest_cpu(sd, p, cpu, prev_cpu, sd_flag);
+	} else if (sd_flag & SD_BALANCE_WAKE) { /* XXX always ? */
+		/* Fast path */
+
+		new_cpu = select_idle_sibling(p, prev_cpu, new_cpu);
 	}
+unlock:
 	rcu_read_unlock();
 
 	return new_cpu;
