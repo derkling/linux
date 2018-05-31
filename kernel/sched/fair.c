@@ -3994,15 +3994,17 @@ static inline void util_est_enqueue(struct cfs_rq *cfs_rq,
 	enqueued += (_task_util_est(p) | UTIL_AVG_UNCHANGED);
 	WRITE_ONCE(cfs_rq->avg.util_est.enqueued, enqueued);
 
-	/* Update plots for Task and CPU estimated utilization */
-	trace_sched_util_est_task(p, &p->se.avg);
-	trace_sched_util_est_cpu(cpu_of(rq_of(cfs_rq)), cfs_rq);
 }
 
-static inline void util_est_enqueue_running(struct task_struct *p)
+static inline void util_est_enqueue_running(struct cfs_rq *cfs_rq,
+					    struct task_struct *p)
 {
 	/* Initilize the (non-preempted) utilization */
 	p->se.avg.running_sum = p->se.avg.util_sum;
+
+	/* Update plots for Task and CPU estimated utilization */
+	trace_sched_util_est_task(p, &p->se.avg);
+	trace_sched_util_est_cpu(cpu_of(rq_of(cfs_rq)), cfs_rq);
 }
 
 /*
@@ -5485,7 +5487,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	if (!se)
 		add_nr_running(rq, 1);
 
-	util_est_enqueue_running(p);
+	util_est_enqueue_running(&rq->cfs, p);
 
 	hrtick_update(rq);
 }

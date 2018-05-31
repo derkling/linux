@@ -735,6 +735,7 @@ TRACE_EVENT(sched_util_est_task,
 		__field( pid_t,		pid			)
 		__field( int,		cpu			)
 		__field( unsigned int,	util_avg		)
+		__field( unsigned int,	running_avg		)
 		__field( unsigned int,	est_enqueued		)
 		__field( unsigned int,	est_ewma		)
 
@@ -745,15 +746,17 @@ TRACE_EVENT(sched_util_est_task,
 		__entry->pid			= tsk->pid;
 		__entry->cpu			= task_cpu(tsk);
 		__entry->util_avg		= avg->util_avg;
+		__entry->running_avg		= avg->running_sum / LOAD_AVG_MAX;
 		__entry->est_enqueued		= avg->util_est.enqueued;
 		__entry->est_ewma		= avg->util_est.ewma;
 	),
 
-	TP_printk("comm=%s pid=%d cpu=%d util_avg=%u util_est_ewma=%u util_est_enqueued=%u",
+	TP_printk("comm=%s pid=%d cpu=%d util_avg=%u running_avg=%u util_est_ewma=%u util_est_enqueued=%u",
 		  __entry->comm,
 		  __entry->pid,
 		  __entry->cpu,
 		  __entry->util_avg,
+		  __entry->running_avg,
 		  __entry->est_ewma,
 		  __entry->est_enqueued)
 );
