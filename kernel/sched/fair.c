@@ -3102,7 +3102,7 @@ static u32 __accumulate_pelt_segments(u64 periods, u32 d1, u32 d3)
 	/*
 	 * c1 = d1 y^p
 	 */
-	c1 = decay_load((u64)d1, periods);
+	c1 = decay_load(d1, periods);
 
 	/*
 	 *            p-1
@@ -3160,7 +3160,7 @@ accumulate_sum(u64 delta, int cpu, struct sched_avg *sa,
 		sa->load_sum = decay_load(sa->load_sum, periods);
 		sa->runnable_load_sum =
 			decay_load(sa->runnable_load_sum, periods);
-		sa->util_sum = decay_load((u64)(sa->util_sum), periods);
+		sa->util_sum = decay_load(sa->util_sum, periods);
 		if (running)
 			sa->running_sum = decay_load(sa->running_sum, periods);
 
