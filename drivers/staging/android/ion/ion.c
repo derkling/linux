@@ -513,7 +513,7 @@ struct ion_handle *ion_alloc(struct ion_client *client, size_t len,
 	struct ion_heap *heap;
 	int ret;
 
-	pr_debug("%s: len %zu align %zu heap_id_mask %u flags %x\n", __func__,
+	printk("%s: len %zu align %zu heap_id_mask %u flags %x\n", __func__,
 		 len, align, heap_id_mask, flags);
 	/*
 	 * traverse the list of heaps available in this system in priority
@@ -524,12 +524,12 @@ struct ion_handle *ion_alloc(struct ion_client *client, size_t len,
 	len = PAGE_ALIGN(len);
 
 	if (!len) {
-		pr_err("%s: illegal len: 0x%lx\n", __func__, len);
+		printk("%s: illegal len: 0x%lx\n", __func__, len);
 		return ERR_PTR(-EINVAL);
 	}
 
 	if (len > SZ_128M) {
-		pr_err("%s: size more than 32M(0x%lx), pid: %d, process name: %s\n",
+		printk("%s: size more than 32M(0x%lx), pid: %d, process name: %s\n",
 			__func__, len, current->pid, current->comm);
 	}
 	down_read(&dev->lock);
@@ -547,8 +547,10 @@ struct ion_handle *ion_alloc(struct ion_client *client, size_t len,
 	}
 	up_read(&dev->lock);
 
-	if (buffer == NULL)
+	if (buffer == NULL) {
+		printk("%s: no buffer!\n", __func__);
 		return ERR_PTR(-ENODEV);
+	}
 
 	if (IS_ERR(buffer))
 		return ERR_CAST(buffer);
