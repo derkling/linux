@@ -3203,11 +3203,12 @@ accumulate_sum(u64 delta, int cpu, struct sched_avg *sa,
  *   u_0 + u_1*y + u_2*y^2 + u_3*y^3 + ...
  *
  * We choose y based on the with of a reasonably scheduling period, fixing:
- *   y^32 = 0.5
+ *   y^HALF_LIFE = 0.5
  *
- * This means that the contribution to load ~32ms ago (u_32) will be weighted
- * approximately half as much as the contribution to load within the last ms
- * (u_0).
+ * We set HALF_LIFE by deafult to 32, which means that the contribution to
+ * load ~32ms ago (u_32) will be weighted approximately half as much as the
+ * contribution to load within the last ms (u_0). That's why we call this
+ * parameter the PELT's "half life".
  *
  * When a period "rolls over" and we have new u_0`, multiplying the previous
  * sum again by y is sufficient to update:
