@@ -717,6 +717,7 @@ fail:
 	 */
 	drm_gem_handle_delete(file_priv, *handle);
 	dma_buf_put(dma_buf);
+	printk("JDB: %s failed: %i\n", __func__, ret);
 	return ret;
 
 out_unlock:
@@ -724,6 +725,7 @@ out_unlock:
 out_put:
 	mutex_unlock(&file_priv->prime.lock);
 	dma_buf_put(dma_buf);
+	printk("JDB: %s success: %i\n", __func__, ret);
 	return ret;
 }
 EXPORT_SYMBOL(drm_gem_prime_fd_to_handle);
