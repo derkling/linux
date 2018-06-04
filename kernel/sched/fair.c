@@ -8226,7 +8226,11 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 
 	/* Adjust by relative CPU capacity of the group */
 	sgs->group_capacity = group->sgc->capacity;
-	sgs->avg_load = (sgs->group_load*SCHED_CAPACITY_SCALE) / sgs->group_capacity;
+	sgs->avg_load = (sgs->group_load * SCHED_CAPACITY_SCALE) / sgs->group_capacity;
+
+	trace_printk("compute_load: sg=%lx load=%lu capa=%lu avg_load=%lu\n",
+		     *cpumask_bits(sched_group_span(group)), sgs->group_load,
+		     sgs->group_capacity, sgs->avg_load);
 
 	if (sgs->sum_nr_running)
 		sgs->load_per_task = sgs->sum_weighted_load / sgs->sum_nr_running;
@@ -8521,6 +8525,11 @@ void fix_small_imbalance(struct lb_env *env, struct sd_lb_stats *sds)
 		(busiest->load_per_task * SCHED_CAPACITY_SCALE) /
 		busiest->group_capacity;
 
+	trace_printk("fix_small_imbalance: cpu=%i sd=%lx "
+		     "scaled_busy_load_per_task=%lu\n",
+		     env->dst_cpu, *cpumask_bits(sched_domain_span(env->sd)),
+		     scaled_busy_load_per_task);
+
 	if (busiest->avg_load + scaled_busy_load_per_task >=
 	    local->avg_load + (scaled_busy_load_per_task * imbn)) {
 		env->imbalance = busiest->load_per_task;
@@ -8538,6 +8547,11 @@ void fix_small_imbalance(struct lb_env *env, struct sd_lb_stats *sds)
 	capa_now += local->group_capacity *
 			min(local->load_per_task, local->avg_load);
 	capa_now /= SCHED_CAPACITY_SCALE;
+
+	trace_printk("fix_small_imbalance: cpu=%i sd=%lx "
+		     "capa_now=%lu\n",
+		     env->dst_cpu, *cpumask_bits(sched_domain_span(env->sd)),
+		     capa_now);
 
 	/* Amount of load we'd subtract */
 	if (busiest->avg_load > scaled_busy_load_per_task) {
@@ -8558,6 +8572,11 @@ void fix_small_imbalance(struct lb_env *env, struct sd_lb_stats *sds)
 	capa_move += local->group_capacity *
 		    min(local->load_per_task, local->avg_load + tmp);
 	capa_move /= SCHED_CAPACITY_SCALE;
+
+	trace_printk("fix_small_imbalance: cpu=%i sd=%lx "
+		     "capa_move=%lu\n",
+		     env->dst_cpu, *cpumask_bits(sched_domain_span(env->sd)),
+		     capa_move);
 
 	/* Move if we gain throughput */
 	if (capa_move > capa_now)
@@ -8587,7 +8606,7 @@ static inline void calculate_imbalance(struct lb_env *env, struct sd_lb_stats *s
 			min(busiest->load_per_task, sds->avg_load);
 	}
 
-	trace_printk("calculate_imbalance: cpu=%i sd=%lx"
+	trace_printk("calculate_imbalance: cpu=%i sd=%lx "
 		     "busiest -> avg_load=%lu load_per_task=%lu "
 		     "local -> avg_load=%lu load_per_task=%lu "
 		     "sds -> avg_load=%lu\n",
@@ -8700,6 +8719,10 @@ static struct sched_group *find_busiest_group(struct lb_env *env)
 	/* There is no busy sibling group to pull tasks from */
 	if (!sds.busiest || busiest->sum_nr_running == 0)
 		goto out_balanced;
+
+	trace_printk("cpu=%i sd=%lx sg=%lu\n",
+		     env->dst_cpu, *cpumask_bits(sched_domain_span(env->sd)),
+		     *cpumask_bits(sched_group_span(sds.busiest)));
 
 	/* XXX broken for overlapping NUMA groups */
 	sds.avg_load = (SCHED_CAPACITY_SCALE * sds.total_load)
