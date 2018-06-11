@@ -7,6 +7,7 @@
  */
 
 #define pr_fmt(fmt) "energy_model: " fmt
+#define DEBUG
 
 #include <linux/cpu.h>
 #include <linux/cpumask.h>
