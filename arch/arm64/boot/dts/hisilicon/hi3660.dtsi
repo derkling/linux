@@ -1168,6 +1168,7 @@
 			resets = <&crg_rst 0x94 20>;
 			reset-names = "reset";
 			card-detect-delay = <200>;
+			cap-sd-highspeed;
 			supports-highspeed;
 			keep-power-in-suspend;
 			pinctrl-names = "default";
