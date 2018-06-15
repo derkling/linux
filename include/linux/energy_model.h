@@ -9,10 +9,12 @@
 #include <linux/types.h>
 
 #ifdef CONFIG_ENERGY_MODEL
+
 struct em_cap_state {
 	unsigned long capacity;
 	unsigned long frequency; /* Kilo-hertz */
 	unsigned long power; /* Milli-watts */
+	unsigned long power_coeff; /* power * "max_freq" / frequency */
 };
 
 struct em_cs_table {
@@ -69,7 +71,7 @@ static inline unsigned long em_fd_energy(struct em_freq_domain *fd,
 {
 	struct em_cs_table *cs_table;
 	struct em_cap_state *cs;
-	unsigned long freq;
+	unsigned long freq, scale_cpu;
 	int i;
 
 	cs_table = rcu_dereference(fd->cs_table);
@@ -77,8 +79,9 @@ static inline unsigned long em_fd_energy(struct em_freq_domain *fd,
 		return 0;
 
 	/* Map the utilization value to a frequency */
+	scale_cpu = arch_scale_cpu_capacity(NULL, cpumask_first(&fd->cpus));
 	cs = &cs_table->state[cs_table->nr_cap_states - 1];
-	freq = map_util_freq(max_util, cs->frequency, cs->capacity);
+	freq = map_util_freq(max_util, cs->frequency, scale_cpu);
 
 	/* Find the lowest capacity state above this frequency */
 	for (i = 0; i < cs_table->nr_cap_states; i++) {
@@ -87,7 +90,29 @@ static inline unsigned long em_fd_energy(struct em_freq_domain *fd,
 			break;
 	}
 
-	return cs->power * sum_util / cs->capacity;
+	/*
+	 * The capacity of a CPU at a specific performance state is defined as:
+	 *
+	 *     cap = freq * scale_cpu / max_freq
+	 *
+	 * The energy consumed by this CPU can be estimated as:
+	 *
+	 *     nrg = power * util / cap
+	 *
+	 * because (util / cap) represents the percentage of busy time of the
+	 * CPU. Based on those definitions, we have:
+	 *
+	 *     nrg = power * util * max_freq / (scale_cpu * freq)
+	 *
+	 * which can be re-arranged as a product of two terms:
+	 *
+	 *     nrg = (power * max_freq / freq) * (util / scale_cpu)
+	 *
+	 * The first term is static, and is stored in the em_cap_state struct
+	 * as "power_coeff". The parameters of the second term change over time
+	 * so it is always re-computed.
+	 */
+	return cs->power_coeff * sum_util / scale_cpu;
 }
 
 /**

@@ -64,6 +64,7 @@ out: \
 show_table_attr(power);
 show_table_attr(frequency);
 show_table_attr(capacity);
+show_table_attr(power_coeff);
 
 static ssize_t show_cpus(struct em_freq_domain *fd, char *buf)
 {
@@ -77,12 +78,14 @@ static ssize_t show_cpus(struct em_freq_domain *fd, char *buf)
 define_fd_attr(power);
 define_fd_attr(frequency);
 define_fd_attr(capacity);
+define_fd_attr(power_coeff);
 define_fd_attr(cpus);
 
 static struct attribute *em_fd_default_attrs[] = {
 	&fd_attr(power).attr,
 	&fd_attr(frequency).attr,
 	&fd_attr(capacity).attr,
+	&fd_attr(power_coeff).attr,
 	&fd_attr(cpus).attr,
 	NULL
 };
@@ -152,9 +155,13 @@ static void fd_update_cs_table(struct em_cs_table *cs_table, int cpu)
 	int i;
 
 	for (i = 0; i < cs_table->nr_cap_states; i++) {
-		u64 cap = (u64)cmax * cs_table->state[i].frequency;
-		do_div(cap, fmax);
-		cs_table->state[i].capacity = (unsigned long)cap;
+		u64 tmp = (u64)cmax * cs_table->state[i].frequency;
+		do_div(tmp, fmax);
+		cs_table->state[i].capacity = (unsigned long)tmp;
+
+		tmp = (u64)cs_table->state[i].power * fmax;
+		do_div(tmp, cs_table->state[i].frequency);
+		cs_table->state[i].power_coeff = (unsigned long)tmp;
 	}
 }
 
