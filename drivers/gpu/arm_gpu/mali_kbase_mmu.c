@@ -1768,7 +1768,7 @@ const char *kbase_exception_name(struct kbase_device *kbdev, u32 exception_code)
 	default:
 		e = "UNKNOWN";
 		break;
-	};
+	}
 
 	return e;
 }
