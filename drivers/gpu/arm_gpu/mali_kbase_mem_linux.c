@@ -514,7 +514,7 @@ static bool kbase_zone_cache_builder(struct kbase_mem_phy_alloc *alloc,
 
 		cache->count++;
 	}
-	return 0;
+	return false;
 
 bail:
 	return ret;
