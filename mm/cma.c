@@ -371,8 +371,8 @@ struct page *cma_alloc(struct cma *cma, size_t count, unsigned int align)
 	if (!cma || !cma->count)
 		return NULL;
 
-	printk("%s(cma %p, count %zu, align %d - free %lu)\n", __func__, (void *)cma,
-		 count, align, global_page_state(NR_FREE_CMA_PAGES));
+	pr_debug("%s(cma %p, count %zu, align %d)\n", __func__, (void *)cma,
+		 count, align);
 
 	if (!count)
 		return NULL;
@@ -412,12 +412,10 @@ struct page *cma_alloc(struct cma *cma, size_t count, unsigned int align)
 		}
 
 		cma_clear_bitmap(cma, pfn, count);
-		if (ret != -EBUSY) {
-			printk("JDB: alloc_contig_range returned %i\n", ret);
+		if (ret != -EBUSY)
 			break;
-		}
 
-		printk("%s(): memory range at %p is busy, retrying\n",
+		pr_debug("%s(): memory range at %p is busy, retrying\n",
 			 __func__, pfn_to_page(pfn));
 		/* try again with a bit different memory target */
 		start = bitmap_no + mask + 1;
@@ -425,7 +423,7 @@ struct page *cma_alloc(struct cma *cma, size_t count, unsigned int align)
 
 	trace_cma_alloc(pfn, page, count, align);
 
-	printk("%s(): returned %p\n", __func__, page);
+	pr_debug("%s(): returned %p\n", __func__, page);
 	return page;
 }
 

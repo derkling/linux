@@ -606,10 +606,8 @@ struct drm_gem_object *drm_gem_prime_import(struct drm_device *dev,
 		}
 	}
 
-	if (!dev->driver->gem_prime_import_sg_table) {
-		printk("JDB: %s !gem_prime_import_sg_table\n", __func__);
+	if (!dev->driver->gem_prime_import_sg_table)
 		return ERR_PTR(-EINVAL);
-	}
 
 	attach = dma_buf_attach(dma_buf, dev->dev);
 	if (IS_ERR(attach))
@@ -619,14 +617,12 @@ struct drm_gem_object *drm_gem_prime_import(struct drm_device *dev,
 
 	sgt = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
 	if (IS_ERR(sgt)) {
-		printk("JDB: %s dma_buf_map_attachment failed\n", __func__);
 		ret = PTR_ERR(sgt);
 		goto fail_detach;
 	}
 
 	obj = dev->driver->gem_prime_import_sg_table(dev, attach, sgt);
 	if (IS_ERR(obj)) {
-		printk("JDB: %s gem_prime_import_sg_table failed\n", __func__);
 		ret = PTR_ERR(obj);
 		goto fail_unmap;
 	}
@@ -666,10 +662,8 @@ int drm_gem_prime_fd_to_handle(struct drm_device *dev,
 	int ret;
 
 	dma_buf = dma_buf_get(prime_fd);
-	if (IS_ERR(dma_buf)) {
-		printk("JDB: %s dma_buf_get failed!\n", __func__);
+	if (IS_ERR(dma_buf))
 		return PTR_ERR(dma_buf);
-	}
 
 	mutex_lock(&file_priv->prime.lock);
 
@@ -682,7 +676,6 @@ int drm_gem_prime_fd_to_handle(struct drm_device *dev,
 	mutex_lock(&dev->object_name_lock);
 	obj = dev->driver->gem_prime_import(dev, dma_buf);
 	if (IS_ERR(obj)) {
-		printk("JDB: %s gem_prime_import failed!\n", __func__);
 		ret = PTR_ERR(obj);
 		goto out_unlock;
 	}
@@ -703,10 +696,9 @@ int drm_gem_prime_fd_to_handle(struct drm_device *dev,
 	ret = drm_prime_add_buf_handle(&file_priv->prime,
 			dma_buf, *handle);
 	mutex_unlock(&file_priv->prime.lock);
-	if (ret) {
-		printk("JDB: %s drm_prime_add_buf_handle failed!\n", __func__);
+	if (ret)
 		goto fail;
-	}
+
 	dma_buf_put(dma_buf);
 
 	return 0;
@@ -717,7 +709,6 @@ fail:
 	 */
 	drm_gem_handle_delete(file_priv, *handle);
 	dma_buf_put(dma_buf);
-	printk("JDB: %s failed: %i\n", __func__, ret);
 	return ret;
 
 out_unlock:
@@ -725,7 +716,6 @@ out_unlock:
 out_put:
 	mutex_unlock(&file_priv->prime.lock);
 	dma_buf_put(dma_buf);
-	printk("JDB: %s success: %i\n", __func__, ret);
 	return ret;
 }
 EXPORT_SYMBOL(drm_gem_prime_fd_to_handle);
@@ -753,23 +743,15 @@ int drm_prime_fd_to_handle_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
 	struct drm_prime_handle *args = data;
-	int ret;
 
-	if (!drm_core_check_feature(dev, DRIVER_PRIME)) {
-		printk("JDB: %s drm_core_check_feature failed!\n", __func__);
+	if (!drm_core_check_feature(dev, DRIVER_PRIME))
 		return -EINVAL;
-	}
 
-	if (!dev->driver->prime_fd_to_handle) {
-		printk("JDB: %s !prime_fd_to_handle\n", __func__);
+	if (!dev->driver->prime_fd_to_handle)
 		return -ENOSYS;
-	}
 
-	ret = dev->driver->prime_fd_to_handle(dev, file_priv,
+	return dev->driver->prime_fd_to_handle(dev, file_priv,
 			args->fd, &args->handle);
-	if (ret)
-		printk("JDB: %s prime_fd_to_handle() failed\n", __func__);
-	return ret;
 }
 
 /**
