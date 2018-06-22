@@ -3115,6 +3115,12 @@ static u32 __accumulate_pelt_segments(u64 periods, u32 d1, u32 d3)
 	return c1 + c2 + c3;
 }
 
+struct pelt_contribs {
+	unsigned long load;
+	unsigned long runnable;
+	int running;
+} __attribute__((packed));
+
 /*
  * Accumulate the three separate parts of the sum; d1 the remainder
  * of the last (incomplete) period, d2 the span of full periods and d3
@@ -3138,7 +3144,7 @@ static u32 __accumulate_pelt_segments(u64 periods, u32 d1, u32 d3)
  */
 static __always_inline u32
 accumulate_sum(u64 delta, int cpu, struct sched_avg *sa,
-	       unsigned long load, unsigned long runnable, int running)
+	       struct pelt_contribs pc)
 {
 	unsigned long scale_freq, scale_cpu;
 	u32 contrib = (u32)delta; /* p == 0 -> delta < 1024 */
@@ -3169,11 +3175,11 @@ accumulate_sum(u64 delta, int cpu, struct sched_avg *sa,
 	sa->period_contrib = delta;
 
 	contrib = cap_scale(contrib, scale_freq);
-	if (load)
-		sa->load_sum += load * contrib;
-	if (runnable)
-		sa->runnable_load_sum += runnable * contrib;
-	if (running)
+	if (pc.load)
+		sa->load_sum += pc.load * contrib;
+	if (pc.runnable)
+		sa->runnable_load_sum += pc.runnable * contrib;
+	if (pc.running)
 		sa->util_sum += contrib * scale_cpu;
 
 	return periods;
@@ -3209,7 +3215,7 @@ accumulate_sum(u64 delta, int cpu, struct sched_avg *sa,
  */
 static __always_inline int
 ___update_load_sum(u64 now, int cpu, struct sched_avg *sa,
-		  unsigned long load, unsigned long runnable, int running)
+		   struct pelt_contribs pc)
 {
 	u64 delta;
 
@@ -3242,8 +3248,8 @@ ___update_load_sum(u64 now, int cpu, struct sched_avg *sa,
 	 * this happens during idle_balance() which calls
 	 * update_blocked_averages()
 	 */
-	if (!load)
-		runnable = running = 0;
+	if (!pc.load)
+		pc.runnable = pc.running = 0;
 
 	/*
 	 * Now we know we crossed measurement unit boundaries. The *_avg
@@ -3252,7 +3258,7 @@ ___update_load_sum(u64 now, int cpu, struct sched_avg *sa,
 	 * Step 1: accumulate *_sum since last_update_time. If we haven't
 	 * crossed period boundaries, finish.
 	 */
-	if (!accumulate_sum(delta, cpu, sa, load, runnable, running))
+	if (!accumulate_sum(delta, cpu, sa, pc))
 		return 0;
 
 	return 1;
@@ -3330,7 +3336,11 @@ __update_load_avg_blocked_se(u64 now, int cpu, struct sched_entity *se)
 	if (entity_is_task(se))
 		se->runnable_weight = se->load.weight;
 
-	if (___update_load_sum(now, cpu, &se->avg, 0, 0, 0)) {
+	if (___update_load_sum(now, cpu, &se->avg, (struct pelt_contribs) {
+					.load     = 0,
+					.runnable = 0,
+					.running  = 0 })) {
+
 		___update_load_avg(&se->avg, se_weight(se), se_runnable(se));
 		return 1;
 	}
@@ -3344,8 +3354,10 @@ __update_load_avg_se(u64 now, int cpu, struct cfs_rq *cfs_rq, struct sched_entit
 	if (entity_is_task(se))
 		se->runnable_weight = se->load.weight;
 
-	if (___update_load_sum(now, cpu, &se->avg, !!se->on_rq, !!se->on_rq,
-				cfs_rq->curr == se)) {
+	if (___update_load_sum(now, cpu, &se->avg, (struct pelt_contribs) {
+				.load     = !!se->on_rq,
+				.runnable = !!se->on_rq,
+				.running  = cfs_rq->curr == se })) {
 
 		___update_load_avg(&se->avg, se_weight(se), se_runnable(se));
 		cfs_se_util_change(&se->avg);
@@ -3358,10 +3370,10 @@ __update_load_avg_se(u64 now, int cpu, struct cfs_rq *cfs_rq, struct sched_entit
 static int
 __update_load_avg_cfs_rq(u64 now, int cpu, struct cfs_rq *cfs_rq)
 {
-	if (___update_load_sum(now, cpu, &cfs_rq->avg,
-				scale_load_down(cfs_rq->load.weight),
-				scale_load_down(cfs_rq->runnable_weight),
-				cfs_rq->curr != NULL)) {
+	if (___update_load_sum(now, cpu, &cfs_rq->avg, (struct pelt_contribs) {
+				.load     = scale_load_down(cfs_rq->load.weight),
+				.runnable = scale_load_down(cfs_rq->runnable_weight),
+				.running  = cfs_rq->curr != NULL })) {
 
 		___update_load_avg(&cfs_rq->avg, 1, 1);
 		return 1;
