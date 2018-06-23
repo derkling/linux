@@ -36,20 +36,6 @@
 #include <asm/intel_rdt_sched.h>
 #include "intel_rdt.h"
 
-struct rdt_fs_context {
-	struct kernfs_fs_context kfc;
-	bool	enable_cdpl2;
-	bool	enable_cdpl3;
-	bool	enable_mba_MBps;
-};
-
-static inline struct rdt_fs_context *rdt_fc2context(struct fs_context *fc)
-{
-	struct kernfs_fs_context *kfc = fc->fs_private;
-
-	return container_of(kfc, struct rdt_fs_context, kfc);
-}
-
 DEFINE_STATIC_KEY_FALSE(rdt_enable_key);
 DEFINE_STATIC_KEY_FALSE(rdt_mon_enable_key);
 DEFINE_STATIC_KEY_FALSE(rdt_alloc_enable_key);
@@ -1213,6 +1199,22 @@ static int mkdir_mondata_all(struct kernfs_node *parent_kn,
 			     struct rdtgroup *prgrp,
 			     struct kernfs_node **mon_data_kn);
 
+static int rdt_enable_ctx(struct rdt_fs_context *ctx)
+{
+	int ret = 0;
+
+	if (ctx->enable_cdpl2)
+		ret = cdpl2_enable();
+
+	if (!ret && ctx->enable_cdpl3)
+		ret = cdpl3_enable();
+
+	if (!ret && ctx->enable_mba_mbps)
+		ret = set_mba_sc(true);
+
+	return ret;
+}
+
 static int rdt_get_tree(struct fs_context *fc)
 {
 	struct rdt_fs_context *ctx = rdt_fc2context(fc);
@@ -1230,24 +1232,10 @@ static int rdt_get_tree(struct fs_context *fc)
 		goto out;
 	}
 
-	if (ctx->enable_cdpl2) {
-		ret = cdpl2_enable();
-		if (ret < 0)
-			goto out_cdp;
-	}
+	ret = rdt_enable_ctx(ctx);
+	if (ret < 0)
+		goto out_cdp;
 
-	if (ctx->enable_cdpl3) {
-		ret = cdpl3_enable();
-		if (ret < 0)
-			goto out_cdp;
-	}
-
-	if (ctx->enable_mba_MBps) {
-		ret = set_mba_sc(true);
-		if (ret < 0)
-			goto out_cdp;
-	}
-	
 	closid_init();
 
 	ret = rdtgroup_create_info_dir(rdtgroup_default.kn);
@@ -1299,7 +1287,7 @@ out_mongrp:
 out_info:
 	kernfs_remove(kn_info);
 out_mba:
-	if (ctx->enable_mba_MBps)
+	if (ctx->enable_mba_mbps)
 		set_mba_sc(false);
 out_cdp:
 	cdp_disable_all();
@@ -1323,7 +1311,7 @@ static int rdt_parse_option(struct fs_context *fc, char *opt, size_t len)
 		return 0;
 	}
 	if (strcmp(opt, "mba_MBps") == 0) {
-		ctx->enable_mba_MBps = true;
+		ctx->enable_mba_mbps = true;
 		return 0;
 	}
 
