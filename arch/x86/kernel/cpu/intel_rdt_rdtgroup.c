@@ -1258,9 +1258,13 @@ static int rdt_get_tree(struct fs_context *fc)
 		rdtgroup_default.mon.mon_data_kn = kn_mondata;
 	}
 
+	ret = rdt_pseudo_lock_init();
+	if (ret)
+		goto out_mondata;
+
 	ret = kernfs_get_tree(fc);
 	if (ret < 0)
-		goto out_mondata;
+		goto out_psl;
 
 	if (rdt_alloc_capable)
 		static_branch_enable_cpuslocked(&rdt_alloc_enable_key);
@@ -1278,6 +1282,8 @@ static int rdt_get_tree(struct fs_context *fc)
 
 	goto out;
 
+out_psl:
+	rdt_pseudo_lock_release();
 out_mondata:
 	if (rdt_mon_capable)
 		kernfs_remove(kn_mondata);
