@@ -9169,18 +9169,24 @@ static int load_balance(int this_cpu, struct rq *this_rq,
 
 redo:
 	if (!should_we_balance(&env)) {
+		trace_printk("!should_we_balance\n");
 		*continue_balancing = 0;
 		goto out_balanced;
 	}
 
 	group = find_busiest_group(&env);
 	if (!group) {
+		trace_printk("!find_busiest_group\n");
 		schedstat_inc(sd->lb_nobusyg[idle]);
 		goto out_balanced;
 	}
 
+	trace_printk("busiest_group=%lx imbalance_type=%i\n",
+		     *cpumask_bits(sched_group_span(group)), env.src_grp_type);
+
 	busiest = find_busiest_queue(&env, group);
 	if (!busiest) {
+		trace_printk("!find_busiest_queue\n");
 		schedstat_inc(sd->lb_nobusyq[idle]);
 		goto out_balanced;
 	}
@@ -9194,6 +9200,7 @@ redo:
 
 	ld_moved = 0;
 	if (busiest->nr_running > 1) {
+		trace_printk("nr_running > 1\n");
 		/*
 		 * Attempt to move tasks. If find_busiest_group has found
 		 * an imbalance but busiest->nr_running <= 1, the group is
@@ -9303,6 +9310,7 @@ more_balance:
 	}
 
 	if (!ld_moved) {
+		trace_printk("!ld_moved\n");
 		schedstat_inc(sd->lb_failed[idle]);
 		/*
 		 * Increment the failure counter only on periodic balance.
