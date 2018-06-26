@@ -8256,7 +8256,7 @@ check_cpu_capacity(struct rq *rq, struct sched_domain *sd)
  * Something like:
  *
  *	{ 0 1 2 3 } { 4 5 6 7 }
- *	        *     * * *
+ *		*     * * *
  *
  * If we were to balance group-wise we'd place two tasks in the first group and
  * two tasks in the second group. Clearly this is undesired as it will overload
@@ -10104,6 +10104,9 @@ static int idle_balance(struct rq *this_rq, struct rq_flags *rf)
 	 */
 	rq_unpin_lock(this_rq, rf);
 
+	trace_printk("avg_idle=%llu migration_cost=%u overload=%i\n",
+		     this_rq->avg_idle, sysctl_sched_migration_cost, this_rq->rd->overload);
+
 	if (this_rq->avg_idle < sysctl_sched_migration_cost ||
 	    !READ_ONCE(this_rq->rd->overload)) {
 
@@ -10129,7 +10132,12 @@ static int idle_balance(struct rq *this_rq, struct rq_flags *rf)
 		if (!(sd->flags & SD_LOAD_BALANCE))
 			continue;
 
+		trace_printk("sd=%lx\n", *cpumask_bits(sched_domain_span(sd)));
+
 		if (this_rq->avg_idle < curr_cost + sd->max_newidle_lb_cost) {
+			trace_printk("Aborting\n");
+			trace_printk("curr_cost=%llu max_newidle_lb_cost=%llu\n",
+				     curr_cost, sd->max_newidle_lb_cost);
 			update_next_balance(sd, &next_balance);
 			break;
 		}
