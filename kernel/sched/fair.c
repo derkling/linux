@@ -8628,7 +8628,8 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 		 */
 		if (prefer_sibling && sds->local &&
 		    group_has_capacity(env, local) &&
-		    (sgs->sum_nr_running > local->sum_nr_running + 1)) {
+		    (sgs->sum_nr_running * local->group_weight >
+		     (local->sum_nr_running + 1) * sgs->group_weight)) {
 			trace_printk("Sibling madness\n");
 			sgs->group_no_capacity = 1;
 			sgs->group_type = group_classify(sg, sgs);
