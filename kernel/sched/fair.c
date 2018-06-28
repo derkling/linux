@@ -8626,7 +8626,8 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 		 * under-utilized (possible with a large weight task outweighs
 		 * the tasks on the system).
 		 */
-		if (prefer_sibling && sds->local &&
+		if ((sgs->group_type != group_misfit_task) &&
+		    prefer_sibling && sds->local &&
 		    group_has_capacity(env, local) &&
 		    (sgs->sum_nr_running * local->group_weight >
 		     (local->sum_nr_running + 1) * sgs->group_weight)) {
