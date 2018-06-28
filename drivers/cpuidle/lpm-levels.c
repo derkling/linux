@@ -591,13 +591,14 @@ static void update_history(struct cpuidle_device *dev, int idx);
 
 static inline bool is_cpu_biased(int cpu)
 {
-	u64 now = sched_clock();
-	u64 last = sched_get_cpu_last_busy_time(cpu);
+	return false;
+	//u64 now = sched_clock();
+	//u64 last = sched_get_cpu_last_busy_time(cpu);
 
-	if (!last)
-		return false;
+	//if (!last)
+	//	return false;
 
-	return (now - last) < BIAS_HYST;
+	//return (now - last) < BIAS_HYST;
 }
 
 static int cpu_power_select(struct cpuidle_device *dev,

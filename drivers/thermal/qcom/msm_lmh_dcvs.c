@@ -174,7 +174,7 @@ static unsigned long limits_mitigation_notify(struct limits_dcvs_hw *hw)
 	rcu_read_unlock();
 	max_limit = FREQ_HZ_TO_KHZ(freq_val);
 
-	sched_update_cpu_freq_min_max(&hw->core_map, 0, max_limit);
+	//sched_update_cpu_freq_min_max(&hw->core_map, 0, max_limit);
 	pr_debug("CPU:%d max limit:%lu\n", cpumask_first(&hw->core_map),
 			max_limit);
 	trace_lmh_dcvs_freq(cpumask_first(&hw->core_map), max_limit);
@@ -347,67 +347,67 @@ static int enable_lmh(void)
 	return ret;
 }
 
-static int lmh_set_max_limit(int cpu, u32 freq)
-{
-	struct limits_dcvs_hw *hw = get_dcvsh_hw_from_cpu(cpu);
-	int ret = 0, cpu_idx, idx = 0;
-	u32 max_freq = U32_MAX;
-
-	if (!hw)
-		return -EINVAL;
-
-	mutex_lock(&hw->access_lock);
-	for_each_cpu(cpu_idx, &hw->core_map) {
-		if (cpu_idx == cpu)
-		/*
-		 * If there is no limits restriction for CPU scaling max
-		 * frequency, vote for a very high value. This will allow
-		 * the CPU to use the boost frequencies.
-		 */
-			hw->cdev_data[idx].max_freq =
-				(freq == hw->max_freq) ? U32_MAX : freq;
-		if (max_freq > hw->cdev_data[idx].max_freq)
-			max_freq = hw->cdev_data[idx].max_freq;
-		idx++;
-	}
-	ret = limits_dcvs_write(hw->affinity, LIMITS_SUB_FN_THERMAL,
-				  LIMITS_FREQ_CAP, max_freq,
-				  (max_freq == U32_MAX) ? 0 : 1, 1);
-	mutex_unlock(&hw->access_lock);
-	lmh_dcvs_notify(hw);
-
-	return ret;
-}
-
-static int lmh_set_min_limit(int cpu, u32 freq)
-{
-	struct limits_dcvs_hw *hw = get_dcvsh_hw_from_cpu(cpu);
-	int cpu_idx, idx = 0;
-	u32 min_freq = 0;
-
-	if (!hw)
-		return -EINVAL;
-
-	mutex_lock(&hw->access_lock);
-	for_each_cpu(cpu_idx, &hw->core_map) {
-		if (cpu_idx == cpu)
-			hw->cdev_data[idx].min_freq = freq;
-		if (min_freq < hw->cdev_data[idx].min_freq)
-			min_freq = hw->cdev_data[idx].min_freq;
-		idx++;
-	}
-	if (min_freq != hw->min_freq)
-		writel_relaxed(0x01, hw->min_freq_reg);
-	else
-		writel_relaxed(0x00, hw->min_freq_reg);
-	mutex_unlock(&hw->access_lock);
-
-	return 0;
-}
-static struct cpu_cooling_ops cd_ops = {
-	.ceil_limit = lmh_set_max_limit,
-	.floor_limit = lmh_set_min_limit,
-};
+//static int lmh_set_max_limit(int cpu, u32 freq)
+//{
+//	struct limits_dcvs_hw *hw = get_dcvsh_hw_from_cpu(cpu);
+//	int ret = 0, cpu_idx, idx = 0;
+//	u32 max_freq = U32_MAX;
+//
+//	if (!hw)
+//		return -EINVAL;
+//
+//	mutex_lock(&hw->access_lock);
+//	for_each_cpu(cpu_idx, &hw->core_map) {
+//		if (cpu_idx == cpu)
+//		/*
+//		 * If there is no limits restriction for CPU scaling max
+//		 * frequency, vote for a very high value. This will allow
+//		 * the CPU to use the boost frequencies.
+//		 */
+//			hw->cdev_data[idx].max_freq =
+//				(freq == hw->max_freq) ? U32_MAX : freq;
+//		if (max_freq > hw->cdev_data[idx].max_freq)
+//			max_freq = hw->cdev_data[idx].max_freq;
+//		idx++;
+//	}
+//	ret = limits_dcvs_write(hw->affinity, LIMITS_SUB_FN_THERMAL,
+//				  LIMITS_FREQ_CAP, max_freq,
+//				  (max_freq == U32_MAX) ? 0 : 1, 1);
+//	mutex_unlock(&hw->access_lock);
+//	lmh_dcvs_notify(hw);
+//
+//	return ret;
+//}
+//
+//static int lmh_set_min_limit(int cpu, u32 freq)
+//{
+//	struct limits_dcvs_hw *hw = get_dcvsh_hw_from_cpu(cpu);
+//	int cpu_idx, idx = 0;
+//	u32 min_freq = 0;
+//
+//	if (!hw)
+//		return -EINVAL;
+//
+//	mutex_lock(&hw->access_lock);
+//	for_each_cpu(cpu_idx, &hw->core_map) {
+//		if (cpu_idx == cpu)
+//			hw->cdev_data[idx].min_freq = freq;
+//		if (min_freq < hw->cdev_data[idx].min_freq)
+//			min_freq = hw->cdev_data[idx].min_freq;
+//		idx++;
+//	}
+//	if (min_freq != hw->min_freq)
+//		writel_relaxed(0x01, hw->min_freq_reg);
+//	else
+//		writel_relaxed(0x00, hw->min_freq_reg);
+//	mutex_unlock(&hw->access_lock);
+//
+//	return 0;
+//}
+//static struct cpu_cooling_ops cd_ops = {
+//	.ceil_limit = lmh_set_max_limit,
+//	.floor_limit = lmh_set_min_limit,
+//};
 
 static int limits_cpu_online(unsigned int online_cpu)
 {
@@ -429,8 +429,9 @@ static int limits_cpu_online(unsigned int online_cpu)
 		cpumask_set_cpu(cpu, &cpu_mask);
 		hw->cdev_data[idx].max_freq = U32_MAX;
 		hw->cdev_data[idx].min_freq = 0;
-		hw->cdev_data[idx].cdev = cpufreq_platform_cooling_register(
-						&cpu_mask, &cd_ops);
+		// XXX: issue with thermal ????
+		//hw->cdev_data[idx].cdev = cpufreq_platform_cooling_register(
+		//				&cpu_mask, &cd_ops);
 		if (IS_ERR_OR_NULL(hw->cdev_data[idx].cdev)) {
 			pr_err("CPU:%u cooling device register error:%ld\n",
 				cpu, PTR_ERR(hw->cdev_data[idx].cdev));

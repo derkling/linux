@@ -1410,7 +1410,8 @@ static int ops_bus_request(void *handle, u32 kbps /* KBytes/Sec */)
 
 		if (was_boosted != needs_boost) {
 			if (needs_boost) {
-				rc = core_ctl_set_boost(true);
+				//rc = core_ctl_set_boost(true);
+				rc = -1;
 				if (rc) {
 					dev_err(ctx->dev,
 						"Failed enable boost rc=%d\n",
@@ -1420,7 +1421,8 @@ static int ops_bus_request(void *handle, u32 kbps /* KBytes/Sec */)
 				msm_11ad_set_boost_affinity(ctx);
 				dev_dbg(ctx->dev, "CPU boost enabled\n");
 			} else {
-				rc = core_ctl_set_boost(false);
+				//rc = core_ctl_set_boost(false);
+				rc = 0;
 				if (rc)
 					dev_err(ctx->dev,
 						"Failed disable boost rc=%d\n",

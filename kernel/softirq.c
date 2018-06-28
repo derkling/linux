@@ -246,7 +246,8 @@ static inline void lockdep_softirq_end(bool in_hardirq) { }
 #endif
 
 #define long_softirq_pending()	(local_softirq_pending() & LONG_SOFTIRQ_MASK)
-#define defer_for_rt()		(long_softirq_pending() && cpupri_check_rt())
+//#define defer_for_rt()		(long_softirq_pending() && cpupri_check_rt())
+#define defer_for_rt()		false
 asmlinkage __visible void __softirq_entry __do_softirq(void)
 {
 	unsigned long end = jiffies + MAX_SOFTIRQ_TIME;

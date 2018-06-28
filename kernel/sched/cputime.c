@@ -46,15 +46,19 @@ void irqtime_account_irq(struct task_struct *curr)
 	struct irqtime *irqtime = this_cpu_ptr(&cpu_irqtime);
 	s64 delta;
 	int cpu;
+#ifdef CONFIG_SCHED_WALT
 	u64 wallclock;
 	bool account = true;
+#endif
 
 	if (!sched_clock_irqtime)
 		return;
 
 	cpu = smp_processor_id();
+#ifdef CONFIG_SCHED_WALT
 	wallclock = sched_clock_cpu(cpu);
-	delta = wallclock - irqtime->irq_start_time;
+#endif
+	delta = sched_clock_cpu(cpu) - irqtime->irq_start_time;
 	irqtime->irq_start_time += delta;
 
 	u64_stats_update_begin(&irqtime->sync);
@@ -68,15 +72,16 @@ void irqtime_account_irq(struct task_struct *curr)
 		irqtime->hardirq_time += delta;
 	else if (in_serving_softirq() && curr != this_cpu_ksoftirqd())
 		irqtime->softirq_time += delta;
+#ifdef CONFIG_SCHED_WALT
 	else
 		account = false;
+#endif
 
 	u64_stats_update_end(&irqtime->sync);
-
+#ifdef CONFIG_SCHED_WALT
 	if (account)
-		sched_account_irqtime(cpu, curr, delta, wallclock);
-	else if (curr != this_cpu_ksoftirqd())
-		sched_account_irqstart(cpu, curr, wallclock);
+		walt_account_irqtime(cpu, curr, delta, wallclock);
+#endif
 }
 EXPORT_SYMBOL_GPL(irqtime_account_irq);
 
@@ -157,6 +162,7 @@ void account_user_time(struct task_struct *p, cputime_t cputime,
 
 	/* Account for user time used */
 	acct_account_cputime(p);
+
 }
 
 /*
