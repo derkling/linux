@@ -8483,7 +8483,10 @@ static bool update_sd_pick_busiest(struct lb_env *env,
 	 */
 	if (sgs->group_type == group_misfit_task &&
 	    (!group_smaller_cpu_capacity(sg, sds->local) ||
-	     !group_has_capacity(env, &sds->local_stat))) {
+	     (!group_has_capacity(env, &sds->local_stat) &&
+	      /* The above condtion can prevent newidle pull */
+	      /* XXX: does this want to be == CPU_NOT_IDLE ? */
+	      env->idle != CPU_NEWLY_IDLE))) {
 		trace_printk("Can't help misfit\n");
 		return false;
 	}
