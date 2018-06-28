@@ -8448,6 +8448,14 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 
 	sgs->group_no_capacity = group_is_overloaded(env, sgs);
 	sgs->group_type = group_classify(group, sgs);
+	trace_printk("group=%lx, type=%i\n",
+		     *cpumask_bits(sched_group_span(group)), sgs->group_type);
+	trace_printk("nr_running=%u group_weight=%u\n",
+		     sgs->sum_nr_running, sgs->group_weight);
+	trace_printk("group_capacity=%lu group_util=%lu imbalance_pct=%i\n",
+		     sgs->group_capacity, sgs->group_util, env->sd->imbalance_pct);
+	trace_printk("has_capacity=%i is_overloaded=%i\n",
+		     group_has_capacity(env, sgs), group_is_overloaded(env, sgs));
 }
 
 /**
@@ -8475,8 +8483,10 @@ static bool update_sd_pick_busiest(struct lb_env *env,
 	 */
 	if (sgs->group_type == group_misfit_task &&
 	    (!group_smaller_cpu_capacity(sg, sds->local) ||
-	     !group_has_capacity(env, &sds->local_stat)))
+	     !group_has_capacity(env, &sds->local_stat))) {
+		trace_printk("Can't help misfit\n");
 		return false;
+	}
 
 	if (sgs->group_type > busiest->group_type)
 		return true;
@@ -8586,6 +8596,9 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 
 		local_group = cpumask_test_cpu(env->dst_cpu, sched_group_span(sg));
 		if (local_group) {
+			trace_printk("local_group: dst_cpu=%i span=%lx\n",
+				     env->dst_cpu, *cpumask_bits(sched_group_span(sg)));
+
 			sds->local = sg;
 			sgs = local;
 
@@ -8613,6 +8626,7 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 		if (prefer_sibling && sds->local &&
 		    group_has_capacity(env, local) &&
 		    (sgs->sum_nr_running > local->sum_nr_running + 1)) {
+			trace_printk("Sibling madness\n");
 			sgs->group_no_capacity = 1;
 			sgs->group_type = group_classify(sg, sgs);
 		}
@@ -8883,8 +8897,10 @@ static struct sched_group *find_busiest_group(struct lb_env *env)
 	 */
 	update_sd_lb_stats(env, &sds);
 
-	if (sched_energy_enabled() && !READ_ONCE(env->dst_rq->rd->overutilized))
+	if (sched_energy_enabled() && !READ_ONCE(env->dst_rq->rd->overutilized)) {
+		trace_printk("Not overutilized\n");
 		goto out_balanced;
+	}
 
 	local = &sds.local_stat;
 	busiest = &sds.busiest_stat;
@@ -8894,8 +8910,14 @@ static struct sched_group *find_busiest_group(struct lb_env *env)
 		return sds.busiest;
 
 	/* There is no busy sibling group to pull tasks from */
-	if (!sds.busiest || busiest->sum_nr_running == 0)
+	if (!sds.busiest || busiest->sum_nr_running == 0) {
+		trace_printk("No busiest\n");
 		goto out_balanced;
+	}
+
+	trace_printk("busiest_group=%lx type=%i\n",
+		     *cpumask_bits(sched_group_span(sds.busiest)),
+		     busiest->group_type);
 
 	/* XXX broken for overlapping NUMA groups */
 	sds.avg_load = (SCHED_CAPACITY_SCALE * sds.total_load)
@@ -9180,9 +9202,6 @@ redo:
 		schedstat_inc(sd->lb_nobusyg[idle]);
 		goto out_balanced;
 	}
-
-	trace_printk("busiest_group=%lx imbalance_type=%i\n",
-		     *cpumask_bits(sched_group_span(group)), env.src_grp_type);
 
 	busiest = find_busiest_queue(&env, group);
 	if (!busiest) {
