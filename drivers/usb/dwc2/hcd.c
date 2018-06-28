@@ -2329,7 +2329,7 @@ static int dwc2_core_init(struct dwc2_hsotg *hsotg, bool initial_setup)
  */
 static void dwc2_core_host_init(struct dwc2_hsotg *hsotg)
 {
-	u32 hcfg, hfir, otgctl, usbcfg;
+	u32 hcfg, hfir, otgctl, usbcfg, val;
 
 	dev_dbg(hsotg->dev, "%s(%p)\n", __func__, hsotg);
 
@@ -2342,7 +2342,9 @@ static void dwc2_core_host_init(struct dwc2_hsotg *hsotg)
 	 * can vary from one PHY to another.
 	 */
 	usbcfg = dwc2_readl(hsotg->regs + GUSBCFG);
-	usbcfg |= GUSBCFG_TOUTCAL(7);
+	usbcfg &= ~(GUSBCFG_TOUTCAL_MASK | GUSBCFG_USBTRDTIM_MASK);
+	val = (hsotg->phyif == GUSBCFG_PHYIF8) ? 9 : 5;
+	usbcfg |= GUSBCFG_TOUTCAL(7) | (val << GUSBCFG_USBTRDTIM_SHIFT);
 	dwc2_writel(usbcfg, hsotg->regs + GUSBCFG);
 
 	/* Restart the Phy Clock */

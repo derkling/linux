@@ -274,7 +274,7 @@ static int etm4_enable_sysfs(struct coresight_device *csdev)
 	drvdata->sticky_enable = true;
 	spin_unlock(&drvdata->spinlock);
 
-	dev_info(drvdata->dev, "ETM tracing enabled\n");
+	dev_dbg(drvdata->dev, "ETM tracing enabled\n");
 	return 0;
 
 err:
@@ -387,7 +387,7 @@ static void etm4_disable_sysfs(struct coresight_device *csdev)
 	spin_unlock(&drvdata->spinlock);
 	cpus_read_unlock();
 
-	dev_info(drvdata->dev, "ETM tracing disabled\n");
+	dev_dbg(drvdata->dev, "ETM tracing disabled\n");
 }
 
 static void etm4_disable(struct coresight_device *csdev,
@@ -1034,7 +1034,8 @@ static int etm4_probe(struct amba_device *adev, const struct amba_id *id)
 	}
 
 	pm_runtime_put(&adev->dev);
-	dev_info(dev, "%s initialized\n", (char *)id->data);
+	dev_info(dev, "CPU%d: %s initialized\n",
+			drvdata->cpu, (char *)id->data);
 
 	if (boot_enable) {
 		coresight_enable(drvdata->csdev);
@@ -1053,20 +1054,25 @@ err_arch_supported:
 }
 
 static const struct amba_id etm4_ids[] = {
-	{       /* ETM 4.0 - Cortex-A53  */
+	{
 		.id	= 0x000bb95d,
 		.mask	= 0x000fffff,
-		.data	= "ETM 4.0",
+		.data	= "Cortex-A53 ETM v4.0",
 	},
-	{       /* ETM 4.0 - Cortex-A57 */
+	{
 		.id	= 0x000bb95e,
 		.mask	= 0x000fffff,
-		.data	= "ETM 4.0",
+		.data	= "Cortex-A57 ETM v4.0",
 	},
-	{       /* ETM 4.0 - A72, Maia, HiSilicon */
+	{
 		.id = 0x000bb95a,
 		.mask = 0x000fffff,
-		.data = "ETM 4.0",
+		.data	= "Cortex-A72 ETM v4.0",
+	},
+	{
+		.id = 0x000bb959,
+		.mask = 0x000fffff,
+		.data	= "Cortex-A73 ETM v4.0",
 	},
 	{ 0, 0},
 };
