@@ -57,7 +57,7 @@ out: \
 
 show_table_attr(power);
 show_table_attr(frequency);
-show_table_attr(capacity);
+show_table_attr(cost);
 
 static ssize_t show_cpus(struct em_freq_domain *fd, char *buf)
 {
@@ -70,13 +70,13 @@ static ssize_t show_cpus(struct em_freq_domain *fd, char *buf)
 
 define_fd_attr(power);
 define_fd_attr(frequency);
-define_fd_attr(capacity);
+define_fd_attr(cost);
 define_fd_attr(cpus);
 
 static struct attribute *em_fd_default_attrs[] = {
 	&fd_attr(power).attr,
 	&fd_attr(frequency).attr,
-	&fd_attr(capacity).attr,
+	&fd_attr(cost).attr,
 	&fd_attr(cpus).attr,
 	NULL
 };
@@ -131,23 +131,23 @@ static void free_cs_table(struct em_cs_table *table)
 	}
 }
 
-/* fd_update_cs_table() - Computes the capacity values of a cs_table
+/* fd_update_cs_table() - Computes the power costs of a cs_table
  *
- * This assumes a linear relation between capacity and frequency. As such,
- * the capacity of a CPU at the n^th capacity state is computed as:
- *           capactity(n) = max_capacity * freq(n) / freq_max
+ * The power 'cost' at a specific capacity state is defined as:
+ *		cost = power * freq_max * freq
+ *
+ * See em_energy_fd() to understand how it is used.
  */
 static void fd_update_cs_table(struct em_cs_table *cs_table, int cpu)
 {
-	unsigned long cmax = arch_scale_cpu_capacity(NULL, cpu);
 	int max_cap_state = cs_table->nr_cap_states - 1;
 	unsigned long fmax = cs_table->state[max_cap_state].frequency;
 	int i;
 
 	for (i = 0; i < cs_table->nr_cap_states; i++) {
-		u64 cap = (u64)cmax * cs_table->state[i].frequency;
-		do_div(cap, fmax);
-		cs_table->state[i].capacity = (unsigned long)cap;
+		u64 cost = (u64)cs_table->state[i].power * fmax;
+		do_div(cost, cs_table->state[i].frequency);
+		cs_table->state[i].cost = (unsigned long)cost;
 	}
 }
 
@@ -245,50 +245,6 @@ static void rcu_free_cs_table(struct rcu_head *rp)
 	table = container_of(rp, struct em_cs_table, rcu);
 	free_cs_table(table);
 }
-
-/**
- * em_rescale_cpu_capacity() - Re-scale capacity values of the Energy Model
- *
- * This re-scales the capacity values for all capacity states of all frequency
- * domains of the Energy Model. This should be used when the capacity values
- * of the CPUs are updated at run-time, after the EM was registered.
- */
-void em_rescale_cpu_capacity(void)
-{
-	struct em_cs_table *old_table, *new_table;
-	struct em_freq_domain *fd;
-	int nr_states, cpu;
-
-	mutex_lock(&em_fd_mutex);
-	rcu_read_lock();
-	for_each_possible_cpu(cpu) {
-		/* Re-scale only once per frequency domain. */
-		fd = READ_ONCE(per_cpu(em_data, cpu));
-		if (!fd || cpu != cpumask_first(to_cpumask(fd->cpus)))
-			continue;
-
-		/* Copy the existing table. */
-		old_table = rcu_dereference(fd->cs_table);
-		nr_states = old_table->nr_cap_states;
-		new_table = alloc_cs_table(nr_states);
-		if (!new_table)
-			goto out;
-		memcpy(new_table->state, old_table->state,
-					nr_states * sizeof(*new_table->state));
-
-		/* Re-scale the capacity values of the copy. */
-		fd_update_cs_table(new_table,
-					cpumask_first(to_cpumask(fd->cpus)));
-
-		/* Replace the fd table with the re-scaled version. */
-		rcu_assign_pointer(fd->cs_table, new_table);
-		call_rcu(&old_table->rcu, rcu_free_cs_table);
-	}
-out:
-	rcu_read_unlock();
-	mutex_unlock(&em_fd_mutex);
-}
-EXPORT_SYMBOL_GPL(em_rescale_cpu_capacity);
 
 /**
  * em_cpu_get() - Return the frequency domain for a CPU
