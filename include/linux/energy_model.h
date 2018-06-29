@@ -10,9 +10,9 @@
 
 #ifdef CONFIG_ENERGY_MODEL
 struct em_cap_state {
-	unsigned long capacity;
 	unsigned long frequency; /* Kilo-hertz */
 	unsigned long power; /* Milli-watts */
+	unsigned long cost; /* power * max_frequency / frequency */
 };
 
 struct em_cs_table {
@@ -50,7 +50,6 @@ struct em_data_callback {
 };
 #define EM_DATA_CB(_active_power_cb) { .active_power = &_active_power_cb }
 
-void em_rescale_cpu_capacity(void);
 struct em_freq_domain *em_cpu_get(int cpu);
 int em_register_freq_domain(cpumask_t *span, unsigned int nr_states,
 						struct em_data_callback *cb);
@@ -70,18 +69,20 @@ int em_register_freq_domain(cpumask_t *span, unsigned int nr_states,
 static inline unsigned long em_fd_energy(struct em_freq_domain *fd,
 				unsigned long max_util, unsigned long sum_util)
 {
+	unsigned long freq, scale_cpu;
 	struct em_cs_table *cs_table;
 	struct em_cap_state *cs;
-	unsigned long freq;
-	int i;
+	int i, cpu;
 
 	cs_table = rcu_dereference(fd->cs_table);
 	if (!cs_table)
 		return 0;
 
 	/* Map the utilization value to a frequency */
+	cpu = cpumask_first(to_cpumask(fd->cpus));
+	scale_cpu = arch_scale_cpu_capacity(NULL, cpu);
 	cs = &cs_table->state[cs_table->nr_cap_states - 1];
-	freq = map_util_freq(max_util, cs->frequency, cs->capacity);
+	freq = map_util_freq(max_util, cs->frequency, scale_cpu);
 
 	/* Find the lowest capacity state above this frequency */
 	for (i = 0; i < cs_table->nr_cap_states; i++) {
@@ -90,7 +91,28 @@ static inline unsigned long em_fd_energy(struct em_freq_domain *fd,
 			break;
 	}
 
-	return cs->power * sum_util / cs->capacity;
+	/*
+	 * The capacity of a CPU at a specific performance state is defined as:
+	 *
+	 *     cap = freq * scale_cpu / max_freq
+	 *
+	 * The energy consumed by this CPU can be estimated as:
+	 *
+	 *     nrg = power * util / cap
+	 *
+	 * because (util / cap) represents the percentage of busy time of the
+	 * CPU. Based on those definitions, we have:
+	 *
+	 *     nrg = power * util * max_freq / (scale_cpu * freq)
+	 *
+	 * which can be re-arranged as a product of two terms:
+	 *
+	 *     nrg = (power * max_freq / freq) * (util / scale_cpu)
+	 *
+	 * The first term is static, and is stored in the em_cap_state struct
+	 * as 'cost'. The parameters of the second term change at run-time.
+	 */
+	return cs->cost * sum_util / scale_cpu;
 }
 
 /**
@@ -135,7 +157,6 @@ static inline int em_fd_nr_cap_states(struct em_freq_domain *fd)
 {
 	return 0;
 }
-static inline void em_rescale_cpu_capacity(void) { }
 #endif
 
 #endif
