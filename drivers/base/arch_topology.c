@@ -171,6 +171,7 @@ done:
 		asym_cpucap = asym_level;
 		flags_changed = 1;
 		pr_debug("topology flag change detected\n");
+		printk("topology flag change detected\n");
 	}
 
 	return flags_changed;

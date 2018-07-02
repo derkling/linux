@@ -1165,13 +1165,20 @@ sd_init(struct sched_domain_topology_level *tl,
 
 	if (sd->flags & SD_ASYM_CPUCAPACITY) {
 		int i;
-		long capacity = cpu_rq(sd_id)->cpu_capacity_orig;
+		bool disable = true;
+		long capacity = arch_scale_cpu_capacity(NULL, sd_id);
 
 		for_each_cpu(i, sched_domain_span(sd)) {
-			if (capacity != cpu_rq(sd_id)->cpu_capacity_orig) {
-				sd->flags &= ~SD_ASYM_CPUCAPACITY;
+			printk("asym_cpucap: cpu=%d cap=%lu\n", i, arch_scale_cpu_capacity(NULL, i));
+			if (capacity != arch_scale_cpu_capacity(NULL, i)) {
+				disable = false;
 				break;
 			}
+		}
+
+		if (disable) {
+			sd->flags &= ~SD_ASYM_CPUCAPACITY;
+			printk("asym_cpucap: cpu=%d disabling flag\n", sd_id);
 		}
 	}
 
