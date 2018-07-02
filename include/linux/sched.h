@@ -592,6 +592,10 @@ struct uclamp_se {
 	unsigned int value;
 	/* Utilization clamp group for this constraint */
 	unsigned int group_id;
+	/* List of runnable tasks in this clamp group */
+	struct list_head runnables;
+	/* Serielize add/del to/from the list of runnables tasks */
+	spinlock_t lock;
 };
 
 union rcu_special {
@@ -681,6 +685,10 @@ struct task_struct {
 	int				uclamp_group_id[UCLAMP_CNT];
 	/* Utlization clamp values for this task */
 	struct uclamp_se		uclamp[UCLAMP_CNT];
+#ifdef CONFIG_UCLAMP_TASK_GROUP
+	/* Task entry into TG's clamp RUNNABLEs list */
+	struct list_head		uclamp_node;
+#endif
 #endif
 
 #ifdef CONFIG_PREEMPT_NOTIFIERS

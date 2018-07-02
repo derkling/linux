@@ -966,6 +966,9 @@ static inline void uclamp_cpu_update(int cpu, int clamp_id)
 static inline void uclamp_cpu_get(struct task_struct *p, int cpu, int clamp_id)
 {
 	struct uclamp_cpu *uc_cpu = &cpu_rq(cpu)->uclamp[clamp_id];
+#ifdef CONFIG_UCLAMP_TASK_GROUP
+	struct uclamp_se *uc_se = task_group(p)->uclamp[clamp_id];
+#endif
 	int clamp_value;
 	int group_id;
 
@@ -975,10 +978,9 @@ static inline void uclamp_cpu_get(struct task_struct *p, int cpu, int clamp_id)
 
 #ifdef CONFIG_UCLAMP_TASK_GROUP
 	/* Use TG's clamp value to limit task specific values */
-	if (group_id == UCLAMP_NONE ||
-	    clamp_value >= task_group(p)->uclamp[clamp_id].value) {
-		clamp_value = task_group(p)->uclamp[clamp_id].value;
-		group_id = task_group(p)->uclamp[clamp_id].group_id;
+	if (group_id == UCLAMP_NONE || clamp_value >= uc_se->value) {
+		clamp_value = uc_se->value;
+		group_id = uc_se->group_id;
 	}
 #else
 	/* No task specific clamp values: nothing to do */
@@ -988,6 +990,13 @@ static inline void uclamp_cpu_get(struct task_struct *p, int cpu, int clamp_id)
 
 	/* Increment the current group_id */
 	uc_cpu->group[group_id].tasks += 1;
+
+#ifdef CONFIG_UCLAMP_TASK_GROUP
+	/* Enqueue task into TG's RUNNABLE list */
+	spin_lock(&uc_se->lock);
+	list_add(&p->uclamp_node, &uc_se->unnables);
+	spin_unlock(&uc_se->lock);
+#endif
 
 	/* Mark task as enqueued for this clamp index */
 	p->uclamp_group_id[clamp_id] = group_id;
@@ -1016,8 +1025,18 @@ static inline void uclamp_cpu_get(struct task_struct *p, int cpu, int clamp_id)
 static inline void uclamp_cpu_put(struct task_struct *p, int cpu, int clamp_id)
 {
 	struct uclamp_cpu *uc_cpu = &cpu_rq(cpu)->uclamp[clamp_id];
+#ifdef CONFIG_UCLAMP_TASK_GROUP
+	struct uclamp_se *uc_se = task_group(p)->uclamp[clamp_id];
+#endif
 	unsigned int clamp_value;
 	int group_id;
+
+#ifdef CONFIG_UCLAMP_TASK_GROUP
+	/* Dequeue task from TG's RUNNABLE list */
+	spin_lock(&uc_se->lock);
+	list_del(&p->uclamp_node);
+	spin_unlock(&uc_se->lock);
+#endif
 
 	/* Decrement the task's reference counted group index */
 	group_id = p->uclamp_group_id[clamp_id];
@@ -1149,14 +1168,16 @@ static inline void uclamp_group_put(int clamp_id, int group_id)
 static inline void uclamp_group_get_tg(struct cgroup_subsys_state *css,
 				       int clamp_id, unsigned int group_id)
 {
-	struct css_task_iter it;
-	struct task_struct *p;
+	struct task_group *tg = container_of(css, struct task_group, css);
+	struct uclamp_se *uc_se = tg->uclamp[clamp_id];
+	struct task_struct *p, *n;
 
 	/* Update clamp groups for RUNNABLE tasks in this TG */
-	css_task_iter_start(css, 0, &it);
-	while ((p = css_task_iter_next(&it)))
+	list_for_each_entry_safe(p, n, uc_se->runnables, uclamp_node) {
+		get_task_struct(p);
 		uclamp_task_update_active(p, clamp_id, group_id);
-	css_task_iter_end(&it);
+		put_task_struct(p);
+	}
 }
 
 /**
@@ -1279,6 +1300,9 @@ static inline int alloc_uclamp_sched_group(struct task_group *tg,
 			ret = 0;
 			goto out;
 		}
+
+		spin_lock_init(&uc_se->uclamp_lock);
+		LIST_INIT_HEAD(&uc_se->uclamp_runnable):
 	}
 
 out:
