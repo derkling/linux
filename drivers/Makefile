@@ -185,3 +185,6 @@ obj-$(CONFIG_TEE)		+= tee/
 obj-$(CONFIG_MULTIPLEXER)	+= mux/
 obj-$(CONFIG_UNISYS_VISORBUS)	+= visorbus/
 obj-$(CONFIG_SIOX)		+= siox/
+
+# CPU energy model
+obj-$(CONFIG_ENERGY_MODEL)	+= energy_model/
