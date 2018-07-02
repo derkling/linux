@@ -212,7 +212,7 @@ static int scpi_cpufreq_init(struct cpufreq_policy *policy)
 
 	policy->fast_switch_possible = false;
 
-	em_register_freq_domain(policy->cpus, nr_opp, &em_cb);
+	em_register_freq_domain(policy->cpus, nr_opp, &em_cb, 0);
 
 	return 0;
 
