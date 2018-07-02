@@ -15,6 +15,7 @@ struct em_cap_state {
 	unsigned long cost; /* power * max_frequency / frequency */
 };
 
+
 struct em_cs_table {
 	struct em_cap_state *state; /* Capacity states, in ascending order. */
 	int nr_cap_states;
@@ -22,6 +23,7 @@ struct em_cs_table {
 };
 
 struct em_freq_domain {
+	int level; /* Information level */
 	struct em_cs_table *cs_table; /* Capacity state table, RCU-protected */
 	struct kobject kobj;
 	unsigned long cpus[0]; /* CPUs of the frequency domain. */
@@ -52,7 +54,7 @@ struct em_data_callback {
 
 struct em_freq_domain *em_cpu_get(int cpu);
 int em_register_freq_domain(cpumask_t *span, unsigned int nr_states,
-						struct em_data_callback *cb);
+			    struct em_data_callback *cb, int level);
 
 /**
  * em_fd_energy() - Estimates the energy consumed by the CPUs of a freq. domain
@@ -140,7 +142,8 @@ struct em_data_callback {};
 #define EM_DATA_CB(_active_power_cb) { }
 
 static inline int em_register_freq_domain(cpumask_t *span,
-			unsigned int nr_states, struct em_data_callback *cb)
+			unsigned int nr_states, struct em_data_callback *cb,
+			int level)
 {
 	return -EINVAL;
 }

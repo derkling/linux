@@ -151,27 +151,21 @@ static void fd_update_cs_table(struct em_cs_table *cs_table, int cpu)
 	}
 }
 
-static struct em_freq_domain *em_create_fd(cpumask_t *span, int nr_states,
+static struct em_cs_table *create_cs_table(int nr_states, int cpu,
 						struct em_data_callback *cb)
 {
 	unsigned long opp_eff, prev_opp_eff = ULONG_MAX;
-	unsigned long power, freq, prev_freq = 0;
-	int i, ret, cpu = cpumask_first(span);
 	struct em_cs_table *cs_table;
-	struct em_freq_domain *fd;
+	unsigned long freq, power, prev_freq = 0;
+	int i, ret;
 
 	if (!cb->active_power)
 		return NULL;
 
-	fd = kzalloc(sizeof(*fd) + cpumask_size(), GFP_KERNEL);
-	if (!fd)
-		return NULL;
-
 	cs_table = alloc_cs_table(nr_states);
 	if (!cs_table)
-		goto free_fd;
+		return NULL;
 
-	/* Build the list of capacity states for this freq domain */
 	for (i = 0, freq = 0; i < nr_states; i++, freq++) {
 		/*
 		 * active_power() is a driver callback which ceils 'freq' to
@@ -218,22 +212,11 @@ static struct em_freq_domain *em_create_fd(cpumask_t *span, int nr_states,
 		prev_opp_eff = opp_eff;
 	}
 	fd_update_cs_table(cs_table, cpu);
-	rcu_assign_pointer(fd->cs_table, cs_table);
 
-	/* Copy the span of the frequency domain */
-	cpumask_copy(to_cpumask(fd->cpus), span);
-
-	ret = kobject_init_and_add(&fd->kobj, &ktype_em_fd, em_kobject,
-				   "fd%u", cpu);
-	if (ret)
-		pr_err("fd%d: failed kobject_init_and_add(): %d\n", cpu, ret);
-
-	return fd;
+	return cs_table;
 
 free_cs_table:
 	free_cs_table(cs_table);
-free_fd:
-	kfree(fd);
 
 	return NULL;
 }
@@ -245,6 +228,61 @@ static void rcu_free_cs_table(struct rcu_head *rp)
 	table = container_of(rp, struct em_cs_table, rcu);
 	free_cs_table(table);
 }
+
+static int em_overwrite_fd(struct em_freq_domain *fd, int nr_states,
+					struct em_data_callback *cb, int level)
+{
+	struct em_cs_table *old_table, *new_table;
+	int cpu = cpumask_first(to_cpumask(fd->cpus));
+
+	old_table = fd->cs_table;
+	new_table = create_cs_table(nr_states, cpu, cb);
+	if (!new_table)
+		return -EINVAL;
+
+	rcu_assign_pointer(fd->cs_table, new_table);
+	call_rcu(&old_table->rcu, rcu_free_cs_table);
+	fd->level = level;
+
+	pr_debug("%s: fd%d has been overwritten: level %d\n", __func__, cpu,
+									level);
+
+	return 0;
+}
+
+static struct em_freq_domain *em_create_fd(cpumask_t *span, int nr_states,
+					struct em_data_callback *cb, int level)
+{
+	int ret, cpu = cpumask_first(span);
+	struct em_cs_table *cs_table;
+	struct em_freq_domain *fd;
+
+	fd = kzalloc(sizeof(*fd) + cpumask_size(), GFP_KERNEL);
+	if (!fd)
+		return NULL;
+
+	cs_table = create_cs_table(nr_states, cpu, cb);
+	if (!cs_table)
+		goto free_fd;
+	rcu_assign_pointer(fd->cs_table, cs_table);
+
+	cpumask_copy(to_cpumask(fd->cpus), span);
+	fd->level = level;
+
+	ret = kobject_init_and_add(&fd->kobj, &ktype_em_fd, em_kobject,
+				   "fd%u", cpu);
+	if (ret)
+		pr_err("fd%d: failed kobject_init_and_add(): %d\n", cpu, ret);
+
+	return fd;
+
+free_fd:
+	kfree(fd);
+
+	return NULL;
+}
+
+
 
 /**
  * em_cpu_get() - Return the frequency domain for a CPU
@@ -264,6 +302,7 @@ EXPORT_SYMBOL_GPL(em_cpu_get);
  * @span	: Mask of CPUs in the frequency domain
  * @nr_states	: Number of capacity states to register
  * @cb		: Callback functions providing the data of the Energy Model
+ * @level	: Information level of the caller
  *
  * Create Energy Model tables for a frequency domain using the callbacks
  * defined in cb.
@@ -274,7 +313,7 @@ EXPORT_SYMBOL_GPL(em_cpu_get);
  * Return 0 on success
  */
 int em_register_freq_domain(cpumask_t *span, unsigned int nr_states,
-						struct em_data_callback *cb)
+			    struct em_data_callback *cb, int level)
 {
 	struct em_freq_domain *fd;
 	int cpu, ret = 0;
@@ -298,16 +337,33 @@ int em_register_freq_domain(cpumask_t *span, unsigned int nr_states,
 		}
 	}
 
-	/* Make sure we don't register again an existing domain. */
+	/* Overwrite the existing EM if level is higher. */
 	for_each_cpu(cpu, span) {
-		if (READ_ONCE(per_cpu(em_data, cpu))) {
-			ret = -EEXIST;
+		fd = READ_ONCE(per_cpu(em_data, cpu));
+		if (fd) {
+			/* Callers must agree on the involved CPUs. */
+			if (!cpumask_equal(span, to_cpumask(fd->cpus))) {
+				pr_debug("%s: conflicting fd: %*pbl\n",
+					__func__, cpumask_pr_args(span));
+				ret = -EINVAL;
+				goto unlock;
+			}
+
+			/* The EM is overwritten only for higher levels. */
+			if (level != INT_MAX && level <= fd->level) {
+				pr_debug("%s: level %d, ignoring %*pbl\n",
+					__func__, level, cpumask_pr_args(span));
+				ret = -EINVAL;
+				goto unlock;
+			}
+
+			ret = em_overwrite_fd(fd, nr_states, cb, level);
 			goto unlock;
 		}
 	}
 
 	/* Create the frequency domain and add it to the Energy Model. */
-	fd = em_create_fd(span, nr_states, cb);
+	fd = em_create_fd(span, nr_states, cb, level);
 	if (!fd) {
 		ret = -EINVAL;
 		goto unlock;
