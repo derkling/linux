@@ -700,7 +700,7 @@ struct freq_domain {
 	struct em_freq_domain *obj;
 	struct freq_domain *next;
 	struct rcu_head rcu;
-}
+};
 
 struct max_cpu_capacity {
 	raw_spinlock_t lock;
