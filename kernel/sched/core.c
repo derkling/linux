@@ -855,9 +855,9 @@ static inline void uclamp_group_init(int clamp_id, int group_id,
 
 	/* Set clamp groups on all CPUs */
 	for_each_possible_cpu(cpu) {
-		uc_cpu = &cpu_rq(cpu)->uclamp[clamp_id];
-		uc_cpu->group[group_id].value = clamp_value;
-		uc_cpu->group[group_id].tasks = 0;
+		uc_cpu = &cpu_rq(cpu)->uclamp;
+		uc_cpu->group[clamp_id][group_id].value = clamp_value;
+		uc_cpu->group[clamp_id][group_id].tasks = 0;
 	}
 }
 
@@ -930,23 +930,25 @@ uclamp_group_find(int clamp_id, unsigned int clamp_value)
  */
 static inline void uclamp_cpu_update(int cpu, int clamp_id)
 {
-	struct uclamp_cpu *uc_cpu = &cpu_rq(cpu)->uclamp[clamp_id];
+	struct uclamp_cpu *uc_cpu = &cpu_rq(cpu)->uclamp;
+	struct uclamp_group *uc_grp;
 	int max_value = UCLAMP_NONE;
 	unsigned int group_id;
 
+	uc_grp = uc_cpu->group[clamp_id];
 	for (group_id = 0; group_id <= CONFIG_UCLAMP_GROUPS_COUNT; ++group_id) {
 		/* Ignore inactive clamp groups, i.e. no RUNNABLE tasks */
-		if (!uclamp_group_active(uc_cpu, group_id))
+		if (!uclamp_group_active(uc_grp, group_id))
 			continue;
 
 		/* Both min and max clamp are MAX aggregated */
-		max_value = max(max_value, uc_cpu->group[group_id].value);
+		max_value = max(max_value, uc_grp[group_id].value);
 
 		/* Stop if we reach the max possible clamp */
 		if (max_value >= SCHED_CAPACITY_SCALE)
 			break;
 	}
-	uc_cpu->value = max_value;
+	uc_cpu->value[clamp_id] = max_value;
 }
 
 /**
