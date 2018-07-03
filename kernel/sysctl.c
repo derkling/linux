@@ -371,13 +371,14 @@ static struct ctl_table kern_table[] = {
 		.extra2		= &three,
 	},
 #endif
-	{
-		.procname	= "sched_initial_task_util",
-		.data		= &sysctl_sched_initial_task_util,
-		.maxlen		= sizeof(unsigned int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
+// XXX: queper01: not present in BC scheduler
+//	{
+//		.procname	= "sched_initial_task_util",
+//		.data		= &sysctl_sched_initial_task_util,
+//		.maxlen		= sizeof(unsigned int),
+//		.mode		= 0644,
+//		.proc_handler	= proc_dointvec,
+//	},
 	{
 		.procname	= "sched_cstate_aware",
 		.data		= &sysctl_sched_cstate_aware,

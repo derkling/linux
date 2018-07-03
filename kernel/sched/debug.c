@@ -784,7 +784,6 @@ static void sched_debug_header(struct seq_file *m)
 	P(sysctl_sched_child_runs_first);
 	P(sysctl_sched_features);
 #ifdef CONFIG_SCHED_WALT
-	P(sched_init_task_load_windows);
 	P(min_capacity);
 	P(max_capacity);
 	P(sched_ravg_window);
@@ -1018,7 +1017,6 @@ void proc_sched_show_task(struct task_struct *p, struct seq_file *m)
 		P_SCHEDSTAT(se.statistics.nr_wakeups_sis_count);
 		/* select_energy_cpu_brute() */
 		P_SCHEDSTAT(se.statistics.nr_wakeups_secb_attempts);
-		P_SCHEDSTAT(se.statistics.nr_wakeups_secb_sync);
 		P_SCHEDSTAT(se.statistics.nr_wakeups_secb_idle_bt);
 		P_SCHEDSTAT(se.statistics.nr_wakeups_secb_insuff_cap);
 		P_SCHEDSTAT(se.statistics.nr_wakeups_secb_no_nrg_sav);

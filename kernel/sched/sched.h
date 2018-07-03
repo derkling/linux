@@ -1,8 +1,3 @@
-/*
- * NOTE: This file has been modified by Sony Mobile Communications Inc.
- * Modifications are Copyright (c) 2017 Sony Mobile Communications Inc,
- * and licensed under the license of the file.
- */
 
 #include <linux/sched.h>
 #include <linux/sched/sysctl.h>
@@ -544,7 +539,7 @@ static inline int rt_bandwidth_enabled(void)
 }
 
 /* RT IPI pull logic requires IRQ_WORK */
-#ifdef CONFIG_IRQ_WORK
+#if defined(CONFIG_IRQ_WORK) && defined(CONFIG_SMP)
 # define HAVE_RT_PUSH_IPI
 #endif
 
@@ -566,12 +561,6 @@ struct rt_rq {
 	unsigned long rt_nr_total;
 	int overloaded;
 	struct plist_head pushable_tasks;
-#ifdef HAVE_RT_PUSH_IPI
-	int push_flags;
-	int push_cpu;
-	struct irq_work push_work;
-	raw_spinlock_t push_lock;
-#endif
 #endif /* CONFIG_SMP */
 	int rt_queued;
 
@@ -662,6 +651,19 @@ struct root_domain {
 	struct dl_bw dl_bw;
 	struct cpudl cpudl;
 
+#ifdef HAVE_RT_PUSH_IPI
+	/*
+	 * For IPI pull requests, loop across the rto_mask.
+	 */
+	struct irq_work rto_push_work;
+	raw_spinlock_t rto_lock;
+	/* These are only updated and read within rto_lock */
+	int rto_loop;
+	int rto_cpu;
+	/* These atomics are updated outside of a lock */
+	atomic_t rto_loop_next;
+	atomic_t rto_loop_start;
+#endif
 	/*
 	 * The "RT overload" flag: it gets set if a CPU has more than
 	 * one runnable RT task.
@@ -677,7 +679,12 @@ struct root_domain {
 };
 
 extern struct root_domain def_root_domain;
+extern void sched_get_rd(struct root_domain *rd);
+extern void sched_put_rd(struct root_domain *rd);
 
+#ifdef HAVE_RT_PUSH_IPI
+extern void rto_push_irq_work_func(struct irq_work *work);
+#endif
 #endif /* CONFIG_SMP */
 
 /*
@@ -702,7 +709,6 @@ struct rq {
 #endif
 	#define CPU_LOAD_IDX_MAX 5
 	unsigned long cpu_load[CPU_LOAD_IDX_MAX];
-	unsigned int nr_pinned_tasks;
 	unsigned int misfit_task;
 #ifdef CONFIG_NO_HZ_COMMON
 #ifdef CONFIG_SMP
@@ -792,7 +798,6 @@ struct rq {
 	int cstate, wakeup_latency, wakeup_energy;
 	u64 window_start;
 	s64 cum_window_start;
-	u64 load_reported_window;
 	unsigned long walt_flags;
 
 	u64 cur_irqload;
@@ -816,6 +821,9 @@ struct rq {
 	u8 curr_table;
 	int prev_top;
 	int curr_top;
+	bool notif_pending;
+	u64 last_cc_update;
+	u64 cycles;
 #endif
 
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
@@ -939,8 +947,8 @@ enum numa_faults_stats {
 };
 extern void sched_setnuma(struct task_struct *p, int node);
 extern int migrate_task_to(struct task_struct *p, int cpu);
-extern int migrate_swap(struct task_struct *, struct task_struct *);
 #endif /* CONFIG_NUMA_BALANCING */
+extern int migrate_swap(struct task_struct *cur, struct task_struct *p);
 
 #ifdef CONFIG_SMP
 
@@ -1105,6 +1113,11 @@ enum sched_boost_policy {
 	SCHED_BOOST_ON_BIG,
 	SCHED_BOOST_ON_ALL,
 };
+
+#define NO_BOOST 0
+#define FULL_THROTTLE_BOOST 1
+#define CONSERVATIVE_BOOST 2
+#define RESTRAINED_BOOST 3
 
 /*
  * Returns the rq capacity of any rq in a group. This does not play
@@ -1465,7 +1478,7 @@ extern void trigger_load_balance(struct rq *rq);
 
 extern void set_cpus_allowed_common(struct task_struct *p, const struct cpumask *new_mask);
 
-bool __cpu_overutilized(int cpu, unsigned long util);
+bool __cpu_overutilized(int cpu, int delta);
 bool cpu_overutilized(int cpu);
 
 #endif
@@ -1693,6 +1706,26 @@ unsigned long arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
 }
 #endif
 
+#ifndef arch_scale_max_freq_capacity
+static __always_inline
+unsigned long arch_scale_max_freq_capacity(struct sched_domain *sd, int cpu)
+{
+	return SCHED_CAPACITY_SCALE;
+}
+#endif
+
+#ifndef arch_scale_min_freq_capacity
+static __always_inline
+unsigned long arch_scale_min_freq_capacity(struct sched_domain *sd, int cpu)
+{
+	/*
+	 * Multiplied with any capacity value, this scale factor will return
+	 * 0, which represents an un-capped state
+	 */
+	return 0;
+}
+#endif
+
 #ifndef arch_scale_cpu_capacity
 static __always_inline
 unsigned long arch_scale_cpu_capacity(struct sched_domain *sd, int cpu)
@@ -1828,6 +1861,8 @@ cpu_util_freq_pelt(int cpu)
 }
 
 #ifdef CONFIG_SCHED_WALT
+extern u64 walt_load_reported_window;
+
 static inline unsigned long
 cpu_util_freq_walt(int cpu, struct sched_walt_cpu_load *walt_load)
 {
@@ -1864,7 +1899,7 @@ cpu_util_freq_walt(int cpu, struct sched_walt_cpu_load *walt_load)
 		walt_load->prev_window_util = util;
 		walt_load->nl = nl;
 		walt_load->pl = pl;
-		walt_load->ws = rq->window_start;
+		walt_load->ws = walt_load_reported_window;
 	}
 
 	return (util >= capacity) ? capacity : util;
@@ -1884,8 +1919,13 @@ cpu_util_freq(int cpu, struct sched_walt_cpu_load *walt_load)
 	return cpu_util_freq_pelt(cpu);
 }
 
+#define sched_ravg_window TICK_NSEC
+#define sysctl_sched_use_walt_cpu_util 0
+
 #endif /* CONFIG_SCHED_WALT */
 
+extern unsigned long
+boosted_cpu_util(int cpu, struct sched_walt_cpu_load *walt_load);
 #endif
 
 extern unsigned int capacity_margin_freq;
@@ -1899,76 +1939,6 @@ add_capacity_margin(unsigned long cpu_capacity, int cpu)
 	cpu_capacity /= SCHED_CAPACITY_SCALE;
 	return cpu_capacity;
 }
-
-#ifdef CONFIG_CPU_FREQ_GOV_SCHED
-#define capacity_max SCHED_CAPACITY_SCALE
-extern struct static_key __sched_freq;
-
-static inline bool sched_freq(void)
-{
-	return static_key_false(&__sched_freq);
-}
-
-DECLARE_PER_CPU(struct sched_capacity_reqs, cpu_sched_capacity_reqs);
-void update_cpu_capacity_request(int cpu, bool request);
-
-static inline void set_cfs_cpu_capacity(int cpu, bool request,
-					unsigned long capacity)
-{
-	struct sched_capacity_reqs *scr = &per_cpu(cpu_sched_capacity_reqs, cpu);
-
-#ifdef CONFIG_SCHED_WALT
-       if (!walt_disabled && sysctl_sched_use_walt_cpu_util) {
-		int rtdl = scr->rt + scr->dl;
-		/*
-		 * WALT tracks the utilization of a CPU considering the load
-		 * generated by all the scheduling classes.
-		 * Since the following call to:
-		 *    update_cpu_capacity
-		 * is already adding the RT and DL utilizations let's remove
-		 * these contributions from the WALT signal.
-		 */
-		if (capacity > rtdl)
-			capacity -= rtdl;
-		else
-			capacity = 0;
-	}
-#endif
-	if (scr->cfs != capacity) {
-		scr->cfs = capacity;
-		update_cpu_capacity_request(cpu, request);
-	}
-}
-
-static inline void set_rt_cpu_capacity(int cpu, bool request,
-				       unsigned long capacity)
-{
-	if (per_cpu(cpu_sched_capacity_reqs, cpu).rt != capacity) {
-		per_cpu(cpu_sched_capacity_reqs, cpu).rt = capacity;
-		update_cpu_capacity_request(cpu, request);
-	}
-}
-
-static inline void set_dl_cpu_capacity(int cpu, bool request,
-				       unsigned long capacity)
-{
-	if (per_cpu(cpu_sched_capacity_reqs, cpu).dl != capacity) {
-		per_cpu(cpu_sched_capacity_reqs, cpu).dl = capacity;
-		update_cpu_capacity_request(cpu, request);
-	}
-}
-#else
-static inline bool sched_freq(void) { return false; }
-static inline void set_cfs_cpu_capacity(int cpu, bool request,
-					unsigned long capacity)
-{ }
-static inline void set_rt_cpu_capacity(int cpu, bool request,
-				       unsigned long capacity)
-{ }
-static inline void set_dl_cpu_capacity(int cpu, bool request,
-				       unsigned long capacity)
-{ }
-#endif
 
 static inline void sched_rt_avg_update(struct rq *rq, u64 rt_delta)
 {
@@ -2299,20 +2269,8 @@ static inline void cpufreq_update_util(struct rq *rq, unsigned int flags)
 	struct update_util_data *data;
 
 #ifdef CONFIG_SCHED_WALT
-	unsigned int exception_flags = SCHED_CPUFREQ_INTERCLUSTER_MIG |
-				SCHED_CPUFREQ_PL | SCHED_CPUFREQ_EARLY_DET;
-
-	/*
-	 * Skip if we've already reported, but not if this is an inter-cluster
-	 * migration. Also only allow WALT update sites.
-	 */
 	if (!(flags & SCHED_CPUFREQ_WALT))
 		return;
-	if (!sched_disable_window_stats &&
-		(rq->load_reported_window == rq->window_start) &&
-		!(flags & exception_flags))
-		return;
-	rq->load_reported_window = rq->window_start;
 #endif
 
 	data = rcu_dereference_sched(*per_cpu_ptr(&cpufreq_update_util_data,
@@ -2387,7 +2345,6 @@ extern unsigned int max_load_scale_factor;
 extern unsigned int max_possible_capacity;
 extern unsigned int min_max_possible_capacity;
 extern unsigned int max_power_cost;
-extern unsigned int sched_init_task_load_windows;
 extern unsigned int up_down_migrate_scale_factor;
 extern unsigned int sysctl_sched_restrict_cluster_spill;
 extern unsigned int sched_pred_alert_load;
@@ -2408,11 +2365,6 @@ extern int update_preferred_cluster(struct related_thread_group *grp,
 extern void set_preferred_cluster(struct related_thread_group *grp);
 extern void add_new_task_to_grp(struct task_struct *new);
 extern unsigned int update_freq_aggregate_threshold(unsigned int threshold);
-
-#define NO_BOOST 0
-#define FULL_THROTTLE_BOOST 1
-#define CONSERVATIVE_BOOST 2
-#define RESTRAINED_BOOST 3
 
 static inline int cpu_capacity(int cpu)
 {
@@ -2830,6 +2782,11 @@ static inline int cpu_max_power_cost(int cpu)
 #endif
 
 static inline void clear_walt_request(int cpu) { }
+
+static inline int is_reserved(int cpu)
+{
+	return 0;
+}
 
 static inline int got_boost_kick(void)
 {
