@@ -855,9 +855,9 @@ static inline void uclamp_group_init(int clamp_id, int group_id,
 
 	/* Set clamp groups on all CPUs */
 	for_each_possible_cpu(cpu) {
-		uc_cpu = &cpu_rq(cpu)->uclamp[clamp_id];
-		uc_cpu->group[group_id].value = clamp_value;
-		uc_cpu->group[group_id].tasks = 0;
+		uc_cpu = &cpu_rq(cpu)->uclamp;
+		uc_cpu->group[clamp_id][group_id].value = clamp_value;
+		uc_cpu->group[clamp_id][group_id].tasks = 0;
 	}
 }
 
@@ -928,31 +928,31 @@ uclamp_group_find(int clamp_id, unsigned int clamp_value)
  * For the specified clamp index, this method computes the new CPU utilization
  * clamp to use until the next change on the set of active tasks on that CPU.
  */
-static inline void uclamp_cpu_update(int cpu, int clamp_id)
+static inline void uclamp_cpu_update(struct rq *rq, int clamp_id)
 {
-	struct uclamp_cpu *uc_cpu = &cpu_rq(cpu)->uclamp[clamp_id];
+	struct uclamp_group *uc_grp = rq->uclamp.group[clamp_id][0];
 	int max_value = UCLAMP_NONE;
 	unsigned int group_id;
 
 	for (group_id = 0; group_id <= CONFIG_UCLAMP_GROUPS_COUNT; ++group_id) {
 		/* Ignore inactive clamp groups, i.e. no RUNNABLE tasks */
-		if (!uclamp_group_active(uc_cpu, group_id))
+		if (!uclamp_group_active(uc_grp, group_id))
 			continue;
 
 		/* Both min and max clamp are MAX aggregated */
-		max_value = max(max_value, uc_cpu->group[group_id].value);
+		max_value = max(max_value, uc_grp[group_id].value);
 
 		/* Stop if we reach the max possible clamp */
 		if (max_value >= SCHED_CAPACITY_SCALE)
 			break;
 	}
-	uc_cpu->value = max_value;
+	rq->uclamp.value[clamp_id] = max_value;
 }
 
 /**
- * uclamp_cpu_get(): increase reference count for a clamp group on a CPU
+ * uclamp_cpu_get_id(): increase reference count for a clamp group on a CPU
  * @p: the task being enqueued on a CPU
- * @cpu: the CPU where the clamp group has to be reference counted
+ * @rq: the CPU's rq where the clamp group has to be reference counted
  * @clamp_id: the utilization clamp (e.g. min or max utilization) to reference
  *
  * Once a task is enqueued on a CPU's RQ, the clamp group currently defined by
@@ -961,9 +961,9 @@ static inline void uclamp_cpu_update(int cpu, int clamp_id)
  * (group_id) into the task's task_struct::uclamp_group_id, which will then be
  * used at task's dequeue time to release the reference count.
  */
-static inline void uclamp_cpu_get(struct task_struct *p, int cpu, int clamp_id)
+static inline void uclamp_cpu_get_id(struct task_struct *p, struct rq *rq, int clamp_id)
 {
-	struct uclamp_cpu *uc_cpu = &cpu_rq(cpu)->uclamp[clamp_id];
+	struct uclamp_group *uc_grp = rq->uclamp.group[clamp_id][0];
 	int clamp_value;
 	int group_id;
 
@@ -984,8 +984,8 @@ static inline void uclamp_cpu_get(struct task_struct *p, int cpu, int clamp_id)
 		return;
 #endif
 
-	/* Increment the current group_id */
-	uc_cpu->group[group_id].tasks += 1;
+	/* Reference count the task into its current group_id */
+	uc_grp[group_id].tasks += 1;
 
 	/* Mark task as enqueued for this clamp index */
 	p->uclamp_group_id[clamp_id] = group_id;
@@ -995,12 +995,12 @@ static inline void uclamp_cpu_get(struct task_struct *p, int cpu, int clamp_id)
 	 * straight away the CPU clamp value. Otherwise, the current CPU clamp
 	 * value is still valid and we are done.
 	 */
-	if (uc_cpu->value < clamp_value)
-		uc_cpu->value = clamp_value;
+	if (uc_cpu->value[clamp_id] < clamp_value)
+		uc_cpu->value[clamp_id] = clamp_value;
 }
 
 /**
- * uclamp_cpu_put(): decrease reference count for a clamp group on a CPU
+ * uclamp_cpu_put_id(): decrease reference count for a clamp group on a CPU
  * @p: the task being dequeued from a CPU
  * @cpu: the CPU from where the clamp group has to be released
  * @clamp_id: the utilization clamp (e.g. min or max utilization) to release
@@ -1011,65 +1011,79 @@ static inline void uclamp_cpu_get(struct task_struct *p, int cpu, int clamp_id)
  * group, then the CPU clamping is updated to find out the new max for the
  * specified clamp index.
  */
-static inline void uclamp_cpu_put(struct task_struct *p, int cpu, int clamp_id)
+static inline void uclamp_cpu_put_id(struct task_struct *p, struct rq *rq, int clamp_id)
 {
-	struct uclamp_cpu *uc_cpu = &cpu_rq(cpu)->uclamp[clamp_id];
+	struct uclamp_group *uc_grp = rq->uclamp.group[clamp_id][0];
 	unsigned int clamp_value;
 	int group_id;
 
 	/* Decrement the task's reference counted group index */
 	group_id = p->uclamp_group_id[clamp_id];
-	uc_cpu->group[group_id].tasks -= 1;
+	uc_grp[group_id].tasks -= 1;
 
 	/* Mark task as dequeued for this clamp IDX */
 	p->uclamp_group_id[clamp_id] = UCLAMP_NONE;
 
 	/* If this is not the last task, no updates are required */
-	if (uc_cpu->group[group_id].tasks > 0)
+	if (uc_grp[group_id].tasks > 0)
 		return;
 
 	/*
 	 * Update the CPU only if this was the last task of the group
 	 * defining the current clamp value.
 	 */
-	clamp_value = uc_cpu->group[group_id].value;
+	clamp_value = uc_grp[group_id].value;
 	if (clamp_value >= uc_cpu->value)
-		uclamp_cpu_update(cpu, clamp_id);
+		uclamp_cpu_update(rq, clamp_id);
 }
 
 /**
- * uclamp_task_update: update clamp group referenced by a task
- * @rq: the RQ the task is going to be enqueued/dequeued to/from
- * @p: the task being enqueued/dequeued
+ * uclamp_cpu_get(): increase CPU's clamp group refcount
+ * @rq: the CPU's rq where the clamp group has to be refcounted
+ * @p: the task being enqueued
  *
- * Utilization clamp constraints for a CPU depend on tasks which are active
- * (i.e. RUNNABLE or RUNNING) on that CPU. To keep track of tasks
- * requirements, each active task reference counts a clamp group in the CPU
- * they are currently enqueued for execution.
+ * Once a task is enqueued on a CPU's rq, all the clamp groups currently
+ * enforced on a the task are reference counted on that rq.
+ * Not all scheduling classes have utilization clamping support, thier tasks
+ * will be silently ignored.
  *
  * This method updates the utilization clamp constraints considering the
  * requirements for the specified task. Thus, this update must be done before
  * calling into the scheduling classes, which will eventually update schedutil
  * considering the new task requirements.
  */
-static inline void uclamp_task_update(struct rq *rq, struct task_struct *p)
+static inline void uclamp_cpu_get(struct rq *rq, struct task_struct *p)
 {
-	int cpu = cpu_of(rq);
-	int clamp_id;
-
-	/* The idle task does not affect CPU's clamps */
-	if (unlikely(p->sched_class == &idle_sched_class))
-		return;
-	/* DEADLINE tasks do not affect CPU's clamps */
-	if (unlikely(p->sched_class == &dl_sched_class))
+	if (unlikely(!p->sched_class.uclamp_enabled))
 		return;
 
-	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
-		if (uclamp_task_affects(p, clamp_id))
-			uclamp_cpu_put(p, cpu, clamp_id);
-		else
-			uclamp_cpu_get(p, cpu, clamp_id);
-	}
+	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id)
+		uclamp_cpu_get_id(p, rq, clamp_id)
+}
+
+/**
+ * uclamp_cpu_put(): decrease CPU's clamp group refcount
+ * @cpu: the CPU's rq where the clamp group refcount has to be decreased
+ * @p: the task being dequeued
+ *
+ * When a task is dequeued from a CPU's rq, all the clamp groups the task has
+ * been reference counted at task's enqueue time have to be decreased for that
+ * CPU.
+ *
+ * This method updates the utilization clamp constraints considering the
+ * requirements for the specified task. Thus, this update must be done before
+ * calling into the scheduling classes, which will eventually update schedutil
+ * considering the new task requirements.
+ */
+static inline void uclamp_cpu_put(struct rq *rq, struct task_struct *p)
+{
+
+	/* Ignore tasks which are not affecting CPU's clamps */
+	if (unlikely(uclamp_task_affects(p, clamp_id)))
+		return;
+
+	for (int clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id)
+		uclamp_cpu_put_id(p, rq, clamp_id)
 }
 
 /**
@@ -1109,10 +1123,10 @@ uclamp_task_update_active(struct task_struct *p, int clamp_id, int group_id)
 		goto done;
 
 	/* Release p's currently referenced clamp group */
-	uclamp_cpu_put(p, task_cpu(p), clamp_id);
+	uclamp_cpu_put_id(p, task_cpu(p), clamp_id);
 
 	/* Get p's new clamp group */
-	uclamp_cpu_get(p, task_cpu(p), clamp_id);
+	uclamp_cpu_get_id(p, task_cpu(p), clamp_id);
 
 done:
 	task_rq_unlock(rq, p, &rf);
@@ -1350,28 +1364,28 @@ static inline int __setscheduler_uclamp(struct task_struct *p,
 /**
  * init_uclamp: initialize data structures required for utilization clamping
  */
-static inline void init_uclamp(void)
+static void __init init_uclamp(void)
 {
-	struct uclamp_cpu *uc_cpu;
-	struct uclamp_map *uc_map;
-	int group_id;
 	int clamp_id;
 	int cpu;
 
 	mutex_init(&uclamp_mutex);
 
+	/* Init CPU's clamp groups */
+	for_each_possible_cpu(cpu) {
+		struct uclamp_cpu *uc_cpu = &cpu_rq(cpu)->uclamp;
+
+		memset(uc_cpu, UCLAMP_NONE, sizeof(struct uclamp_cpu));
+	}
+
+	/* Init SE's clamp map */
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
-		uc_map = &uclamp_maps[clamp_id][0];
-		/* Init SE's clamp map */
-		group_id = 0;
+		struct uclamp_map *uc_map = &uclamp_maps[clamp_id][0];
+		int group_id = 0;
+
 		for ( ; group_id <= CONFIG_UCLAMP_GROUPS_COUNT; ++group_id) {
 			uc_map[group_id].value = UCLAMP_NONE;
 			raw_spin_lock_init(&uc_map[group_id].se_lock);
-		}
-		/* Init CPU's clamp groups */
-		for_each_possible_cpu(cpu) {
-			uc_cpu = &cpu_rq(cpu)->uclamp[clamp_id];
-			memset(uc_cpu, UCLAMP_NONE, sizeof(struct uclamp_cpu));
 		}
 	}
 
@@ -1379,7 +1393,8 @@ static inline void init_uclamp(void)
 }
 
 #else /* CONFIG_UCLAMP_TASK */
-static inline void uclamp_task_update(struct rq *rq, struct task_struct *p) { }
+static inline void uclamp_cpu_get(struct rq *rq, struct task_struct *p) { }
+static inline void uclamp_cpu_put(struct rq *rq, struct task_struct *p) { }
 static inline void free_uclamp_sched_group(struct task_group *tg) { }
 static inline int alloc_uclamp_sched_group(struct task_group *tg,
 					   struct task_group *parent)
@@ -1402,7 +1417,7 @@ static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 	if (!(flags & ENQUEUE_RESTORE))
 		sched_info_queued(rq, p);
 
-	uclamp_task_update(rq, p);
+	uclamp_cpu_get(rq, p);
 	p->sched_class->enqueue_task(rq, p, flags);
 }
 
@@ -1414,7 +1429,7 @@ static inline void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 	if (!(flags & DEQUEUE_SAVE))
 		sched_info_dequeued(rq, p);
 
-	uclamp_task_update(rq, p);
+	uclamp_cpu_put(rq, p);
 	p->sched_class->dequeue_task(rq, p, flags);
 }
 

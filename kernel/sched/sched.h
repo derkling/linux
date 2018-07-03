@@ -430,39 +430,45 @@ extern int tg_nop(struct task_group *tg, void *data);
 
 #ifdef CONFIG_UCLAMP_TASK
 /**
- * Utilization clamp Group
+ * struct uclamp_group - Utilization clamp Group
+ * @value: utilization clamp value for tasks on this clamp group
+ * @tasks: number of RUNNABLE tasks on this clamp group
  *
  * Keep track of how many tasks are RUNNABLE for a given utilization
  * clamp value.
  */
 struct uclamp_group {
-	/* Utilization clamp value for tasks on this clamp group */
 	int value;
-	/* Number of RUNNABLE tasks on this clamp group */
 	int tasks;
 };
 
 /**
- * CPU's utilization clamp
+ * struct uclamp_cpu - CPU's utilization clamp
+ * @value: currently active clamp values for a CPU
+ * @group: utilization clamp groups affecting a CPU
  *
- * Keep track of active tasks on a CPUs to aggregate their clamp values.  A
- * clamp value is affecting a CPU where there is at least one task RUNNABLE
+ * Keep track of active tasks on a CPUs to aggregate their clamp values.
+ * A clamp value is affecting a CPU where there is at least one task RUNNABLE
  * (or actually running) with that value.
+ *
+ * We have up to %UCLAMP_CNT possible different clamp value, which are
+ * currently only two: minmum utilization and maximum utilization.
+ *
  * All utilization clamping values are MAX aggregated, since:
  * - for util_min: we wanna run the CPU at least at the max of the minimum
  *   utilization required by its currently active tasks.
  * - for util_max: we wanna allow the CPU to run up to the max of the
  *   maximum utilization allowed by its currently active tasks.
  *
- * Since on each system we expect only a limited number of utilization clamp
- * values, we can use a simple array to track the metrics required to compute
- * all the per-CPU utilization clamp values.
+ * Since on each system we expect only a limited number of different
+ * utilization clamp values (CONFIG_UCLAMP_GROUPS_COUNT), we use a simple
+ * array to track the metrics required to compute all the per-CPU utilization
+ * clamp values. The additional slot is used to track the default clamp
+ * values, i.e. no min/max clamping at all.
  */
 struct uclamp_cpu {
-	/* Utilization clamp value for a CPU */
-	int value;
-	/* Utilization clamp groups affecting this CPU */
-	struct uclamp_group group[CONFIG_UCLAMP_GROUPS_COUNT + 1];
+	int value[UCLAMP_CNT];
+	struct uclamp_group group[UCLAMP_CNT][CONFIG_UCLAMP_GROUPS_COUNT + 1];
 };
 
 /**
@@ -525,7 +531,7 @@ static inline bool uclamp_task_active(struct task_struct *p)
 
 /**
  * uclamp_group_active: check if a clamp group is active on a CPU
- * @uc_cpu: the array of clamp groups for a CPU
+ * @uc_grp: the clamp groups for a CPU
  * @group_id: the clamp group to check
  *
  * A clamp group affects a CPU if it as at least one "active" task.
@@ -533,9 +539,9 @@ static inline bool uclamp_task_active(struct task_struct *p)
  * Return: true if the specified CPU has at least one active task for
  *         the specified clamp group.
  */
-static inline bool uclamp_group_active(struct uclamp_cpu *uc_cpu, int group_id)
+static inline bool uclamp_group_active(struct uclamp_group *uc_grp, int group_id)
 {
-	return uc_cpu->group[group_id].tasks > 0;
+	return uc_grp[group_id].tasks > 0;
 }
 #endif /* CONFIG_UCLAMP_TASK */
 
@@ -928,8 +934,8 @@ struct rq {
 	unsigned long		cpu_capacity_orig;
 
 #ifdef CONFIG_UCLAMP_TASK
-	/* util_{min,max} clamp values based on CPU's active tasks */
-	struct uclamp_cpu uclamp[UCLAMP_CNT];
+	/* Utilization clamp values based on CPU's RUNNABLE tasks */
+	struct uclamp_cpu	uclamp ____cacheline_aligned;
 #endif
 
 	struct callback_head	*balance_callback;
@@ -1648,6 +1654,10 @@ struct sched_class {
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	void (*task_change_group)(struct task_struct *p, int type);
+#endif
+
+#ifdef CONFIG_UCLAMP_TASK
+	int uclamp_enabled;
 #endif
 };
 
