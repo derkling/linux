@@ -1020,7 +1020,7 @@ static inline void uclamp_rq_dec(struct rq *rq, struct task_struct *p)
 }
 
 static inline void
-uclamp_task_update_active(struct task_struct *p, unsigned int clamp_id)
+uclamp_update_active(struct task_struct *p, unsigned int clamp_id)
 {
 	struct rq_flags rf;
 	struct rq *rq;
@@ -1049,6 +1049,20 @@ uclamp_task_update_active(struct task_struct *p, unsigned int clamp_id)
 
 done:
 	task_rq_unlock(rq, p, &rf);
+}
+
+static inline void
+uclamp_update_active_tasks(struct cgroup_subsys_state *css,
+			   int clamp_id, unsigned int bucket_id)
+{
+	struct css_task_iter it;
+	struct task_struct *p;
+
+	/* Update clamp buckets for RUNNABLE tasks in this TG */
+	css_task_iter_start(css, 0, &it);
+	while ((p = css_task_iter_next(&it)))
+		uclamp_update_active(p, clamp_id);
+	css_task_iter_end(&it);
 }
 
 int sched_uclamp_handler(struct ctl_table *table, int write,
@@ -7110,6 +7124,10 @@ static void cpu_util_update_hier(struct cgroup_subsys_state *css,
 
 		uc_se->effective.value = value;
 		uc_se->effective.bucket_id = bucket_id;
+
+		/* Immediately updated descendants active tasks */
+		if (css != top_css)
+			uclamp_update_active_tasks(css, clamp_id, bucket_id);
 	}
 }
 
