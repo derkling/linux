@@ -1237,7 +1237,8 @@ static inline int uclamp_group_get(struct task_struct *p,
 	raw_spin_unlock_irqrestore(&uc_map[next_group_id].se_lock, flags);
 
 	/* Update CPU's clamp group refcounts of RUNNABLE task */
-	uclamp_task_update_active(p, clamp_id, next_group_id);
+	if (p)
+		uclamp_task_update_active(p, clamp_id, next_group_id);
 
 	/* Release the previous clamp group */
 	uclamp_group_put(clamp_id, prev_group_id);
@@ -1294,18 +1295,47 @@ static inline int alloc_uclamp_sched_group(struct task_group *tg,
 {
 	struct uclamp_se *uc_se;
 	int clamp_id;
+	int ret = 1;
 
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
 		uc_se = &tg->uclamp[clamp_id];
 
 		uc_se->value = parent->uclamp[clamp_id].value;
 		uc_se->group_id = UCLAMP_NONE;
+
+		if (uclamp_group_get(NULL, clamp_id, uc_se,
+				     parent->uclamp[clamp_id].value)) {
+			ret = 0;
+			goto out;
+		}
 	}
 
-	return 1;
+out:
+	return ret;
 }
+
+/**
+ * release_uclamp_sched_group: release utilization clamp references of a TG
+ * @tg: the task group being removed
+ *
+ * An empty task group can be removed only when it has no more tasks or child
+ * groups. This means that we can also safely release all the reference
+ * counting to clamp groups.
+ */
+static inline void free_uclamp_sched_group(struct task_group *tg)
+{
+	struct uclamp_se *uc_se;
+	int clamp_id;
+
+	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
+		uc_se = &tg->uclamp[clamp_id];
+		uclamp_group_put(clamp_id, uc_se->group_id);
+	}
+}
+
 #else /* CONFIG_UCLAMP_TASK_GROUP */
 static inline void init_uclamp_sched_group(void) { }
+static inline void free_uclamp_sched_group(struct task_group *tg) { }
 static inline int alloc_uclamp_sched_group(struct task_group *tg,
 					   struct task_group *parent)
 {
@@ -1382,6 +1412,7 @@ static void __init init_uclamp(void)
 #else /* CONFIG_UCLAMP_TASK */
 static inline void uclamp_cpu_get(struct rq *rq, struct task_struct *p) { }
 static inline void uclamp_cpu_put(struct rq *rq, struct task_struct *p) { }
+static inline void free_uclamp_sched_group(struct task_group *tg) { }
 static inline int alloc_uclamp_sched_group(struct task_group *tg,
 					   struct task_group *parent)
 {
@@ -6962,6 +6993,7 @@ static DEFINE_SPINLOCK(task_group_lock);
 
 static void sched_free_group(struct task_group *tg)
 {
+	free_uclamp_sched_group(tg);
 	free_fair_sched_group(tg);
 	free_rt_sched_group(tg);
 	autogroup_free(tg);
@@ -7210,6 +7242,7 @@ static void cpu_cgroup_attach(struct cgroup_taskset *tset)
 static int cpu_util_min_write_u64(struct cgroup_subsys_state *css,
 				  struct cftype *cftype, u64 min_value)
 {
+	struct uclamp_se *uc_se;
 	struct task_group *tg;
 	int ret = -EINVAL;
 
@@ -7227,6 +7260,10 @@ static int cpu_util_min_write_u64(struct cgroup_subsys_state *css,
 	if (tg->uclamp[UCLAMP_MAX].value < min_value)
 		goto out;
 
+	/* Update TG's reference count */
+	uc_se = &tg->uclamp[UCLAMP_MIN];
+	ret = uclamp_group_get(NULL, UCLAMP_MIN, uc_se, min_value);
+
 out:
 	rcu_read_unlock();
 	mutex_unlock(&uclamp_mutex);
@@ -7237,6 +7274,7 @@ out:
 static int cpu_util_max_write_u64(struct cgroup_subsys_state *css,
 				  struct cftype *cftype, u64 max_value)
 {
+	struct uclamp_se *uc_se;
 	struct task_group *tg;
 	int ret = -EINVAL;
 
@@ -7253,6 +7291,10 @@ static int cpu_util_max_write_u64(struct cgroup_subsys_state *css,
 	}
 	if (tg->uclamp[UCLAMP_MIN].value > max_value)
 		goto out;
+
+	/* Update TG's reference count */
+	uc_se = &tg->uclamp[UCLAMP_MAX];
+	ret = uclamp_group_get(NULL, UCLAMP_MAX, uc_se, max_value);
 
 out:
 	rcu_read_unlock();
