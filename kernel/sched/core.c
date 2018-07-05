@@ -1271,9 +1271,9 @@ static void __init init_uclamp(void)
 		/* Init root TG's clamp group */
 		if (IS_ENABLED(CONFIG_UCLAMP_TASK_GROUP)) {
 			uc_se = &root_task_group.uclamp[clamp_id];
-			uc_se->value = uclamp_none(clamp_id);
-			uc_se->group_id = 0;
-			uc_se->effective.value = uclamp_none(clamp_id);
+			uclamp_group_inc(NULL, uc_se, clamp_id, uclamp_none(UCLAMP_MAX));
+			uc_se->effective.group_id = uc_se->group_id;
+			uc_se->effective.value = uc_se->value;
 		}
 	}
 }
@@ -6858,6 +6858,17 @@ void ia64_set_curr_task(int cpu, struct task_struct *p)
 /* task_group_lock serializes the addition/removal of task groups */
 static DEFINE_SPINLOCK(task_group_lock);
 
+static inline void free_uclamp_sched_group(struct task_group *tg)
+{
+	int clamp_id;
+
+	if (!IS_ENABLED(CONFIG_UCLAMP_TASK_GROUP))
+		return;
+
+	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id)
+		uclamp_group_dec(clamp_id, tg->uclamp[clamp_id].group_id);
+}
+
 static inline int alloc_uclamp_sched_group(struct task_group *tg,
 					   struct task_group *parent)
 {
@@ -6867,12 +6878,12 @@ static inline int alloc_uclamp_sched_group(struct task_group *tg,
 		return 1;
 
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
-		tg->uclamp[clamp_id].value =
-			parent->uclamp[clamp_id].value;
-		tg->uclamp[clamp_id].group_id =
-			parent->uclamp[clamp_id].group_id;
+		uclamp_group_inc(NULL, &tg->uclamp[clamp_id], clamp_id,
+				 parent->uclamp[clamp_id].value);
 		tg->uclamp[clamp_id].effective.value =
 			parent->uclamp[clamp_id].effective.value;
+		tg->uclamp[clamp_id].effective.group_id =
+			parent->uclamp[clamp_id].effective.group_id;
 	}
 
 	return 1;
@@ -6880,6 +6891,7 @@ static inline int alloc_uclamp_sched_group(struct task_group *tg,
 
 static void sched_free_group(struct task_group *tg)
 {
+	free_uclamp_sched_group(tg);
 	free_fair_sched_group(tg);
 	free_rt_sched_group(tg);
 	autogroup_free(tg);
@@ -7126,7 +7138,8 @@ static void cpu_cgroup_attach(struct cgroup_taskset *tset)
 
 #ifdef CONFIG_UCLAMP_TASK_GROUP
 static void cpu_util_update_hier(struct cgroup_subsys_state *css,
-				 int clamp_id, unsigned int value)
+				 unsigned int clamp_id, unsigned int group_id,
+				 unsigned int value)
 {
 	struct cgroup_subsys_state *top_css = css;
 	struct uclamp_se *uc_se, *uc_parent;
@@ -7138,8 +7151,10 @@ static void cpu_util_update_hier(struct cgroup_subsys_state *css,
 		 * groups we consider their current value.
 		 */
 		uc_se = &css_tg(css)->uclamp[clamp_id];
-		if (css != top_css)
+		if (css != top_css) {
 			value = uc_se->value;
+			group_id = uc_se->effective.group_id;
+		}
 
 		/*
 		 * Skip the whole subtrees if the current effective clamp is
@@ -7155,12 +7170,15 @@ static void cpu_util_update_hier(struct cgroup_subsys_state *css,
 		}
 
 		/* Propagate the most restrictive effective value */
-		if (uc_parent->effective.value < value)
+		if (uc_parent->effective.value < value) {
 			value = uc_parent->effective.value;
+			group_id = uc_parent->effective.group_id;
+		}
 		if (uc_se->effective.value == value)
 			continue;
 
 		uc_se->effective.value = value;
+		uc_se->effective.group_id = group_id;
 	}
 }
 
@@ -7173,6 +7191,7 @@ static int cpu_util_min_write_u64(struct cgroup_subsys_state *css,
 	if (min_value > SCHED_CAPACITY_SCALE)
 		return -ERANGE;
 
+	mutex_lock(&uclamp_mutex);
 	rcu_read_lock();
 
 	tg = css_tg(css);
@@ -7183,11 +7202,16 @@ static int cpu_util_min_write_u64(struct cgroup_subsys_state *css,
 		goto out;
 	}
 
+	/* Update TG's reference count */
+	uclamp_group_inc(NULL, &tg->uclamp[UCLAMP_MIN], UCLAMP_MIN, min_value);
+
 	/* Update effective clamps to track the most restrictive value */
-	cpu_util_update_hier(css, UCLAMP_MIN, min_value);
+	cpu_util_update_hier(css, UCLAMP_MIN, tg->uclamp[UCLAMP_MIN].group_id,
+			     min_value);
 
 out:
 	rcu_read_unlock();
+	mutex_unlock(&uclamp_mutex);
 
 	return ret;
 }
@@ -7201,6 +7225,7 @@ static int cpu_util_max_write_u64(struct cgroup_subsys_state *css,
 	if (max_value > SCHED_CAPACITY_SCALE)
 		return -ERANGE;
 
+	mutex_lock(&uclamp_mutex);
 	rcu_read_lock();
 
 	tg = css_tg(css);
@@ -7211,11 +7236,16 @@ static int cpu_util_max_write_u64(struct cgroup_subsys_state *css,
 		goto out;
 	}
 
+	/* Update TG's reference count */
+	uclamp_group_inc(NULL, &tg->uclamp[UCLAMP_MAX], UCLAMP_MAX, max_value);
+
 	/* Update effective clamps to track the most restrictive value */
-	cpu_util_update_hier(css, UCLAMP_MAX, max_value);
+	cpu_util_update_hier(css, UCLAMP_MAX, tg->uclamp[UCLAMP_MAX].group_id,
+			     max_value);
 
 out:
 	rcu_read_unlock();
+	mutex_unlock(&uclamp_mutex);
 
 	return ret;
 }

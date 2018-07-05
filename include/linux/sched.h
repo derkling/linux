@@ -612,13 +612,13 @@ struct sched_dl_entity {
  *
  * The mapped bit is set whenever a task has been mapped on a clamp group for
  * the first time. When this bit is set, any:
- *   uclamp_group_inc() - for a new clamp value
- * is matched by a:
- *   uclamp_group_dec() - for the old clamp value
+ *    uclamp_group_inc() - for a new clamp value
+ * will be matched by a:
+ *    uclamp_group_dec() - for the old clamp value
  *
  * The active bit is set whenever a task has got an effective clamp group
- * and value assigned, which can be different from the user requested ones.
- * This allows to know a task is actually refcounting a CPU's clamp group.
+ * and value assigned, and it allows to know a task is actually refcounting a
+ * CPU's clamp group.
  */
 struct uclamp_se {
 	unsigned int value		: bits_for(SCHED_CAPACITY_SCALE);
