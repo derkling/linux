@@ -938,6 +938,48 @@ static inline void uclamp_cpu_put(struct rq *rq, struct task_struct *p)
 }
 
 /**
+ * uclamp_task_update_active: update the clamp group of a RUNNABLE task
+ * @p: the task which clamp groups must be updated
+ * @clamp_id: the clamp index to consider
+ *
+ * Each time the clamp value of a task group is changed, the old and new clamp
+ * groups must be updated for each CPU containing a RUNNABLE task belonging to
+ * that task group. Sleeping tasks are not updated since they will be enqueued
+ * with the proper clamp group index at their next activation.
+ */
+static inline void
+uclamp_task_update_active(struct task_struct *p, unsigned int clamp_id)
+{
+	struct rq_flags rf;
+	struct rq *rq;
+
+	/*
+	 * Lock the task and the CPU where the task is (or was) queued.
+	 *
+	 * We might lock the (previous) rq of a !RUNNABLE task, but that's the
+	 * price to pay to safely serialize util_{min,max} updates with
+	 * enqueues, dequeues and migration operations.
+	 * This is the same locking schema used by __set_cpus_allowed_ptr().
+	 */
+	rq = task_rq_lock(p, &rf);
+
+	/*
+	 * The setting of the clamp group is serialized by task_rq_lock().
+	 * Thus, if the task is not yet RUNNABLE and its task_struct is not
+	 * affecting a valid clamp group, then the next time it's going to be
+	 * enqueued it will already see the updated clamp group value.
+	 */
+	if (!p->uclamp[clamp_id].active)
+		goto done;
+
+	uclamp_cpu_put_id(p, rq, clamp_id);
+	uclamp_cpu_get_id(p, rq, clamp_id);
+
+done:
+	task_rq_unlock(rq, p, &rf);
+}
+
+/**
  * uclamp_group_put: decrease the reference count for a clamp group
  * @clamp_id: the clamp index which was affected by a task group
  * @group_id: the clamp group to release
@@ -971,6 +1013,7 @@ retry:
 
 /**
  * uclamp_group_get: increase the reference count for a clamp group
+ * @p: the task which clamp value must be tracked
  * @uc_se: the utilization clamp data for the task
  * @clamp_id: the clamp index affected by the task
  * @clamp_value: the new clamp value for the task
@@ -981,8 +1024,8 @@ retry:
  * reference count the corresponding clamp value while the task is enqueued on
  * a CPU.
  */
-static void uclamp_group_get(struct uclamp_se *uc_se, unsigned int clamp_id,
-			     unsigned int clamp_value)
+static void uclamp_group_get(struct task_struct *p, struct uclamp_se *uc_se,
+			     unsigned int clamp_id, unsigned int clamp_value)
 {
 	union uclamp_map *uc_maps = &uclamp_maps[clamp_id][0];
 	unsigned int prev_group_id = uc_se->group_id;
@@ -1047,6 +1090,10 @@ done:
 	uc_se->value = clamp_value;
 	uc_se->group_id = group_id;
 
+	/* Update CPU's clamp group refcounts of RUNNABLE task */
+	if (p)
+		uclamp_task_update_active(p, clamp_id);
+
 	/* Release the previous clamp group */
 	if (uc_se->mapped)
 		uclamp_group_put(clamp_id, prev_group_id);
@@ -1074,11 +1121,11 @@ static int __setscheduler_uclamp(struct task_struct *p,
 
 	/* Update each required clamp group */
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN) {
-		uclamp_group_get(&p->uclamp[UCLAMP_MIN],
+		uclamp_group_get(p, &p->uclamp[UCLAMP_MIN],
 				 UCLAMP_MIN, lower_bound);
 	}
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX) {
-		uclamp_group_get(&p->uclamp[UCLAMP_MAX],
+		uclamp_group_get(p, &p->uclamp[UCLAMP_MAX],
 				 UCLAMP_MAX, upper_bound);
 	}
 
@@ -1126,7 +1173,8 @@ static void uclamp_fork(struct task_struct *p, bool reset)
 
 		p->uclamp[clamp_id].mapped = false;
 		p->uclamp[clamp_id].active = false;
-		uclamp_group_get(&p->uclamp[clamp_id], clamp_id, clamp_value);
+		uclamp_group_get(NULL, &p->uclamp[clamp_id],
+				 clamp_id, clamp_value);
 	}
 }
 
@@ -1147,7 +1195,7 @@ static void __init init_uclamp(void)
 	memset(uclamp_maps, 0, sizeof(uclamp_maps));
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
 		uc_se = &init_task.uclamp[clamp_id];
-		uclamp_group_get(uc_se, clamp_id, uclamp_none(clamp_id));
+		uclamp_group_get(NULL, uc_se, clamp_id, uclamp_none(clamp_id));
 	}
 }
 
