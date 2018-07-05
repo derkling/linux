@@ -1024,6 +1024,46 @@ static inline void uclamp_rq_dec(struct rq *rq, struct task_struct *p)
 		uclamp_rq_dec_id(p, rq, clamp_id);
 }
 
+static inline void
+uclamp_update_active_tasks(struct cgroup_subsys_state *css,
+			   int clamp_id, unsigned int bucket_id)
+{
+	struct css_task_iter it;
+	struct task_struct *p;
+	struct rq_flags rf;
+	struct rq *rq;
+
+	/*
+	 * Lock the task and the rq where the task is (or was) queued.
+	 *
+	 * We might lock the (previous) rq of a !RUNNABLE task, but that's the
+	 * price to pay to safely serialize util_{min,max} updates with
+	 * enqueues, dequeues and migration operations.
+	 * This is the same locking schema used by __set_cpus_allowed_ptr().
+	 */
+	rq = task_rq_lock(p, &rf);
+
+	/* Update clamp buckets for RUNNABLE tasks in this TG */
+	css_task_iter_start(css, 0, &it);
+	while ((p = css_task_iter_next(&it))) {
+		/*
+		 * Setting the clamp bucket is serialized by task_rq_lock().
+		 * If the task is not yet RUNNABLE and its task_struct is not
+		 * affecting a valid clamp bucket, the next time it's enqueued,
+		 * it will already see the updated clamp bucket value.
+		 */
+		if (!p->uclamp[clamp_id].active)
+			continue;
+
+		uclamp_rq_dec_id(p, rq, clamp_id);
+		uclamp_rq_inc_id(p, rq, clamp_id);
+
+	}
+	css_task_iter_end(&it);
+
+	task_rq_unlock(rq, p, &rf);
+}
+
 int sysctl_sched_uclamp_handler(struct ctl_table *table, int write,
 				void __user *buffer, size_t *lenp,
 				loff_t *ppos)
@@ -7096,6 +7136,11 @@ static void cpu_util_update_hier(struct cgroup_subsys_state *css,
 
 		uc_se->effective.value = value;
 		uc_se->effective.bucket_id = bucket_id;
+
+		/* Immediately updated descendants RUNNABLE tasks */
+		if (css == top_css)
+			continue;
+		uclamp_update_active_tasks(css, clamp_id, bucket_id);
 	}
 }
 
