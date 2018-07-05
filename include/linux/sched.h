@@ -602,9 +602,10 @@ struct sched_dl_entity {
  *   clamp group index (group_id), i.e.
  *   index of the per-cpu RUNNABLE tasks refcounting array
  *
- * The mapped bit is set whenever a task has been mapped on a clamp group for
- * the first time. When this bit is set, any clamp group get (for a new clamp
- * value) will be matches by a clamp group put (for the old clamp value).
+ * The mapped bit is set whenever a scheduling entity has been mapped on a
+ * clamp group for the first time. When this bit is set, any clamp group get
+ * (for a new clamp value) will be matches by a clamp group put (for the old
+ * clamp value).
  *
  * The active bit is set whenever a task has got an effective clamp group
  * and value assigned, which can be different from the user requested ones.
