@@ -595,6 +595,10 @@ struct sched_dl_entity {
  *
  * A utilization clamp group maps a "clamp value" (value), i.e.
  * util_{min,max}, to a "clamp group index" (group_id).
+ *
+ * Scheduling entity's specific clamp group index can be different
+ * from the effective clamp group index used at enqueue time since
+ * task groups's clamps can be restricted by their parent task group.
  */
 struct uclamp_se {
 	unsigned int value		: SCHED_CAPACITY_SHIFT + 1;

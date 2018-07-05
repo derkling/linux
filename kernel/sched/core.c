@@ -1397,9 +1397,10 @@ static void __init init_uclamp(void)
 #ifdef CONFIG_UCLAMP_TASK_GROUP
 		/* Init root TG's clamp group */
 		uc_se = &root_task_group.uclamp[clamp_id];
-		uc_se->value = uclamp_none(clamp_id);
-		uc_se->group_id = 0;
-		uc_se->effective.value = uclamp_none(clamp_id);
+		uclamp_group_get(NULL, clamp_id, uc_se,
+				 uclamp_none(UCLAMP_MAX));
+		uc_se->effective.group_id = uc_se->group_id;
+		uc_se->effective.value = uc_se->value;
 #endif
 	}
 }
@@ -6972,6 +6973,22 @@ void ia64_set_curr_task(int cpu, struct task_struct *p)
 static DEFINE_SPINLOCK(task_group_lock);
 
 #ifdef CONFIG_UCLAMP_TASK_GROUP
+/*
+ * free_uclamp_sched_group: release utilization clamp references of a TG
+ * @tg: the task group being removed
+ *
+ * An empty task group can be removed only when it has no more tasks or child
+ * groups. This means that we can also safely release all the reference
+ * counting to clamp groups.
+ */
+static inline void free_uclamp_sched_group(struct task_group *tg)
+{
+	int clamp_id = 0;
+
+	for ( ; clamp_id < UCLAMP_CNT; ++clamp_id)
+		uclamp_group_put(clamp_id, tg->uclamp[clamp_id].group_id);
+}
+
 /**
  * alloc_uclamp_sched_group: initialize a new TG's for utilization clamping
  * @tg: the newly created task group
@@ -6990,17 +7007,18 @@ static inline int alloc_uclamp_sched_group(struct task_group *tg,
 	int clamp_id = 0;
 
 	for ( ; clamp_id < UCLAMP_CNT; ++clamp_id) {
-		tg->uclamp[clamp_id].value =
-			parent->uclamp[clamp_id].value;
-		tg->uclamp[clamp_id].group_id =
-			parent->uclamp[clamp_id].group_id;
+		uclamp_group_get(NULL, NULL, clamp_id, &tg->uclamp[clamp_id],
+				 parent->uclamp[clamp_id].value);
 		tg->uclamp[clamp_id].effective.value =
 			parent->uclamp[clamp_id].effective.value;
+		tg->uclamp[clamp_id].effective.group_id =
+			parent->uclamp[clamp_id].effective.group_id;
 	}
 
 	return 1;
 }
 #else
+static inline void free_uclamp_sched_group(struct task_group *tg) { }
 static inline int alloc_uclamp_sched_group(struct task_group *tg,
 					   struct task_group *parent)
 {
@@ -7010,6 +7028,7 @@ static inline int alloc_uclamp_sched_group(struct task_group *tg,
 
 static void sched_free_group(struct task_group *tg)
 {
+	free_uclamp_sched_group(tg);
 	free_fair_sched_group(tg);
 	free_rt_sched_group(tg);
 	autogroup_free(tg);
@@ -7260,6 +7279,7 @@ static void cpu_cgroup_attach(struct cgroup_taskset *tset)
  * @css: the task group to update
  * @clamp_id: the clamp index to update
  * @value: the new task group clamp value
+ * @group_id: the group index mapping the new task clamp value
  *
  * The effective clamp for a TG is expected to track the most restrictive
  * value between the TG's clamp value and it's parent effective clamp value.
@@ -7278,9 +7298,12 @@ static void cpu_cgroup_attach(struct cgroup_taskset *tset)
  * be propagated down to all the descendants. When a subgroup is found which
  * has already its effective clamp value matching its clamp value, then we can
  * safely skip all its descendants which are granted to be already in sync.
+ *
+ * The TG's group_id is also updated to ensure it tracks the effective clamp
+ * value.
  */
 static void cpu_util_update_hier(struct cgroup_subsys_state *css,
-				 int clamp_id, int value)
+				 int clamp_id, int value, int group_id)
 {
 	struct cgroup_subsys_state *top_css = css;
 	struct uclamp_se *uc_se, *uc_parent;
@@ -7311,12 +7334,15 @@ static void cpu_util_update_hier(struct cgroup_subsys_state *css,
 		}
 
 		/* Propagate the most restrictive effective value */
-		if (uc_parent->effective.value < value)
+		if (uc_parent->effective.value < value) {
 			value = uc_parent->effective.value;
+			group_id = uc_parent->effective.group_id;
+		}
 		if (uc_se->effective.value == value)
 			continue;
 
 		uc_se->effective.value = value;
+		uc_se->effective.group_id = group_id;
 	}
 }
 
@@ -7329,6 +7355,7 @@ static int cpu_util_min_write_u64(struct cgroup_subsys_state *css,
 	if (min_value > SCHED_CAPACITY_SCALE)
 		return -ERANGE;
 
+	mutex_lock(&uclamp_mutex);
 	rcu_read_lock();
 
 	tg = css_tg(css);
@@ -7339,11 +7366,16 @@ static int cpu_util_min_write_u64(struct cgroup_subsys_state *css,
 		goto out;
 	}
 
+	/* Update TG's reference count */
+	uclamp_group_get(NULL, UCLAMP_MIN, &tg->uclamp[UCLAMP_MIN], min_value);
+
 	/* Update effective clamps to track the most restrictive value */
-	cpu_util_update_hier(css, UCLAMP_MIN, min_value);
+	cpu_util_update_hier(css, UCLAMP_MIN, min_value,
+			     tg->uclamp[UCLAMP_MIN].group_id);
 
 out:
 	rcu_read_unlock();
+	mutex_unlock(&uclamp_mutex);
 
 	return ret;
 }
@@ -7357,6 +7389,7 @@ static int cpu_util_max_write_u64(struct cgroup_subsys_state *css,
 	if (max_value > SCHED_CAPACITY_SCALE)
 		return -ERANGE;
 
+	mutex_lock(&uclamp_mutex);
 	rcu_read_lock();
 
 	tg = css_tg(css);
@@ -7367,11 +7400,16 @@ static int cpu_util_max_write_u64(struct cgroup_subsys_state *css,
 		goto out;
 	}
 
+	/* Update TG's reference count */
+	uclamp_group_get(NULL, UCLAMP_MAX, &tg->uclamp[UCLAMP_MAX], max_value);
+
 	/* Update effective clamps to track the most restrictive value */
-	cpu_util_update_hier(css, UCLAMP_MAX, max_value);
+	cpu_util_update_hier(css, UCLAMP_MAX, max_value,
+			     tg->uclamp[UCLAMP_MAX].group_id);
 
 out:
 	rcu_read_unlock();
+	mutex_unlock(&uclamp_mutex);
 
 	return ret;
 }
