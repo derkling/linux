@@ -617,8 +617,8 @@ struct sched_dl_entity {
  *   uclamp_bucket_dec() - for the old clamp value
  *
  * The active bit is set whenever a task has got an effective clamp bucket
- * and value assigned, which can be different from the user requested ones.
- * This allows to know a task is actually refcounting a CPU's clamp bucket.
+ * and value assigned, and it allows to know a task is actually refcounting a
+ * CPU's clamp bucket.
  */
 struct uclamp_se {
 	unsigned int value		: bits_per(SCHED_CAPACITY_SCALE);
