@@ -766,9 +766,45 @@ static inline unsigned int uclamp_bucket_value(unsigned int clamp_value)
 	return UCLAMP_BUCKET_DELTA * (clamp_value / UCLAMP_BUCKET_DELTA);
 }
 
-static inline void uclamp_cpu_update(struct rq *rq, unsigned int clamp_id)
+static inline unsigned int
+uclamp_idle_value(struct rq *rq, unsigned int clamp_id, unsigned int clamp_value)
+{
+	/*
+	 * Avoid blocked utilization pushing up the frequency when we go
+	 * idle (which drops the max-clamp) by retaining the last known
+	 * max-clamp.
+	 */
+	if (clamp_id == UCLAMP_MAX) {
+		rq->uclamp_flags |= UCLAMP_FLAG_IDLE;
+		return clamp_value;
+	}
+
+	return uclamp_none(UCLAMP_MIN);
+}
+
+static inline void uclamp_idle_reset(struct rq *rq, unsigned int clamp_id,
+				     unsigned int clamp_value)
+{
+	/* Reset max-clamp retention only on idle exit */
+	if (!(rq->uclamp_flags & UCLAMP_FLAG_IDLE))
+		return;
+
+	WRITE_ONCE(rq->uclamp[clamp_id].value, clamp_value);
+
+	/*
+	 * This function is called for both UCLAMP_MIN (before) and UCLAMP_MAX
+	 * (after). The idle flag is reset only the second time, when we know
+	 * that UCLAMP_MIN has been already updated.
+	 */
+	if (clamp_id == UCLAMP_MAX)
+		rq->uclamp_flags &= ~UCLAMP_FLAG_IDLE;
+}
+
+static inline void uclamp_cpu_update(struct rq *rq, unsigned int clamp_id,
+				     unsigned int clamp_value)
 {
 	unsigned int max_value = 0;
+	bool buckets_active = false;
 	unsigned int bucket_id;
 
 	for (bucket_id = 0; bucket_id < UCLAMP_BUCKETS; ++bucket_id) {
@@ -776,6 +812,7 @@ static inline void uclamp_cpu_update(struct rq *rq, unsigned int clamp_id)
 
 		if (!rq->uclamp[clamp_id].bucket[bucket_id].tasks)
 			continue;
+		buckets_active = true;
 
 		/* Both min and max clamps are MAX aggregated */
 		bucket_value = rq->uclamp[clamp_id].bucket[bucket_id].value;
@@ -783,6 +820,10 @@ static inline void uclamp_cpu_update(struct rq *rq, unsigned int clamp_id)
 		if (max_value >= SCHED_CAPACITY_SCALE)
 			break;
 	}
+
+	if (unlikely(!buckets_active))
+		max_value = uclamp_idle_value(rq, clamp_id, clamp_value);
+
 	WRITE_ONCE(rq->uclamp[clamp_id].value, max_value);
 }
 
@@ -808,8 +849,11 @@ static inline void uclamp_cpu_inc_id(struct task_struct *p, struct rq *rq,
 
 	rq->uclamp[clamp_id].bucket[bucket_id].tasks++;
 
-	/* CPU's clamp buckets track the max effective clamp value */
+	/* Reset clamp holds on idle exit */
 	tsk_clamp = p->uclamp[clamp_id].value;
+	uclamp_idle_reset(rq, clamp_id, tsk_clamp);
+
+	/* CPU's clamp buckets track the max effective clamp value */
 	grp_clamp = rq->uclamp[clamp_id].bucket[bucket_id].value;
 	rq->uclamp[clamp_id].bucket[bucket_id].value = max(grp_clamp, tsk_clamp);
 
@@ -858,7 +902,7 @@ static inline void uclamp_cpu_dec_id(struct task_struct *p, struct rq *rq,
 		 */
 		rq->uclamp[clamp_id].bucket[bucket_id].value =
 			uclamp_maps[clamp_id][bucket_id].value;
-		uclamp_cpu_update(rq, clamp_id);
+		uclamp_cpu_update(rq, clamp_id, clamp_value);
 	}
 }
 
@@ -1100,6 +1144,7 @@ static void __init init_uclamp(void)
 	for_each_possible_cpu(cpu) {
 		memset(&cpu_rq(cpu)->uclamp, 0, sizeof(struct uclamp_cpu));
 		cpu_rq(cpu)->uclamp[UCLAMP_MAX].value = uclamp_none(UCLAMP_MAX);
+		cpu_rq(cpu)->uclamp_flags = 0;
 	}
 
 	memset(uclamp_maps, 0, sizeof(uclamp_maps));
