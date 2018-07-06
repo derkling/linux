@@ -3355,6 +3355,17 @@ __update_load_avg_se(u64 now, int cpu, struct cfs_rq *cfs_rq, struct sched_entit
 
 		trace_sched_load_se(se);
 
+		if (entity_is_task(se)) {
+			trace_printk("update_util_se: pid=%d comm=%s cpu=%d "
+					"util_avg=%lu clamp_util_avg=%d "
+					"uclamp_min=%d uclamp_max=%d",
+					task_of(se)->pid, task_of(se)->comm, cpu,
+					se->avg.util_avg,
+					uclamp_util(cpu, se->avg.util_avg),
+					uclamp_value(cpu, UCLAMP_MIN),
+					uclamp_value(cpu, UCLAMP_MAX));
+		}
+
 		return 1;
 	}
 
@@ -3372,6 +3383,16 @@ __update_load_avg_cfs_rq(u64 now, int cpu, struct cfs_rq *cfs_rq)
 		___update_load_avg(&cfs_rq->avg, 1, 1);
 
 		trace_sched_load_cfs_rq(cfs_rq);
+
+		if (&cpu_rq(cpu)->cfs == cfs_rq) {
+			trace_printk("update_util_rq: cpu=%d "
+					"util_avg=%lu clamp_util_avg=%d "
+					"uclamp_min=%d uclamp_max=%d",
+					cpu, cfs_rq->avg.util_avg,
+					uclamp_util(cpu, cfs_rq->avg.util_avg),
+					uclamp_value(cpu, UCLAMP_MIN),
+					uclamp_value(cpu, UCLAMP_MAX));
+		}
 
 		return 1;
 	}
