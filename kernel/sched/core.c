@@ -946,6 +946,22 @@ static inline void uclamp_cpu_update(struct rq *rq, int clamp_id)
 		if (max_value >= SCHED_CAPACITY_SCALE)
 			break;
 	}
+
+	/*
+	 * Just for the UCLAMP_MAX value, in case there are not RUNNABLE
+	 * task, we keep the CPU clamped to the value of the last task
+	 * executed.
+	 * This is to avoid frequency spikes to MAX once a CPU with an high
+	 * blocked utilization sleeps and another CPU in the same frequency
+	 * domain will not see the clamp anymore on that CPU.
+	 */
+	if (clamp_id == UCLAMP_MAX && max_value == UCLAMP_NONE) {
+		struct task_struct *idle;
+
+		if ((idle = idle_task(cpu_of(rq))))
+			max_value = idle->uclamp[clamp_id].value;
+	}
+
 	rq->uclamp.value[clamp_id] = max_value;
 }
 
@@ -1006,6 +1022,7 @@ static inline void uclamp_cpu_put_id(struct task_struct *p, struct rq *rq, int c
 	struct uclamp_group *uc_grp;
 	struct uclamp_cpu *uc_cpu;
 	unsigned int clamp_value;
+	struct task_struct *idle;
 	int group_id;
 
 	/* No task specific clamp values: nothing to do */
@@ -1021,12 +1038,16 @@ static inline void uclamp_cpu_put_id(struct task_struct *p, struct rq *rq, int c
 	if (uc_grp[group_id].tasks > 0)
 		return;
 
+	/* Update the idle task clamp group */
+	clamp_value = uc_grp[group_id].value;
+	if (likely(idle = idle_task(cpu_of(rq))))
+		idle->uclamp[clamp_id].value = clamp_value;
+
 	/*
 	 * Update the CPU only if this was the last task of the group
 	 * defining the current clamp value.
 	 */
 	uc_cpu = &rq->uclamp;
-	clamp_value = uc_grp[group_id].value;
 	if (clamp_value >= uc_cpu->value[clamp_id])
 		uclamp_cpu_update(rq, clamp_id);
 }
