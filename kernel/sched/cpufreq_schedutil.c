@@ -493,6 +493,7 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 	struct sugov_policy *sg_policy = sg_cpu->sg_policy;
 	struct cpufreq_policy *policy = sg_policy->policy;
 	unsigned long util = 0, max = 1;
+	unsigned int next_f;
 	unsigned int j;
 
 	for_each_cpu(j, policy->cpus) {
@@ -509,7 +510,13 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 		}
 	}
 
-	return get_next_freq(sg_policy, util, max);
+	next_f =  get_next_freq(sg_policy, util, max);
+
+	trace_printk("sugov_next_freq_shared: cpu=%d util=%lu "
+			"curr_freq=%d next_freq=%d",
+			sg_cpu->cpu, util, policy->cur, next_f);
+
+	return next_f;
 }
 
 static void
