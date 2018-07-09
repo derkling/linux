@@ -7193,12 +7193,11 @@ static void cpu_cgroup_attach(struct cgroup_taskset *tset)
 static int cpu_util_min_write_u64(struct cgroup_subsys_state *css,
 				  struct cftype *cftype, u64 min_value)
 {
-	struct cgroup_subsys_state *pos;
 	struct task_group *tg;
 	int ret = -EINVAL;
 
 	if (min_value > SCHED_CAPACITY_SCALE)
-		return ret;
+		return -ERANGE;
 
 	mutex_lock(&uclamp_mutex);
 	rcu_read_lock();
@@ -7215,17 +7214,6 @@ static int cpu_util_min_write_u64(struct cgroup_subsys_state *css,
 	if (tg->uclamp[UCLAMP_MAX].value < min_value)
 		goto out;
 
-	/* Ensure min clamp fits within parent's clamp value */
-	if (tg->parent &&
-	    tg->parent->uclamp[UCLAMP_MIN].value < min_value)
-		goto out;
-
-	/* Ensure each child is still less min clamped */
-	css_for_each_child(pos, css) {
-		if (css_tg(pos)->uclamp[UCLAMP_MIN].value > min_value)
-			goto out;
-	}
-
 out:
 	rcu_read_unlock();
 	mutex_unlock(&uclamp_mutex);
@@ -7236,12 +7224,11 @@ out:
 static int cpu_util_max_write_u64(struct cgroup_subsys_state *css,
 				  struct cftype *cftype, u64 max_value)
 {
-	struct cgroup_subsys_state *pos;
 	struct task_group *tg;
 	int ret = -EINVAL;
 
 	if (max_value > SCHED_CAPACITY_SCALE)
-		return ret;
+		return -ERANGE;
 
 	mutex_lock(&uclamp_mutex);
 	rcu_read_lock();
@@ -7257,17 +7244,6 @@ static int cpu_util_max_write_u64(struct cgroup_subsys_state *css,
 	/* Ensure to not go below the minimum clamp value */
 	if (tg->uclamp[UCLAMP_MIN].value > max_value)
 		goto out;
-
-	/* Ensure max clamp fits within parent's clamp value */
-	if (tg->parent &&
-	    tg->parent->uclamp[UCLAMP_MAX].value < max_value)
-		goto out;
-
-	/* Ensure each child is still more max clamped */
-	css_for_each_child(pos, css) {
-		if (css_tg(pos)->uclamp[UCLAMP_MAX].value > max_value)
-			goto out;
-	}
 
 out:
 	rcu_read_unlock();
@@ -7808,6 +7784,20 @@ static struct cftype cpu_files[] = {
 		.flags = CFTYPE_NOT_ON_ROOT,
 		.seq_show = cpu_max_show,
 		.write = cpu_max_write,
+	},
+#endif
+#ifdef CONFIG_UCLAMP_TASK_GROUP
+	{
+		.name = "util_min",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.read_u64 = cpu_util_min_read_u64,
+		.write_u64 = cpu_util_min_write_u64,
+	},
+	{
+		.name = "util_max",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.read_u64 = cpu_util_max_read_u64,
+		.write_u64 = cpu_util_max_write_u64,
 	},
 #endif
 	{ }	/* terminate */
