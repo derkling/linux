@@ -67,6 +67,19 @@ __read_mostly int scheduler_running;
  */
 int sysctl_sched_rt_runtime = 950000;
 
+#ifdef CONFIG_UCLAMP_TASK
+/*
+ * Minimum utilization clamp for root TG's tasks.
+ * default: 0
+ */
+unsigned int sysctl_sched_uclamp_util_min = 0;
+/*
+ * Maximum utilization clamp for root TG's tasks.
+ * default: SCHED_CAPACITY_SCALE
+ */
+unsigned int sysctl_sched_uclamp_util_max = SCHED_CAPACITY_SCALE;
+#endif /* CONFIG_UCLAMP_TASK_GROUP */
+
 /*
  * __task_rq_lock - lock the rq @p resides on.
  */
@@ -7911,6 +7924,48 @@ struct cgroup_subsys cpu_cgrp_subsys = {
 };
 
 #endif	/* CONFIG_CGROUP_SCHED */
+
+#ifdef CONFIG_UCLAMP_TASK
+static int sched_uclamp_global_validate(void)
+{
+	if (sysctl_sched_uclamp_util_max > SCHED_CAPACITY_SCALE)
+		return -EINVAL;
+	if (sysctl_sched_uclamp_util_min > sysctl_sched_uclamp_util_max)
+		return -EINVAL;
+	return 0;
+}
+
+int sched_uclamp_handler(struct ctl_table *table, int write,
+			 void __user *buffer, size_t *lenp,
+			 loff_t *ppos)
+{
+	static DEFINE_MUTEX(mutex);
+	int old_min, old_max;
+	int ret;
+
+	mutex_lock(&mutex);
+
+	old_min = sysctl_sched_uclamp_util_min;
+	old_max = sysctl_sched_uclamp_util_max;
+
+	ret = proc_dointvec(table, write, buffer, lenp, ppos);
+	if (!write || ret)
+		goto done;
+
+	ret = sched_uclamp_global_validate();
+	if (ret) {
+		sysctl_sched_uclamp_util_min = old_min;
+		sysctl_sched_uclamp_util_max = old_max;
+	}
+
+done:
+	mutex_unlock(&mutex);
+
+	return ret;
+}
+#endif /* CONFIG_UCLAMP_TASK */
+
+
 
 void dump_cpu_task(int cpu)
 {
