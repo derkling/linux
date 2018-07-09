@@ -39,18 +39,14 @@ static ssize_t show_##_attr(struct em_freq_domain *fd, char *buf) \
 { \
 	ssize_t cnt = 0; \
 	int i; \
-	struct em_cs_table *table; \
-	rcu_read_lock(); \
-	table = rcu_dereference(fd->cs_table);\
-	for (i = 0; i < table->nr_cap_states; i++) { \
+	for (i = 0; i < fd->nr_cap_states; i++) { \
 		if (cnt >= (ssize_t) (PAGE_SIZE / sizeof(char) \
 				      - (EM_ATTR_LEN + 2))) \
 			goto out; \
 		cnt += scnprintf(&buf[cnt], EM_ATTR_LEN + 1, "%lu ", \
-				 table->state[i]._attr); \
+				 fd->table[i]._attr); \
 	} \
 out: \
-	rcu_read_unlock(); \
 	cnt += sprintf(&buf[cnt], "\n"); \
 	return cnt; \
 }
@@ -104,61 +100,15 @@ static struct kobj_type ktype_em_fd = {
 	.default_attrs	= em_fd_default_attrs,
 };
 
-static struct em_cs_table *alloc_cs_table(int nr_cs)
-{
-	struct em_cs_table *cs_table;
-
-	cs_table = kzalloc(sizeof(*cs_table), GFP_KERNEL);
-	if (!cs_table)
-		return NULL;
-
-	cs_table->state = kcalloc(nr_cs, sizeof(*cs_table->state), GFP_KERNEL);
-	if (!cs_table->state) {
-		kfree(cs_table);
-		return NULL;
-	}
-
-	cs_table->nr_cap_states = nr_cs;
-
-	return cs_table;
-}
-
-static void free_cs_table(struct em_cs_table *table)
-{
-	if (table) {
-		kfree(table->state);
-		kfree(table);
-	}
-}
-
-/* fd_update_cs_table() - Computes the power costs of a cs_table
- *
- * The power 'cost' at a specific capacity state is defined as:
- *		cost = power * freq_max * freq
- *
- * See em_energy_fd() to understand how it is used.
- */
-static void fd_update_cs_table(struct em_cs_table *cs_table, int cpu)
-{
-	int max_cap_state = cs_table->nr_cap_states - 1;
-	unsigned long fmax = cs_table->state[max_cap_state].frequency;
-	int i;
-
-	for (i = 0; i < cs_table->nr_cap_states; i++) {
-		u64 cost = (u64)cs_table->state[i].power * fmax;
-		do_div(cost, cs_table->state[i].frequency);
-		cs_table->state[i].cost = (unsigned long)cost;
-	}
-}
-
 static struct em_freq_domain *em_create_fd(cpumask_t *span, int nr_states,
 						struct em_data_callback *cb)
 {
 	unsigned long opp_eff, prev_opp_eff = ULONG_MAX;
 	unsigned long power, freq, prev_freq = 0;
 	int i, ret, cpu = cpumask_first(span);
-	struct em_cs_table *cs_table;
+	struct em_cap_state *table;
 	struct em_freq_domain *fd;
+	u64 fmax;
 
 	if (!cb->active_power)
 		return NULL;
@@ -167,8 +117,8 @@ static struct em_freq_domain *em_create_fd(cpumask_t *span, int nr_states,
 	if (!fd)
 		return NULL;
 
-	cs_table = alloc_cs_table(nr_states);
-	if (!cs_table)
+	table = kcalloc(nr_states, sizeof(*table), GFP_KERNEL);
+	if (!table)
 		goto free_fd;
 
 	/* Build the list of capacity states for this freq domain */
@@ -202,8 +152,8 @@ static struct em_freq_domain *em_create_fd(cpumask_t *span, int nr_states,
 			goto free_cs_table;
 		}
 
-		cs_table->state[i].power = power;
-		cs_table->state[i].frequency = prev_freq = freq;
+		table[i].power = power;
+		table[i].frequency = prev_freq = freq;
 
 		/*
 		 * The hertz/watts efficiency ratio should decrease as the
@@ -217,10 +167,15 @@ static struct em_freq_domain *em_create_fd(cpumask_t *span, int nr_states,
 				"decreasing: OPP%d >= OPP%d\n", cpu, i, i - 1);
 		prev_opp_eff = opp_eff;
 	}
-	fd_update_cs_table(cs_table, cpu);
-	rcu_assign_pointer(fd->cs_table, cs_table);
 
-	/* Copy the span of the frequency domain */
+	/* Compute the cost of each capacity_state. */
+	fmax = (u64) table[nr_states - 1].frequency;
+	for (i = 0; i < nr_states; i++)
+		table[i].cost = div64_u64(fmax * table[i].power,
+					  table[i].frequency);
+
+	fd->table = table;
+	fd->nr_cap_states = nr_states;
 	cpumask_copy(to_cpumask(fd->cpus), span);
 
 	ret = kobject_init_and_add(&fd->kobj, &ktype_em_fd, em_kobject,
@@ -231,19 +186,11 @@ static struct em_freq_domain *em_create_fd(cpumask_t *span, int nr_states,
 	return fd;
 
 free_cs_table:
-	free_cs_table(cs_table);
+	kfree(table);
 free_fd:
 	kfree(fd);
 
 	return NULL;
-}
-
-static void rcu_free_cs_table(struct rcu_head *rp)
-{
-	struct em_cs_table *table;
-
-	table = container_of(rp, struct em_cs_table, rcu);
-	free_cs_table(table);
 }
 
 /**

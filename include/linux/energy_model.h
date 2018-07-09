@@ -15,14 +15,9 @@ struct em_cap_state {
 	unsigned long cost; /* power * max_frequency / frequency */
 };
 
-struct em_cs_table {
-	struct em_cap_state *state; /* Capacity states, in ascending order. */
-	int nr_cap_states;
-	struct rcu_head rcu;
-};
-
 struct em_freq_domain {
-	struct em_cs_table *cs_table; /* Capacity state table, RCU-protected */
+	struct em_cap_state *table; /* Capacity states, in ascending order. */
+	int nr_cap_states;
 	struct kobject kobj;
 	unsigned long cpus[0]; /* CPUs of the frequency domain. */
 };
@@ -70,23 +65,18 @@ static inline unsigned long em_fd_energy(struct em_freq_domain *fd,
 				unsigned long max_util, unsigned long sum_util)
 {
 	unsigned long freq, scale_cpu;
-	struct em_cs_table *cs_table;
 	struct em_cap_state *cs;
 	int i, cpu;
-
-	cs_table = rcu_dereference(fd->cs_table);
-	if (!cs_table)
-		return 0;
 
 	/* Map the utilization value to a frequency */
 	cpu = cpumask_first(to_cpumask(fd->cpus));
 	scale_cpu = arch_scale_cpu_capacity(NULL, cpu);
-	cs = &cs_table->state[cs_table->nr_cap_states - 1];
+	cs = &fd->table[fd->nr_cap_states - 1];
 	freq = map_util_freq(max_util, cs->frequency, scale_cpu);
 
 	/* Find the lowest capacity state above this frequency */
-	for (i = 0; i < cs_table->nr_cap_states; i++) {
-		cs = &cs_table->state[i];
+	for (i = 0; i < fd->nr_cap_states; i++) {
+		cs = &fd->table[i];
 		if (cs->frequency >= freq)
 			break;
 	}
@@ -123,15 +113,7 @@ static inline unsigned long em_fd_energy(struct em_freq_domain *fd,
  */
 static inline int em_fd_nr_cap_states(struct em_freq_domain *fd)
 {
-	struct em_cs_table *table;
-	int nr_states;
-
-	rcu_read_lock();
-	table = rcu_dereference(fd->cs_table);
-	nr_states = table->nr_cap_states;
-	rcu_read_unlock();
-
-	return nr_states;
+	return fd->nr_cap_states;
 }
 
 #else
