@@ -6740,6 +6740,7 @@ static unsigned long cpu_util_next(int cpu, struct task_struct *p, int dst_cpu)
 {
 	struct cfs_rq *cfs_rq = &cpu_rq(cpu)->cfs;
 	unsigned long util_est, util = READ_ONCE(cfs_rq->avg.util_avg);
+	unsigned long util_rt = cpu_util_rt(cpu_rq(cpu));
 
 	/*
 	 * If @p migrates from @cpu to another, remove its contribution. Or,
@@ -6769,7 +6770,7 @@ static unsigned long cpu_util_next(int cpu, struct task_struct *p, int dst_cpu)
 
 	util = min_t(unsigned long, util, capacity_orig_of(cpu));
 
-	return __cpu_util(cpu, util, 0, 0, 0);
+	return __cpu_util(cpu, util, util_rt, 0, 0);
 }
 
 /*
