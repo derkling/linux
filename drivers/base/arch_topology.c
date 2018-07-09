@@ -257,9 +257,6 @@ static void parsing_done_workfn(struct work_struct *work)
 
 static void start_eas_workfn(struct work_struct *work)
 {
-	/* Make sure the EM knows about the updated CPU capacities. */
-	em_rescale_cpu_capacity();
-
 	/* Inform the scheduler about the EM availability. */
 	rebuild_sched_domains();
 }
