@@ -57,7 +57,7 @@ out: \
 
 show_table_attr(power);
 show_table_attr(frequency);
-show_table_attr(capacity);
+show_table_attr(cost);
 
 static ssize_t show_cpus(struct em_freq_domain *fd, char *buf)
 {
@@ -70,13 +70,13 @@ static ssize_t show_cpus(struct em_freq_domain *fd, char *buf)
 
 define_fd_attr(power);
 define_fd_attr(frequency);
-define_fd_attr(capacity);
+define_fd_attr(cost);
 define_fd_attr(cpus);
 
 static struct attribute *em_fd_default_attrs[] = {
 	&fd_attr(power).attr,
 	&fd_attr(frequency).attr,
-	&fd_attr(capacity).attr,
+	&fd_attr(cost).attr,
 	&fd_attr(cpus).attr,
 	NULL
 };
