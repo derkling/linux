@@ -111,6 +111,17 @@ SCHED_FEAT(EAS_PREFER_IDLE, true)
 SCHED_FEAT(SUGOV_RT_MAX_FREQ, false)
 
 /*
+ * Apply schedtune boost hold to tasks of all sched classes.
+ * If enabled, schedtune will hold the boost applied to a CPU
+ * for 50ms regardless of task activation - if the task is
+ * still running 50ms later, the boost hold expires and schedtune
+ * boost will expire immediately the task stops.
+ * If disabled, this behaviour will only apply to tasks of the
+ * RT class.
+ */
+SCHED_FEAT(SCHEDTUNE_BOOST_HOLD_ALL, false)
+
+/*
  * Utilization clamping lazy update.
  */
 SCHED_FEAT(UCLAMP_LAZY_UPDATE, false)
@@ -119,3 +130,5 @@ SCHED_FEAT(UCLAMP_LAZY_UPDATE, false)
  * Utilization clamping discretization.
  */
 SCHED_FEAT(UCLAMP_ROUNDING, true)
+
+
