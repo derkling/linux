@@ -1780,6 +1780,27 @@ static void __init init_uclamp(void)
 				 uclamp_none(UCLAMP_MAX));
 
 	}
+
+#ifdef CONFIG_SCHED_DEBUG
+	/* Sanity check uclamp conversions */
+	{
+		unsigned int util, pct_in, pct_out;
+
+		for (pct_in=0; pct_in<101; ++pct_in) {
+			util = util_from_pct(pct_in);
+			pct_out = util_to_pct(util);
+
+			if (pct_in == pct_out)
+				continue;
+
+			printk(KERN_ERR "UCLAMP: detected wrong "
+			       "scale-percentage conversion: "
+			       "(%4d) %3d != %3d\n",
+			       util, pct_in, pct_out);
+		}
+	}
+#endif
+
 }
 
 #else /* CONFIG_UCLAMP_TASK */
