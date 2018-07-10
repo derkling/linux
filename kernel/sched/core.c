@@ -1426,6 +1426,26 @@ static inline void init_uclamp_sched_group(void)
 		/* Attach root TG's clamp group */
 		uc_map[group_id].se_count = 1;
 	}
+
+#ifdef CONFIG_SCHED_DEBUG
+	/* Sanity check uclamp conversions */
+	{
+		unsigned int pct, util, pct2;
+		char fmt[]= "UCLAMP: "
+			"detected wrong scale-percentage conversion: "
+			"%3d (%4d) != %4d: %s\n";
+
+		for (pct=0; pct<101; ++pct) {
+			util = scale_from_percent(pct);
+			pct2 = scale_to_percent(util);
+			if (pct != pct2) {
+				printk(KERN_ERROR, fmt, pct, util, pct2,
+				       (pct == pct2) ? "OK" : "ERROR");
+			}
+		}
+	}
+#endif
+
 }
 
 /**
