@@ -973,7 +973,7 @@ All time durations are in microseconds.
         A read-write single value file which exists on non-root cgroups.
         The default is "0", i.e. no bandwidth boosting.
 
-        The minimum utilization in the range [0, 1023].
+        The minimum percentage of utilization in the range [0, 100].
 
         This interface allows reading and setting minimum utilization clamp
         values similar to the sched_setattr(2). This minimum utilization
@@ -981,9 +981,9 @@ All time durations are in microseconds.
 
   cpu.util_max
         A read-write single value file which exists on non-root cgroups.
-        The default is "1023". i.e. no bandwidth clamping
+        The default is "100". i.e. no bandwidth clamping
 
-        The maximum utilization in the range [0, 1023].
+        The maximum percentage of utilization in the range [0, 100].
 
         This interface allows reading and setting maximum utilization clamp
         values similar to the sched_setattr(2). This maximum utilization
