@@ -2353,8 +2353,10 @@ static __always_inline unsigned long __cpu_util(int cpu,
 	 * For task placement decisions we always consider the actual
 	 * utilization signal.
 	 */
-	if (freq_selection && rt_rq_is_runnable(&rq->rt))
+	if (freq_selection &&
+	    sched_feat(SUGOV_RT_MAX_FREQ) && rt_rq_is_runnable(&rq->rt)) {
 		return max;
+	}
 	if (!~util_rt)
 		util_rt = cpu_util_rt(rq);
 	util_cpu += util_rt;
