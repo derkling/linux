@@ -1399,7 +1399,7 @@ static inline int __setscheduler_uclamp(struct task_struct *p,
 
 	if (attr->sched_util_min > attr->sched_util_max)
 		return -EINVAL;
-	if (attr->sched_util_max > SCHED_CAPACITY_SCALE)
+	if (attr->sched_util_max > 100)
 		return -EINVAL;
 
 	mutex_lock(&uclamp_mutex);
@@ -1407,12 +1407,12 @@ static inline int __setscheduler_uclamp(struct task_struct *p,
 	/* Update min utilization clamp */
 	uc_se = &p->uclamp[UCLAMP_MIN];
 	retval |= uclamp_group_get(p, NULL, UCLAMP_MIN, uc_se,
-				   attr->sched_util_min);
+				   scale_from_percent(attr->sched_util_min));
 
 	/* Update max utilization clamp */
 	uc_se = &p->uclamp[UCLAMP_MAX];
 	retval |= uclamp_group_get(p, NULL, UCLAMP_MAX, uc_se,
-				   attr->sched_util_max);
+				   scale_from_percent(attr->sched_util_max));
 
 	mutex_unlock(&uclamp_mutex);
 
@@ -5511,6 +5511,8 @@ SYSCALL_DEFINE4(sched_getattr, pid_t, pid, struct sched_attr __user *, uattr,
 	if (task_group(p)->uclamp[UCLAMP_MAX].value < attr.sched_util_max)
 		attr.sched_util_max = task_group(p)->uclamp[UCLAMP_MAX].value;
 #endif
+	attr.sched_util_min = scale_to_percent(attr.sched_util_min);
+	attr.sched_util_max = scale_to_percent(attr.sched_util_max);
 #endif
 
 	rcu_read_unlock();
@@ -7302,8 +7304,10 @@ static int cpu_util_min_write_u64(struct cgroup_subsys_state *css,
 	struct task_group *tg;
 	int ret = -EINVAL;
 
-	if (min_value > SCHED_CAPACITY_SCALE)
+	/* Check range and scale to internal representation */
+	if (min_value > 100)
 		return -ERANGE;
+	min_value = scale_from_percent(min_value);
 
 	mutex_lock(&uclamp_mutex);
 	rcu_read_lock();
@@ -7334,8 +7338,10 @@ static int cpu_util_max_write_u64(struct cgroup_subsys_state *css,
 	struct task_group *tg;
 	int ret = -EINVAL;
 
-	if (max_value > SCHED_CAPACITY_SCALE)
+	/* Check range and scale to internal representation */
+	if (max_value > 100)
 		return -ERANGE;
+	max_value = scale_from_percent(max_value);
 
 	mutex_lock(&uclamp_mutex);
 	rcu_read_lock();
@@ -7370,7 +7376,7 @@ static inline u64 cpu_uclamp_read(struct cgroup_subsys_state *css,
 	util_clamp = tg->uclamp[clamp_id].value;
 	rcu_read_unlock();
 
-	return util_clamp;
+	return scale_to_percent(util_clamp);
 }
 
 static u64 cpu_util_min_read_u64(struct cgroup_subsys_state *css,
