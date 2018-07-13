@@ -375,6 +375,25 @@ static int cpufreq_get_cur_state(struct thermal_cooling_device *cdev,
 }
 
 /**
+ * cpufreq_index_freq: Convert a level in a cpufreq_frequency_table frequency
+ * @cpufreq_cdev: cpufreq_cdev for which we want to do the conversion
+ * @level: the level that needs to be converted
+ *
+ * Return: the frequency corresponding to the thermal level
+ */
+static unsigned int cpufreq_index_freq(struct cpufreq_cooling_device *cpufreq_cdev,
+				       unsigned long level)
+{
+	struct cpufreq_policy *policy = cpufreq_cdev->policy;
+
+	if (policy->freq_table_sorted == CPUFREQ_TABLE_SORTED_ASCENDING)
+		level = cpufreq_cdev->max_level - level;
+
+	return policy->freq_table[level].frequency;
+}
+
+
+/**
  * cpufreq_set_cur_state - callback function to set the current cooling state.
  * @cdev: thermal cooling device pointer.
  * @state: set this variable to the current cooling state.
@@ -398,7 +417,7 @@ static int cpufreq_set_cur_state(struct thermal_cooling_device *cdev,
 	if (cpufreq_cdev->cpufreq_state == state)
 		return 0;
 
-	clip_freq = cpufreq_cdev->freq_table[state].frequency;
+	clip_freq = cpufreq_index_freq(cpufreq_cdev, state);
 	cpufreq_cdev->cpufreq_state = state;
 	cpufreq_cdev->clipped_freq = clip_freq;
 
