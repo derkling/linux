@@ -950,6 +950,8 @@ static inline void uclamp_cpu_update(struct rq *rq, int clamp_id,
 	if (clamp_id == UCLAMP_MAX && max_value == UCLAMP_NOT_VALID) {
 		rq->uclamp.flags |= UCLAMP_FLAG_IDLE;
 		max_value = last_clamp_value;
+		trace_printk("uclamp_cpu_update: cpu=%d idle_clamp=%d",
+				cpu_of(rq), max_value);
 	}
 
 	rq->uclamp.value[clamp_id] = max_value;
@@ -1041,6 +1043,11 @@ static inline void uclamp_cpu_get_id(struct task_struct *p,
 	if (group_id == UCLAMP_NOT_VALID)
 		return;
 	clamp_value = uclamp_group_value(clamp_id, group_id);
+
+	trace_printk("uclamp_cpu_get_tg: pid=%d comm=%s cpu=%d "
+			"clamp_id=%d group_id=%d clamp_value=%d",
+			p->pid, p->comm, cpu_of(rq),
+			clamp_id, group_id, clamp_value);
 
 	/* Reference count the task into its current group_id */
 	uc_grp = &rq->uclamp.group[clamp_id][0];
@@ -1149,6 +1156,24 @@ static inline void uclamp_cpu_get(struct rq *rq, struct task_struct *p)
 
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id)
 		uclamp_cpu_get_id(p, rq, clamp_id);
+
+	trace_printk("uclamp_cpu_get_se: pid=%d comm=%s cpu=%d "
+			"util_avg=%lu clamp_util_avg=%d "
+			"uclamp_min=%d uclamp_max=%d",
+			p->pid, p->comm, cpu_of(rq),
+			p->se.avg.util_avg,
+			uclamp_util(cpu_of(rq), p->se.avg.util_avg),
+			uclamp_value(cpu_of(rq), UCLAMP_MIN),
+			uclamp_value(cpu_of(rq), UCLAMP_MAX));
+
+	trace_printk("uclamp_cpu_get_rq: cpu=%d "
+			"util_avg=%lu clamp_util_avg=%d "
+			"uclamp_min=%d uclamp_max=%d",
+			cpu_of(rq),
+			rq->cfs.avg.util_avg,
+			uclamp_util(cpu_of(rq), rq->cfs.avg.util_avg),
+			uclamp_value(cpu_of(rq), UCLAMP_MIN),
+			uclamp_value(cpu_of(rq), UCLAMP_MAX));
 }
 
 /**
@@ -1174,6 +1199,15 @@ static inline void uclamp_cpu_put(struct rq *rq, struct task_struct *p)
 
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id)
 		uclamp_cpu_put_id(p, rq, clamp_id);
+
+	trace_printk("uclamp_cpu_put_rq: cpu=%d "
+			"util_avg=%lu clamp_util_avg=%d "
+			"uclamp_min=%d uclamp_max=%d",
+			cpu_of(rq),
+			rq->cfs.avg.util_avg,
+			uclamp_util(cpu_of(rq), rq->cfs.avg.util_avg),
+			uclamp_value(cpu_of(rq), UCLAMP_MIN),
+			uclamp_value(cpu_of(rq), UCLAMP_MAX));
 }
 
 /**
@@ -5085,6 +5119,9 @@ recheck:
 	if (attr->sched_flags & ~(SCHED_FLAG_ALL | SCHED_FLAG_SUGOV))
 		return -EINVAL;
 
+	printk(KERN_WARNING "__sched_setscheduler: sched_priority=%d flags=%llu\n",
+	       attr->sched_priority, attr->sched_flags);
+
 	/*
 	 * Valid priorities for SCHED_FIFO and SCHED_RR are
 	 * 1..MAX_USER_RT_PRIO-1, valid priority for SCHED_NORMAL,
@@ -5162,6 +5199,7 @@ recheck:
 		retval = __setscheduler_uclamp(p, attr);
 		if (retval)
 			return retval;
+		printk(KERN_WARNING "__sched_setscheduler: uclamp updated\n");
 	}
 
 	/*
@@ -5196,6 +5234,10 @@ recheck:
 
 		p->sched_reset_on_fork = reset_on_fork;
 		task_rq_unlock(rq, p, &rf);
+
+		printk(KERN_WARNING "__sched_setscheduler: DONE "
+				    "(policy not changed)\n");
+
 		return 0;
 	}
 change:
@@ -5300,6 +5342,8 @@ change:
 	/* Run balance callbacks after we've adjusted the PI chain: */
 	balance_callback(rq);
 	preempt_enable();
+
+	printk(KERN_WARNING "__sched_setscheduler: DONE (policy changed)\n");
 
 	return 0;
 }
