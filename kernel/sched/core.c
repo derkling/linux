@@ -959,6 +959,8 @@ static inline void uclamp_cpu_update(struct rq *rq, int clamp_id,
 	if (clamp_id == UCLAMP_MAX && max_value == UCLAMP_NONE) {
 		rq->uclamp.flags |= UCLAMP_FLAG_IDLE;
 		max_value = last_clamp_value;
+		trace_printk("uclamp_cpu_update: cpu=%d idle_clamp=%d",
+				cpu_of(rq), max_value);
 	}
 
 	rq->uclamp.value[clamp_id] = max_value;
@@ -990,6 +992,12 @@ static inline void uclamp_cpu_get_id(struct task_struct *p,
 
 	group_id = p->uclamp[clamp_id].group_id;
 	clamp_value = p->uclamp[clamp_id].value;
+
+	trace_printk("uclamp_cpu_get_se: pid=%d comm=%s cpu=%d "
+			"clamp_id=%d group_id=%d clamp_value=%d",
+			p->pid, p->comm, cpu_of(rq),
+			clamp_id, group_id, clamp_value);
+
 #ifdef CONFIG_UCLAMP_TASK_GROUP
 	/* Use TG's clamp value to limit task specific values */
 	if (group_id == UCLAMP_NONE ||
@@ -1002,6 +1010,11 @@ static inline void uclamp_cpu_get_id(struct task_struct *p,
 	if (group_id == UCLAMP_NONE)
 		return;
 #endif
+
+	trace_printk("uclamp_cpu_get_tg: pid=%d comm=%s cpu=%d "
+			"clamp_id=%d group_id=%d clamp_value=%d",
+			p->pid, p->comm, cpu_of(rq),
+			clamp_id, group_id, clamp_value);
 
 	/* Reference count the task into its current group_id */
 	uc_grp = &rq->uclamp.group[clamp_id][0];
@@ -1110,6 +1123,24 @@ static inline void uclamp_cpu_get(struct rq *rq, struct task_struct *p)
 
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id)
 		uclamp_cpu_get_id(p, rq, clamp_id);
+
+	trace_printk("uclamp_cpu_get_se: pid=%d comm=%s cpu=%d "
+			"util_avg=%lu clamp_util_avg=%d "
+			"uclamp_min=%d uclamp_max=%d",
+			p->pid, p->comm, cpu_of(rq),
+			p->se.avg.util_avg,
+			uclamp_util(cpu_of(rq), p->se.avg.util_avg),
+			uclamp_value(cpu_of(rq), UCLAMP_MIN),
+			uclamp_value(cpu_of(rq), UCLAMP_MAX));
+
+	trace_printk("uclamp_cpu_get_rq: cpu=%d "
+			"util_avg=%lu clamp_util_avg=%d "
+			"uclamp_min=%d uclamp_max=%d",
+			cpu_of(rq),
+			rq->cfs.avg.util_avg,
+			uclamp_util(cpu_of(rq), rq->cfs.avg.util_avg),
+			uclamp_value(cpu_of(rq), UCLAMP_MIN),
+			uclamp_value(cpu_of(rq), UCLAMP_MAX));
 }
 
 /**
@@ -1135,6 +1166,15 @@ static inline void uclamp_cpu_put(struct rq *rq, struct task_struct *p)
 
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id)
 		uclamp_cpu_put_id(p, rq, clamp_id);
+
+	trace_printk("uclamp_cpu_put_rq: cpu=%d "
+			"util_avg=%lu clamp_util_avg=%d "
+			"uclamp_min=%d uclamp_max=%d",
+			cpu_of(rq),
+			rq->cfs.avg.util_avg,
+			uclamp_util(cpu_of(rq), rq->cfs.avg.util_avg),
+			uclamp_value(cpu_of(rq), UCLAMP_MIN),
+			uclamp_value(cpu_of(rq), UCLAMP_MAX));
 }
 
 /**
