@@ -177,105 +177,19 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
 	return cpufreq_driver_resolve_freq(policy, freq);
 }
 
-/*
- * This function computes an effective utilization for the given CPU, to be
- * used for frequency selection given the linear relation: f = u * f_max.
- *
- * The scheduler tracks the following metrics:
- *
- *   cpu_util_{cfs,rt,dl,irq}()
- *   cpu_bw_dl()
- *
- * Where the cfs,rt and dl util numbers are tracked with the same metric and
- * synchronized windows and are thus directly comparable.
- *
- * The cfs,rt,dl utilization are the running times measured with rq->clock_task
- * which excludes things like IRQ and steal-time. These latter are then accrued
- * in the irq utilization.
- *
- * The DL bandwidth number otoh is not a measured metric but a value computed
- * based on the task model parameters and gives the minimal utilization
- * required to meet deadlines.
- */
+unsigned long cpu_util_freq(int cpu)
+{
+	return __cpu_util(cpu, 0, 0, 0, 0);
+}
+
 static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
 {
 	struct rq *rq = cpu_rq(sg_cpu->cpu);
-	unsigned long util, irq, dl, max;
 
-	sg_cpu->max = max = arch_scale_cpu_capacity(NULL, sg_cpu->cpu);
+	sg_cpu->max = arch_scale_cpu_capacity(NULL, sg_cpu->cpu);
 	sg_cpu->bw_dl = cpu_bw_dl(rq);
 
-	/*
-	 * RT tasks are always executed at maximum frequency to minimize
-	 * completion latencies. Let's check them at first.
-	 * Otherwise, let's use their blocked utilization.
-	 */
-	if (rt_rq_is_runnable(&rq->rt))
-		return max;
-	util = cpu_util_rt(rq);
-	if (unlikely(util >= max))
-		return max;
-
-	/*
-	 * Early check to see if IRQ/steal time saturates the CPU, can be
-	 * because of inaccuracies in how we track these -- see
-	 * update_irq_load_avg().
-	 */
-	irq = cpu_util_irq(rq);
-	if (unlikely(irq >= max))
-		return max;
-
-	/*
-	 * Because the time spend on RT/DL tasks is visible as 'lost' time to
-	 * CFS tasks and we use the same metric to track the effective
-	 * utilization (PELT windows are synchronized) we can directly add them
-	 * to obtain the CPU's actual utilization.
-	 */
-	util += cpu_util_cfs(rq);
-	if (unlikely(util >= max))
-		return max;
-
-	/*
-	 * Bandwidth required by DEADLINE must always be granted.
-	 * However, if there are other tasks RUNNABLE, we don't want them to
-	 * be delayed to much by DL, so we use DL's utilization to ramp up the
-	 * OPPs as well as to detect when we don't have anymore idle time.
-	 *
-	 * Ideally we would like to set bw_dl as min/guaranteed freq and util +
-	 * bw_dl as requested freq. However, cpufreq is not yet ready for such
-	 * an interface. So, we only do the latter for now.
-	 *
-	 * NOTE: numerical errors or stop class might cause us to not quite hit
-	 * saturation when we should -- something for later.
-	 */
-	dl = sg_cpu->bw_dl;
-	if (dl && rq->cfs.nr_running && dl < cpu_util_dl(rq))
-		dl = cpu_util_dl(rq);
-	util += dl;
-	if (unlikely(util >= max))
-		return max;
-
-	/*
-	 * There is still idle time; further improve the number by using the
-	 * irq metric. Because IRQ/steal time is hidden from the task clock we
-	 * need to scale the task numbers:
-	 *
-	 *              1 - irq
-	 *   U' = irq + ------- * U
-	 *                max
-	 */
-	util = scale_irq_capacity(util, irq, max);
-	util += irq;
-	if (unlikely(util > max))
-		return max;
-
-	/*
-	 * Bandwidth required by DEADLINE must always be granted while, for
-	 * FAIR and RT, we use blocked utilization of IDLE CPUs as a mechanism
-	 * to gracefully reduce the frequency when no tasks show up for longer
-	 * periods of time.
-	 */
-	return util;
+	return cpu_util_freq(sg_cpu->cpu);
 }
 
 /**

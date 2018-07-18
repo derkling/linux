@@ -2241,3 +2241,117 @@ unsigned long scale_irq_capacity(unsigned long util, unsigned long irq, unsigned
 	return util;
 }
 #endif
+
+#ifdef CONFIG_CPU_FREQ_GOV_SCHEDUTIL
+/*
+ * This function computes an effective utilization for the given CPU, to be
+ * used for frequency selection given the linear relation: f = u * f_max.
+ *
+ * The scheduler tracks the following metrics:
+ *
+ *   cpu_util_{cfs,rt,dl,irq}()
+ *   cpu_bw_dl()
+ *
+ * Where the cfs,rt and dl util numbers are tracked with the same metric and
+ * synchronized windows and are thus directly comparable.
+ *
+ * The cfs,rt,dl utilization are the running times measured with rq->clock_task
+ * which excludes things like IRQ and steal-time. These latter are then accrued
+ * in the irq utilization.
+ *
+ * The DL bandwidth number otoh is not a measured metric but a value computed
+ * based on the task model parameters and gives the minimal utilization
+ * required to meet deadlines. While running at this capacity satify DL tasks
+ * requirements, CFS tasks can be delayed until DL tasks complete.
+ * Thus the DL utilization is used to speed-up the completion of DL tasks when
+ * co-scheduled with CFS tasks.
+ *
+ * A set of class specific utilization signals allow to define which
+ * utilization contributions should be considered and the function is coded in
+ * such a way that compile time constants propagations will get rid of
+ * (almost) all the branch conditions.
+ * For tasks placement decisions, class specific utilization contributions
+ * can be defined thus overriding the acutal RQ value. This allows to
+ * "explore" the impact on utilizaiton of different scheduling decisions.
+ */
+static __always_inline unsigned long
+__cpu_util(int cpu, unsigned int util_cfs, unsigned int util_rt,
+	   unsigned int util_dl, unsigned int util_irq)
+{
+	unsigned long max = arch_scale_cpu_capacity(NULL, cpu);
+	struct rq *rq = cpu_rq(cpu);
+	unsigned long util = 0;
+	bool freq_selection = !util_cfs && !util_rt &&
+			      !util_dl && !util_irq;
+
+	/*
+	 * RT tasks are always executed at maximum frequency to minimize
+	 * completion latencies. Let's check them at first.
+	 * For task placement decisions we always consider the actual
+	 * utilization signal.
+	 */
+	if (freq_selection && rt_rq_is_runnable(&rq->rt))
+		return max;
+	if (!util_rt)
+		util_rt = cpu_util_rt(rq);
+	util += util_rt;
+	if (util >= max)
+		return max;
+
+	/*
+	 * Early check to see if IRQ/steal time saturates the CPU, can be
+	 * because of inaccuracies in how we track these -- see
+	 * update_irq_load_avg().
+	 */
+	if (!util_irq) {
+		util_irq = cpu_util_irq(rq);
+		if (unlikely(util_irq >= max))
+			return max;
+	}
+
+	/*
+	 * Because the time spend on RT/DL tasks is visible as 'lost' time to
+	 * CFS tasks and we use the same metric to track the effective
+	 * utilization (PELT windows are synchronized) we can directly add them
+	 * to obtain the CPU's actual utilization.
+	 */
+	if (!util_cfs)
+		util_cfs = cpu_util_cfs(rq);
+	util += util_cfs;
+	if (util >= max)
+		return max;
+
+	/*
+	 * Bandwidth required by DEADLINE must always be granted.
+	 * However, if there are other tasks RUNNABLE, we don't want them to
+	 * be delayed to much by DL, so we use DL's utilization to ramp up the
+	 * OPPs as well as to detect when we don't have idle time anymore.
+	 */
+	if (!util_dl) {
+		util_dl = cpu_bw_dl(rq);
+		if (util_dl && rq->cfs.nr_running &&
+	   	     util_dl < cpu_util_dl(rq)) {
+			util_dl = cpu_util_dl(rq);
+		}
+	}
+	util += util_dl;
+	if (util >= max)
+		return max;
+
+	/*
+	 * There is still idle time; further improve the number by using the
+	 * irq metric. Because IRQ/steal time is hidden from the task clock we
+	 * need to scale the task numbers:
+	 *
+	 *              1 - irq
+	 *   U' = irq + ------- * U
+	 *                max
+	 */
+	util  = scale_irq_capacity(util, util_irq, max);
+	util += util_irq;
+	if (util >= max)
+		return max;
+
+	return util;
+}
+#endif /* CONFIG_CPU_FREQ_GOV_SCHEDUTIL */
