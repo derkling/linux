@@ -6415,6 +6415,15 @@ static unsigned long cpu_util_next(int cpu, struct task_struct *p, int dst_cpu)
 	return min(util, capacity_orig_of(cpu));
 }
 
+static inline unsigned long cpu_util_energy(int cpu, unsigned long util_cfs)
+{
+#ifdef CONFIG_CPU_FREQ_GOV_SCHEDUTIL
+	return __cpu_util(cpu, util_cfs, 0, 0, 0);
+#else
+	return util_cfs;
+#endif
+}
+
 /*
  * compute_energy(): Estimates the energy that would be consumed if @p was
  * migrated to @dst_cpu. compute_energy() predicts what will be the utilization
@@ -6442,7 +6451,7 @@ compute_energy(struct task_struct *p, int dst_cpu, struct perf_domain *pd)
 		 */
 		for_each_cpu_and(cpu, perf_domain_span(pd), cpu_online_mask) {
 			util = cpu_util_next(cpu, p, dst_cpu);
-			util = schedutil_energy_util(cpu, util);
+			util = cpu_util_energy(cpu, util);
 			max_util = max(util, max_util);
 			sum_util += util;
 		}
