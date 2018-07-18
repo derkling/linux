@@ -2185,7 +2185,15 @@ static inline void cpufreq_update_util(struct rq *rq, unsigned int flags) {}
 # define arch_scale_freq_invariant()	false
 #endif
 
+enum schedutil_type {
+	frequency_util,
+	energy_util,
+};
+
 #ifdef CONFIG_CPU_FREQ_GOV_SCHEDUTIL
+unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
+				  enum schedutil_type type);
+
 static inline unsigned long cpu_bw_dl(struct rq *rq)
 {
 	return (rq->dl.running_bw * SCHED_CAPACITY_SCALE) >> BW_SHIFT;
@@ -2225,6 +2233,12 @@ static inline unsigned long cpu_util_irq(struct rq *rq)
 }
 
 #endif
+#else /* CONFIG_CPU_FREQ_GOV_SCHEDUTIL */
+static inline unsigned long schedutil_freq_util(int cpu, unsigned long util,
+				  enum schedutil_type type)
+{
+	return util;
+}
 #endif
 
 #ifdef CONFIG_SMP
