@@ -210,3 +210,5 @@ x86/pkeys
 x86/stacktool
 x86/pti
 x86/dma
+x86/pti-urgent
+
