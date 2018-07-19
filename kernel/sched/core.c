@@ -4976,6 +4976,9 @@ recheck:
 	if (attr->sched_flags & ~(SCHED_FLAG_ALL | SCHED_FLAG_SUGOV))
 		return -EINVAL;
 
+	printk(KERN_WARNING "__sched_setscheduler: sched_priority=%d flags=%llu\n",
+	       attr->sched_priority, attr->sched_flags);
+
 	/*
 	 * Valid priorities for SCHED_FIFO and SCHED_RR are
 	 * 1..MAX_USER_RT_PRIO-1, valid priority for SCHED_NORMAL,
@@ -5053,6 +5056,7 @@ recheck:
 		retval = __setscheduler_uclamp(p, attr);
 		if (retval)
 			return retval;
+		printk(KERN_WARNING "__sched_setscheduler: uclamp updated\n");
 	}
 
 	/*
@@ -5087,6 +5091,10 @@ recheck:
 
 		p->sched_reset_on_fork = reset_on_fork;
 		task_rq_unlock(rq, p, &rf);
+
+		printk(KERN_WARNING "__sched_setscheduler: DONE "
+				    "(policy not changed)\n");
+
 		return 0;
 	}
 change:
@@ -5191,6 +5199,8 @@ change:
 	/* Run balance callbacks after we've adjusted the PI chain: */
 	balance_callback(rq);
 	preempt_enable();
+
+	printk(KERN_WARNING "__sched_setscheduler: DONE (policy changed)\n");
 
 	return 0;
 }
