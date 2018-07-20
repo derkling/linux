@@ -111,6 +111,7 @@ static inline void init_proc_vtable(const struct processor *p)
 }
 
 #define cpu_proc_init			PROC_VTABLE_FUNC(_proc_init)
+#define cpu_check_bugs			PROC_VTABLE_FUNC(check_bugs)
 #define cpu_proc_fin			PROC_VTABLE_FUNC(_proc_fin)
 #define cpu_reset			PROC_VTABLE_FUNC(reset)
 #define cpu_do_idle			PROC_VTABLE_FUNC(_do_idle)
