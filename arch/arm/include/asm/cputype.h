@@ -338,6 +338,8 @@ static inline int __attribute_const__ cpuid_feature_extract_field(u32 features,
 #define cpuid_feature_extract(reg, field) \
 	cpuid_feature_extract_field(read_cpuid_ext(reg), field)
 
+struct proc_info_list *lookup_processor(u32 midr);
+
 #endif /* __ASSEMBLY__ */
 
 #endif
