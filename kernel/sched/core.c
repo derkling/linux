@@ -828,7 +828,7 @@ static inline bool uclamp_group_available(int clamp_id, int group_id)
 {
 	struct uclamp_map *uc_map = &uclamp_maps[clamp_id][0];
 
-	return (uc_map[group_id].value == UCLAMP_NONE);
+	return (uc_map[group_id].value == UCLAMP_NOT_VALID);
 }
 
 /**
@@ -873,7 +873,7 @@ static inline void uclamp_group_init(int clamp_id, int group_id,
  */
 static inline void uclamp_group_reset(int clamp_id, int group_id)
 {
-	uclamp_group_init(clamp_id, group_id, UCLAMP_NONE);
+	uclamp_group_init(clamp_id, group_id, UCLAMP_NOT_VALID);
 }
 
 /**
@@ -885,21 +885,22 @@ static inline void uclamp_group_reset(int clamp_id, int group_id)
  * its index to be used for accounting.
  *
  * Since only a limited number of utilization clamp groups are allowed, if no
- * groups have been assigned for the specified value, a new group is assigned
- * if possible. Otherwise an error is returned, meaning that an additional clamp
- * value is not (currently) supported.
+ * groups have been assigned for the specified value, a new group is assigned,
+ * if possible.
+ * Otherwise an error is returned, meaning that an additional clamp value is
+ * not (currently) supported.
  */
 static int
 uclamp_group_find(int clamp_id, unsigned int clamp_value)
 {
 	struct uclamp_map *uc_map = &uclamp_maps[clamp_id][0];
-	int free_group_id = UCLAMP_NONE;
+	int free_group_id = UCLAMP_NOT_VALID;
 	unsigned int group_id = 0;
 
 	for ( ; group_id <= CONFIG_UCLAMP_GROUPS_COUNT; ++group_id) {
 		/* Keep track of first free clamp group */
 		if (uclamp_group_available(clamp_id, group_id)) {
-			if (free_group_id == UCLAMP_NONE)
+			if (free_group_id == UCLAMP_NOT_VALID)
 				free_group_id = group_id;
 			continue;
 		}
@@ -907,13 +908,11 @@ uclamp_group_find(int clamp_id, unsigned int clamp_value)
 		if (uc_map[group_id].value == clamp_value)
 			return group_id;
 	}
-	/* Default to first free clamp group */
-	if (group_id > CONFIG_UCLAMP_GROUPS_COUNT)
-		group_id = free_group_id;
-	/* All clamp group already track different clamp values */
-	if (group_id == UCLAMP_NONE)
-		return -ENOSPC;
-	return group_id;
+
+	if (likely(free_group_id != UCLAMP_NOT_VALID))
+		return free_group_id;
+
+	return -ENOSPC;
 }
 
 /**
@@ -934,7 +933,7 @@ static inline void uclamp_cpu_update(struct rq *rq, int clamp_id,
 				     unsigned int last_clamp_value)
 {
 	struct uclamp_group *uc_grp = &rq->uclamp.group[clamp_id][0];
-	int max_value = UCLAMP_NONE;
+	int max_value = UCLAMP_NOT_VALID;
 	unsigned int group_id;
 
 	for (group_id = 0; group_id <= CONFIG_UCLAMP_GROUPS_COUNT; ++group_id) {
@@ -957,7 +956,7 @@ static inline void uclamp_cpu_update(struct rq *rq, int clamp_id,
 	 * blocked utilization, sleeps and another CPU, in the same frequency
 	 * domain, do not see anymore the clamp on the first CPU.
 	 */
-	if (clamp_id == UCLAMP_MAX && max_value == UCLAMP_NONE) {
+	if (clamp_id == UCLAMP_MAX && max_value == UCLAMP_NOT_VALID) {
 		rq->uclamp.flags |= UCLAMP_FLAG_IDLE;
 		max_value = last_clamp_value;
 		trace_printk("uclamp_cpu_update: cpu=%d idle_clamp=%d",
@@ -1001,14 +1000,14 @@ static inline void uclamp_cpu_get_id(struct task_struct *p,
 
 #ifdef CONFIG_UCLAMP_TASK_GROUP
 	/* Use TG's clamp value to limit task specific values */
-	if (group_id == UCLAMP_NONE ||
+	if (group_id == UCLAMP_NOT_VALID ||
 	    clamp_value >= task_group(p)->uclamp[clamp_id].value) {
 		clamp_value = task_group(p)->uclamp[clamp_id].value;
 		group_id = task_group(p)->uclamp[clamp_id].group_id;
 	}
 #else
 	/* No task specific clamp values: nothing to do */
-	if (group_id == UCLAMP_NONE)
+	if (group_id == UCLAMP_NOT_VALID)
 		return;
 #endif
 
@@ -1064,15 +1063,22 @@ static inline void uclamp_cpu_put_id(struct task_struct *p,
 
 	/* No task specific clamp values: nothing to do */
 	group_id = p->uclamp_group_id[clamp_id];
-	if (group_id == UCLAMP_NONE)
+	if (group_id == UCLAMP_NOT_VALID)
 		return;
 
 	/* Decrement the task's reference counted group index */
 	uc_grp = &rq->uclamp.group[clamp_id][0];
+#ifdef SCHED_DEBUG
+	if (unlikely(uc_grp[group_id].tasks == 0)) {
+		WARN(1, "invalid CPU[%d] clamp group [%d:%d] refcount\n",
+				cpu_of(rq), clamp_id, group_id);
+		uc_grp[group_id].tasks = 1;
+	}
+#endif
 	uc_grp[group_id].tasks -= 1;
 
 	/* Flag the task as not affecting any clamp index */
-	p->uclamp_group_id[clamp_id] = UCLAMP_NONE;
+	p->uclamp_group_id[clamp_id] = UCLAMP_NOT_VALID;
 
 	/* If this is not the last task, no updates are required */
 	if (uc_grp[group_id].tasks > 0)
@@ -1227,11 +1233,18 @@ static inline void uclamp_group_put(int clamp_id, int group_id)
 	unsigned long flags;
 
 	/* Ignore SE's not yet attached */
-	if (group_id == UCLAMP_NONE)
+	if (group_id == UCLAMP_NOT_VALID)
 		return;
 
 	/* Remove SE from this clamp group */
 	raw_spin_lock_irqsave(&uc_map[group_id].se_lock, flags);
+#ifdef SCHED_DEBUG
+	if (unlikely(uc_map[group_id].se_count == 0)) {
+		WARN(1, "invalid SE clamp group [%d:%d] refcount\n",
+		     clamp_id, group_id);
+		uc_map[group_id].se_count = 1;
+	}
+#endif
 	uc_map[group_id].se_count -= 1;
 	if (uc_map[group_id].se_count == 0)
 		uclamp_group_reset(clamp_id, group_id);
@@ -1280,7 +1293,7 @@ static inline int uclamp_group_get(struct task_struct *p,
 {
 	struct uclamp_map *uc_map = &uclamp_maps[clamp_id][0];
 	int prev_group_id = uc_se->group_id;
-	int next_group_id = UCLAMP_NONE;
+	int next_group_id = UCLAMP_NOT_VALID;
 	unsigned long flags;
 
 	/* Lookup for a usable utilization clamp group */
@@ -1391,7 +1404,7 @@ static inline int alloc_uclamp_sched_group(struct task_group *tg,
 		uc_se = &tg->uclamp[clamp_id];
 
 		uc_se->value = parent->uclamp[clamp_id].value;
-		uc_se->group_id = UCLAMP_NONE;
+		uc_se->group_id = UCLAMP_NOT_VALID;
 
 		if (uclamp_group_get(NULL, NULL, clamp_id, uc_se,
 				     parent->uclamp[clamp_id].value)) {
@@ -1436,6 +1449,8 @@ static inline int alloc_uclamp_sched_group(struct task_group *tg,
 static inline int __setscheduler_uclamp(struct task_struct *p,
 					const struct sched_attr *attr)
 {
+	unsigned int uclamp_value_old = 0;
+	unsigned int uclamp_value;
 	struct uclamp_se *uc_se;
 	int retval = 0;
 
@@ -1446,26 +1461,50 @@ static inline int __setscheduler_uclamp(struct task_struct *p,
 
 	mutex_lock(&uclamp_mutex);
 
-	/* Update min utilization clamp */
+	if (!(attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN))
+		goto set_util_max;
+
 	uc_se = &p->uclamp[UCLAMP_MIN];
-	retval |= uclamp_group_get(p, NULL, UCLAMP_MIN, uc_se,
-				   scale_from_percent(attr->sched_util_min));
+	uclamp_value = scale_from_percent(attr->sched_util_min);
+	if (uc_se->value == uclamp_value)
+		goto set_util_max;
+
+	/* Update min utilization clamp */
+	uclamp_value_old = uc_se->value;
+	retval |= uclamp_group_get(p, NULL, UCLAMP_MIN, uc_se, uclamp_value);
+	if (retval &&
+	    attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_STRICT)
+		goto exit_failure;
+
+set_util_max:
+
+	if (!(attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX))
+		goto exit_done;
+
+	uc_se = &p->uclamp[UCLAMP_MAX];
+	uclamp_value = scale_from_percent(attr->sched_util_max);
+	if (uc_se->value == uclamp_value)
+		goto exit_done;
 
 	/* Update max utilization clamp */
-	uc_se = &p->uclamp[UCLAMP_MAX];
-	retval |= uclamp_group_get(p, NULL, UCLAMP_MAX, uc_se,
-				   scale_from_percent(attr->sched_util_max));
+	if (uclamp_group_get(p, NULL, UCLAMP_MAX,
+			     uc_se, uclamp_value))
+		goto exit_rollback;
 
+exit_done:
+	mutex_unlock(&uclamp_mutex);
+	return retval;
+
+exit_rollback:
+	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN &&
+	    attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_STRICT) {
+		uclamp_group_get(p, NULL, UCLAMP_MIN,
+				 uc_se, uclamp_value_old);
+	}
+exit_failure:
 	mutex_unlock(&uclamp_mutex);
 
-	/*
-	 * If one of the two clamp values should fail,
-	 * let the userspace know.
-	 */
-	if (retval)
-		return -ENOSPC;
-
-	return 0;
+	return -ENOSPC;
 }
 
 /**
@@ -1482,7 +1521,7 @@ static void __init init_uclamp(void)
 	for_each_possible_cpu(cpu) {
 		struct uclamp_cpu *uc_cpu = &cpu_rq(cpu)->uclamp;
 
-		memset(uc_cpu, UCLAMP_NONE, sizeof(struct uclamp_cpu));
+		memset(uc_cpu, UCLAMP_NOT_VALID, sizeof(struct uclamp_cpu));
 	}
 
 	/* Init SE's clamp map */
@@ -1491,7 +1530,7 @@ static void __init init_uclamp(void)
 		int group_id = 0;
 
 		for ( ; group_id <= CONFIG_UCLAMP_GROUPS_COUNT; ++group_id) {
-			uc_map[group_id].value = UCLAMP_NONE;
+			uc_map[group_id].value = UCLAMP_NOT_VALID;
 			raw_spin_lock_init(&uc_map[group_id].se_lock);
 		}
 	}
@@ -2956,11 +2995,11 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
 #endif
 
 #ifdef CONFIG_UCLAMP_TASK
-	memset(&p->uclamp_group_id, UCLAMP_NONE, sizeof(p->uclamp_group_id));
+	memset(&p->uclamp_group_id, UCLAMP_NOT_VALID, sizeof(p->uclamp_group_id));
 	p->uclamp[UCLAMP_MIN].value = 0;
-	p->uclamp[UCLAMP_MIN].group_id = UCLAMP_NONE;
+	p->uclamp[UCLAMP_MIN].group_id = UCLAMP_NOT_VALID;
 	p->uclamp[UCLAMP_MAX].value = SCHED_CAPACITY_SCALE;
-	p->uclamp[UCLAMP_MAX].group_id = UCLAMP_NONE;
+	p->uclamp[UCLAMP_MAX].group_id = UCLAMP_NOT_VALID;
 #endif
 
 #ifdef CONFIG_SCHEDSTATS
