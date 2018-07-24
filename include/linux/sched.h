@@ -279,6 +279,9 @@ struct vtime {
 	u64			gtime;
 };
 
+/* Clamp not valid, i.e. group not assigned or invalid value */
+#define UCLAMP_NOT_VALID -1
+
 enum uclamp_id {
 	UCLAMP_MIN = 0, /* Minimum utilization */
 	UCLAMP_MAX,     /* Maximum utilization */

@@ -875,9 +875,10 @@ static inline void uclamp_group_reset(int clamp_id, int group_id)
  * its index to be used for accounting.
  *
  * Since only a limited number of utilization clamp groups are allowed, if no
- * groups have been assigned for the specified value, a new group is assigned
- * if possible. Otherwise an error is returned, meaning that an additional clamp
- * value is not (currently) supported.
+ * groups have been assigned for the specified value, a new group is assigned,
+ * if possible.
+ * Otherwise an error is returned, meaning that an additional clamp value is
+ * not (currently) supported.
  */
 static int
 uclamp_group_find(int clamp_id, unsigned int clamp_value)
@@ -897,13 +898,11 @@ uclamp_group_find(int clamp_id, unsigned int clamp_value)
 		if (uc_map[group_id].value == clamp_value)
 			return group_id;
 	}
-	/* Default to first free clamp group */
-	if (group_id > CONFIG_UCLAMP_GROUPS_COUNT)
-		group_id = free_group_id;
-	/* All clamp group already track different clamp values */
-	if (group_id == UCLAMP_NONE)
-		return -ENOSPC;
-	return group_id;
+
+	if (likely(free_group_id != UCLAMP_NOT_VALID))
+		return free_group_id;
+
+	return -ENOSPC;
 }
 
 /**
@@ -926,6 +925,13 @@ static inline void uclamp_group_put(int clamp_id, int group_id)
 
 	/* Remove SE from this clamp group */
 	raw_spin_lock_irqsave(&uc_map[group_id].se_lock, flags);
+#ifdef SCHED_DEBUG
+	if (unlikely(uc_map[group_id].se_count == 0)) {
+		WARN(1, "invalid SE clamp group [%d:%d] refcount\n",
+		     clamp_id, group_id);
+		uc_map[group_id].se_count = 1;
+	}
+#endif
 	uc_map[group_id].se_count -= 1;
 	if (uc_map[group_id].se_count == 0)
 		uclamp_group_reset(clamp_id, group_id);
