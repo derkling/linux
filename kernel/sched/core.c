@@ -828,7 +828,7 @@ static inline bool uclamp_group_available(int clamp_id, int group_id)
 {
 	struct uclamp_map *uc_map = &uclamp_maps[clamp_id][0];
 
-	return (uc_map[group_id].value == UCLAMP_NONE);
+	return (uc_map[group_id].value == UCLAMP_NOT_VALID);
 }
 
 /**
@@ -873,7 +873,7 @@ static inline void uclamp_group_init(int clamp_id, int group_id,
  */
 static inline void uclamp_group_reset(int clamp_id, int group_id)
 {
-	uclamp_group_init(clamp_id, group_id, UCLAMP_NONE);
+	uclamp_group_init(clamp_id, group_id, UCLAMP_NOT_VALID);
 }
 
 /**
@@ -894,13 +894,13 @@ static int
 uclamp_group_find(int clamp_id, unsigned int clamp_value)
 {
 	struct uclamp_map *uc_map = &uclamp_maps[clamp_id][0];
-	int free_group_id = UCLAMP_NONE;
+	int free_group_id = UCLAMP_NOT_VALID;
 	unsigned int group_id = 0;
 
 	for ( ; group_id <= CONFIG_UCLAMP_GROUPS_COUNT; ++group_id) {
 		/* Keep track of first free clamp group */
 		if (uclamp_group_available(clamp_id, group_id)) {
-			if (free_group_id == UCLAMP_NONE)
+			if (free_group_id == UCLAMP_NOT_VALID)
 				free_group_id = group_id;
 			continue;
 		}
@@ -1238,7 +1238,7 @@ static inline void uclamp_group_put(int clamp_id, int group_id)
 	unsigned long flags;
 
 	/* Ignore SE's not yet attached */
-	if (group_id == UCLAMP_NONE)
+	if (group_id == UCLAMP_NOT_VALID)
 		return;
 
 	/* Remove SE from this clamp group */
@@ -1298,7 +1298,7 @@ static inline int uclamp_group_get(struct task_struct *p,
 {
 	struct uclamp_map *uc_map = &uclamp_maps[clamp_id][0];
 	int prev_group_id = uc_se->group_id;
-	int next_group_id = UCLAMP_NONE;
+	int next_group_id = UCLAMP_NOT_VALID;
 	unsigned long flags;
 
 	/* Lookup for a usable utilization clamp group */
@@ -1509,7 +1509,7 @@ static void __init init_uclamp(void)
 		int group_id = 0;
 
 		for ( ; group_id <= CONFIG_UCLAMP_GROUPS_COUNT; ++group_id) {
-			uc_map[group_id].value = UCLAMP_NONE;
+			uc_map[group_id].value = UCLAMP_NOT_VALID;
 			raw_spin_lock_init(&uc_map[group_id].se_lock);
 		}
 	}
@@ -2976,9 +2976,9 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
 #ifdef CONFIG_UCLAMP_TASK
 	memset(&p->uclamp_group_id, UCLAMP_NONE, sizeof(p->uclamp_group_id));
 	p->uclamp[UCLAMP_MIN].value = 0;
-	p->uclamp[UCLAMP_MIN].group_id = UCLAMP_NONE;
+	p->uclamp[UCLAMP_MIN].group_id = UCLAMP_NOT_VALID;
 	p->uclamp[UCLAMP_MAX].value = SCHED_CAPACITY_SCALE;
-	p->uclamp[UCLAMP_MAX].group_id = UCLAMP_NONE;
+	p->uclamp[UCLAMP_MAX].group_id = UCLAMP_NOT_VALID;
 #endif
 
 #ifdef CONFIG_SCHEDSTATS
