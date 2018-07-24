@@ -1014,6 +1014,13 @@ static inline void uclamp_cpu_put_id(struct task_struct *p,
 
 	/* Decrement the task's reference counted group index */
 	uc_grp = &rq->uclamp.group[clamp_id][0];
+#ifdef SCHED_DEBUG
+	if (unlikely(uc_grp[group_id].tasks == 0)) {
+		WARN(1, "invalid CPU[%d] clamp group [%d:%d] refcount\n",
+				cpu_of(rq), clamp_id, group_id);
+		uc_grp[group_id].tasks = 1;
+	}
+#endif
 	uc_grp[group_id].tasks -= 1;
 
 	/* If this is not the last task, no updates are required */
