@@ -2220,7 +2220,7 @@ static inline bool uclamp_group_active(struct uclamp_group *uc_grp,
  */
 static inline bool uclamp_task_affects(struct task_struct *p, int clamp_id)
 {
-	return (p->uclamp_group_id[clamp_id] != UCLAMP_NONE);
+	return (p->uclamp_group_id[clamp_id] != UCLAMP_NOT_VALID);
 }
 
 /**
@@ -2324,7 +2324,7 @@ static inline unsigned int uclamp_value(unsigned int cpu, int clamp_id)
 {
 	struct uclamp_cpu *uc_cpu = &cpu_rq(cpu)->uclamp;
 
-	if (uc_cpu->value[clamp_id] == UCLAMP_NONE)
+	if (uc_cpu->value[clamp_id] == UCLAMP_NOT_VALID)
 		return uclamp_none(clamp_id);
 
 	return uc_cpu->value[clamp_id];
