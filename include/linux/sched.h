@@ -629,14 +629,19 @@ struct sched_dl_entity {
  * its own boosting to 0%.
  */
 struct uclamp_se {
-	/* Clamp value "requested" by a task */
+	/* Clamp value "requested" by a scheduling entity */
 	unsigned int value		: bits_per(SCHED_CAPACITY_SCALE);
 	unsigned int bucket_id		: bits_per(UCLAMP_BUCKETS);
 	unsigned int active		: 1;
 	unsigned int user_defined	: 1;
 	/*
-	 * Clamp value "obtained" by a RUNNABLE task and (possibly) enforced
-	 * by the by the system default clamp values.
+	 * Clamp value "obtained" by a scheduling entity.
+	 *
+	 * For task groups, this is the value (possibly) enforced by a
+	 * parent task group.
+	 * For a task, this is the value (possibly) enforced by the
+	 * task group the task is currently part of or by the system
+	 * default clamp values, whichever is the most restrictive.
 	 */
 	struct {
 		unsigned int value	: bits_per(SCHED_CAPACITY_SCALE);
