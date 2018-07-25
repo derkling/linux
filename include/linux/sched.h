@@ -614,7 +614,15 @@ struct uclamp_se {
 	unsigned int group_id		: order_base_2(UCLAMP_GROUPS);
 	unsigned int mapped		: 1;
 	unsigned int active		: 1;
-	/* Clamp group and value actually used by a RUNNABLE task */
+	/*
+	 * Clamp group and value actually used by a scheduling entity,
+	 * i.e. a (RUNNABLE) task or a task group.
+	 * For task groups, this is the value (eventually) enforced by a
+	 * parent task group.
+	 * For a task, this is the value (eventually) enforced by the
+	 * task group the task is currently part of or by the system
+	 * default clamp values, whichever is the most restrictive.
+	 */
 	struct {
 		unsigned int value	: SCHED_CAPACITY_SHIFT + 1;
 		unsigned int group_id	: order_base_2(UCLAMP_GROUPS);
