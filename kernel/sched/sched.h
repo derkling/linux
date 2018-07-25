@@ -403,6 +403,8 @@ struct task_group {
 #ifdef CONFIG_UCLAMP_TASK_GROUP
 	/* Clamp values requested for a task group */
 	struct uclamp_se	uclamp_req[UCLAMP_CNT];
+	/* Effective clamp values used for a task group */
+	struct uclamp_se	uclamp[UCLAMP_CNT];
 #endif
 
 };
