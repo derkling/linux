@@ -625,7 +625,15 @@ struct uclamp_se {
 	unsigned int bucket_id		: bits_per(UCLAMP_BUCKETS);
 	unsigned int mapped		: 1;
 	unsigned int active		: 1;
-	/* Clamp bucket and value actually used by a RUNNABLE task */
+	/*
+	 * Clamp bucket and value actually used by a scheduling entity,
+	 * i.e. a (RUNNABLE) task or a task group.
+	 * For task groups, this is the value (possibly) enforced by a
+	 * parent task group.
+	 * For a task, this is the value (possibly) enforced by the
+	 * task group the task is currently part of or by the system
+	 * default clamp values, whichever is the most restrictive.
+	 */
 	struct {
 		unsigned int value	: bits_per(SCHED_CAPACITY_SCALE);
 		unsigned int bucket_id	: bits_per(UCLAMP_BUCKETS);
