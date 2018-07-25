@@ -600,7 +600,11 @@ struct uclamp_se {
 	unsigned int value		: SCHED_CAPACITY_SHIFT + 1;
 	unsigned int group_id		: order_base_2(UCLAMP_GROUPS);
 	unsigned int active		: 1;
-	/* Effective clamp value a task is currently accounted for */
+	/*
+	 * Effective clamp value a task or task group is accounted in.
+	 * For task groups, this is the value (eventually) enforced by a
+	 * parent task group.
+	 */
 	struct {
 		unsigned int value	: SCHED_CAPACITY_SHIFT + 1;
 		unsigned int group_id	: order_base_2(UCLAMP_GROUPS);
