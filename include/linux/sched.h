@@ -621,9 +621,18 @@ struct sched_dl_entity {
  * This allows to know a task is actually refcounting a CPU's clamp bucket.
  */
 struct uclamp_se {
+	/* Clamp value "requested" by a task */
 	unsigned int value		: bits_per(SCHED_CAPACITY_SCALE);
 	unsigned int bucket_id		: bits_per(UCLAMP_BUCKETS);
 	unsigned int active		: 1;
+	/*
+	 * Clamp value "obtained" by a RUNNABLE task and (possibly) enforced
+	 * by the by the system default clamp values.
+	 */
+	struct {
+		unsigned int value	: bits_per(SCHED_CAPACITY_SCALE);
+		unsigned int bucket_id	: bits_per(UCLAMP_BUCKETS);
+	} effective;
 };
 #endif /* CONFIG_UCLAMP_TASK */
 

@@ -718,6 +718,23 @@ static void set_load_weight(struct task_struct *p, bool update_load)
 }
 
 #ifdef CONFIG_UCLAMP_TASK
+/*
+ * Allowed minimum utilization for FAIR tasks
+ * default: 1024
+ */
+unsigned int sysctl_sched_uclamp_util_min = SCHED_CAPACITY_SCALE;
+
+/*
+ * Allowed maximum utilization for FAIR tasks
+ * default: 1024
+ */
+unsigned int sysctl_sched_uclamp_util_max = SCHED_CAPACITY_SCALE;
+
+/*
+ * Tasks specific clamp values are required to be within this range
+ */
+static struct uclamp_se uclamp_default[UCLAMP_CNT];
+
 #define UCLAMP_BUCKET_DELTA (SCHED_CAPACITY_SCALE / CONFIG_UCLAMP_BUCKETS_COUNT)
 #define UCLAMP_BUCKET_UPPER (UCLAMP_BUCKET_DELTA  * CONFIG_UCLAMP_BUCKETS_COUNT)
 
@@ -795,6 +812,71 @@ static inline void uclamp_rq_update(struct rq *rq, unsigned int clamp_id,
 }
 
 /*
+ * The effective clamp bucket index of a task depends on, by increasing
+ * priority:
+ * - the task specific clamp value, when explicitly requested from userspace
+ * - the system default clamp value, defined by the sysadmin
+ *
+ * As a side effect, update the task's effective value:
+ *    task_struct::uclamp::effective::value
+ * to represent the clamp value of the task effective bucket index.
+ */
+static inline void
+uclamp_effective_get(struct task_struct *p, unsigned int clamp_id,
+		     unsigned int *clamp_value, unsigned int *bucket_id)
+{
+	/* Task specific clamp value */
+	*clamp_value = p->uclamp[clamp_id].value;
+	*bucket_id = p->uclamp[clamp_id].bucket_id;
+
+	/* Always apply system default restrictions */
+	if (unlikely(*clamp_value > uclamp_default[clamp_id].value)) {
+		*clamp_value = uclamp_default[clamp_id].value;
+		*bucket_id = uclamp_default[clamp_id].bucket_id;
+	}
+
+}
+
+static inline void
+uclamp_effective_assign(struct task_struct *p, unsigned int clamp_id)
+{
+	unsigned int clamp_value, bucket_id;
+
+	uclamp_effective_get(p, clamp_id, &clamp_value, &bucket_id);
+
+	p->uclamp[clamp_id].effective.value = clamp_value;
+	p->uclamp[clamp_id].effective.bucket_id = bucket_id;
+}
+
+static inline unsigned int uclamp_effective_bucket_id(struct task_struct *p,
+						      unsigned int clamp_id)
+{
+	unsigned int clamp_value, bucket_id;
+
+	/* Task currently refcounted: use back-annotate effective value */
+	if (p->uclamp[clamp_id].active)
+		return p->uclamp[clamp_id].effective.bucket_id;
+
+	uclamp_effective_get(p, clamp_id, &clamp_value, &bucket_id);
+
+	return bucket_id;
+}
+
+static unsigned int uclamp_effective_value(struct task_struct *p,
+					   unsigned int clamp_id)
+{
+	unsigned int clamp_value, bucket_id;
+
+	/* Task currently refcounted: use back-annotate effective value */
+	if (p->uclamp[clamp_id].active)
+		return p->uclamp[clamp_id].effective.value;
+
+	uclamp_effective_get(p, clamp_id, &clamp_value, &bucket_id);
+
+	return clamp_value;
+}
+
+/*
  * When a task is enqueued on a rq, the clamp bucket currently defined by the
  * task's uclamp::bucket_id is reference counted on that CPU. This also
  * immediately updates the rq's clamp value if required.
@@ -808,13 +890,15 @@ static inline void uclamp_rq_inc_id(struct task_struct *p, struct rq *rq,
 	unsigned int rq_clamp, bkt_clamp, tsk_clamp;
 	unsigned int bucket_id;
 
-	bucket_id = p->uclamp[clamp_id].bucket_id;
+	uclamp_effective_assign(p, clamp_id);
+
+	bucket_id = uclamp_effective_bucket_id(p, clamp_id);
 	p->uclamp[clamp_id].active = true;
 
 	rq->uclamp[clamp_id].bucket[bucket_id].tasks++;
 
 	/* Reset clamp holds on idle exit */
-	tsk_clamp = p->uclamp[clamp_id].value;
+	tsk_clamp = uclamp_effective_value(p, clamp_id);
 	uclamp_idle_reset(rq, clamp_id, tsk_clamp);
 
 	/* CPU's clamp buckets track the max effective clamp value */
@@ -840,7 +924,7 @@ static inline void uclamp_rq_dec_id(struct task_struct *p, struct rq *rq,
 	unsigned int rq_clamp, bkt_clamp;
 	unsigned int bucket_id;
 
-	bucket_id = p->uclamp[clamp_id].bucket_id;
+	bucket_id = uclamp_effective_bucket_id(p, clamp_id);
 	p->uclamp[clamp_id].active = false;
 
 	SCHED_WARN_ON(!rq->uclamp[clamp_id].bucket[bucket_id].tasks);
@@ -920,6 +1004,55 @@ done:
 	task_rq_unlock(rq, p, &rf);
 }
 
+int sched_uclamp_handler(struct ctl_table *table, int write,
+			 void __user *buffer, size_t *lenp,
+			 loff_t *ppos)
+{
+	int old_min, old_max;
+	int result = 0;
+
+	old_min = sysctl_sched_uclamp_util_min;
+	old_max = sysctl_sched_uclamp_util_max;
+
+	result = proc_dointvec(table, write, buffer, lenp, ppos);
+	if (result)
+		goto undo;
+	if (!write)
+		goto done;
+
+	if (sysctl_sched_uclamp_util_min > sysctl_sched_uclamp_util_max ||
+	    sysctl_sched_uclamp_util_max > SCHED_CAPACITY_SCALE) {
+		result = -EINVAL;
+		goto undo;
+	}
+
+	if (old_min != sysctl_sched_uclamp_util_min) {
+		uclamp_default[UCLAMP_MIN].value =
+			sysctl_sched_uclamp_util_min;
+		uclamp_default[UCLAMP_MIN].bucket_id =
+			uclamp_bucket_id(sysctl_sched_uclamp_util_min);
+	}
+	if (old_max != sysctl_sched_uclamp_util_max) {
+		uclamp_default[UCLAMP_MAX].value =
+			sysctl_sched_uclamp_util_max;
+		uclamp_default[UCLAMP_MAX].bucket_id =
+			uclamp_bucket_id(sysctl_sched_uclamp_util_max);
+	}
+
+	/*
+	 * Updating all the RUNNABLE task is expesing.
+	 * Keep it simple and do just a lazy update at their next activation.
+	 */
+	goto done;
+
+undo:
+	sysctl_sched_uclamp_util_min = old_min;
+	sysctl_sched_uclamp_util_max = old_max;
+done:
+
+	return result;
+}
+
 static int __setscheduler_uclamp(struct task_struct *p,
 				 const struct sched_attr *attr)
 {
@@ -977,9 +1110,14 @@ static void __init init_uclamp(void)
 	}
 
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
-		struct uclamp_se *uc_se = &init_task.uclamp[clamp_id];
 		unsigned int clamp_value = uclamp_none(clamp_id);
+		struct uclamp_se *uc_se;
 
+		uc_se = &init_task.uclamp[clamp_id];
+		uc_se->bucket_id = uclamp_bucket_id(clamp_value);
+		uc_se->value = clamp_value;
+
+		uc_se = &uclamp_default[clamp_id];
 		uc_se->bucket_id = uclamp_bucket_id(clamp_value);
 		uc_se->value = clamp_value;
 	}
