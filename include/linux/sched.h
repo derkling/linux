@@ -584,14 +584,32 @@ struct sched_dl_entity {
  * Utilization clamp for a scheduling entity
  * @value:		clamp value "requested" by a se
  * @bucket_id:		clamp bucket corresponding to the "requested" value
+ * @effective:		clamp value and bucket actually "assigned" to the se
+ * @active:		the se is currently refcounted in a rq's bucket
  *
- * The bucket_id is the index of the clamp bucket matching the clamp value
- * which is pre-computed and stored to avoid expensive integer divisions from
- * the fast path.
+ * Both bucket_id and effective::bucket_id are the index of the clamp bucket
+ * matching the corresponding clamp value which are pre-computed and stored to
+ * avoid expensive integer divisions from the fast path.
+ *
+ * The active bit is set whenever a task has got an effective::value assigned,
+ * which can be different from the user requested clamp value. This allows to
+ * know a task is actually refcounting the rq's effective::bucket_id bucket.
  */
 struct uclamp_se {
+	/* Clamp value "requested" by a scheduling entity */
 	unsigned int value		: bits_per(SCHED_CAPACITY_SCALE);
 	unsigned int bucket_id		: bits_per(UCLAMP_BUCKETS);
+	unsigned int active		: 1;
+	/*
+	 * Clamp value "obtained" by a scheduling entity.
+	 *
+	 * This cache the actual clamp value, possibly enforced by system
+	 * default clamps, a task is subject to while enqueued in a rq.
+	 */
+	struct {
+		unsigned int value	: bits_per(SCHED_CAPACITY_SCALE);
+		unsigned int bucket_id	: bits_per(UCLAMP_BUCKETS);
+	} effective;
 };
 #endif /* CONFIG_UCLAMP_TASK */
 
