@@ -614,6 +614,11 @@ struct uclamp_se {
 	unsigned int group_id		: order_base_2(UCLAMP_GROUPS);
 	unsigned int mapped		: 1;
 	unsigned int active		: 1;
+	/* Clamp group and value actually used by a RUNNABLE task */
+	struct {
+		unsigned int value	: SCHED_CAPACITY_SHIFT + 1;
+		unsigned int group_id	: order_base_2(UCLAMP_GROUPS);
+	} effective;
 };
 #endif /* CONFIG_UCLAMP_TASK */
 
