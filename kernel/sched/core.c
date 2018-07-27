@@ -730,6 +730,23 @@ static void set_load_weight(struct task_struct *p, bool update_load)
  */
 static DEFINE_MUTEX(uclamp_mutex);
 
+/*
+ * Minimum utilization for all tasks
+ * default: 0
+ */
+unsigned int sysctl_sched_uclamp_util_min;
+
+/*
+ * Maximum utilization for all tasks
+ * default: 1024
+ */
+unsigned int sysctl_sched_uclamp_util_max = SCHED_CAPACITY_SCALE;
+
+/*
+ * Tasks's clamp values are required to be within this range
+ */
+static struct uclamp_se uclamp_default[UCLAMP_CNT];
+
 /**
  * uclamp_map: reference count utilization clamp groups
  * @value:    the utilization "clamp value" tracked by this clamp group
@@ -859,6 +876,55 @@ static inline void uclamp_cpu_update(struct rq *rq, unsigned int clamp_id,
 }
 
 /**
+ * uclamp_effective_group_id: get the effective clamp group index of a task
+ * @p: the task to get the effective clamp value for
+ * @clamp_id: the clamp index to consider
+ *
+ * The effective clamp group index of a task depends on:
+ * - the task specific clamp value, explicitly requested from userspace
+ * - the system default clamp value, defined by the sysadmin
+ * and tasks specific's clamp values are always restricted by system
+ * defaults clamp values.
+ *
+ * This method returns the effective group index for a task, depending on its
+ * status and a proper aggregation of the clamp values listed above.
+ * Moreover, it ensures that the task's effective value:
+ *    task_struct::uclamp::effective::value
+ * is updated to represent the clamp value corresponding to the taks effective
+ * group index.
+ */
+static inline unsigned int uclamp_effective_group_id(struct task_struct *p,
+						     unsigned int clamp_id)
+{
+	unsigned int clamp_value;
+	unsigned int group_id;
+
+	/* Task currently refcounted into a CPU clamp group */
+	if (p->uclamp[clamp_id].active)
+		return p->uclamp[clamp_id].effective.group_id;
+
+	/* Task specific clamp value */
+	clamp_value = p->uclamp[clamp_id].value;
+	group_id = p->uclamp[clamp_id].group_id;
+
+	/* System default restriction */
+	if (unlikely(clamp_value < uclamp_default[UCLAMP_MIN].value ||
+		     clamp_value > uclamp_default[UCLAMP_MAX].value)) {
+		/*
+		 * Unconditionally enforce system defaults, which is a simpler
+		 * solution compared to a proper clamping.
+		 */
+		clamp_value = uclamp_default[clamp_id].value;
+		group_id = uclamp_default[clamp_id].group_id;
+	}
+
+	p->uclamp[clamp_id].effective.value = clamp_value;
+	p->uclamp[clamp_id].effective.group_id = group_id;
+
+	return group_id;
+}
+
+/**
  * uclamp_cpu_get_id(): increase reference count for a clamp group on a CPU
  * @p: the task being enqueued on a CPU
  * @rq: the CPU's rq where the clamp group has to be reference counted
@@ -870,16 +936,17 @@ static inline void uclamp_cpu_update(struct rq *rq, unsigned int clamp_id,
 static inline void uclamp_cpu_get_id(struct task_struct *p, struct rq *rq,
 				     unsigned int clamp_id)
 {
-	unsigned int clamp_value;
+	unsigned int effective;
 	unsigned int group_id;
 
 	if (unlikely(!p->uclamp[clamp_id].mapped))
 		return;
 
-	group_id = p->uclamp[clamp_id].group_id;
+	group_id = uclamp_effective_group_id(p, clamp_id);
 	p->uclamp[clamp_id].active = true;
 
 	rq->uclamp.group[clamp_id][group_id].tasks += 1;
+	effective = p->uclamp[clamp_id].effective.value;
 
 	if (unlikely(rq->uclamp.flags & UCLAMP_FLAG_IDLE)) {
 		/*
@@ -890,16 +957,15 @@ static inline void uclamp_cpu_get_id(struct task_struct *p, struct rq *rq,
 		 */
 		if (clamp_id == UCLAMP_MAX)
 			rq->uclamp.flags &= ~UCLAMP_FLAG_IDLE;
-		rq->uclamp.value[clamp_id] = p->uclamp[clamp_id].value;
+		rq->uclamp.value[clamp_id] = effective;
 	}
 
 	/* CPU's clamp groups track the max effective clamp value */
-	clamp_value = p->uclamp[clamp_id].value;
-	if (clamp_value > rq->uclamp.group[clamp_id][group_id].value)
-		rq->uclamp.group[clamp_id][group_id].value = clamp_value;
+	if (effective > rq->uclamp.group[clamp_id][group_id].value)
+		rq->uclamp.group[clamp_id][group_id].value = effective;
 
-	if (rq->uclamp.value[clamp_id] < p->uclamp[clamp_id].value)
-		rq->uclamp.value[clamp_id] = p->uclamp[clamp_id].value;
+	if (rq->uclamp.value[clamp_id] < effective)
+		rq->uclamp.value[clamp_id] = effective;
 }
 
 /**
@@ -923,7 +989,7 @@ static inline void uclamp_cpu_put_id(struct task_struct *p, struct rq *rq,
 	if (unlikely(!p->uclamp[clamp_id].mapped))
 		return;
 
-	group_id = p->uclamp[clamp_id].group_id;
+	group_id = uclamp_effective_group_id(p, clamp_id);
 	p->uclamp[clamp_id].active = false;
 
 	if (likely(rq->uclamp.group[clamp_id][group_id].tasks))
@@ -1173,6 +1239,50 @@ done:
 	uc_se->mapped = true;
 }
 
+int sched_uclamp_handler(struct ctl_table *table, int write,
+			 void __user *buffer, size_t *lenp,
+			 loff_t *ppos)
+{
+	int old_min, old_max;
+	int result = 0;
+
+	mutex_lock(&uclamp_mutex);
+
+	old_min = sysctl_sched_uclamp_util_min;
+	old_max = sysctl_sched_uclamp_util_max;
+
+	result = proc_dointvec(table, write, buffer, lenp, ppos);
+	if (result)
+		goto undo;
+	if (!write)
+		goto done;
+
+	if (sysctl_sched_uclamp_util_min > sysctl_sched_uclamp_util_max ||
+	    sysctl_sched_uclamp_util_max > SCHED_CAPACITY_SCALE) {
+		result = -EINVAL;
+		goto undo;
+	}
+
+	if (old_min != sysctl_sched_uclamp_util_min) {
+		uclamp_group_get(NULL, &uclamp_default[UCLAMP_MIN],
+				 UCLAMP_MIN, sysctl_sched_uclamp_util_min);
+	}
+	if (old_max != sysctl_sched_uclamp_util_max) {
+		uclamp_group_get(NULL, &uclamp_default[UCLAMP_MAX],
+				 UCLAMP_MAX, sysctl_sched_uclamp_util_max);
+	}
+	goto done;
+
+undo:
+	sysctl_sched_uclamp_util_min = old_min;
+	sysctl_sched_uclamp_util_max = old_max;
+
+done:
+	mutex_unlock(&uclamp_mutex);
+
+	return result;
+}
+
 static int __setscheduler_uclamp(struct task_struct *p,
 				 const struct sched_attr *attr)
 {
@@ -1268,6 +1378,9 @@ static void __init init_uclamp(void)
 	memset(uclamp_maps, 0, sizeof(uclamp_maps));
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
 		uc_se = &init_task.uclamp[clamp_id];
+		uclamp_group_get(NULL, uc_se, clamp_id, uclamp_none(clamp_id));
+
+		uc_se = &uclamp_default[clamp_id];
 		uclamp_group_get(NULL, uc_se, clamp_id, uclamp_none(clamp_id));
 	}
 }
