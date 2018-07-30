@@ -7516,8 +7516,11 @@ static void cpu_util_update_hier(struct cgroup_subsys_state *css,
 		 * groups we consider their current value.
 		 */
 		uc_se = &css_tg(css)->uclamp[clamp_id];
-		if (css != top_css)
+		if (css != top_css) {
 			value = uc_se->value;
+			group_id = uc_se->effective.group_id;
+		}
+
 		/*
 		 * Skip the whole subtrees if the current effective clamp is
 		 * alredy matching the TG's clamp value.
