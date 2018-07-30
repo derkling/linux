@@ -1665,10 +1665,16 @@ static inline int __setscheduler_uclamp(struct task_struct *p,
 
 		if (upper_bound == UCLAMP_NOT_VALID)
 			upper_bound = 100;
+
+		printk(KERN_WARNING "min=%d upper_bound=%d",
+				attr->sched_util_min, upper_bound);
+
 		if (attr->sched_util_min > upper_bound) {
 			result = -EINVAL;
 			goto done;
 		}
+
+		printk(KERN_WARNING "Min sanity check OK");
 
 		result = uclamp_group_find(UCLAMP_MIN, attr->sched_util_min);
 		if (result == -ENOSPC) {
@@ -1684,11 +1690,17 @@ static inline int __setscheduler_uclamp(struct task_struct *p,
 
 		if (lower_bound == UCLAMP_NOT_VALID)
 			lower_bound = 0;
+
+		printk(KERN_WARNING "max=%d lower_bound=%d",
+				attr->sched_util_max, lower_bound);
+
 		if (attr->sched_util_max < lower_bound ||
 		    attr->sched_util_max > 100) {
 			result = -EINVAL;
 			goto done;
 		}
+
+		printk(KERN_WARNING "Max sanity check OK");
 
 		result = uclamp_group_find(UCLAMP_MAX, attr->sched_util_max);
 		if (result == -ENOSPC) {
