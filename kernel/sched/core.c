@@ -7708,7 +7708,9 @@ static void cpu_util_update_hier(struct cgroup_subsys_state *css,
 {
 	struct cgroup_subsys_state *top_css = css;
 	struct uclamp_se *uc_se, *uc_parent;
+	char path[32];
 
+	printk(KERN_WARNING "\n\n\nUpdate cycle START\n");
 	css_for_each_descendant_pre(css, top_css) {
 		/*
 		 * The first visited task group is top_css, which clamp value
@@ -7721,6 +7723,10 @@ static void cpu_util_update_hier(struct cgroup_subsys_state *css,
 			group_id = uc_se->effective.group_id;
 		}
 
+		cgroup_path(css->cgroup, path, 32);
+		printk(KERN_WARNING "Updated %s: clamp_id=%d value=%d\n",
+		       path, clamp_id, value);
+
 		/*
 		 * Skip the whole subtrees if the current effective clamp is
 		 * alredy matching the TG's clamp value.
@@ -7731,6 +7737,12 @@ static void cpu_util_update_hier(struct cgroup_subsys_state *css,
 		if (uc_se->effective.value == value &&
 		    uc_parent->effective.value >= value) {
 			css = css_rightmost_descendant(css);
+
+			printk(KERN_WARNING "eff=%d == value=%d <= p.eff=%d",
+					uc_se->effective.value, value,
+					uc_parent->effective.value);
+			printk(KERN_WARNING "Already ok: DONE");
+
 			continue;
 		}
 
@@ -7738,17 +7750,24 @@ static void cpu_util_update_hier(struct cgroup_subsys_state *css,
 		if (uc_parent->effective.value < value) {
 			value = uc_parent->effective.value;
 			group_id = uc_parent->effective.group_id;
+			printk(KERN_WARNING "Parent with more restrictive effective value=%d\n",
+					value);
 		}
-		if (uc_se->effective.value == value)
+		if (uc_se->effective.value == value) {
+			printk(KERN_WARNING "Already at effective value: DONE\n");
 			continue;
+		}
 
 		uc_se->effective.value = value;
 		uc_se->effective.group_id = group_id;
+		printk(KERN_WARNING "Updated effective value: DONE\n");
 
 		/* Immediately updated descendants active tasks */
 		if (css != top_css)
 			uclamp_group_get_tg(css, clamp_id, group_id);
 	}
+
+	printk(KERN_WARNING "Update cycle DONE\n");
 }
 
 static int cpu_util_min_write_u64(struct cgroup_subsys_state *css,
