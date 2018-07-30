@@ -1356,6 +1356,27 @@ static inline void uclamp_group_get(struct task_struct *p,
 	uclamp_group_put(clamp_id, prev_group_id);
 }
 
+/*
+ * uclamp_value_get: discretize the clamp value
+ *
+ * The number of clamp group is defined at compile time and it allows to track
+ * a finete number of different clamp value. This makes sense from both a
+ * practical standpoint, since we do not expect many different values at
+ * on a real system, as well as for run-time efficiency.
+ *
+ * To ensure a clamp group is always available, this methd allows to
+ * discretize a required value into one of the possible available clamp
+ * groups.
+ */
+static inline int uclamp_value_get(int uclamp_value)
+{
+#define UCLAMP_GROUP_DELTA (SCHED_CAPACITY_SCALE / CONFIG_UCLAMP_GROUPS_COUNT)
+
+	if (likely(sched_feat(UCLAMP_GROUP_ROUND)))
+		return clamp_value / UCLAMP_GROUP_DELTA;
+	return clamp_value;
+}
+
 int sched_uclamp_handler(struct ctl_table *table, int write,
 			 void __user *buffer, size_t *lenp,
 			 loff_t *ppos)
@@ -1384,7 +1405,8 @@ int sched_uclamp_handler(struct ctl_table *table, int write,
 
 	/* Find a valid group_id for each required clamp value */
 	if (old_min != sysctl_sched_uclamp_util_min) {
-		result = uclamp_group_find(UCLAMP_MIN, sysctl_sched_uclamp_util_min);
+		value = uclamp_value_get(sysctl_sched_uclamp_util_min);
+		result = uclamp_group_find(UCLAMP_MIN, value);
 		if (result == -ENOSPC) {
 			pr_err("Cannot allocate more than %d UTIL_MIN clamp groups\n",
 			       CONFIG_UCLAMP_GROUPS_COUNT);
@@ -1393,7 +1415,8 @@ int sched_uclamp_handler(struct ctl_table *table, int write,
 		group_id[UCLAMP_MIN] = result;
 	}
 	if (old_max != sysctl_sched_uclamp_util_max) {
-		result = uclamp_group_find(UCLAMP_MAX, sysctl_sched_uclamp_util_max);
+		value = uclamp_value_get(sysctl_sched_uclamp_util_max);
+		result = uclamp_group_find(UCLAMP_MAX, value);
 		if (result == -ENOSPC) {
 			pr_err("Cannot allocate more than %d UTIL_MAX clamp groups\n",
 			       CONFIG_UCLAMP_GROUPS_COUNT);
