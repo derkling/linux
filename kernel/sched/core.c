@@ -1295,6 +1295,13 @@ static inline void uclamp_group_get_tg(struct cgroup_subsys_state *css,
 	struct css_task_iter it;
 	struct task_struct *p;
 
+	/*
+	 * In lazy update mode, tasks will be accounted into the right clamp
+	 * group the next time they will be requeued.
+	 */
+	if (unlikely(sched_feat(UCLAMP_LAZY_UPDATE)))
+		return;
+
 	/* Update clamp groups for RUNNABLE tasks in this TG */
 	css_task_iter_start(css, 0, &it);
 	while ((p = css_task_iter_next(&it)))
