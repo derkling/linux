@@ -7505,22 +7505,31 @@ static void cpu_cgroup_attach(struct cgroup_taskset *tset)
 static void cpu_util_update_hier(struct cgroup_subsys_state *css,
 				 int clamp_id, int value, int group_id)
 {
-	struct cgroup_subsys_state *pos_css;
+	struct cgroup_subsys_state *top_css = css;
 	struct uclamp_se *uc_se, *uc_parent;
 
-	css_for_each_descendant_pre(pos_css, css) {
+	css_for_each_descendant_pre(css, top_css) {
+
+		/*
+		 * The first visited task group is top_css, which clamp value
+		 * is the one passed as parameter. For descendent task
+		 * groups we consider their current value.
+		 */
+		uc_se = &css_tg(css)->uclamp[clamp_id];
+		if (css != top_css)
+			value = uc_se->value;
 		/*
 		 * Skip the whole subtrees if the current effective clamp is
 		 * alredy matching the TG's clamp value.
-		 * In this case, all the subtrees already have this clamp
-		 * value or a more restrictive as effective clamp.
+		 * In this case, all the subtrees already have top_value, or a
+		 * more restrictive, as effective clamp.
 		 */
-		uc_se = &css_tg(css)->uclamp[clamp_id];
-		if (uc_se->effective.value == value) {
-			pos_css = css_rightmost_descendant(pos_css);
+		uc_parent = &css_tg(css)->parent->uclamp[clamp_id];
+		if (uc_se->effective.value == value &&
+		    uc_parent->effective.value >= value) {
+			css = css_rightmost_descendant(css);
 			continue;
 		}
-		uc_parent = &css_tg(css)->parent->uclamp[clamp_id];
 
 		/* Propagate the most restrictive effective value */
 		if (uc_parent->effective.value < value) {
