@@ -304,11 +304,18 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu)
 	u64 last_freq_update_time = sg_policy->last_freq_update_time;
 	unsigned long util = 0, max = 1;
 	unsigned int j;
+	int max_cpu_index = -1;
+	unsigned int index = 0;
+	bool deadline = false;
 
-	for_each_cpu(j, policy->cpus) {
+	for_each_cpu(j, policy->related_cpus) {
 		struct sugov_cpu *j_sg_cpu = &per_cpu(sugov_cpu, j);
 		unsigned long j_util, j_max;
 		s64 delta_ns;
+
+		/* Leave request as 0 for CPUs that are not online */
+		if (!cpu_online(j))
+			goto zero_request;
 
 		/*
 		 * If the CPU utilization was last updated before the previous
@@ -320,22 +327,46 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu)
 		delta_ns = last_freq_update_time - j_sg_cpu->last_update;
 		if (delta_ns > TICK_NSEC) {
 			j_sg_cpu->iowait_boost = 0;
-			continue;
+			goto zero_request;
 		}
-		if (j_sg_cpu->flags & SCHED_CPUFREQ_DL)
-			return policy->cpuinfo.max_freq;
+		if (j_sg_cpu->flags & SCHED_CPUFREQ_DL) {
+			deadline = true;
+			policy->per_cpu_request[index] =
+				policy->cpuinfo.max_freq;
+			goto next_cpu;
+		}
 
 		j_util = j_sg_cpu->util;
 		j_max = j_sg_cpu->max;
 		if (j_util * max > j_max * util) {
+			if (max_cpu_index >= 0)
+				policy->per_cpu_request[max_cpu_index] =
+					get_next_freq(sg_policy, util, max);
 			util = j_util;
 			max = j_max;
+			max_cpu_index = index;
+		} else {
+			policy->per_cpu_request[index] =
+				get_next_freq(sg_policy, j_util, j_max);
 		}
 
 		sugov_iowait_boost(j_sg_cpu, &util, &max);
+		goto next_cpu;
+
+zero_request:
+		policy->per_cpu_request[index] = 0;
+next_cpu:
+		index++;
+		continue;
 	}
 
-	return get_next_freq(sg_policy, util, max);
+	policy->per_cpu_request[max_cpu_index] =
+				get_next_freq(sg_policy, util, max);
+
+	if (deadline)
+		return policy->cpuinfo.max_freq;
+	else
+		return policy->per_cpu_request[max_cpu_index];
 }
 
 static void sugov_update_shared(struct update_util_data *hook, u64 time,
