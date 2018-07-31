@@ -117,7 +117,27 @@ ENTRY(cpu_do_resume)
 	 */
 	ubfx	x11, x11, #1, #1
 	msr	oslar_el1, x11
-	reset_pmuserenr_el0 x0			// Disable PMU access from EL0
+	/*reset_pmuserenr_el0 x0			// Disable PMU access from EL0*/
+
+	mrs x11, pmcr_el0
+	orr x11, x11, #0x1
+	msr pmcr_el0, x11
+
+	/* enable sw increment event to be counter on pmu evt counter 0*/
+	mov x11, xzr
+	orr x11, x11, #0x1
+	msr pmcntenset_el0, x11
+
+	/* enable sw increment event to be counter on pmu evt counter 0*/
+	mov x11, xzr
+	msr pmevtyper0_el0, x11
+
+	/* hack initializing the sw incr to be written from user space*/
+	mrs x11, pmuserenr_el0
+	orr x11, x11, #0x3
+	msr pmuserenr_el0, x11
+
+
 	isb
 	ret
 ENDPROC(cpu_do_resume)
