@@ -140,11 +140,31 @@ TRACE_EVENT(pstate_sample,
 		{ PM_EVENT_RESTORE, "restore" }, \
 		{ PM_EVENT_RECOVER, "recover" })
 
-DEFINE_EVENT(cpu, cpu_frequency,
+TRACE_EVENT(cpu_frequency,
 
-	TP_PROTO(unsigned int frequency, unsigned int cpu_id),
+	TP_PROTO(unsigned int frequency,
+		 unsigned int request,
+		 unsigned int cpu_id),
 
-	TP_ARGS(frequency, cpu_id)
+	TP_ARGS(frequency, request, cpu_id),
+
+	TP_STRUCT__entry(
+		__field(	u32,		frequency	)
+		__field(	u32,		request		)
+		__field(	u32,		cpu_id		)
+	),
+
+	TP_fast_assign(
+		__entry->frequency = frequency;
+		__entry->request = request;
+		__entry->cpu_id = cpu_id;
+	),
+
+	TP_printk("frequency=%lu request=%lu cpu_id=%lu",
+		  (unsigned long)__entry->frequency,
+		  (unsigned long)__entry->request,
+		  (unsigned long)__entry->cpu_id)
+
 );
 
 TRACE_EVENT(cpu_frequency_limits,

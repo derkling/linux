@@ -357,6 +357,9 @@ unsigned long cpufreq_scale_max_freq_capacity(int cpu)
 static void __cpufreq_notify_transition(struct cpufreq_policy *policy,
 		struct cpufreq_freqs *freqs, unsigned int state)
 {
+	unsigned int j, index = 0;
+	unsigned int request;
+
 	BUG_ON(irqs_disabled());
 
 	if (cpufreq_disabled())
@@ -388,9 +391,17 @@ static void __cpufreq_notify_transition(struct cpufreq_policy *policy,
 
 	case CPUFREQ_POSTCHANGE:
 		adjust_jiffies(CPUFREQ_POSTCHANGE, freqs);
-		pr_debug("FREQ: %lu - CPU: %lu\n",
-			 (unsigned long)freqs->new, (unsigned long)freqs->cpu);
-		trace_cpu_frequency(freqs->new, freqs->cpu);
+		for_each_cpu(j, policy->related_cpus) {
+			if (j == freqs->cpu)
+				break;
+			index++;
+		}
+		request = policy->per_cpu_request[index];
+		pr_debug("FREQ: %lu (REQ: %lu) - CPU: %lu\n",
+			 (unsigned long)freqs->new,
+			 (unsigned long) request,
+			 (unsigned long)freqs->cpu);
+		trace_cpu_frequency(freqs->new, request, freqs->cpu);
 		cpufreq_stats_record_transition(policy, freqs->new);
 		srcu_notifier_call_chain(&cpufreq_transition_notifier_list,
 				CPUFREQ_POSTCHANGE, freqs);
