@@ -1193,6 +1193,7 @@ static void cpufreq_policy_free(struct cpufreq_policy *policy, bool notify)
 	free_cpumask_var(policy->real_cpus);
 	free_cpumask_var(policy->related_cpus);
 	free_cpumask_var(policy->cpus);
+	kfree(policy->per_cpu_request);
 	kfree(policy);
 }
 
@@ -1240,8 +1241,19 @@ static int cpufreq_online(unsigned int cpu)
 	down_write(&policy->rwsem);
 
 	if (new_policy) {
+		unsigned int size_cpu_requests;
+
 		/* related_cpus should at least include policy->cpus. */
 		cpumask_copy(policy->related_cpus, policy->cpus);
+		size_cpu_requests = sizeof(*policy->per_cpu_request) *
+				     cpumask_weight(policy->related_cpus);
+		policy->per_cpu_request = kzalloc(size_cpu_requests,
+						  GFP_KERNEL);
+		if (!policy->per_cpu_request) {
+			pr_err("%s:Failed to allocate per cpu OPP requests!\n",
+			       __func__);
+			goto out_exit_policy;
+		}
 		/* Clear mask of registered CPUs */
 		cpumask_clear(policy->real_cpus);
 	}
