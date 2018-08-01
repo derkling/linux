@@ -81,6 +81,36 @@ TRACE_EVENT(cpufreq_sched_update_capacity,
 		      __entry->dl, __entry->total, __entry->new_total)
 );
 
+TRACE_EVENT(cpufreq_scmi_requested_freq,
+	    TP_PROTO(int32_t cpu, uint32_t requested_freq),
+	    TP_ARGS(cpu, requested_freq),
+	    TP_STRUCT__entry(
+		    __field(	int,			cpu)
+		    __field(	unsigned int,	requested_freq)
+		    ),
+	    TP_fast_assign(
+		    __entry->cpu = cpu;
+		    __entry->requested_freq = requested_freq;
+		    ),
+	    TP_printk("cpu %d requested frequency %d ",
+		      __entry->cpu, __entry->requested_freq)
+);
+
+TRACE_EVENT(cpufreq_scmi_delivered_freq,
+	    TP_PROTO(int32_t cpu, uint32_t delivered_freq),
+	    TP_ARGS(cpu, delivered_freq),
+	    TP_STRUCT__entry(
+		    __field(	int,			cpu)
+		    __field(	unsigned int,	delivered_freq)
+		    ),
+	    TP_fast_assign(
+		    __entry->cpu = cpu;
+		    __entry->delivered_freq = delivered_freq;
+		    ),
+	    TP_printk("cpu %d requested frequency %d ",
+		      __entry->cpu, __entry->delivered_freq)
+);
+
 #endif /* _TRACE_CPUFREQ_SCHED_H */
 
 /* This part must be outside protection */
