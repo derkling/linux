@@ -3228,6 +3228,17 @@ static void sched_freq_tick(int cpu)
 static inline void sched_freq_tick(int cpu) { }
 #endif /* CONFIG_CPU_FREQ_GOV_SCHED */
 
+void hack_scmi_external_store_counter_values(uint32_t cpuId, uint32_t swIncCounter);
+void poll_pmu_counters(uint32_t cpuId)
+{
+    uint32_t swIncCounter = 0;
+    asm volatile("mrs %0, pmevcntr0_el0" :"=r"(swIncCounter));
+
+    hack_scmi_external_store_counter_values (cpuId, swIncCounter);
+}
+
+
+
 /*
  * This function gets called by the timer code, with HZ frequency.
  * We call it with interrupts disabled.
@@ -3237,6 +3248,8 @@ void scheduler_tick(void)
 	int cpu = smp_processor_id();
 	struct rq *rq = cpu_rq(cpu);
 	struct task_struct *curr = rq->curr;
+    
+    poll_pmu_counters(cpu);
 
 	sched_clock_tick();
 

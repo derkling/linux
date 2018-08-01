@@ -63,6 +63,9 @@ struct cpufreq_user_policy {
 };
 
 struct cpufreq_policy {
+    uint32_t capIndex;
+    uint32_t requestedIndex;
+
 	/* CPUs sharing clock, require sw coordination */
 	cpumask_var_t		cpus;	/* Online CPUs only */
 	cpumask_var_t		related_cpus; /* Online + Offline CPUs */

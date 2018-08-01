@@ -27,7 +27,7 @@
 #include <linux/slab.h>
 #include <linux/scmi_protocol.h>
 #include <linux/types.h>
-
+#include <trace/events/cpufreq_sched.h>
 struct scmi_data {
 	int domain_id;
 	struct device *cpu_dev;
@@ -81,9 +81,132 @@ scmi_cpufreq_set_target(struct cpufreq_policy *policy, unsigned int index)
 	struct scmi_data *priv = policy->driver_data;
 	struct scmi_perf_ops *perf_ops = priv->handle->perf_ops;
 
-	return perf_ops->freq_set(priv->handle, priv->domain_id,
+    return perf_ops->freq_set(priv->handle, priv->domain_id,
 				  policy->freq_table[index].frequency * 1000);
 }
+
+#define CPU_COUNT  6
+#define THROTTLE_INDEX 2
+#define INDEX_COUNT 4
+
+int hack_scmi_cpufreq_set_target(struct cpufreq_policy *policy, unsigned int index)
+{
+	struct scmi_data *priv = policy->driver_data;
+	struct scmi_perf_ops *perf_ops = priv->handle->perf_ops;
+
+    if (policy->freq_table[policy->capIndex].frequency > policy->freq_table[index].frequency )
+    {
+
+        uint32_t cpuId;
+        for_each_cpu(cpuId, policy->cpus) {
+
+            trace_cpufreq_scmi_requested_freq(cpuId, policy->freq_table[index].frequency * 1000);
+        }
+ 
+        return perf_ops->freq_set(priv->handle, priv->domain_id,
+				  policy->freq_table[index].frequency * 1000);
+    }
+
+    /* did not change frequency but return correct (that's 0) */
+    return 0;
+}
+
+
+static char aboveThreshold[CPU_COUNT];
+
+static void
+hack_mpmm_policy(struct cpufreq_policy *policy)
+{
+    uint32_t maxSignificanceValue = 0;
+    uint32_t maxSignificanceCpuId = CPU_COUNT;
+    uint32_t cpuId;
+    for_each_cpu(cpuId, policy->cpus) {
+
+        if (!idle_cpu(cpuId))
+        {
+            /* find the core with highest significance */
+            /* TODO
+            trace_cpufreq_scmi_requested_freq(cpuId, policy->)
+            if (maxSignificanceValue < policy->) {
+            
+                maxSignificanceValue =  policy->;
+                maxSignificanceCpuId = cpuId;
+            }
+            if (maxSignificanceValue == policy->) {
+                maxSignificanceValue =  policy->;
+            }
+            */
+            ;
+        }
+    }
+    /* ensure that at least one of the cores is active */
+    if (maxSignificanceCpuId != CPU_COUNT)
+    {
+        /* if the most significant core has high HPE count then
+         * trigger a frequency drop
+         */
+        if (aboveThreshold[maxSignificanceCpuId])
+        {
+            policy->capIndex = THROTTLE_INDEX;
+
+        }
+        else
+        {
+            policy->capIndex = INDEX_COUNT;
+        }
+
+        hack_scmi_cpufreq_set_target(policy, policy->requestedIndex);
+    }
+}
+
+void
+hack_scmi_external_store_counter_values(uint32_t cpuId, uint32_t swIncCounter)
+{
+    #define EVENT_THRESHOLD  20
+    static bool cpuIterationTrack[CPU_COUNT] = {0};
+    static uint32_t offset[CPU_COUNT] = {0};
+
+    struct cpufreq_policy *policy = cpufreq_cpu_get_raw(cpuId);
+    char allCoresCheck = true;
+
+
+    if ((swIncCounter - offset[cpuId]) > EVENT_THRESHOLD)
+    {
+        aboveThreshold[cpuId] = 1;
+        pr_info("above threshold cpu %d\n:", cpuId);
+    }
+    else
+    {
+        aboveThreshold[cpuId] = 0;
+    }
+    offset[cpuId] = swIncCounter;
+
+    if (cpuIterationTrack[cpuId])
+    {
+        WARN(true, "cpu %d has shown up more than once", cpuId);
+    }
+    else
+    {
+        cpuIterationTrack[cpuId] = true;
+    }
+
+    for_each_cpu(cpuId, policy->cpus)
+    {
+        if (!idle_cpu(cpuId))
+        {
+            allCoresCheck &= cpuIterationTrack[cpuId];
+        }
+    }
+    if(allCoresCheck)
+    {
+        for_each_cpu(cpuId, policy->cpus) {
+            cpuIterationTrack[cpuId] = false;
+        }
+
+        hack_mpmm_policy(policy);
+    }
+}
+EXPORT_SYMBOL(hack_scmi_external_store_counter_values)
 
 static int
 scmi_get_sharing_cpus(struct device *cpu_dev, struct cpumask *cpumask)
@@ -247,7 +370,7 @@ static struct cpufreq_driver scmi_cpufreq_driver = {
 					CPUFREQ_NEED_INITIAL_FREQ_CHECK,
 	.verify			= cpufreq_generic_frequency_table_verify,
 	.attr			= cpufreq_generic_attr,
-	.target_index		= scmi_cpufreq_set_target,
+	.target_index		= hack_scmi_cpufreq_set_target,
 	.get			= scmi_cpufreq_get_rate,
 	.init			= scmi_cpufreq_init,
 	.exit			= scmi_cpufreq_exit,
