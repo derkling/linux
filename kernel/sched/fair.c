@@ -11946,5 +11946,40 @@ void check_for_migration(struct rq *rq, struct task_struct *p)
 		raw_spin_unlock(&migration_lock);
 	}
 }
+#else
+/*
+ * XXX: queper01: These are stubs for the function defined in
+ * include/linux/sched.h
+ */
+int register_cpu_cycle_counter_cb(struct cpu_cycle_counter_cb *cb)
+{
+      return 0;
+}
+void sched_set_io_is_busy(int val) {}
 
+int sched_set_boost(int enable)
+{
+      return -EINVAL;
+}
+void free_task_load_ptrs(struct task_struct *p) { }
+
+int sched_set_group_id(struct task_struct *p, unsigned int group_id)
+{
+	return -EINVAL;
+}
+unsigned int sched_get_group_id(struct task_struct *p)
+{
+	return 0;
+}
+int sched_set_init_task_load(struct task_struct *p, int init_load_pct)
+{
+	return -EINVAL;
+}
+u32 sched_get_init_task_load(struct task_struct *p)
+{
+	return p->init_load_pct;
+}
+void sched_update_cpu_freq_min_max(const cpumask_t *cpus, u32 fmin, u32 fmax) { }
+
+extern void sched_exit(struct task_struct *p) {}
 #endif /* CONFIG_SCHED_WALT */

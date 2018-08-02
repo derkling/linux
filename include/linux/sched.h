@@ -1768,7 +1768,12 @@ struct task_struct {
 	struct sched_rt_entity rt;
 	u64 last_sleep_ts;
 	u64 last_cpu_deselected_ts;
+
+/*
+ * XXX: queper01: Required to boot with CONFIG_SCHED_WALT=n without changing
+ * headers ...
 #ifdef CONFIG_SCHED_WALT
+*/
 	struct ravg ravg;
 	/*
 	 * 'init_load_pct' represents the initial task load assigned to children
@@ -1782,7 +1787,7 @@ struct task_struct {
 	struct list_head grp_list;
 	u64 cpu_cycles;
 	bool misfit;
-#endif
+//#endif
 
 #ifdef CONFIG_CGROUP_SCHED
 	struct task_group *sched_task_group;
@@ -2760,7 +2765,10 @@ static inline int sched_update_freq_max_load(const cpumask_t *cpumask)
 	return 0;
 }
 
+/* XXX: queper01: Required to boot with CONFIG_SCHED_WALT=n without changing
+ * headers ...
 #ifdef CONFIG_SCHED_WALT
+*/
 extern int register_cpu_cycle_counter_cb(struct cpu_cycle_counter_cb *cb);
 extern void sched_set_io_is_busy(int val);
 extern int sched_set_group_id(struct task_struct *p, unsigned int group_id);
@@ -2771,25 +2779,22 @@ extern void sched_update_cpu_freq_min_max(const cpumask_t *cpus, u32 fmin,
 					  u32 fmax);
 extern int sched_set_boost(int enable);
 extern void free_task_load_ptrs(struct task_struct *p);
-#else
-static inline int
-register_cpu_cycle_counter_cb(struct cpu_cycle_counter_cb *cb)
-{
-	return 0;
-}
-static inline void sched_set_io_is_busy(int val) {};
-
-static inline int sched_set_boost(int enable)
-{
-	return -EINVAL;
-}
-static inline void free_task_load_ptrs(struct task_struct *p) { }
-#endif /* CONFIG_SCHED_WALT */
-
-#ifndef CONFIG_SCHED_WALT
-static inline void sched_update_cpu_freq_min_max(const cpumask_t *cpus,
-					u32 fmin, u32 fmax) { }
-#endif /* CONFIG_SCHED_WALT */
+//#else
+//static inline int
+//register_cpu_cycle_counter_cb(struct cpu_cycle_counter_cb *cb)
+//{
+//	return 0;
+//}
+//static inline void sched_set_io_is_busy(int val) {};
+//
+//static inline int sched_set_boost(int enable)
+//{
+//	return -EINVAL;
+//}
+//static inline void free_task_load_ptrs(struct task_struct *p) { }
+//static inline void sched_update_cpu_freq_min_max(const cpumask_t *cpus,
+//					u32 fmin, u32 fmax) { }
+//#endif /* CONFIG_SCHED_WALT */
 
 #ifdef CONFIG_NO_HZ_COMMON
 void calc_load_enter_idle(void);
@@ -3044,11 +3049,15 @@ extern void wake_up_new_task(struct task_struct *tsk);
 #endif
 extern int sched_fork(unsigned long clone_flags, struct task_struct *p);
 extern void sched_dead(struct task_struct *p);
+/*
+ * XXX: queper01: Required to boot with CONFIG_SCHED_WALT=n without changing
+ * headers ...
 #ifdef CONFIG_SCHED_WALT
+*/
 extern void sched_exit(struct task_struct *p);
-#else
-static inline void sched_exit(struct task_struct *p) { }
-#endif
+//#else
+//static inline void sched_exit(struct task_struct *p) { }
+//#endif
 
 
 extern void proc_caches_init(void);
