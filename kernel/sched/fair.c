@@ -1837,12 +1837,6 @@ static int task_numa_migrate(struct task_struct *p)
 	if (env.best_cpu == -1)
 		return -EAGAIN;
 
-	/*
-	 * Reset the scan period if the task is being rescheduled on an
-	 * alternative node to recheck if the tasks is now properly placed.
-	 */
-	p->numa_scan_period = task_scan_start(p);
-
 	best_rq = cpu_rq(env.best_cpu);
 	if (env.best_task == NULL) {
 		ret = migrate_task_to(p, env.best_cpu);
@@ -6390,6 +6384,19 @@ static void migrate_task_rq_fair(struct task_struct *p, int new_cpu __maybe_unus
 
 	/* We have migrated, no longer consider this task hot */
 	p->se.exec_start = 0;
+
+#ifdef CONFIG_NUMA_BALANCING
+	if (!p->mm || (p->flags & PF_EXITING))
+		return;
+
+	if (p->numa_faults) {
+		int src_nid = cpu_to_node(task_cpu(p));
+		int dst_nid = cpu_to_node(new_cpu);
+
+		if (src_nid != dst_nid)
+			p->numa_scan_period = task_scan_start(p);
+	}
+#endif
 }
 
 static void task_dead_fair(struct task_struct *p)
