@@ -209,7 +209,9 @@ sd_parent_degenerate(struct sched_domain *sd, struct sched_domain *parent)
  */
 DEFINE_STATIC_KEY_FALSE(sched_energy_present);
 
-#ifdef CONFIG_ENERGY_MODEL
+#if defined(CONFIG_ENERGY_MODEL) && defined(CONFIG_CPU_FREQ_GOV_SCHEDUTIL)
+bool sched_energy_update = false;
+
 static void free_fd(struct freq_domain *fd)
 {
 	struct freq_domain *tmp;
@@ -290,12 +292,15 @@ static void destroy_freq_domain_rcu(struct rcu_head *rp)
  */
 #define EM_MAX_COMPLEXITY 2048
 
+extern struct cpufreq_governor schedutil_gov;
 static void build_freq_domains(const struct cpumask *cpu_map)
 {
 	int i, nr_fd = 0, nr_cs = 0, nr_cpus = cpumask_weight(cpu_map);
 	struct freq_domain *fd = NULL, *tmp;
 	int cpu = cpumask_first(cpu_map);
 	struct root_domain *rd = cpu_rq(cpu)->rd;
+	struct cpufreq_policy *policy;
+	struct cpufreq_governor *gov;
 
 	/* EAS is enabled for asymmetric CPU capacity topologies. */
 	if (!per_cpu(sd_asym_cpucapacity, cpu)) {
@@ -310,6 +315,13 @@ static void build_freq_domains(const struct cpumask *cpu_map)
 		/* Skip already covered CPUs. */
 		if (find_fd(fd, i))
 			continue;
+
+		/* Do not attempt EAS if schedutil is not being used. */
+		policy = cpufreq_cpu_get(i);
+		gov = policy->governor;
+		cpufreq_cpu_put(policy);
+		if (gov != &schedutil_gov)
+			goto free;
 
 		/* Create the new fd and add it to the local list. */
 		tmp = fd_init(i);
@@ -2180,10 +2192,10 @@ match2:
 		;
 	}
 
-#ifdef CONFIG_ENERGY_MODEL
+#if defined(CONFIG_ENERGY_MODEL) && defined(CONFIG_CPU_FREQ_GOV_SCHEDUTIL)
 	/* Build freq domains: */
 	for (i = 0; i < ndoms_new; i++) {
-		for (j = 0; j < n; j++) {
+		for (j = 0; j < n && !sched_energy_update; j++) {
 			if (cpumask_equal(doms_new[i], doms_cur[j]) &&
 			    cpu_rq(cpumask_first(doms_cur[j]))->rd->fd)
 				goto match3;

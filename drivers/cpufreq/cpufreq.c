@@ -2271,6 +2271,10 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
 		ret = cpufreq_start_governor(policy);
 		if (!ret) {
 			pr_debug("cpufreq: governor change\n");
+			/* Notification of the new governor */
+			blocking_notifier_call_chain(
+					&cpufreq_policy_notifier_list,
+					CPUFREQ_GOVERNOR, policy);
 			return 0;
 		}
 		cpufreq_exit_governor(policy);

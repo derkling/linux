@@ -2265,10 +2265,8 @@ unsigned long scale_irq_capacity(unsigned long util, unsigned long irq, unsigned
 }
 #endif
 
-#ifdef CONFIG_SMP
-#ifdef CONFIG_ENERGY_MODEL
+#if defined(CONFIG_ENERGY_MODEL) && defined(CONFIG_CPU_FREQ_GOV_SCHEDUTIL)
 #define freq_domain_span(fd) (to_cpumask(((fd)->obj->cpus)))
 #else
 #define freq_domain_span(fd) NULL
-#endif
 #endif
