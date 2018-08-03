@@ -2365,10 +2365,8 @@ __cpu_util(int cpu, unsigned int util_cfs, unsigned int util_rt,
 }
 #endif /* CONFIG_CPU_FREQ_GOV_SCHEDUTIL */
 
-#ifdef CONFIG_SMP
-#ifdef CONFIG_ENERGY_MODEL
+#if defined(CONFIG_ENERGY_MODEL) && defined(CONFIG_CPU_FREQ_GOV_SCHEDUTIL)
 #define perf_domain_span(pd) (to_cpumask(((pd)->obj->cpus)))
 #else
 #define perf_domain_span(pd) NULL
-#endif
 #endif
