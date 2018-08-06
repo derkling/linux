@@ -9628,6 +9628,17 @@ static void nohz_balancer_kick(struct rq *rq)
 	}
 
 	rcu_read_lock();
+
+	if (static_branch_unlikely(&sched_asym_cpucapacity))
+		/*
+		 * For asymmetric systems, we do not want to nicely balance
+		 * cache use, instead we want to embrace asymmetry and only
+		 * ensure tasks have enough CPU capacity.
+		 *
+		 * Skip the LLC logic because it's not relevant in that case.
+		 */
+		goto check_capacity;
+
 	sds = rcu_dereference(per_cpu(sd_llc_shared, cpu));
 	if (sds) {
 		/*
@@ -9647,6 +9658,7 @@ static void nohz_balancer_kick(struct rq *rq)
 
 	}
 
+check_capacity:
 	sd = rcu_dereference(rq->sd);
 	if (sd) {
 		if ((rq->cfs.h_nr_running >= 1) &&
