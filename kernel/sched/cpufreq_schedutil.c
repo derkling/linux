@@ -206,7 +206,7 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 
 	max = arch_scale_cpu_capacity(NULL, cpu);
 
-	if (type == frequency_util && rt_rq_is_runnable(&rq->rt))
+	if (type == FREQUENCY_UTIL && rt_rq_is_runnable(&rq->rt))
 		return max;
 
 	/*
@@ -227,7 +227,7 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 	util = util_cfs;
 	util += cpu_util_rt(rq);
 
-	if (type == frequency_util) {
+	if (type == FREQUENCY_UTIL) {
 		/*
 		 * For frequency selection we do not make cpu_util_dl() a
 		 * permanent part of this sum because we want to use
@@ -264,7 +264,7 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 	util = scale_irq_capacity(util, irq, max);
 	util += irq;
 
-	if (type == frequency_util) {
+	if (type == FREQUENCY_UTIL) {
 		/*
 		 * Bandwidth required by DEADLINE must always be granted
 		 * while, for FAIR and RT, we use blocked utilization of
@@ -291,7 +291,7 @@ static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
 	sg_cpu->max = arch_scale_cpu_capacity(NULL, sg_cpu->cpu);
 	sg_cpu->bw_dl = cpu_bw_dl(rq);
 
-	return schedutil_freq_util(sg_cpu->cpu, util, frequency_util);
+	return schedutil_freq_util(sg_cpu->cpu, util, FREQUENCY_UTIL);
 }
 
 /**

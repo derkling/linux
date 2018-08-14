@@ -2195,8 +2195,8 @@ static inline void cpufreq_update_util(struct rq *rq, unsigned int flags) {}
 #endif
 
 enum schedutil_type {
-	frequency_util,
-	energy_util,
+	FREQUENCY_UTIL,
+	ENERGY_UTIL,
 };
 
 #ifdef CONFIG_CPU_FREQ_GOV_SCHEDUTIL
