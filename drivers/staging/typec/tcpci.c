@@ -463,8 +463,23 @@ static const struct regmap_config tcpci_regmap_config = {
 	.max_register = 0x7F, /* 0x80 .. 0xFF are vendor defined */
 };
 
+#define PDO_FIXED_FLAGS \
+	(PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP | PDO_FIXED_USB_COMM)
+
+static const u32 src_pdo[] = {
+	PDO_FIXED(5000, 500, PDO_FIXED_FLAGS),
+};
+
+static const u32 snk_pdo[] = {
+	PDO_FIXED(5000, 500, PDO_FIXED_FLAGS),
+};
+
 static const struct tcpc_config tcpci_tcpc_config = {
-	.type = TYPEC_PORT_DFP,
+	.src_pdo = src_pdo,
+	.nr_src_pdo = ARRAY_SIZE(src_pdo),
+	.snk_pdo = snk_pdo,
+	.nr_snk_pdo = ARRAY_SIZE(snk_pdo),
+	.type = TYPEC_PORT_DRP,
 	.default_role = TYPEC_SINK,
 };
 
