@@ -21,6 +21,8 @@
 #include <linux/platform_device.h>
 #include <linux/gpio.h>
 #include <linux/of_gpio.h>
+#include <linux/extcon-provider.h>
+#include <linux/usb/role.h>
 
 #define DEVICE_DRIVER_NAME "hisi_hikey_usb"
 
@@ -36,6 +38,108 @@ struct hisi_hikey_usb {
 	int typec_vbus_gpio;
 	int typec_vbus_enable_val;
 	int hub_vbus_gpio;
+
+	struct extcon_dev *edev;
+	struct usb_role_switch *role_sw;
+};
+
+static const unsigned int usb_extcon_cable[] = {
+	EXTCON_USB,
+	EXTCON_USB_HOST,
+	EXTCON_NONE,
+};
+
+static void hub_power_ctrl(struct hisi_hikey_usb *hisi_hikey_usb, int value)
+{
+	int gpio = hisi_hikey_usb->hub_vbus_gpio;
+
+	if (gpio_is_valid(gpio))
+		gpio_set_value(gpio, value);
+}
+
+static void usb_switch_ctrl(struct hisi_hikey_usb *hisi_hikey_usb, int switch_to)
+{
+	int gpio = hisi_hikey_usb->otg_switch_gpio;
+	const char *switch_to_str = (switch_to == USB_SWITCH_TO_HUB) ?
+		"hub" : "typec";
+
+	if (!gpio_is_valid(gpio)) {
+		pr_err("%s: otg_switch_gpio is err\n", __func__);
+		return;
+	}
+
+	if (gpio_get_value(gpio) == switch_to) {
+		pr_info("%s: already switch to %s\n", __func__, switch_to_str);
+		return;
+	}
+
+	gpio_direction_output(gpio, switch_to);
+	pr_info("%s: switch to %s\n", __func__, switch_to_str);
+}
+
+static void usb_typec_power_ctrl(struct hisi_hikey_usb *hisi_hikey_usb, int value)
+{
+	int gpio = hisi_hikey_usb->typec_vbus_gpio;
+
+	if (!gpio_is_valid(gpio)) {
+		pr_err("%s: typec power gpio is err\n", __func__);
+		return;
+	}
+
+	if (gpio_get_value(gpio) == value) {
+		pr_info("%s: typec power no change\n", __func__);
+		return;
+	}
+
+	gpio_direction_output(gpio, value);
+	pr_info("%s: set typec vbus gpio to %d\n", __func__, value);
+}
+
+static int extcon_hisi_pd_set_role(struct device *dev, enum usb_role role)
+{
+	struct hisi_hikey_usb *hisi_hikey_usb = dev_get_drvdata(dev);
+
+	dev_info(dev, "%s:set usb role to %d\n", __func__, role);
+	switch (role) {
+	case USB_ROLE_NONE:
+		usb_switch_ctrl(hisi_hikey_usb, USB_SWITCH_TO_HUB);
+		usb_typec_power_ctrl(hisi_hikey_usb,
+				!hisi_hikey_usb->typec_vbus_enable_val);
+		hub_power_ctrl(hisi_hikey_usb, HUB_VBUS_POWER_ON);
+		extcon_set_state_sync(hisi_hikey_usb->edev, EXTCON_USB, false);
+		extcon_set_state_sync(hisi_hikey_usb->edev, EXTCON_USB_HOST, true);
+		break;
+	case USB_ROLE_HOST:
+		usb_switch_ctrl(hisi_hikey_usb, USB_SWITCH_TO_TYPEC);
+		usb_typec_power_ctrl(hisi_hikey_usb,
+				hisi_hikey_usb->typec_vbus_enable_val);
+		extcon_set_state_sync(hisi_hikey_usb->edev, EXTCON_USB, false);
+		extcon_set_state_sync(hisi_hikey_usb->edev, EXTCON_USB_HOST, true);
+		break;
+	case USB_ROLE_DEVICE:
+		hub_power_ctrl(hisi_hikey_usb, HUB_VBUS_POWER_OFF);
+		usb_typec_power_ctrl(hisi_hikey_usb,
+				hisi_hikey_usb->typec_vbus_enable_val);
+		usb_switch_ctrl(hisi_hikey_usb, USB_SWITCH_TO_TYPEC);
+		extcon_set_state_sync(hisi_hikey_usb->edev, EXTCON_USB_HOST, false);
+		extcon_set_state_sync(hisi_hikey_usb->edev, EXTCON_USB, true);
+		break;
+	}
+
+	return 0;
+}
+
+static enum usb_role extcon_hisi_pd_get_role(struct device *dev)
+{
+	struct hisi_hikey_usb *hisi_hikey_usb = dev_get_drvdata(dev);
+
+	return usb_role_switch_get_role(hisi_hikey_usb->role_sw);
+}
+
+static const struct usb_role_switch_desc sw_desc = {
+	.set = extcon_hisi_pd_set_role,
+	.get = extcon_hisi_pd_get_role,
+	.allow_userspace_control = true,
 };
 
 static int hisi_hikey_usb_probe(struct platform_device *pdev)
@@ -122,6 +226,23 @@ static int hisi_hikey_usb_probe(struct platform_device *pdev)
 		}
 	}
 
+	hisi_hikey_usb->edev = devm_extcon_dev_allocate(dev, usb_extcon_cable);
+	if (IS_ERR(hisi_hikey_usb->edev)) {
+		dev_err(dev, "failed to allocate extcon device\n");
+		goto free_gpio2;
+	}
+
+	ret = devm_extcon_dev_register(dev, hisi_hikey_usb->edev);
+	if (ret < 0) {
+		dev_err(dev, "failed to register extcon device\n");
+		goto free_gpio2;
+	}
+	extcon_set_state(hisi_hikey_usb->edev, EXTCON_USB_HOST, true);
+
+	hisi_hikey_usb->role_sw = usb_role_switch_register(dev, &sw_desc);
+	if (IS_ERR(hisi_hikey_usb->role_sw))
+		goto free_gpio2;
+
 	platform_set_drvdata(pdev, hisi_hikey_usb);
 
 	return 0;
@@ -159,6 +280,8 @@ static int  hisi_hikey_usb_remove(struct platform_device *pdev)
 		gpio_free(hisi_hikey_usb->hub_vbus_gpio);
 		hisi_hikey_usb->hub_vbus_gpio = INVALID_GPIO_VALUE;
 	}
+
+	usb_role_switch_unregister(hisi_hikey_usb->role_sw);
 
 	return 0;
 }
