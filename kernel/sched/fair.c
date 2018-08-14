@@ -6327,7 +6327,7 @@ static long compute_energy(struct task_struct *p, int dst_cpu,
 		 */
 		for_each_cpu_and(cpu, perf_domain_span(pd), cpu_online_mask) {
 			util = cpu_util_next(cpu, p, dst_cpu);
-			util = schedutil_freq_util(cpu, util, energy_util);
+			util = schedutil_freq_util(cpu, util, ENERGY_UTIL);
 			max_util = max(util, max_util);
 			sum_util += util;
 		}
