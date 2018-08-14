@@ -300,6 +300,9 @@ static int dwc3_hisi_resume(struct device *dev)
 		return ret;
 	}
 
+	/* Wait for clock stable */
+	msleep(100);
+
 	return 0;
 }
 #endif /* CONFIG_PM_SLEEP */
