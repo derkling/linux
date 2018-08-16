@@ -790,6 +790,28 @@ static union uclamp_map uclamp_maps[UCLAMP_CNT][UCLAMP_GROUPS];
 #define UCLAMP_ENOSPC_FMT "Cannot allocate more than " \
 	__stringify(CONFIG_UCLAMP_GROUPS_COUNT) " UTIL_%s clamp groups\n"
 
+/*
+ * uclamp_round: classify a clamp value to the closest trackable value
+ *
+ * The number of clamp group, which is defined at compile time, allows to
+ * track a finite number of different clamp values. Thus clamp values are
+ * grouped into bins.
+ * This method allows to round a value into one of the possible available
+ * clamp groups.
+ */
+static inline int uclamp_round(int value)
+{
+#define UCLAMP_GROUP_DELTA (SCHED_CAPACITY_SCALE / CONFIG_UCLAMP_GROUPS_COUNT)
+#define UCLAMP_GROUP_UPPER (UCLAMP_GROUP_DELTA * CONFIG_UCLAMP_GROUPS_COUNT)
+
+	if (value <= 0)
+		return value;
+	if (value >= UCLAMP_GROUP_UPPER)
+		return SCHED_CAPACITY_SCALE;
+
+	return UCLAMP_GROUP_DELTA * (value / UCLAMP_GROUP_DELTA);
+}
+
 /**
  * uclamp_cpu_update: updates the utilization clamp of a CPU
  * @cpu: the CPU which utilization clamp has to be updated
@@ -807,10 +829,10 @@ static union uclamp_map uclamp_maps[UCLAMP_CNT][UCLAMP_GROUPS];
 static inline void uclamp_cpu_update(struct rq *rq, int clamp_id,
 				     unsigned int last_clamp_value)
 {
-	unsigned int group_id = 0;
+	unsigned int group_id;
 	int max_value = -1;
 
-	for ( ; group_id <= CONFIG_UCLAMP_GROUPS_COUNT; ++group_id) {
+	for (group_id = 0; group_id < UCLAMP_GROUPS; ++group_id) {
 		if (!rq->uclamp.group[clamp_id][group_id].tasks)
 			continue;
 		/* Both min and max clamp are MAX aggregated */
@@ -858,6 +880,7 @@ static inline void uclamp_cpu_get_id(struct task_struct *p,
 				     struct rq *rq, int clamp_id)
 {
 	int group_id = p->uclamp[clamp_id].group_id;
+	unsigned int clamp_value;
 
 	rq->uclamp.group[clamp_id][group_id].tasks += 1;
 
@@ -872,6 +895,11 @@ static inline void uclamp_cpu_get_id(struct task_struct *p,
 			rq->uclamp.flags &= ~UCLAMP_FLAG_IDLE;
 		rq->uclamp.value[clamp_id] = p->uclamp[clamp_id].value;
 	}
+
+	/* Track the max effective clamp value for each CPU's clamp group */
+	clamp_value = p->uclamp[clamp_id].value;
+	if (clamp_value > rq->uclamp.group[clamp_id][group_id].value)
+		rq->uclamp.group[clamp_id][group_id].value = clamp_value;
 
 	/*
 	 * If this is the new max utilization clamp value, then we can update
@@ -925,8 +953,12 @@ static inline void uclamp_cpu_put_id(struct task_struct *p,
 		     cpu_of(rq), clamp_id, group_id);
 	}
 #endif
-	if (clamp_value >= rq->uclamp.value[clamp_id])
+	if (clamp_value >= rq->uclamp.value[clamp_id]) {
+		/* Reset CPU's clamp value to rounded clamp group value */
+		rq->uclamp.group[clamp_id][group_id].value =
+			uclamp_maps[clamp_id][group_id].value;
 		uclamp_cpu_update(rq, clamp_id, clamp_value);
+	}
 }
 
 /**
