@@ -134,3 +134,8 @@ SCHED_FEAT(SCHEDTUNE_BOOST_HOLD_ALL, false)
  * Utilization clamping lazy update.
  */
 SCHED_FEAT(UCLAMP_LAZY_UPDATE, false)
+
+/*
+ * Utilization clamping discretization.
+ */
+SCHED_FEAT(UCLAMP_ROUNDING, true)
