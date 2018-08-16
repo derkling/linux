@@ -1354,7 +1354,7 @@ static int dsi_connector_init(struct drm_device *dev, struct dw_dsi *dsi)
 	if (ret)
 		return ret;
 
-	ret = drm_mode_connector_attach_encoder(connector, encoder);
+	ret = drm_connector_attach_encoder(connector, encoder);
 	if (ret)
 		return ret;
 
@@ -1440,7 +1440,7 @@ static int dsi_parse_panel_endpoint(struct dw_dsi *dsi,
 	of_node_put(panel_node);
 
 	panel = of_drm_find_panel(panel_node);
-	if (!panel) {
+	if (IS_ERR(panel)) {
 		DRM_DEBUG_DRIVER("skip this panel endpoint.\n");
 		return 0;
 	}
