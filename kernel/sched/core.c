@@ -784,6 +784,27 @@ union uclamp_map {
  */
 static union uclamp_map uclamp_maps[UCLAMP_CNT][UCLAMP_GROUPS];
 
+/*
+ * uclamp_group_value: get the "group value" for a given "clamp value"
+ * @value: the utiliation "clamp value" to translate
+ *
+ * The number of clamp group, which is defined at compile time, allows to
+ * track a finite number of different clamp values. Thus clamp values are
+ * grouped into bins each one representing a different "group value".
+ * This method returns the "group value" corresponding to the specified
+ * "clamp value".
+ */
+static inline unsigned int uclamp_group_value(unsigned int clamp_value)
+{
+#define UCLAMP_GROUP_DELTA (SCHED_CAPACITY_SCALE / CONFIG_UCLAMP_GROUPS_COUNT)
+#define UCLAMP_GROUP_UPPER (UCLAMP_GROUP_DELTA * CONFIG_UCLAMP_GROUPS_COUNT)
+
+	if (clamp_value >= UCLAMP_GROUP_UPPER)
+		return SCHED_CAPACITY_SCALE;
+
+	return UCLAMP_GROUP_DELTA * (clamp_value / UCLAMP_GROUP_DELTA);
+}
+
 /**
  * uclamp_cpu_update: updates the utilization clamp of a CPU
  * @rq: the CPU's rq which utilization clamp has to be updated
@@ -849,6 +870,7 @@ static inline void uclamp_cpu_update(struct rq *rq, unsigned int clamp_id,
 static inline void uclamp_cpu_get_id(struct task_struct *p, struct rq *rq,
 				     unsigned int clamp_id)
 {
+	unsigned int clamp_value;
 	unsigned int group_id;
 
 	if (unlikely(!p->uclamp[clamp_id].mapped))
@@ -870,6 +892,11 @@ static inline void uclamp_cpu_get_id(struct task_struct *p, struct rq *rq,
 			rq->uclamp.flags &= ~UCLAMP_FLAG_IDLE;
 		rq->uclamp.value[clamp_id] = p->uclamp[clamp_id].value;
 	}
+
+	/* CPU's clamp groups track the max effective clamp value */
+	clamp_value = p->uclamp[clamp_id].value;
+	if (clamp_value > rq->uclamp.group[clamp_id][group_id].value)
+		rq->uclamp.group[clamp_id][group_id].value = clamp_value;
 
 	if (rq->uclamp.value[clamp_id] < p->uclamp[clamp_id].value)
 		rq->uclamp.value[clamp_id] = p->uclamp[clamp_id].value;
@@ -918,8 +945,16 @@ static inline void uclamp_cpu_put_id(struct task_struct *p, struct rq *rq,
 		     cpu_of(rq), clamp_id, group_id);
 	}
 #endif
-	if (clamp_value >= rq->uclamp.value[clamp_id])
+	if (clamp_value >= rq->uclamp.value[clamp_id]) {
+		/*
+		 * Each CPU's clamp group value is reset to its nominal group
+		 * value whenever there are anymore RUNNABLE tasks refcounting
+		 * that clamp group.
+		 */
+		rq->uclamp.group[clamp_id][group_id].value =
+			uclamp_maps[clamp_id][group_id].value;
 		uclamp_cpu_update(rq, clamp_id, clamp_value);
+	}
 }
 
 /**
@@ -1066,9 +1101,12 @@ static void uclamp_group_get(struct task_struct *p, struct uclamp_se *uc_se,
 	unsigned int prev_group_id = uc_se->group_id;
 	union uclamp_map uc_map_old, uc_map_new;
 	unsigned int free_group_id;
+	unsigned int group_value;
 	unsigned int group_id;
 	unsigned long res;
 	int cpu;
+
+	group_value = uclamp_group_value(clamp_value);
 
 retry:
 
@@ -1077,7 +1115,7 @@ retry:
 		uc_map_old.data = atomic_long_read(&uc_maps[group_id].adata);
 		if (free_group_id == UCLAMP_GROUPS && !uc_map_old.se_count)
 			free_group_id = group_id;
-		if (uc_map_old.value == clamp_value)
+		if (uc_map_old.value == group_value)
 			break;
 	}
 	if (group_id >= UCLAMP_GROUPS) {
@@ -1093,7 +1131,7 @@ retry:
 	}
 
 	uc_map_new.se_count = uc_map_old.se_count + 1;
-	uc_map_new.value = clamp_value;
+	uc_map_new.value = group_value;
 	res = atomic_long_cmpxchg(&uc_maps[group_id].adata,
 				  uc_map_old.data, uc_map_new.data);
 	if (res != uc_map_old.data)
@@ -1114,9 +1152,9 @@ retry:
 #endif
 		}
 
-		if (uc_cpu->group[clamp_id][group_id].value == clamp_value)
+		if (uc_cpu->group[clamp_id][group_id].value == group_value)
 			continue;
-		uc_cpu->group[clamp_id][group_id].value = clamp_value;
+		uc_cpu->group[clamp_id][group_id].value = group_value;
 	}
 
 done:
