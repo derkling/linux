@@ -743,6 +743,9 @@ unsigned int sysctl_sched_uclamp_util_max = 100;
 static struct uclamp_se uclamp_default[UCLAMP_CNT];
 static struct uclamp_se uclamp_default_perf[UCLAMP_CNT];
 
+static atomic_t forks_count;
+static atomic_t exits_count;
+
 /**
  * uclamp_map: reference counts a utilization "clamp value"
  * @value:    the utilization "clamp value" required
@@ -1428,9 +1431,13 @@ static inline void uclamp_group_put(int clamp_id, int group_id,
 		uclamp_group_reset(clamp_id, group_id);
 	raw_spin_unlock_irqrestore(&uc_map[group_id].se_lock, flags);
 
-	printk("%s_%s PUT [%d:%d]=%d\n", source, clamp_id ? "Max" : "Min",
+	if (!clamp_id) {
+	printk("%s_%s PUT (f:%4d, e:%4d) [%d:%d]=%d\n", source,
+	       clamp_id ? "Max" : "Min",
+	       atomic_read(&forks_count), atomic_read(&exits_count),
 	       clamp_id, group_id,
 	       uc_map[group_id].se_count);
+	}
 }
 
 static inline void uclamp_group_get_tg(struct cgroup_subsys_state *css,
@@ -1489,9 +1496,13 @@ static inline void uclamp_group_get(struct task_struct *p,
 	uc_map[next_group_id].se_count += 1;
 	raw_spin_unlock_irqrestore(&uc_map[next_group_id].se_lock, flags);
 
-	printk("%s_%s GET [%d:%d]=%d\n", source, clamp_id ? "Max" : "Min",
+	if (!clamp_id) {
+	printk("%s_%s GET (f:%4d, e:%4d) [%d:%d]=%d\n", source,
+	       clamp_id ? "Max" : "Min",
+	       atomic_read(&forks_count), atomic_read(&exits_count),
 	       clamp_id, next_group_id,
 	       uc_map[next_group_id].se_count);
+	}
 
 	/* Newly created TG don't have tasks assigned */
 	if (css)
@@ -1756,6 +1767,8 @@ void uclamp_exit_task(struct task_struct *p)
 		uc_se = &p->uclamp[clamp_id];
 		uclamp_group_put(clamp_id, uc_se->group_id, "SeExt");
 	}
+
+	atomic_inc(&exits_count);
 }
 
 /**
@@ -1767,6 +1780,9 @@ static void uclamp_fork(struct task_struct *p, bool reset)
 
 	if (unlikely(!p->sched_class->uclamp_enabled))
 		return;
+
+	printk("uclamp_fork: comm=%s pid=%d reset=%d",
+			p->comm, p->pid, reset ? 1 : 0);
 
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
 		int next_group_id = p->uclamp[clamp_id].group_id;
@@ -1789,6 +1805,8 @@ static void uclamp_fork(struct task_struct *p, bool reset)
 		if (unlikely(reset))
 			p->uclamp[clamp_id].value = UCLAMP_NOT_VALID;
 	}
+
+	atomic_inc(&forks_count);
 }
 
 /**
