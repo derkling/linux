@@ -487,3 +487,26 @@ Description:	Information about CPU vulnerabilities
 		"Not affected"	  CPU is not affected by the vulnerability
 		"Vulnerable"	  CPU is affected and no mitigation in effect
 		"Mitigation: $M"  CPU is affected and mitigation $M is in effect
+
+What:		/sys/devices/system/cpu/energy_model/pdX/cost
+		/sys/devices/system/cpu/energy_model/pdX/cpus
+		/sys/devices/system/cpu/energy_model/pdX/frequency
+		/sys/devices/system/cpu/energy_model/pdX/power
+Date:		September 2018
+Contact:	Linux kernel mailing list <linux-kernel@vger.kernel.org>
+Description:	Energy Model of CPUs
+
+		The 'energy_model/pdX' directory contains the Energy Model of
+		performance domain X.
+
+		- cost: the list of abstract energy costs for running CPUs of
+		the domains at each performance state. The cost of a specific
+		state is computed as "power * max_freq / freq".
+
+		- cpus: the set of CPUs belonging to this performance domain.
+
+		- frequency: the list of frequencies corresponding to each
+		performance state of the domain.
+
+		- power: the list of power costs associated with running a CPU
+		of the domain at each performance state.
