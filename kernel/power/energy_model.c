@@ -16,7 +16,7 @@
 #include <linux/slab.h>
 
 /* Mapping of each CPU to the performance domain to which it belongs. */
-static DEFINE_PER_CPU(struct em_perf_domain *, em_data);
+static struct em_perf_domain **em_data;
 
 /*
  * Mutex serializing the registrations of performance domains and letting
@@ -203,7 +203,7 @@ free_pd:
  */
 struct em_perf_domain *em_cpu_get(int cpu)
 {
-	return READ_ONCE(per_cpu(em_data, cpu));
+	return READ_ONCE(em_data[cpu]);
 }
 EXPORT_SYMBOL_GPL(em_cpu_get);
 
@@ -246,9 +246,17 @@ int em_register_perf_domain(cpumask_t *span, unsigned int nr_states,
 		}
 	}
 
+	if (!em_data) {
+		em_data = kcalloc(nr_cpu_ids, sizeof(*em_data), GFP_KERNEL);
+		if (!em_data) {
+			ret = -ENOMEM;
+			goto unlock;
+		}
+	}
+
 	for_each_cpu(cpu, span) {
 		/* Make sure we don't register again an existing domain. */
-		if (READ_ONCE(per_cpu(em_data, cpu))) {
+		if (READ_ONCE(em_data[cpu])) {
 			ret = -EEXIST;
 			goto unlock;
 		}
@@ -274,13 +282,8 @@ int em_register_perf_domain(cpumask_t *span, unsigned int nr_states,
 		goto unlock;
 	}
 
-	for_each_cpu(cpu, span) {
-		/*
-		 * The per-cpu array can be concurrently accessed from
-		 * em_cpu_get().
-		 */
-		smp_store_release(per_cpu_ptr(&em_data, cpu), pd);
-	}
+	for_each_cpu(cpu, span)
+		WRITE_ONCE(em_data[cpu], pd);
 
 	pr_debug("Created perf domain %*pbl\n", cpumask_pr_args(span));
 unlock:
