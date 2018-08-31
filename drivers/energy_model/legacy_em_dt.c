@@ -21,7 +21,13 @@
 static cpumask_var_t cpus_to_visit;
 
 static DEFINE_PER_CPU(unsigned long, nr_states) = 0;
-static DEFINE_PER_CPU(struct em_cap_state*, cpu_em) = NULL;
+
+struct em_state {
+	unsigned long frequency;
+	unsigned long power;
+	unsigned long capacity;
+};
+static DEFINE_PER_CPU(struct em_state*, cpu_em) = NULL;
 
 static void finish_em_loading_workfn(struct work_struct *work);
 static DECLARE_WORK(finish_em_loading_work, finish_em_loading_workfn);
@@ -35,7 +41,7 @@ static DEFINE_MUTEX(em_loading_mutex);
 static int get_power(unsigned long *mW, unsigned long *KHz, int cpu)
 {
 	unsigned long nstates = per_cpu(nr_states, cpu);
-	struct em_cap_state *em = per_cpu(cpu_em, cpu);
+	struct em_state *em = per_cpu(cpu_em, cpu);
 	int i;
 
 	if (!nstates || !em)
@@ -60,7 +66,7 @@ static int init_em_dt_callback(struct notifier_block *nb, unsigned long val,
 	struct cpufreq_policy *policy = data;
 	const struct property *prop;
 	struct device_node *cn, *cp;
-	struct em_cap_state *em;
+	struct em_state *em;
 	int cpu, i, ret = 0;
 	const __be32 *tmp;
 
@@ -140,7 +146,7 @@ static int init_em_dt_callback(struct notifier_block *nb, unsigned long val,
 	}
 
 	pr_info("Registering EM of %*pbl\n", cpumask_pr_args(policy->cpus));
-	em_register_freq_domain(policy->cpus, nstates, &em_cb);
+	em_register_perf_domain(policy->cpus, nstates, &em_cb);
 
 	/* Finish the work when all possible CPUs have been registered. */
 	cpumask_andnot(cpus_to_visit, cpus_to_visit, policy->cpus);
