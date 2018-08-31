@@ -10,6 +10,22 @@ DEFINE_MUTEX(sched_domains_mutex);
 cpumask_var_t sched_domains_tmpmask;
 cpumask_var_t sched_domains_tmpmask2;
 
+/* Current sched domains: */
+static cpumask_var_t			*doms_cur;
+
+/* Number of sched domains in 'doms_cur': */
+static int				ndoms_cur;
+
+/* Attribues of custom domains in 'doms_cur' */
+static struct sched_domain_attr		*dattr_cur;
+
+/*
+ * Special case: If a kmalloc() of a doms_cur partition (array of
+ * cpumask) fails, then fallback to a single sched domain,
+ * as determined by the single cpumask fallback_doms.
+ */
+static cpumask_var_t			fallback_doms;
+
 #ifdef CONFIG_SCHED_DEBUG
 
 static int __init sched_debug_setup(char *str)
@@ -294,7 +310,7 @@ static void destroy_perf_domain_rcu(struct rcu_head *rp)
 #define EM_MAX_COMPLEXITY 2048
 
 extern struct cpufreq_governor schedutil_gov;
-static void build_perf_domains(const struct cpumask *cpu_map)
+static void build_perf_root_domain(const struct cpumask *cpu_map)
 {
 	int i, nr_pd = 0, nr_cs = 0, nr_cpus = cpumask_weight(cpu_map);
 	struct perf_domain *pd = NULL, *tmp;
@@ -309,6 +325,7 @@ static void build_perf_domains(const struct cpumask *cpu_map)
 			pr_info("rd %*pbl: CPUs do not have asymmetric capacities\n",
 					cpumask_pr_args(cpu_map));
 		}
+		/* canot we just return at this stage ? */
 		goto free;
 	}
 
@@ -395,9 +412,30 @@ enable:
 		static_branch_enable_cpuslocked(&sched_energy_present);
 	}
 }
+
+static void build_perf_domains(int ndoms_new, cpumask_var_t doms_new[])
+{
+	int i, j;
+
+#warning USING LINE FUNCTION
+	/* Build perf. domains: */
+	for (i = 0; i < ndoms_new; i++) {
+		for (j = 0; j < ndoms_cur && !sched_energy_update; j++) {
+			if (cpumask_equal(doms_new[i], doms_cur[j]) &&
+			    cpu_rq(cpumask_first(doms_cur[j]))->rd->pd)
+				goto done;
+		}
+		build_perf_root_domain(doms_new[i]);
+done:
+		;
+	}
+	sched_energy_start(ndoms_new, doms_new);
+}
+
 #else
 static void free_pd(struct perf_domain *pd) { }
-#endif
+static void build_perf_domains(int ndoms_new, cpumask_var_t doms_new[]) { }
+#endif /* CONFIG_ENERGY_MODEL */
 
 static void free_rootdomain(struct rcu_head *rcu)
 {
@@ -2004,22 +2042,6 @@ error:
 	return ret;
 }
 
-/* Current sched domains: */
-static cpumask_var_t			*doms_cur;
-
-/* Number of sched domains in 'doms_cur': */
-static int				ndoms_cur;
-
-/* Attribues of custom domains in 'doms_cur' */
-static struct sched_domain_attr		*dattr_cur;
-
-/*
- * Special case: If a kmalloc() of a doms_cur partition (array of
- * cpumask) fails, then fallback to a single sched domain,
- * as determined by the single cpumask fallback_doms.
- */
-static cpumask_var_t			fallback_doms;
-
 /*
  * arch_update_cpu_topology lets virtualized architectures update the
  * CPU core maps. It is supposed to return 1 if the topology changed
@@ -2198,21 +2220,7 @@ match2:
 		;
 	}
 
-#if defined(CONFIG_ENERGY_MODEL) && defined(CONFIG_CPU_FREQ_GOV_SCHEDUTIL)
-	/* Build perf. domains: */
-	for (i = 0; i < ndoms_new; i++) {
-		for (j = 0; j < n && !sched_energy_update; j++) {
-			if (cpumask_equal(doms_new[i], doms_cur[j]) &&
-			    cpu_rq(cpumask_first(doms_cur[j]))->rd->pd)
-				goto match3;
-		}
-		/* No match - add perf. domains for a new rd */
-		build_perf_domains(doms_new[i]);
-match3:
-		;
-	}
-	sched_energy_start(ndoms_new, doms_new);
-#endif
+	build_perf_domains(ndoms_new,  doms_new);
 
 	/* Remember the new sched domains: */
 	if (doms_cur != &fallback_doms)

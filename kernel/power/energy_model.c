@@ -158,12 +158,13 @@ static struct em_perf_domain *em_create_pd(cpumask_t *span, int nr_states,
 		 * The hertz/watts efficiency ratio should decrease as the
 		 * frequency grows on sane platforms. But this isn't always
 		 * true in practice so warn the user if a higher OPP is more
-		 * power efficient than a lower one.
+		 * energy efficient than a lower one.
 		 */
 		opp_eff = freq / power;
 		if (opp_eff >= prev_opp_eff)
-			pr_warn("pd%d: hertz/watts ratio non-monotonically decreasing: OPP%d >= OPP%d\n",
-					cpu, i, i - 1);
+			pr_warn("pd%d: hertz/watts ratio non-monotonically "
+				"decreasing: OPP%d >= OPP%d\n",
+				cpu, i, i - 1);
 		prev_opp_eff = opp_eff;
 	}
 
@@ -174,6 +175,10 @@ static struct em_perf_domain *em_create_pd(cpumask_t *span, int nr_states,
 					  table[i].frequency);
 	}
 
+	/*
+	 * Reversing the logic of active_power can save the loop above... but
+	 * not a major issue guess
+	 */
 	pd->table = table;
 	pd->nr_cap_states = nr_states;
 	cpumask_copy(to_cpumask(pd->cpus), span);
