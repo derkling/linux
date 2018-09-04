@@ -6992,7 +6992,7 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 		 * too. So, until someone finds a better way to solve this,
 		 * let's keep things simple by re-using the existing slow path.
 		 */
-		if (static_branch_unlikely(&sched_energy_present)) {
+		if (sched_feat(ENERGY_AWARE)) {
 			struct root_domain *rd = cpu_rq(cpu)->rd;
 			struct perf_domain *pd = rcu_dereference(rd->pd);
 
@@ -9110,7 +9110,7 @@ static struct sched_group *find_busiest_group(struct lb_env *env)
 	 */
 	update_sd_lb_stats(env, &sds);
 
-	if (static_branch_unlikely(&sched_energy_present)) {
+	if (sched_feat(ENERGY_AWARE)) {
 		struct root_domain *rd = env->dst_rq->rd;
 
 		if (rcu_dereference(rd->pd) && !READ_ONCE(rd->overutilized))
