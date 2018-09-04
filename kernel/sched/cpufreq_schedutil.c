@@ -202,7 +202,7 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 				  unsigned long max, enum schedutil_type type)
 {
 	struct rq *rq = cpu_rq(cpu);
-	unsigned long util, irq;
+	unsigned long util, irq, dl;
 
 	/*
 	 * Early check to see if IRQ/steal time saturates the CPU, can be
@@ -220,19 +220,8 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 	 * to obtain the CPU's actual utilization.
 	 */
 	util = cpu_util_rt(rq) + util_cfs;
-
 	if (type == FREQUENCY_UTIL) {
 		/*
-		 * For frequency selection we do not make cpu_util_dl() a
-		 * permanent part of this sum because we want to use
-		 * cpu_bw_dl() later on, but we need to check if the
-		 * CFS+RT+DL sum is saturated (ie. no idle time) such
-		 * that we select f_max when there is no idle time.
-		 *
-		 * NOTE: numerical errors or stop class might cause us
-		 * to not quite hit saturation when we should --
-		 * something for later.
-		 *
 		 * CFS and RT utilization can be boosted or capped, depending
 		 * on utilization clamp constraints requested by currently
 		 * RUNNABLE tasks.  When there are no CFS RUNNABLE tasks,
@@ -240,17 +229,28 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 		 * with the utilization decay.
 		 */
 		util = uclamp_util(rq, util);
-		if ((util + cpu_util_dl(rq)) >= max)
-			return max;
-	} else {
-		/*
-		 * OTOH, for energy computation we need the estimated
-		 * running time, so include util_dl and ignore dl_bw.
-		 */
-		util += cpu_util_dl(rq);
-		if (util >= max)
-			return max;
 	}
+	if (unlikely(util >= max))
+		return max;
+
+	/*
+	 * Bandwidth required by DEADLINE must always be granted.
+	 * However, if there are other tasks RUNNABLE, we don't want them to
+	 * be delayed to much by DL, so we use DL's utilization to ramp up the
+	 * OPPs as well as to detect when we don't have anymore idle time.
+	 *
+	 * Ideally we would like to set bw_dl as min/guaranteed freq and
+	 * util + bw_dl as requested freq. However, cpufreq is not yet ready
+	 * for such an interface. So, we only do the latter for now
+	 */
+	dl = sg_cpu->bw_dl;
+	if (rq->dl.dl_nr_running && rq->cfs.nr_running &&
+	    dl < cpu_util_dl(rq) {
+	    dl = cpu_util_dl(rq)
+	}
+	util += dl;
+	if (util >= max)
+		return max;
 
 	/*
 	 * There is still idle time; further improve the number by using the
@@ -263,22 +263,6 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 	 */
 	util = scale_irq_capacity(util, irq, max);
 	util += irq;
-
-	if (type == FREQUENCY_UTIL) {
-		/*
-		 * Bandwidth required by DEADLINE must always be granted
-		 * while, for FAIR and RT, we use blocked utilization of
-		 * IDLE CPUs as a mechanism to gracefully reduce the
-		 * frequency when no tasks show up for longer periods of
-		 * time.
-		 *
-		 * Ideally we would like to set bw_dl as min/guaranteed
-		 * freq and util + bw_dl as requested freq. However,
-		 * cpufreq is not yet ready for such an interface. So,
-		 * we only do the latter for now.
-		 */
-		util += cpu_bw_dl(rq);
-	}
 
 	return min(max, util);
 }
