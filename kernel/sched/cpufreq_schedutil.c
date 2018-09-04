@@ -200,12 +200,20 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
 static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
 {
 	struct rq *rq = cpu_rq(sg_cpu->cpu);
-	unsigned long util, irq, max;
+	unsigned long util, irq, dl, max;
 
 	sg_cpu->max = max = arch_scale_cpu_capacity(NULL, sg_cpu->cpu);
 	sg_cpu->bw_dl = cpu_bw_dl(rq);
 
+	/*
+	 * RT tasks are always executed at maximum frequency to minimize
+	 * completion latencies. Let's check them at first.
+	 * Otherwise, let's use their blocked utilization.
+	 */
 	if (rt_rq_is_runnable(&rq->rt))
+		return max;
+	util = cpu_util_rt(rq);
+	if (unlikely(util >= max))
 		return max;
 
 	/*
@@ -223,19 +231,28 @@ static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
 	 * utilization (PELT windows are synchronized) we can directly add them
 	 * to obtain the CPU's actual utilization.
 	 */
-	util = cpu_util_cfs(rq);
-	util += cpu_util_rt(rq);
+	util += cpu_util_cfs(rq);
+	if (unlikely(util >= max))
+		return max;
 
 	/*
-	 * We do not make cpu_util_dl() a permanent part of this sum because we
-	 * want to use cpu_bw_dl() later on, but we need to check if the
-	 * CFS+RT+DL sum is saturated (ie. no idle time) such that we select
-	 * f_max when there is no idle time.
+	 * Bandwidth required by DEADLINE must always be granted.
+	 * However, if there are other tasks RUNNABLE, we don't want them to
+	 * be delayed to much by DL, so we use DL's utilization to ramp up the
+	 * OPPs as well as to detect when we don't have anymore idle time.
+	 *
+	 * Ideally we would like to set bw_dl as min/guaranteed freq and util +
+	 * bw_dl as requested freq. However, cpufreq is not yet ready for such
+	 * an interface. So, we only do the latter for now.
 	 *
 	 * NOTE: numerical errors or stop class might cause us to not quite hit
 	 * saturation when we should -- something for later.
 	 */
-	if ((util + cpu_util_dl(rq)) >= max)
+	dl = sg_cpu->bw_dl;
+	if (dl && rq->cfs.nr_running && dl < cpu_util_dl(rq))
+		dl = cpu_util_dl(rq);
+	util += dl;
+	if (unlikely(util >= max))
 		return max;
 
 	/*
@@ -249,18 +266,16 @@ static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
 	 */
 	util = scale_irq_capacity(util, irq, max);
 	util += irq;
+	if (unlikely(util > max))
+		return max;
 
 	/*
 	 * Bandwidth required by DEADLINE must always be granted while, for
 	 * FAIR and RT, we use blocked utilization of IDLE CPUs as a mechanism
 	 * to gracefully reduce the frequency when no tasks show up for longer
 	 * periods of time.
-	 *
-	 * Ideally we would like to set bw_dl as min/guaranteed freq and util +
-	 * bw_dl as requested freq. However, cpufreq is not yet ready for such
-	 * an interface. So, we only do the latter for now.
 	 */
-	return min(max, util + sg_cpu->bw_dl);
+	return util;
 }
 
 /**
