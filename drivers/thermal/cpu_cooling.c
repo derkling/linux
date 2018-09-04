@@ -184,12 +184,26 @@ static int cpufreq_thermal_notifier(struct notifier_block *nb,
 	return NOTIFY_OK;
 }
 
+static unsigned int find_next_max(struct cpufreq_frequency_table *table,
+				  unsigned int prev_max)
+{
+	struct cpufreq_frequency_table *pos;
+	unsigned int max = 0;
+
+	cpufreq_for_each_valid_entry(pos, table) {
+		if (pos->frequency > max && pos->frequency < prev_max)
+			max = pos->frequency;
+	}
+
+	return max;
+}
+
 /**
- * update_freq_table() - Update the freq table with power numbers
- * @cpufreq_cdev:	the cpufreq cooling device in which to update the table
+ * create_freq_table() - Create the local freq table with power numbers
+ * @cpufreq_cdev:	the cpufreq cooling device in which to create the table
  * @capacitance: dynamic power coefficient for these cpus
  *
- * Update the freq table with power numbers.  This table will be used in
+ * Create the local freq table with power numbers. This table will be used in
  * cpu_power_to_freq() and cpu_freq_to_power() to convert between power and
  * frequency efficiently.  Power is stored in mW, frequency in KHz.  The
  * resulting table is in descending order.
@@ -197,13 +211,14 @@ static int cpufreq_thermal_notifier(struct notifier_block *nb,
  * Return: 0 on success, -EINVAL if there are no OPPs for any CPUs,
  * or -ENOMEM if we run out of memory.
  */
-static int update_freq_table(struct cpufreq_cooling_device *cpufreq_cdev,
+static int create_freq_table(struct cpufreq_cooling_device *cpufreq_cdev,
 			     u32 capacitance)
 {
-	struct freq_table *freq_table = cpufreq_cdev->freq_table;
+	struct freq_table *freq_table;
 	struct dev_pm_opp *opp;
 	struct device *dev = NULL;
 	int num_opps = 0, cpu = cpufreq_cdev->policy->cpu, i;
+	unsigned long freq;
 
 	dev = get_cpu_device(cpu);
 	if (unlikely(!dev)) {
@@ -225,16 +240,29 @@ static int update_freq_table(struct cpufreq_cooling_device *cpufreq_cdev,
 		return -EINVAL;
 	}
 
-	for (i = 0; i <= cpufreq_cdev->max_level; i++) {
-		unsigned long freq = freq_table[i].frequency * 1000;
-		u32 freq_mhz = freq_table[i].frequency / 1000;
+	freq_table = kmalloc_array(num_opps, sizeof(*freq_table), GFP_KERNEL);
+	if (!freq_table)
+		return -ENOMEM;
+
+	for (i = 0, freq = -1; i <= cpufreq_cdev->max_level; i++) {
+		u32 freq_mhz, voltage_mv;
 		u64 power;
-		u32 voltage_mv;
+
+		freq = find_next_max(cpufreq_cdev->policy->freq_table, freq);
+		freq_table[i].frequency = freq;
+		freq_mhz = freq / 1000;
+
+		/* Warn for duplicate entries */
+		if (!freq)
+			pr_warn("%s: table has duplicate entries\n", __func__);
+		else
+			pr_debug("%s: freq:%lu KHz\n", __func__, freq);
 
 		/*
 		 * Find ceil frequency as 'freq' may be slightly lower than OPP
 		 * freq due to truncation while converting to kHz.
 		 */
+		freq *= 1000;
 		opp = dev_pm_opp_find_freq_ceil(dev, &freq);
 		if (IS_ERR(opp)) {
 			dev_err(dev, "failed to get opp for %lu frequency\n",
@@ -255,6 +283,8 @@ static int update_freq_table(struct cpufreq_cooling_device *cpufreq_cdev,
 		/* power is stored in mW */
 		freq_table[i].power = power;
 	}
+
+	cpufreq_cdev->freq_table = freq_table;
 
 	return 0;
 }
@@ -374,6 +404,26 @@ static int cpufreq_get_cur_state(struct thermal_cooling_device *cdev,
 	return 0;
 }
 
+static unsigned int get_state_freq(struct cpufreq_cooling_device *cpufreq_cdev,
+			      unsigned long state)
+{
+	struct cpufreq_policy *policy;
+	unsigned long idx;
+
+	/* Use the local frequency table if it has been allocated */
+	if (cpufreq_cdev->freq_table)
+		return cpufreq_cdev->freq_table[state].frequency;
+
+	/* Otherwise, fallback on the CPUFreq table */
+	policy = cpufreq_cdev->policy;
+	if (policy->freq_table_sorted == CPUFREQ_TABLE_SORTED_ASCENDING)
+		idx = cpufreq_cdev->max_level - state;
+	else
+		idx = state;
+
+	return policy->freq_table[idx].frequency;
+}
+
 /**
  * cpufreq_set_cur_state - callback function to set the current cooling state.
  * @cdev: thermal cooling device pointer.
@@ -398,7 +448,7 @@ static int cpufreq_set_cur_state(struct thermal_cooling_device *cdev,
 	if (cpufreq_cdev->cpufreq_state == state)
 		return 0;
 
-	clip_freq = cpufreq_cdev->freq_table[state].frequency;
+	clip_freq = get_state_freq(cpufreq_cdev, state);
 	cpufreq_cdev->cpufreq_state = state;
 	cpufreq_cdev->clipped_freq = clip_freq;
 
@@ -575,20 +625,6 @@ static struct notifier_block thermal_cpufreq_notifier_block = {
 	.notifier_call = cpufreq_thermal_notifier,
 };
 
-static unsigned int find_next_max(struct cpufreq_frequency_table *table,
-				  unsigned int prev_max)
-{
-	struct cpufreq_frequency_table *pos;
-	unsigned int max = 0;
-
-	cpufreq_for_each_valid_entry(pos, table) {
-		if (pos->frequency > max && pos->frequency < prev_max)
-			max = pos->frequency;
-	}
-
-	return max;
-}
-
 /**
  * __cpufreq_cooling_register - helper function to create cpufreq cooling device
  * @np: a valid struct device_node to the cooling device device tree node
@@ -611,7 +647,7 @@ __cpufreq_cooling_register(struct device_node *np,
 	struct thermal_cooling_device *cdev;
 	struct cpufreq_cooling_device *cpufreq_cdev;
 	char dev_name[THERMAL_NAME_LENGTH];
-	unsigned int freq, i, num_cpus;
+	unsigned int i, num_cpus;
 	int ret;
 	struct thermal_cooling_device_ops *cooling_ops;
 	bool first;
@@ -645,12 +681,16 @@ __cpufreq_cooling_register(struct device_node *np,
 	/* max_level is an index, not a counter */
 	cpufreq_cdev->max_level = i - 1;
 
-	cpufreq_cdev->freq_table = kmalloc_array(i,
-					sizeof(*cpufreq_cdev->freq_table),
-					GFP_KERNEL);
-	if (!cpufreq_cdev->freq_table) {
-		cdev = ERR_PTR(-ENOMEM);
-		goto free_idle_time;
+	if (capacitance) {
+		ret = create_freq_table(cpufreq_cdev, capacitance);
+		if (ret) {
+			cdev = ERR_PTR(ret);
+			goto free_idle_time;
+		}
+
+		cooling_ops = &cpufreq_power_cooling_ops;
+	} else {
+		cooling_ops = &cpufreq_cooling_ops;
 	}
 
 	ret = ida_simple_get(&cpufreq_ida, 0, 0, GFP_KERNEL);
@@ -663,36 +703,12 @@ __cpufreq_cooling_register(struct device_node *np,
 	snprintf(dev_name, sizeof(dev_name), "thermal-cpufreq-%d",
 		 cpufreq_cdev->id);
 
-	/* Fill freq-table in descending order of frequencies */
-	for (i = 0, freq = -1; i <= cpufreq_cdev->max_level; i++) {
-		freq = find_next_max(policy->freq_table, freq);
-		cpufreq_cdev->freq_table[i].frequency = freq;
-
-		/* Warn for duplicate entries */
-		if (!freq)
-			pr_warn("%s: table has duplicate entries\n", __func__);
-		else
-			pr_debug("%s: freq:%u KHz\n", __func__, freq);
-	}
-
-	if (capacitance) {
-		ret = update_freq_table(cpufreq_cdev, capacitance);
-		if (ret) {
-			cdev = ERR_PTR(ret);
-			goto remove_ida;
-		}
-
-		cooling_ops = &cpufreq_power_cooling_ops;
-	} else {
-		cooling_ops = &cpufreq_cooling_ops;
-	}
-
 	cdev = thermal_of_cooling_device_register(np, dev_name, cpufreq_cdev,
 						  cooling_ops);
 	if (IS_ERR(cdev))
 		goto remove_ida;
 
-	cpufreq_cdev->clipped_freq = cpufreq_cdev->freq_table[0].frequency;
+	cpufreq_cdev->clipped_freq = get_state_freq(cpufreq_cdev, 0);
 	cpufreq_cdev->cdev = cdev;
 
 	mutex_lock(&cooling_list_lock);
