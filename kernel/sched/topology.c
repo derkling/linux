@@ -200,15 +200,6 @@ sd_parent_degenerate(struct sched_domain *sd, struct sched_domain *parent)
 
 	return 1;
 }
-/*
- * This static_key is set if at least one root domain meets all the following
- * conditions:
- *    1. all CPUs of the root domain are covered by the EM;
- *    2. the EM complexity is low enough to keep scheduling overheads low;
- *    3. the SD_ASYM_CPUCAPACITY flag is set in the sched_domain hierarchy.
- */
-DEFINE_STATIC_KEY_FALSE(sched_energy_present);
-
 #if defined(CONFIG_ENERGY_MODEL) && defined(CONFIG_CPU_FREQ_GOV_SCHEDUTIL)
 bool sched_energy_update;
 
@@ -367,34 +358,6 @@ free:
 		call_rcu(&tmp->rcu, destroy_perf_domain_rcu);
 }
 
-static void sched_energy_start(int ndoms_new, cpumask_var_t doms_new[])
-{
-	/*
-	 * The conditions for EAS to start are checked during the creation of
-	 * root domains. If one of them meets all conditions, it will have a
-	 * non-null list of performance domains.
-	 */
-	while (ndoms_new) {
-		if (cpu_rq(cpumask_first(doms_new[ndoms_new - 1]))->rd->pd)
-			goto enable;
-		ndoms_new--;
-	}
-
-	if (static_branch_unlikely(&sched_energy_present)) {
-		if (sched_debug())
-			pr_info("%s: stopping EAS\n", __func__);
-		static_branch_disable_cpuslocked(&sched_energy_present);
-	}
-
-	return;
-
-enable:
-	if (!static_branch_unlikely(&sched_energy_present)) {
-		if (sched_debug())
-			pr_info("%s: starting EAS\n", __func__);
-		static_branch_enable_cpuslocked(&sched_energy_present);
-	}
-}
 #else
 static void free_pd(struct perf_domain *pd) { }
 #endif
@@ -2199,7 +2162,6 @@ match2:
 match3:
 		;
 	}
-	sched_energy_start(ndoms_new, doms_new);
 #endif
 
 	/* Remember the new sched domains: */
