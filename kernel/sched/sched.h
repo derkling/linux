@@ -2251,6 +2251,18 @@ unsigned long scale_irq_capacity(unsigned long util, unsigned long irq, unsigned
 #endif
 
 #ifdef CONFIG_CPU_FREQ_GOV_SCHEDUTIL
+
+struct ucontrib {
+	unsigned long cfs;
+	unsigned long rt;
+	unsigned long dl;
+	unsigned long irq;
+};
+
+#define ucontrib_none ~0UL
+#define ucontrib_has(c) ~util.c
+
+
 /*
  * This function computes an effective utilization for the given CPU, to be
  * used for frequency selection given the linear relation: f = u * f_max.
@@ -2282,15 +2294,28 @@ unsigned long scale_irq_capacity(unsigned long util, unsigned long irq, unsigned
  * can be defined thus overriding the acutal RQ value. This allows to
  * "explore" the impact on utilizaiton of different scheduling decisions.
  */
-static __always_inline unsigned long
-__cpu_util(int cpu, unsigned int util_cfs, unsigned int util_rt,
-	   unsigned int util_dl, unsigned int util_irq)
+static __always_inline unsigned long __cpu_util(int cpu, struct ucontrib util)
 {
 	unsigned long max = arch_scale_cpu_capacity(NULL, cpu);
 	struct rq *rq = cpu_rq(cpu);
-	unsigned long util = 0;
-	bool freq_selection = !util_cfs && !util_rt &&
-			      !util_dl && !util_irq;
+	unsigned long util_cpu = 0;
+	bool freq_selection;
+
+	/*
+	 * When the utilization of all the classes should be aggregarted for
+	 * frequecy selection, all the util contributions are expected to be
+	 * set to ~0. In "frequency selection" mode, the utilization could be
+	 * further filtered to support for example to apply boosting and/or
+	 * capping policies
+	 * Otherwise, when at least one utilization contribution is specified,
+	 * utilizations are aggregated without any additional policy on top.
+	 * This mode is convenient when we are interested in computing CPU
+	 * busy/idle times, for example for energy computatons.
+	 */
+	freq_selection = (util.cfs & util.rt & util.dl & util.irq) != ~0;
+
+	if (ucontrib_has(irq))
+		printk("TEST constants propagation");
 
 	/*
 	 * RT tasks are always executed at maximum frequency to minimize
@@ -2300,10 +2325,10 @@ __cpu_util(int cpu, unsigned int util_cfs, unsigned int util_rt,
 	 */
 	if (freq_selection && rt_rq_is_runnable(&rq->rt))
 		return max;
-	if (!util_rt)
-		util_rt = cpu_util_rt(rq);
-	util += util_rt;
-	if (util >= max)
+	if (!ucontrib_has(rt))
+		util.rt = cpu_util_rt(rq);
+	util_cpu += util.rt;
+	if (util_cpu >= max)
 		return max;
 
 	/*
@@ -2311,9 +2336,9 @@ __cpu_util(int cpu, unsigned int util_cfs, unsigned int util_rt,
 	 * because of inaccuracies in how we track these -- see
 	 * update_irq_load_avg().
 	 */
-	if (!util_irq) {
-		util_irq = cpu_util_irq(rq);
-		if (unlikely(util_irq >= max))
+	if (!ucontrib_has(irq)) {
+		util.irq = cpu_util_irq(rq);
+		if (unlikely(util.irq >= max))
 			return max;
 	}
 
@@ -2323,10 +2348,10 @@ __cpu_util(int cpu, unsigned int util_cfs, unsigned int util_rt,
 	 * utilization (PELT windows are synchronized) we can directly add them
 	 * to obtain the CPU's actual utilization.
 	 */
-	if (!util_cfs)
-		util_cfs = cpu_util_cfs(rq);
-	util += util_cfs;
-	if (util >= max)
+	if (!ucontrib_has(cfs))
+		util.cfs = cpu_util_cfs(rq);
+	util_cpu += util.cfs;
+	if (util_cpu >= max)
 		return max;
 
 	/*
@@ -2335,15 +2360,15 @@ __cpu_util(int cpu, unsigned int util_cfs, unsigned int util_rt,
 	 * be delayed to much by DL, so we use DL's utilization to ramp up the
 	 * OPPs as well as to detect when we don't have idle time anymore.
 	 */
-	if (!util_dl) {
-		util_dl = cpu_bw_dl(rq);
+	if (!ucontrib_has(dl)) {
+		util.dl = cpu_bw_dl(rq);
 		if (rq->dl.dl_nr_running && rq->cfs.nr_running &&
-	   	     dl < cpu_util_dl(rq)) {
-			util_dl = cpu_util_dl(rq);
+	   	     util.dl < cpu_util_dl(rq)) {
+			util.dl = cpu_util_dl(rq);
 		}
 	}
-	util += util_dl;
-	if (util >= max)
+	util_cpu += util.dl;
+	if (util_cpu >= max)
 		return max;
 
 	/*
@@ -2355,11 +2380,11 @@ __cpu_util(int cpu, unsigned int util_cfs, unsigned int util_rt,
 	 *   U' = irq + ------- * U
 	 *                max
 	 */
-	util  = scale_irq_capacity(util, util_irq, max);
-	util += util_irq;
-	if (util >= max)
+	util_cpu  = scale_irq_capacity(util_cpu, util.irq, max);
+	util_cpu += util.irq;
+	if (util_cpu >= max)
 		return max;
 
-	return util;
+	return util_cpu;
 }
 #endif /* CONFIG_CPU_FREQ_GOV_SCHEDUTIL */
