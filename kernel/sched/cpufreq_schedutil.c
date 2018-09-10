@@ -179,7 +179,7 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
 
 unsigned long cpu_util_freq(int cpu)
 {
-	return __cpu_util(cpu, 0, 0, 0, 0);
+	return __cpu_util(cpu, ~0UL, ~0UL, ~0UL, ~0UL);
 }
 
 static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
