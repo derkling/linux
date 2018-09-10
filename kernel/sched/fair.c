@@ -6300,7 +6300,7 @@ static unsigned long cpu_util_next(int cpu, struct task_struct *p, int dst_cpu)
 
 	util = min_t(unsigned long, util, capacity_orig_of(cpu));
 
-	return __cpu_util(cpu, util, 0, 0, 0);
+	return __cpu_util(cpu, util, ~0UL, ~0UL, ~0UL);
 }
 
 /*
