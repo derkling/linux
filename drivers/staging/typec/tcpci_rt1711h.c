@@ -195,7 +195,6 @@ static int rt1711h_init_alert(struct rt1711h_chip *chip,
 					dev_name(chip->dev), chip);
 	if (ret < 0)
 		return ret;
-
 	enable_irq_wake(client->irq);
 	return 0;
 }
@@ -255,7 +254,6 @@ static int rt1711h_probe(struct i2c_client *client,
 		return PTR_ERR(chip->data.regmap);
 
 	chip->dev = &client->dev;
-	dev_set_name(chip->dev, "rt1711h");
 	i2c_set_clientdata(client, chip);
 
 	ret = rt1711h_sw_reset(chip);
@@ -307,28 +305,7 @@ static struct i2c_driver rt1711h_i2c_driver = {
 	.remove = rt1711h_remove,
 	.id_table = rt1711h_id,
 };
-
-static struct device_connection rt1711h_role_sw_conn = {
-	.endpoint[0] = "rt1711h",
-	.endpoint[1] = "hisi_hikey_usb-role-switch",
-	.id = "usb-role-switch",
-};
-
-static int __init rt1711h_i2c_driver_init(void)
-{
-	device_connection_add(&rt1711h_role_sw_conn);
-
-	return i2c_add_driver(&rt1711h_i2c_driver);
-}
-module_init(rt1711h_i2c_driver_init);
-
-static void __exit rt1711h_i2c_driver_exit(void)
-{
-	device_connection_remove(&rt1711h_role_sw_conn);
-
-	i2c_del_driver(&rt1711h_i2c_driver);
-}
-module_exit(rt1711h_i2c_driver_exit);
+module_i2c_driver(rt1711h_i2c_driver);
 
 MODULE_AUTHOR("ShuFan Lee <shufan_lee@richtek.com>");
 MODULE_DESCRIPTION("RT1711H USB Type-C Port Controller Interface Driver");
