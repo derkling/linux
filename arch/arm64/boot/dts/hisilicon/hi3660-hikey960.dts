@@ -76,8 +76,8 @@
 		/* global autoconfigured region for contiguous allocations */
 		linux,cma {
 			compatible = "shared-dma-pool";
+			reg = <0x0 0x20C00000 0x0 0x4000000>;
 			reusable;
-			size = <0x00000000 0x08000000>;
 			linux,cma-default;
 		};
 	};
