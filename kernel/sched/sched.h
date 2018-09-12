@@ -2390,10 +2390,24 @@ static inline unsigned int uclamp_util(struct rq *rq, unsigned int util)
 
 	return clamp(util, min_util, max_util);
 }
+
+static inline unsigned int uclamp_task(struct task_struct)
+{
+
+
+}
+
 #else /* CONFIG_UCLAMP_TASK */
 static inline unsigned int uclamp_util(struct rq *rq, unsigned int util)
 {
-	return util;
+	unsigned long margin = 0;
+
+#ifdef CONFIG_SCHED_TUNE
+	margin = schedtune_cpu_margin(util, rq->cpu);
+	trace_sched_boost_cpu(cpu, util, margin);
+#endif
+
+	return util + margin;
 }
 #endif /* CONFIG_UCLAMP_TASK */
 
