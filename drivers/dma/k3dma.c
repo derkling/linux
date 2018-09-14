@@ -91,7 +91,6 @@ struct k3_dma_chan {
 	dma_addr_t		dev_addr;
 	enum dma_status		status;
 	bool			cyclic;
-	struct dma_slave_config	slave_config;
 };
 
 struct k3_dma_phy {
@@ -118,10 +117,6 @@ struct k3_dma_dev {
 };
 
 #define to_k3_dma(dmadev) container_of(dmadev, struct k3_dma_dev, slave)
-
-static int k3_dma_config_write(struct dma_chan *chan,
-			       enum dma_transfer_direction dir,
-			       struct dma_slave_config *cfg);
 
 static struct k3_dma_chan *to_k3_chan(struct dma_chan *chan)
 {
@@ -547,7 +542,6 @@ static struct dma_async_tx_descriptor *k3_dma_prep_slave_sg(
 	if (!ds)
 		return NULL;
 	num = 0;
-	k3_dma_config_write(chan, dir, &c->slave_config);
 
 	for_each_sg(sgl, sg, sglen, i) {
 		addr = sg_dma_address(sg);
@@ -608,7 +602,6 @@ k3_dma_prep_dma_cyclic(struct dma_chan *chan, dma_addr_t buf_addr,
 	avail = buf_len;
 	total = avail;
 	num = 0;
-	k3_dma_config_write(chan, dir, &c->slave_config);
 
 	if (period_len < modulo)
 		modulo = period_len;
@@ -649,21 +642,13 @@ static int k3_dma_config(struct dma_chan *chan,
 			 struct dma_slave_config *cfg)
 {
 	struct k3_dma_chan *c = to_k3_chan(chan);
-
-	memcpy(&c->slave_config, cfg, sizeof(*cfg));
-
-	return 0;
-}
-
-static int k3_dma_config_write(struct dma_chan *chan,
-			       enum dma_transfer_direction dir,
-			       struct dma_slave_config *cfg)
-{
-	struct k3_dma_chan *c = to_k3_chan(chan);
 	u32 maxburst = 0, val = 0;
 	enum dma_slave_buswidth width = DMA_SLAVE_BUSWIDTH_UNDEFINED;
 
-	if (dir == DMA_DEV_TO_MEM) {
+	if (cfg == NULL)
+		return -EINVAL;
+	c->dir = cfg->direction;
+	if (c->dir == DMA_DEV_TO_MEM) {
 		c->ccfg = CX_CFG_DSTINCR;
 		c->dev_addr = cfg->src_addr;
 		maxburst = cfg->src_maxburst;
