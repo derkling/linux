@@ -111,10 +111,12 @@ static unsigned long get_level(struct cpufreq_cooling_device *cpufreq_cdev,
 {
 	int i;
 
+#ifdef CONFIG_ENERGY_MODEL
 	for (i = cpufreq_cdev->max_level; i > 0; i--) {
 		if (freq > cpufreq_cdev->em->table[i].frequency)
 			break;
 	}
+#endif
 
 	return cpufreq_cdev->max_level - i;
 }
@@ -175,6 +177,7 @@ static int cpufreq_thermal_notifier(struct notifier_block *nb,
 static u32 cpu_freq_to_power(struct cpufreq_cooling_device *cpufreq_cdev,
 			     u32 freq)
 {
+#ifdef CONFIG_ENERGY_MODEL
 	int i;
 
 	for (i = cpufreq_cdev->max_level; i > 0; i--) {
@@ -183,11 +186,15 @@ static u32 cpu_freq_to_power(struct cpufreq_cooling_device *cpufreq_cdev,
 	}
 
 	return cpufreq_cdev->em->table[i].power;
+#else
+	return 0;
+#endif
 }
 
 static u32 cpu_power_to_freq(struct cpufreq_cooling_device *cpufreq_cdev,
 			     u32 power)
 {
+#ifdef CONFIG_ENERGY_MODEL
 	int i;
 
 	for (i = cpufreq_cdev->max_level; i > 0; i--) {
@@ -196,6 +203,9 @@ static u32 cpu_power_to_freq(struct cpufreq_cooling_device *cpufreq_cdev,
 	}
 
 	return cpufreq_cdev->em->table[i].frequency;
+#else
+	return cpufreq_cdev->max_level;
+#endif
 }
 
 /**
@@ -293,11 +303,13 @@ static unsigned int get_state_freq(struct cpufreq_cooling_device *cpufreq_cdev,
 	struct cpufreq_policy *policy;
 	unsigned long idx;
 
+#ifdef CONFIG_ENERGY_MODEL
 	/* Use the local frequency table if it has been allocated */
 	if (cpufreq_cdev->em) {
 		idx = cpufreq_cdev->max_level - state;
 		return cpufreq_cdev->em->table[idx].frequency;
 	}
+#endif
 
 	/* Otherwise, fallback on the CPUFreq table */
 	policy = cpufreq_cdev->policy;
@@ -342,6 +354,7 @@ static int cpufreq_set_cur_state(struct thermal_cooling_device *cdev,
 	return 0;
 }
 
+#ifdef CONFIG_ENERGY_MODEL
 /**
  * cpufreq_get_requested_power() - get the current power
  * @cdev:	&thermal_cooling_device pointer
@@ -488,6 +501,7 @@ static int cpufreq_power2state(struct thermal_cooling_device *cdev,
 				      power);
 	return 0;
 }
+#endif /* CONFIG_ENERGY_MODEL */
 
 /* Bind cpufreq callbacks to thermal cooling device ops */
 
@@ -497,6 +511,7 @@ static struct thermal_cooling_device_ops cpufreq_cooling_ops = {
 	.set_cur_state = cpufreq_set_cur_state,
 };
 
+#ifdef CONFIG_ENERGY_MODEL
 static struct thermal_cooling_device_ops cpufreq_power_cooling_ops = {
 	.get_max_state		= cpufreq_get_max_state,
 	.get_cur_state		= cpufreq_get_cur_state,
@@ -505,6 +520,7 @@ static struct thermal_cooling_device_ops cpufreq_power_cooling_ops = {
 	.state2power		= cpufreq_state2power,
 	.power2state		= cpufreq_power2state,
 };
+#endif
 
 /* Notifier for cpufreq policy change */
 static struct notifier_block thermal_cpufreq_notifier_block = {
@@ -532,7 +548,6 @@ __cpufreq_cooling_register(struct device_node *np,
 {
 	struct thermal_cooling_device *cdev;
 	struct cpufreq_cooling_device *cpufreq_cdev;
-	struct em_perf_domain *em;
 	char dev_name[THERMAL_NAME_LENGTH];
 	unsigned int i, num_cpus;
 	int ret;
@@ -568,17 +583,19 @@ __cpufreq_cooling_register(struct device_node *np,
 	/* max_level is an index, not a counter */
 	cpufreq_cdev->max_level = i - 1;
 
+#ifdef CONFIG_ENERGY_MODEL
 	if (try_model) {
-		em = em_cpu_get(policy->cpu);
+		struct em_perf_domain *em = em_cpu_get(policy->cpu);
 		if (!em || !cpumask_equal(policy->cpus, to_cpumask(em->cpus))) {
 			cdev = ERR_PTR(-EINVAL);
 			goto free_idle_time;
 		}
 		cpufreq_cdev->em = em;
 		cooling_ops = &cpufreq_power_cooling_ops;
-	} else {
+	} else
+#else
 		cooling_ops = &cpufreq_cooling_ops;
-	}
+#endif
 
 	ret = ida_simple_get(&cpufreq_ida, 0, 0, GFP_KERNEL);
 	if (ret < 0) {
