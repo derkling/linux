@@ -291,7 +291,7 @@ static void sugov_iowait_boost(struct sugov_cpu *sg_cpu, u64 time,
 	 * considering the current constraints for the CPU.
 	 */
 	max_boost = sg_cpu->iowait_boost_max;
-	max_boost = uclamp_cpu(cpu_rq(sg_cpu->cpu), max_boost);
+	max_boost = uclamp_util(cpu_rq(sg_cpu->cpu), max_boost);
 
 	/* Double the boost at each request */
 	if (sg_cpu->iowait_boost) {

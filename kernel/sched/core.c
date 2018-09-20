@@ -1789,69 +1789,6 @@ static void __init init_uclamp(void)
 	}
 }
 
-/**
- * uclamp_value: get the current CPU's utilization clamp value
- * @rq: the CPU's RQ to consider
- * @clamp_id: the utilization clamp index (i.e. min or max utilization)
- *
- * The utilization clamp value for a CPU depends on its set of currently
- * RUNNABLE tasks and their specific util_{min,max} constraints.
- * A max aggregated value is tracked for each CPU and returned by this
- * function.
- *
- * Return: the current value for the specified CPU and clamp index
- */
-static inline unsigned int uclamp_value(struct rq *rq, int clamp_id)
-{
-	struct uclamp_cpu *uc_cpu = &rq->uclamp;
-
-	if (uc_cpu->value[clamp_id] == UCLAMP_NOT_VALID)
-		return uclamp_none(clamp_id);
-
-	return uc_cpu->value[clamp_id];
-}
-
-/**
- * clamp_util: clamp a utilization value for a specified CPU
- * @rq: the CPU's RQ to get the clamp values from
- * @util: the utilization signal to clamp
- *
- * Each CPU tracks util_{min,max} clamp values depending on the set of its
- * currently RUNNABLE tasks. Given a utilization signal, i.e a signal in
- * the [0..SCHED_CAPACITY_SCALE] range, this function returns a clamped
- * utilization signal considering the current clamp values for the
- * specified CPU.
- *
- * Return: a clamped utilization signal for a given CPU.
- */
-unsigned int uclamp_cpu(struct rq *rq, unsigned int util)
-{
-	unsigned int min_util = uclamp_value(rq, UCLAMP_MIN);
-	unsigned int max_util = uclamp_value(rq, UCLAMP_MAX);
-
-	return clamp(util, min_util, max_util);
-}
-
-unsigned int uclamp_task(struct task_struct *p)
-{
-	unsigned long util = task_util_est(p);
-
-	util = max(util, uclamp_task_value(p, UCLAMP_MIN));
-	util = min(util, uclamp_task_value(p, UCLAMP_MAX));
-
-	return util;
-}
-
-bool uclamp_boosted(struct task_struct *p)
-{
-	return uclamp_task_value(p, UCLAMP_MIN) > 0;
-}
-
-bool uclamp_latency_sensitive(struct task_struct *p)
-{
-
-}
-
 #else /* CONFIG_UCLAMP_TASK */
 static inline void uclamp_cpu_get(struct rq *rq, struct task_struct *p) { }
 static inline void uclamp_cpu_put(struct rq *rq, struct task_struct *p) { }
@@ -1869,49 +1806,6 @@ static inline int __setscheduler_uclamp(struct task_struct *p,
 }
 static inline void uclamp_fork(struct task_struct *p, bool reset) { }
 static inline void init_uclamp(void) { }
-
-unsigned int uclamp_cpu(struct rq *rq, unsigned int util)
-{
-	unsigned long margin = 0;
-
-#ifdef CONFIG_SCHED_TUNE
-	margin = schedtune_cpu_margin(util, rq->cpu);
-	trace_sched_boost_cpu(rq->cpu, util, margin);
-#endif
-
-	return util + margin;
-}
-
-unsigned int uclamp_task(struct task_struct *p)
-{
-	unsigned long util = task_util_est(p);
-#ifdef CONFIG_SCHED_TUNE
-	long margin = schedtune_task_margin(task);
-
-	trace_sched_boost_task(task, util, margin);
-
-	util += margin;
-#endif
-
-	return util;
-}
-
-bool uclamp_boosted(struct task_struct *p)
-{
-#ifdef CONFIG_SCHED_TUNE
-	return schedtune_task_boost(p) > 0;
-#endif
-	return false;
-}
-
-bool uclamp_latency_sensitive(struct task_struct *p)
-{
-#ifdef CONFIG_SCHED_TUNE
-	return schedtune_prefer_idle(p);
-#endif
-	return false;
-}
-
 #endif /* CONFIG_UCLAMP_TASK */
 
 static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)

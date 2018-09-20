@@ -5756,6 +5756,17 @@ schedtune_task_margin(struct task_struct *task)
 	return margin;
 }
 
+unsigned long
+boosted_cpu_util(int cpu)
+{
+	unsigned long util = cpu_util_cfs(cpu_rq(cpu));
+	long margin = schedtune_cpu_margin(util, cpu);
+
+	trace_sched_boost_cpu(cpu, util, margin);
+
+	return util + margin;
+}
+
 #else /* CONFIG_SCHED_TUNE */
 
 static inline int
@@ -5771,6 +5782,19 @@ schedtune_task_margin(struct task_struct *task)
 }
 
 #endif /* CONFIG_SCHED_TUNE */
+
+
+
+static inline unsigned long
+boosted_task_util(struct task_struct *task)
+{
+	unsigned long util = task_util_est(task);
+	long margin = schedtune_task_margin(task);
+
+	trace_sched_boost_task(task, util, margin);
+
+	return util + margin;
+}
 
 static unsigned long cpu_util_wake(int cpu, struct task_struct *p);
 
@@ -6384,14 +6408,14 @@ unsigned long capacity_curr_of(int cpu)
 static void find_best_target(struct sched_domain *sd, cpumask_t *cpus,
 							struct task_struct *p)
 {
-	unsigned long min_util = uclamp_task(p);
+	unsigned long min_util = boosted_task_util(p);
 	unsigned long target_capacity = ULONG_MAX;
 	unsigned long min_wake_util = ULONG_MAX;
 	unsigned long target_max_spare_cap = 0;
 	unsigned long target_util = ULONG_MAX;
 	unsigned long best_active_util = ULONG_MAX;
-	bool prefer_idle = uclamp_latency_sensitive(p);
-	bool boosted = uclamp_boosted(p);
+	bool prefer_idle = schedtune_prefer_idle(p);
+	bool boosted = schedtune_task_boost(p) > 0;
 	int best_idle_cstate = INT_MAX;
 	struct sched_group *sg;
 	int best_active_cpu = -1;
@@ -6903,7 +6927,7 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu,
 
 	/* If there is only one sensible candidate, select it now. */
 	cpu = cpumask_first(candidates);
-	if (weight == 1 && ((uclamp_latency_sensitive(p) && idle_cpu(cpu)) ||
+	if (weight == 1 && ((schedtune_prefer_idle(p) && idle_cpu(cpu)) ||
 			    (cpu == prev_cpu)))
 		return cpu;
 
@@ -6979,7 +7003,7 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 			if (!pd || READ_ONCE(rd->overutilized))
 				goto affine;
 
-			if (uclamp_latency_sensitive(p) && !sched_feat(EAS_PREFER_IDLE) && !sync)
+			if (schedtune_prefer_idle(p) && !sched_feat(EAS_PREFER_IDLE) && !sync)
 				goto sd_loop;
 
 			new_cpu = find_energy_efficient_cpu(p, prev_cpu, pd, sync);
