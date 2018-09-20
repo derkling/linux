@@ -58,4 +58,8 @@ obj-$(CONFIG_ASPEED_LPC_SNOOP)	+= aspeed-lpc-snoop.o
 obj-$(CONFIG_PCI_ENDPOINT_TEST)	+= pci_endpoint_test.o
 obj-$(CONFIG_OCXL)		+= ocxl/
 obj-$(CONFIG_MISC_RTSX)		+= cardreader/
-obj-$(CONFIG_HISI_HIKEY_USB)	+= hisi_hikey_usb.o
+# <<<<<<< HEAD
+# obj-$(CONFIG_HISI_HIKEY_USB)	+= hisi_hikey_usb.o
+# =======
+obj-y	     += microchip/
+# >>>>>>> remotes/aosp-hikey-dev/dev/hikey960-mainline-WIP

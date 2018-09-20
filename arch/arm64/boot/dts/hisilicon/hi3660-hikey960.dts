@@ -10,6 +10,9 @@
 
 #include "hi3660.dtsi"
 #include "hikey960-pinctrl.dtsi"
+#include "hi3660-gpu.dtsi"
+#include "hi3660-drm.dtsi"
+
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/interrupt-controller/irq.h>
@@ -68,6 +71,14 @@
 			record-size	= <0x00020000>;
 			console-size	= <0x00020000>;
 			ftrace-size	= <0x00020000>;
+		};
+
+		/* global autoconfigured region for contiguous allocations */
+		linux,cma {
+			compatible = "shared-dma-pool";
+			reg = <0x0 0x20C00000 0x0 0x4000000>;
+			reusable;
+			linux,cma-default;
 		};
 	};
 
@@ -211,6 +222,26 @@
 		optee {
 			compatible = "linaro,optee-tz";
 			method = "smc";
+		};
+		android {
+			compatible = "android,firmware";
+			fstab {
+				compatible = "android,fstab";
+				system {
+					compatible = "android,system";
+					dev = "/dev/block/platform/soc/ff3b0000.ufs/by-name/system" ;
+					type = "ext4";
+					mnt_flags = "ro" ;
+					fsmgr_flags = "wait";
+				};
+				vendor {
+					compatible = "android,vendor";
+					dev = "/dev/block/platform/soc/ff3b0000.ufs/by-name/vendor" ;
+					type = "ext4";
+					mnt_flags = "ro" ;
+					fsmgr_flags = "wait";
+				};
+			};
 		};
 	};
 };

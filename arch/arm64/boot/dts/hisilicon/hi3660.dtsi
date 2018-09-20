@@ -367,6 +367,13 @@
 			#clock-cells = <1>;
 		};
 
+		reboot {
+			compatible = "hisilicon,hi3660-reboot";
+			pmu-regmap = <&pmuctrl>;
+			sctrl-regmap = <&sctrl>;
+			reboot-offset = <0x4>;
+		};
+
 		iomcu: iomcu@ffd7e000 {
 			compatible = "hisilicon,hi3660-iomcu", "syscon";
 			reg = <0x0 0xffd7e000 0x0 0x1000>;
@@ -433,15 +440,116 @@
 			pinctrl-0 = <&i2c1_pmx_func &i2c1_cfg_func>;
 			status = "ok";
 
-			rt1711h: rt1711h@4e {
-				compatible = "richtek,rt1711h";
+// <<<<<<< HEAD
+// 			rt1711h: rt1711h@4e {
+// 				compatible = "richtek,rt1711h";
+// 				reg = <0x4e>;
+// 				status = "ok";
+// 				interrupt-parent = <&gpio27>;
+// 				interrupts = <3 IRQ_TYPE_LEVEL_LOW>;
+// 				pinctrl-names = "default";
+// 				pinctrl-0 = <&usb_cfg_func>;
+// 			};
+// =======
+			rt1711@4e {
+				compatible = "richtek,rt1711";
 				reg = <0x4e>;
 				status = "ok";
-				interrupt-parent = <&gpio27>;
-				interrupts = <3 IRQ_TYPE_LEVEL_LOW>;
+				rt1711,irq_pin = <&gpio27 3 0>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&usb_cfg_func>;
+				/* 0: dfp/ufp, 1: dfp, 2: ufp */
+				rt-dual,supported_modes = <0>;
+				/* tcpc_device's name */
+				rt-tcpc,name = "type_c_port0";
+				/* 0: SNK Only, 1: SRC Only, 2: DRP, 3: Try.SRC, 4: Try.SNK */
+				rt-tcpc,role_def = <2>;
+				/* 0: Default, 1: 1.5, 2: 3.0 */
+				rt-tcpc,rp_level = <0>;
+				/* the number of notifier supply */
+				rt-tcpc,notifier_supply_num = <0>;
+				pd-data {
+					pd,source-pdo-size = <1>;
+					/*<0x019014>;*/
+					pd,source-pdo-data = <0x00019064>;
+
+					pd,sink-pdo-size = <2>;
+					/* 0x0002d0c8 : 9V, 2A */
+					pd,sink-pdo-data = <0x000190c8 0x0002d0c8> ;
+
+					pd,id-vdo-size = <3>;
+					pd,id-vdo-data = <0xd00029cf 0x0 0x00010000>;
+				};
+				dpm_caps {
+					local_dr_power;
+					local_dr_data;
+					// local_ext_power;
+					local_usb_comm;
+					// local_usb_suspend;
+					// local_high_cap;
+					// local_give_back;
+					// local_no_suspend;
+					local_vconn_supply;
+
+					// attemp_enter_dp_mode;
+					attemp_discover_cable;
+					attemp_discover_id;
+
+					/* 0: disable, 1: prefer_snk, 2: prefer_src */
+					pr_check = <0>;
+					// pr_reject_as_source;
+					// pr_reject_as_sink;
+					pr_check_gp_source;
+					// pr_check_gp_sink;
+
+					/* 0: disable, 1: prefer_ufp, 2: prefer_dfp */
+					dr_check = <0>;
+					// dr_reject_as_dfp;
+					// dr_reject_as_ufp;
+
+					snk_prefer_low_voltage;
+					snk_ignore_mismatch_current;
+				};
 			};
+			adv7533: adv7533@39 {
+				status = "ok";
+				compatible = "adi,adv7533";
+				reg = <0x39>;
+				v1p2-supply = <&ldo3>;
+				vdd-supply = <&ldo3>;
+				interrupt-parent = <&gpio1>;
+				interrupts = <1 2>;
+				pd-gpio = <&gpio5 1 0>;
+				sel-gpio = <&gpio2 4 0>;
+				adi,dsi-lanes = <4>;
+				adi,disable-timing-generator;
+				#sound-dai-cells = <0>;
+
+				port {
+					adv7533_in: endpoint {
+						remote-endpoint = <&dsi_out0>;
+					};
+				};
+			};
+		};
+
+		hisi_pd: pd_dpm {
+			compatible = "hisilicon,pd_dpm";
+			tcp_name = "type_c_port0";
+			status = "ok";
+		};
+
+		hubv2: gpio_hubv2 {
+			compatible = "hisilicon,gpio_hubv2";
+			typc_vbus_int_gpio,typec-gpios = <&gpio25 2 0>;
+			typc_vbus_enable_val = <1>;
+			otg_gpio = <&gpio25 6 0>;
+			hub_vdd12_en_gpio = <&gpio2 1 0>;
+			hub_vdd33_en_gpio = <&gpio5 6 0>;
+			hub_reset_en_gpio = <&gpio4 4 0>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&usbhub5734_pmx_func>;
+// >>>>>>> remotes/aosp-hikey-dev/dev/hikey960-mainline-WIP
 		};
 
 		i2c3: i2c@fdf0c000 {
@@ -1139,12 +1247,17 @@
 			};
 		};
 
-		hisi_hikey_usb: hisi_hikey_usb {
-			compatible = "hisilicon,hikey960_usb";
-			typc_vbus_int_gpio,typec-gpios = <&gpio25 2 0>;
-			typc_vbus_enable_val = <1>;
-			otg_gpio = <&gpio25 6 0>;
-			hub_vdd33_en_gpio = <&gpio5 6 0>;
+// <<<<<<< HEAD
+// 		hisi_hikey_usb: hisi_hikey_usb {
+// 			compatible = "hisilicon,hikey960_usb";
+// 			typc_vbus_int_gpio,typec-gpios = <&gpio25 2 0>;
+// 			typc_vbus_enable_val = <1>;
+// 			otg_gpio = <&gpio25 6 0>;
+// 			hub_vdd33_en_gpio = <&gpio5 6 0>;
+// =======
+		hub5734_gpio:hub5734_gpio {
+			compatible = "hub5734_gpio";
+// >>>>>>> remotes/aosp-hikey-dev/dev/hikey960-mainline-WIP
 			pinctrl-names = "default";
 			pinctrl-0 = <&usbhub5734_pmx_func>;
 		};
@@ -1196,8 +1309,54 @@
 				snps,tx_de_emphasis_quirk;
 				snps,tx_de_emphasis = <1>;
 				snps,dis_enblslpm_quirk;
-				snps,gctl-reset-quirk;
-				extcon = <&hisi_hikey_usb>;
+// <<<<<<< HEAD
+// 				snps,gctl-reset-quirk;
+// 				extcon = <&hisi_hikey_usb>;
+// =======
+				extcon = <&hisi_pd>;
+			};
+		};
+
+		i2s2: hisi_i2s {
+			compatible = "hisilicon,hisi-i2s";
+			reg = <0x0 0xe804f800 0x0 0x400>,
+			      <0x0 0xe804e000 0x0 0x400>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&i2s2_pmx_func &i2s2_cfg_func>;
+			dmas = <&asp_dmac 18 &asp_dmac 19>;
+			dma-names = "rx", "tx";
+			#sound-dai-cells = <0>;
+		};
+
+
+		asp_dmac: asp_dmac@E804B000 {
+			compatible = "hisilicon,k3-dma-1.0";
+			reg = <0x0 0xe804b000 0x0 0x1000>;
+			#dma-cells = <1>;
+			dma-channels = <16>;
+			dma-requests = <32>;
+			clocks = <&crg_ctrl HI3660_CLK_GATE_DMAC>; //k3
+			interrupts = <0 216 4>;
+			interrupt-names = "asp_dma_irq";
+			dma-type = "hi3660_dma"; //k3
+			status = "ok";
+		};
+
+		sound {
+			compatible = "simple-audio-card";
+			simple-audio-card,name = "hikey-hdmi";
+			simple-audio-card,format = "i2s";
+
+			simple-audio-card,bitclock-master = <&sound_master>;
+			simple-audio-card,frame-master = <&sound_master>;
+
+			sound_master: simple-audio-card,cpu {
+				sound-dai = <&i2s2>;
+			};
+
+			simple-audio-card,codec {
+				sound-dai = <&adv7533>;
+// >>>>>>> remotes/aosp-hikey-dev/dev/hikey960-mainline-WIP
 			};
 		};
 	};
