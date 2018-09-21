@@ -1540,12 +1540,6 @@ struct typec_port *typec_register_port(struct device *parent,
 		return ERR_PTR(id);
 	}
 
-	port->sw = typec_switch_get(cap->fwnode ? &port->dev : parent);
-	if (IS_ERR(port->sw)) {
-		ret = PTR_ERR(port->sw);
-		goto err_switch;
-	}
-
 	port->mux = typec_mux_get(parent, "typec-mux");
 	if (IS_ERR(port->mux)) {
 		ret = PTR_ERR(port->mux);
@@ -1598,19 +1592,28 @@ struct typec_port *typec_register_port(struct device *parent,
 	port->dev.type = &typec_port_dev_type;
 	dev_set_name(&port->dev, "port%d", id);
 
+	port->sw = typec_switch_get(cap->fwnode ? &port->dev : parent);
+	if (IS_ERR(port->sw)) {
+		ret = PTR_ERR(port->sw);
+		goto err_switch;
+	}
+
 	ret = device_register(&port->dev);
 	if (ret) {
 		dev_err(parent, "failed to register port (%d)\n", ret);
 		put_device(&port->dev);
-		return ERR_PTR(ret);
+		goto err_register;
 	}
 
 	return port;
 
-err_mux:
+err_register:
 	typec_switch_put(port->sw);
 
 err_switch:
+	typec_mux_put(port->mux);
+
+err_mux:
 	ida_simple_remove(&typec_index_ida, port->id);
 	kfree(port);
 
