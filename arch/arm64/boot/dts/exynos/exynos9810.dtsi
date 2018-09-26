@@ -4999,28 +4999,6 @@
 		};
 	};
 
-	cpu_hotplug {
-		compatible = "exynos, cpu_hotplug";
-		boot_lock_time = <40>;
-		fast_hp_cpus = "5-7";
-	};
-
-	hotplug_governor {
-		compatible = "exynos, hotplug_governor";
-
-		single_change_ms = <30>;
-		dual_change_ms = <30>;
-		quad_change_ms = <15>;
-		big_heavy_thr = <600>;
-		lit_heavy_thr = <180>;
-		cl_busy_ratio = <65>;
-		/* single_freq is parsed from ECT */
-		dual_freq = <2314000>;
-		triple_freq = <1794000>;
-		quad_freq = <1794000>;
-		cal-id = <ACPM_DVFS_CPUCL1>;
-	};
-
 	schedutil_gov {
 		schedutil_domain0: domain@0 {
 			device_type = "schedutil-domain";
@@ -5107,16 +5085,7 @@
 					const-type = <CONSTRAINT_MIN>;
 					dm-type = <DM_MIF>;
 						/*  cpu     mif  */
-					table = < 2964000 1794000
-						  2860000 1794000
-						  2704000 1794000
-						  2652000 1794000
-						  2496000 1794000
-						  2314000 1794000
-						  2158000 1539000
-						  2002000 1539000
-						  1924000 1539000
-						  1794000 1539000
+					table = < 1794000 1539000
 						  1690000 1014000
 						  1586000  845000
 						  1469000  845000
@@ -5147,9 +5116,6 @@
 		id = <0>;
 		sensors = <94>;		/* 0x5E */
 		sensing_mode = "balance";
-		hotplug_enable = <1>;
-		hotplug_in_threshold = <91>;
-		hotplug_out_threshold = <96>;
 		#include "exynos9810-tmu-sensor-conf.dtsi"
 	};
 
