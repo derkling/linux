@@ -38,6 +38,7 @@
 #include "cpupri.h"
 #include "cpudeadline.h"
 #include "cpuacct.h"
+#include "tune.h"
 
 #ifdef CONFIG_SCHED_DEBUG
 # define SCHED_WARN_ON(x)	WARN_ONCE(x, #x)
@@ -144,6 +145,11 @@ static inline bool valid_policy(int policy)
 {
 	return idle_policy(policy) || fair_policy(policy) ||
 		rt_policy(policy) || dl_policy(policy);
+}
+
+static inline int task_has_fair_policy(struct task_struct *p)
+{
+	return fair_policy(p->policy);
 }
 
 static inline int task_has_rt_policy(struct task_struct *p)
@@ -2307,6 +2313,18 @@ static inline unsigned int uclamp_none(int clamp_id)
 		return 0;
 	return SCHED_CAPACITY_SCALE;
 }
+
+#ifdef CONFIG_SCHED_TUNE
+long schedtune_task_margin(struct task_struct *task);
+#else
+static inline long schedtune_task_margin(struct task_struct *task) {
+	return 0;
+}
+#endif
+
+unsigned long task_util_est(struct task_struct *p);
+bool uclamp_boosted(struct task_struct *p);
+bool uclamp_latency_sensitive(struct task_struct *p);
 
 #ifdef CONFIG_SCHED_WALT
 

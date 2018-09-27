@@ -9,7 +9,6 @@
 #include <trace/events/sched.h>
 
 #include "sched.h"
-#include "tune.h"
 
 bool schedtune_initialized = false;
 extern struct reciprocal_value schedtune_spc_rdiv;

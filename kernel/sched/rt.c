@@ -8,7 +8,6 @@
 
 #include <linux/slab.h>
 #include <linux/irq_work.h>
-#include "tune.h"
 
 #include "walt.h"
 
