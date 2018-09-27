@@ -1097,6 +1097,42 @@ static void uclamp_fork(struct task_struct *p)
 	}
 }
 
+unsigned int uclamp_task(struct task_struct *p)
+{
+	unsigned int util;
+
+	if (task_has_rt_policy(p))
+		return uclamp_eff_value(p, UCLAMP_MAX);
+
+	util = task_util_est(p);
+	util = max(util, uclamp_eff_value(p, UCLAMP_MIN));
+	util = min(util, uclamp_eff_value(p, UCLAMP_MAX));
+
+	return util;
+}
+
+bool uclamp_boosted(struct task_struct *p)
+{
+	return uclamp_eff_value(p, UCLAMP_MIN) > 0;
+}
+
+static int effective_prio(struct task_struct *p);
+
+bool uclamp_latency_sensitive(struct task_struct *p)
+{
+	if (task_has_rt_policy(p))
+		return true;
+
+	if (task_has_fair_policy(p)) {
+		if (p->policy != SCHED_NORMAL)
+			return false;
+		if (effective_prio(p) < DEFAULT_PRIO)
+			return true;
+	}
+
+	return false;
+}
+
 static void __init init_uclamp(void)
 {
 	struct uclamp_se uc_max = {};
@@ -1133,6 +1169,39 @@ static inline int uclamp_validate(struct task_struct *p,
 static void __setscheduler_uclamp(struct task_struct *p,
 				  const struct sched_attr *attr) { }
 static inline void uclamp_fork(struct task_struct *p) { }
+
+long schedtune_task_margin(struct task_struct *task);
+
+unsigned int uclamp_task(struct task_struct *p)
+{
+	unsigned long util = task_util_est(p);
+#ifdef CONFIG_SCHED_TUNE
+	long margin = schedtune_task_margin(p);
+
+	trace_sched_boost_task(p, util, margin);
+
+	util += margin;
+#endif
+
+	return util;
+}
+
+bool uclamp_boosted(struct task_struct *p)
+{
+#ifdef CONFIG_SCHED_TUNE
+	return schedtune_task_boost(p) > 0;
+#endif
+	return false;
+}
+
+bool uclamp_latency_sensitive(struct task_struct *p)
+{
+#ifdef CONFIG_SCHED_TUNE
+	return schedtune_prefer_idle(p) > 0;
+#endif
+	return false;
+}
+
 static inline void init_uclamp(void) { }
 #endif /* CONFIG_UCLAMP_TASK */
 

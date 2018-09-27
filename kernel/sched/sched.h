@@ -180,6 +180,11 @@ static inline bool valid_policy(int policy)
 		rt_policy(policy) || dl_policy(policy);
 }
 
+static inline int task_has_fair_policy(struct task_struct *p)
+{
+	return fair_policy(p->policy);
+}
+
 static inline int task_has_rt_policy(struct task_struct *p)
 {
 	return rt_policy(p->policy);
@@ -2304,6 +2309,11 @@ static inline unsigned int uclamp_util(struct rq *rq, unsigned int util)
 	return stune_util(cpu_of(rq), util);
 }
 #endif /* CONFIG_UCLAMP_TASK */
+
+unsigned long task_util_est(struct task_struct *p);
+unsigned int uclamp_task(struct task_struct *p);
+bool uclamp_latency_sensitive(struct task_struct *p);
+bool uclamp_boosted(struct task_struct *p);
 
 #ifdef arch_scale_freq_capacity
 # ifndef arch_scale_freq_invariant
