@@ -344,6 +344,7 @@ struct task_group {
 
 };
 
+
 #ifdef CONFIG_FAIR_GROUP_SCHED
 #define ROOT_TASK_GROUP_LOAD	NICE_0_LOAD
 

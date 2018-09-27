@@ -34,10 +34,10 @@
 #include <linux/migrate.h>
 #include <linux/task_work.h>
 
-#include <trace/events/sched.h>
-
 #include "sched.h"
 #include "walt.h"
+
+#include <trace/events/sched.h>
 
 /*
  * Targeted preemption latency for CPU-bound tasks:
@@ -3115,6 +3115,8 @@ __update_load_avg_se(u64 now, int cpu, struct cfs_rq *cfs_rq, struct sched_entit
 		}
 #endif /* UTIL_EST_DEBUG */
 
+		trace_uclamp_util_se(entity_is_task(se), task_of(se), cpu_rq(cpu));
+
 		return 1;
 	}
 
@@ -3124,9 +3126,14 @@ __update_load_avg_se(u64 now, int cpu, struct cfs_rq *cfs_rq, struct sched_entit
 static int
 __update_load_avg_cfs_rq(u64 now, int cpu, struct cfs_rq *cfs_rq)
 {
-	return ___update_load_avg(now, cpu, &cfs_rq->avg,
+	bool __maybe_unused is_root_rq = (&cpu_rq(cpu)->cfs == cfs_rq);
+	int result = ___update_load_avg(now, cpu, &cfs_rq->avg,
 			scale_load_down(cfs_rq->load.weight),
 			cfs_rq->curr != NULL, cfs_rq, NULL);
+
+	trace_uclamp_util_cfs(is_root_rq, cpu, cfs_rq);
+
+	return result;
 }
 
 /*
