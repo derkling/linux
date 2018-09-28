@@ -1118,6 +1118,11 @@ bool uclamp_latency_sensitive(struct task_struct *p)
 			return true;
 	}
 
+#ifdef CONFIG_UCLAMP_TASK_GROUP
+	if (task_group(p)->shares > ROOT_TASK_GROUP_LOAD)
+		return true;
+#endif
+
 	return false;
 }
 
