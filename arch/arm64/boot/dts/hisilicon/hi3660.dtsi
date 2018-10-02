@@ -242,18 +242,38 @@
 			opp-microvolt = <800000>;
 			clock-latency-ns = <300000>;
 		};
-	};
+
+
+                opp20 {
+                        opp-hz = /bits/ 64 <1805000000>;
+                        opp-microvolt = <900000>;
+                        clock-latency-ns = <300000>;
+                };
+ 
+                opp13 {
+                       opp-hz = /bits/ 64 <2112000000>;
+                       opp-microvolt = <1000000>;
+                       clock-latency-ns = <300000>;
+                };
+
+        };
 
 	cluster2_opp: opp_table2 {
 		compatible = "operating-points-v2";
 		opp-shared;
 		cycle-thief-id = <2>;
 
-		opp20 {
-			opp-hz = /bits/ 64 <1805000000>;
-			opp-microvolt = <900000>;
-			clock-latency-ns = <300000>;
-		};
+//		opp20 {
+//			opp-hz = /bits/ 64 <1805000000>;
+//			opp-microvolt = <900000>;
+//			clock-latency-ns = <300000>;
+//		};
+
+		opp14 {
+                       opp-hz = /bits/ 64 <2362000000>;
+                       opp-microvolt = <1100000>;
+                       clock-latency-ns = <300000>;
+               };
 
 	};
 
