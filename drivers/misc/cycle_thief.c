@@ -59,7 +59,7 @@ DEFINE_SYSREG_ACCESS_FUNCS(pmevcntr0_el0);
 #define NUM_BIG_OPPS 1
 #define NUM_MEDIUM_OPPS 2
 
-static unsigned long default_cpu_mask = 0x30;
+static unsigned long default_cpu_mask = 0xC0;
 static u64 default_period = ULONG_MAX-1;
 
 /* TODO: read these from DT on init */
@@ -171,6 +171,8 @@ static void setup_cycle_thief(void *info) {
 
 	cpu = smp_processor_id();
 
+	printk("Setup Cycle Thief on cpu %d \n", cpu);
+
 	// Enable PMUs by setting PMCR_EL0.E
 	pmcr = (unsigned int)read_pmcr_el0();
 	pmcr |= 1;
@@ -201,6 +203,8 @@ static void start_cycle_thief(void *info) {
 	cycle_thief_data_t *data;
 
 	cpu = smp_processor_id();
+
+	printk("Start Cycle Thief on cpu %d \n", cpu);
 
 	data = get_cycle_thief_data(cpu);
 	write_pmccntr_el0(ULONG_MAX - data->period);
@@ -456,6 +460,8 @@ static ssize_t enabled_write(struct file *file, const char __user *buf,
 	bool new_enabled;
 	char *kbuf = kmalloc(len + 1, GFP_KERNEL);
 
+	printk("Enabled Write \n");
+
 	if (!kbuf)
 		return -ENOMEM;
 
@@ -498,6 +504,7 @@ int cycle_thief_init(void) {
 	cycle_thief_data_t *data;
 	struct dentry *cpu_dir;
 
+        printk("Cycle thief Init \n");
 
 	root_debugfs_dir = debugfs_create_dir("cycle_thief", NULL);
 	debugfs_create_file("enabled", S_IRUGO, root_debugfs_dir,
@@ -523,14 +530,14 @@ int cycle_thief_init(void) {
 	ct_clusters[CT_MEDIUM_ID].current_idx = 0;
 	ct_clusters[CT_MEDIUM_ID].num_cpus = 2;
 	ct_clusters[CT_MEDIUM_ID].cpus = kzalloc(sizeof(int)*ct_clusters[CT_MEDIUM_ID].num_cpus, GFP_KERNEL);
-	ct_clusters[CT_MEDIUM_ID].cpus[0] = 4;
-	ct_clusters[CT_MEDIUM_ID].cpus[1] = 5;
+	ct_clusters[CT_MEDIUM_ID].cpus[0] = 6;
+	ct_clusters[CT_MEDIUM_ID].cpus[1] = 7;
 
 	ct_clusters[CT_BIG_ID].current_idx = 0;
 	ct_clusters[CT_BIG_ID].num_cpus = 2;
 	ct_clusters[CT_BIG_ID].cpus = kzalloc(sizeof(int)*ct_clusters[CT_BIG_ID].num_cpus, GFP_KERNEL);
-	ct_clusters[CT_BIG_ID].cpus[0] = 6;
-	ct_clusters[CT_BIG_ID].cpus[1] = 7;
+	ct_clusters[CT_BIG_ID].cpus[0] = 4;
+	ct_clusters[CT_BIG_ID].cpus[1] = 5;
 
 	trace_printk("Cycle thief initialized\n");
 
