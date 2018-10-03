@@ -59,7 +59,7 @@ DEFINE_SYSREG_ACCESS_FUNCS(pmevcntr0_el0);
 #define NUM_BIG_OPPS 1
 #define NUM_MEDIUM_OPPS 2
 
-static unsigned long default_cpu_mask = 0x30;
+static unsigned long default_cpu_mask = 0xC0;
 static u64 default_period = ULONG_MAX-1;
 
 /* TODO: read these from DT on init */
@@ -523,14 +523,14 @@ int cycle_thief_init(void) {
 	ct_clusters[CT_MEDIUM_ID].current_idx = 0;
 	ct_clusters[CT_MEDIUM_ID].num_cpus = 2;
 	ct_clusters[CT_MEDIUM_ID].cpus = kzalloc(sizeof(int)*ct_clusters[CT_MEDIUM_ID].num_cpus, GFP_KERNEL);
-	ct_clusters[CT_MEDIUM_ID].cpus[0] = 4;
-	ct_clusters[CT_MEDIUM_ID].cpus[1] = 5;
+	ct_clusters[CT_MEDIUM_ID].cpus[0] = 6;
+	ct_clusters[CT_MEDIUM_ID].cpus[1] = 7;
 
 	ct_clusters[CT_BIG_ID].current_idx = 0;
 	ct_clusters[CT_BIG_ID].num_cpus = 2;
 	ct_clusters[CT_BIG_ID].cpus = kzalloc(sizeof(int)*ct_clusters[CT_BIG_ID].num_cpus, GFP_KERNEL);
-	ct_clusters[CT_BIG_ID].cpus[0] = 6;
-	ct_clusters[CT_BIG_ID].cpus[1] = 7;
+	ct_clusters[CT_BIG_ID].cpus[0] = 4;
+	ct_clusters[CT_BIG_ID].cpus[1] = 5;
 
 	trace_printk("Cycle thief initialized\n");
 
