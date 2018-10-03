@@ -57,7 +57,7 @@ DEFINE_SYSREG_ACCESS_FUNCS(pmevcntr0_el0);
 #define CT_BIG_ID 2
 
 #define NUM_BIG_OPPS 1
-#define NUM_MEDIUM_OPPS 2
+#define NUM_MEDIUM_OPPS 4
 
 static unsigned long default_cpu_mask = 0xC0;
 static u64 default_period = ULONG_MAX-1;
@@ -90,9 +90,10 @@ static cycle_thief_cluster_t ct_clusters[NUM_CT_CLUSTERS];
 bool enabled = false;
 
 static u64 period_table[NUM_BIG_OPPS][NUM_MEDIUM_OPPS] = {
-	{ // 1805000
-		3820,  // 903000
-		12084  // 1421000
+	{ 2919,  // 903000
+	  4593,  // 1421000
+	  10002, // 1805000
+	  39781  // 2112000
 	},
 };
 
