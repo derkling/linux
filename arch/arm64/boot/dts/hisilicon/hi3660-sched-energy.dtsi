@@ -9,7 +9,11 @@
 energy-costs {
 	CPU_COST_A72_2: core-cost2 {
 		busy-cost-data = <
-			1024    2848
+			390    404
+			615    861
+			782    1398
+			915    2200
+			1024   2848
 		>;
 		idle-cost-data = <
 			0
@@ -21,6 +25,10 @@ energy-costs {
 
 	CLUSTER_COST_A72_2: cluster-cost2 {
 		busy-cost-data = <
+	                390    0
+                        615    0
+                        782    0
+                        915    0
 			1024   0
 		>;
 		idle-cost-data = <
@@ -37,6 +45,7 @@ energy-costs {
 			615    861
 			782    1398
 			915    2200
+			1024   2848
 		>;
 		idle-cost-data = <
 			0
@@ -52,6 +61,7 @@ energy-costs {
                         615    0
                         782    0
                         915    0
+			1024   0
 		>;
 		idle-cost-data = <
 			0

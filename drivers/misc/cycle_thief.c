@@ -26,7 +26,7 @@ static inline unsigned long read_ ## _name(void)               \
        _DEFINE_SYSREG_READ_FUNC(_name, _name)
 
 #define _DEFINE_SYSREG_WRITE_FUNC(_name, _reg_name)            \
-static inline void write_ ## _name(unsigned long v)   	       \
+static inline void write_ ## _name(unsigned long v)	       \
 {                                                              \
        __asm__ volatile ("msr " #_reg_name ", %0" :: "r" (v)); \
 }
@@ -56,8 +56,8 @@ DEFINE_SYSREG_ACCESS_FUNCS(pmevcntr0_el0);
 #define CT_MEDIUM_ID 1
 #define CT_BIG_ID 2
 
-#define NUM_BIG_OPPS 1
-#define NUM_MEDIUM_OPPS 4
+#define NUM_BIG_OPPS 5
+#define NUM_MEDIUM_OPPS 5
 
 static unsigned long default_cpu_mask = 0xC0;
 static u64 default_period = ULONG_MAX-1;
@@ -90,10 +90,42 @@ static cycle_thief_cluster_t ct_clusters[NUM_CT_CLUSTERS];
 bool enabled = false;
 
 static u64 period_table[NUM_BIG_OPPS][NUM_MEDIUM_OPPS] = {
-	{ 2919,  // 903000
-	  4593,  // 1421000
-	  10002, // 1805000
-	  39781  // 2112000
+	/* From 903000 kHz */
+	{
+	 0,
+	 0,
+	 0,
+	 0,
+	 0
+	},
+	{
+	 /* From 1421000 kHz */
+	 4852, // to 903000 kHz
+	 0,
+	 0,
+	 0,
+	 0
+	},
+	/* From 1805000 kHz */
+	{ 3820, // to 903000 kHz
+	  12084, // to 1421000 kHz
+	  0,
+	  0,
+	  0
+	},
+	/* From 2112000 kHz */
+	{ 3264, // to 903000 kHz
+	  5703, // to 1421000 kHz
+	  19497, // to 1805000 kHz
+	  0,
+	  0
+	},
+	/* From 2362000 kHz */
+	{ 2919,  // to 903000 kHz
+	  4593,  // to 1421000 kHz
+	  10002, // to 1805000 kHz
+	  39781,  // to 2112000 kHz
+	  0
 	},
 };
 
@@ -317,7 +349,7 @@ struct file_operations period_fops = {
 /*
  * must be called with cycle_thief_lock held.
  */
-void adjust_medium_rate(unsigned int medium_index, unsigned int big_index) {
+int adjust_medium_rate(unsigned int medium_index, unsigned int big_index) {
 	int cpu, i;
 	u64 new_period;
 	cycle_thief_data_t *data;
@@ -325,10 +357,19 @@ void adjust_medium_rate(unsigned int medium_index, unsigned int big_index) {
 	printk("cycle thief: medium index %u big index %u\n", medium_index, big_index);
 	new_period = period_table[big_index][medium_index];
 
+	if (!new_period) {
+		if (medium_index > big_index) {
+			printk("cycle thief: attempt to set invalid frequency\n");
+			return -1;
+		}
+		printk("cycle thief: big index equals medium index\n");
+		new_period = default_period;
+	}
+
 	if (big_index >= NUM_BIG_OPPS || medium_index >= NUM_MEDIUM_OPPS) {
 		printk("Requisted index out of range\n");
 		dump_stack();
-		return;
+		return -1;
 	}
 
 	printk("cycle thief: setting medium period to %llu\n", new_period);
@@ -338,11 +379,13 @@ void adjust_medium_rate(unsigned int medium_index, unsigned int big_index) {
 		data = get_cycle_thief_data(cpu);
 		data->period = new_period;
 	}
+
+	return 0;
 }
 
 /*
  * returns: 0 if no actual frequency ajustment necessary
- * 	    1 if frequency adjustment is necessary
+ *          1 if frequency adjustment is necessary
  *
  */
 int cycle_thief_set_rate(u32 id, unsigned int index) {
@@ -361,12 +404,14 @@ int cycle_thief_set_rate(u32 id, unsigned int index) {
 		break;
 	case CT_MEDIUM_ID:
 		other_idx = ct_clusters[CT_BIG_ID].current_idx;
-		adjust_medium_rate(index, other_idx);
+		if (!adjust_medium_rate(index, other_idx))
+			ct_clusters[CT_MEDIUM_ID].current_idx = index;
 		ret = 0;
 		break;
 	case CT_BIG_ID:
 		other_idx = ct_clusters[CT_MEDIUM_ID].current_idx;
-		adjust_medium_rate(other_idx, index);
+		if (!adjust_medium_rate(other_idx, index))
+			ct_clusters[CT_BIG_ID].current_idx = index;
 		ret = 1;
 		break;
 	default:

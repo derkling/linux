@@ -243,17 +243,23 @@
 			clock-latency-ns = <300000>;
 		};
 
-		opp20 {
-                        opp-hz = /bits/ 64 <1805000000>;
-                        opp-microvolt = <900000>;
-                        clock-latency-ns = <300000>;
-                };
+		opp12 {
+			opp-hz = /bits/ 64 <1805000000>;
+			opp-microvolt = <900000>;
+			clock-latency-ns = <300000>;
+		};
 
-                opp13 {
-                       opp-hz = /bits/ 64 <2112000000>;
-                       opp-microvolt = <1000000>;
-                       clock-latency-ns = <300000>;
-                };
+		opp13 {
+			opp-hz = /bits/ 64 <2112000000>;
+			opp-microvolt = <1000000>;
+			clock-latency-ns = <300000>;
+		};
+
+		opp14 {
+			opp-hz = /bits/ 64 <2362000000>;
+			opp-microvolt = <1100000>;
+			clock-latency-ns = <300000>;
+		};
 
         };
 
@@ -262,11 +268,35 @@
 		opp-shared;
 		cycle-thief-id = <2>;
 
-		opp14 {
-                       opp-hz = /bits/ 64 <2362000000>;
-                       opp-microvolt = <1100000>;
-                       clock-latency-ns = <300000>;
-               };
+		opp15 {
+			opp-hz = /bits/ 64 <903000000>;
+			opp-microvolt = <700000>;
+			clock-latency-ns = <300000>;
+		};
+
+		opp16 {
+			opp-hz = /bits/ 64 <1421000000>;
+			opp-microvolt = <800000>;
+			clock-latency-ns = <300000>;
+		};
+
+		opp17 {
+			opp-hz = /bits/ 64 <1805000000>;
+			opp-microvolt = <900000>;
+			clock-latency-ns = <300000>;
+		};
+
+		opp18 {
+			opp-hz = /bits/ 64 <2112000000>;
+			opp-microvolt = <1000000>;
+			clock-latency-ns = <300000>;
+		};
+
+		opp19 {
+			opp-hz = /bits/ 64 <2362000000>;
+			opp-microvolt = <1100000>;
+			clock-latency-ns = <300000>;
+		};
 
 	};
 
