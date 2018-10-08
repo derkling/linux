@@ -270,36 +270,27 @@ int dwc3_send_gadget_ep_cmd(struct dwc3_ep *dep, unsigned cmd,
 	const struct usb_endpoint_descriptor *desc = dep->endpoint.desc;
 	struct dwc3		*dwc = dep->dwc;
 	u32			timeout = 1000;
-	u32			saved_config = 0;
 	u32			reg;
 
 	int			cmd_status = 0;
+	int			susphy = false;
 	int			ret = -EINVAL;
 
 	/*
-	 * When operating in USB 2.0 speeds (HS/FS), if GUSB2PHYCFG.ENBLSLPM or
-	 * GUSB2PHYCFG.SUSPHY is set, it must be cleared before issuing an
-	 * endpoint command.
+	 * Synopsys Databook 2.60a states, on section 6.3.2.5.[1-8], that if
+	 * we're issuing an endpoint command, we must check if
+	 * GUSB2PHYCFG.SUSPHY bit is set. If it is, then we need to clear it.
 	 *
-	 * Save and clear both GUSB2PHYCFG.ENBLSLPM and GUSB2PHYCFG.SUSPHY
-	 * settings. Restore them after the command is completed.
-	 *
-	 * DWC_usb3 3.30a and DWC_usb31 1.90a programming guide section 3.2.2
+	 * We will also set SUSPHY bit to what it was before returning as stated
+	 * by the same section on Synopsys databook.
 	 */
 	if (dwc->gadget.speed <= USB_SPEED_HIGH) {
 		reg = dwc3_readl(dwc->regs, DWC3_GUSB2PHYCFG(0));
 		if (unlikely(reg & DWC3_GUSB2PHYCFG_SUSPHY)) {
-			saved_config |= DWC3_GUSB2PHYCFG_SUSPHY;
+			susphy = true;
 			reg &= ~DWC3_GUSB2PHYCFG_SUSPHY;
-		}
-
-		if (reg & DWC3_GUSB2PHYCFG_ENBLSLPM) {
-			saved_config |= DWC3_GUSB2PHYCFG_ENBLSLPM;
-			reg &= ~DWC3_GUSB2PHYCFG_ENBLSLPM;
-		}
-
-		if (saved_config)
 			dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(0), reg);
+		}
 	}
 
 	if (DWC3_DEPCMD_CMD(cmd) == DWC3_DEPCMD_STARTTRANSFER) {
@@ -398,9 +389,9 @@ int dwc3_send_gadget_ep_cmd(struct dwc3_ep *dep, unsigned cmd,
 		}
 	}
 
-	if (saved_config) {
+	if (unlikely(susphy)) {
 		reg = dwc3_readl(dwc->regs, DWC3_GUSB2PHYCFG(0));
-		reg |= saved_config;
+		reg |= DWC3_GUSB2PHYCFG_SUSPHY;
 		dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(0), reg);
 	}
 
@@ -482,6 +473,7 @@ static int dwc3_gadget_set_xfer_resource(struct dwc3_ep *dep)
 
 /**
  * dwc3_gadget_start_config - configure ep resources
+ * @dwc: pointer to our controller context structure
  * @dep: endpoint that is being enabled
  *
  * Issue a %DWC3_DEPCMD_DEPSTARTCFG command to @dep. After the command's
@@ -1129,7 +1121,7 @@ static void dwc3_prepare_one_trb_linear(struct dwc3_ep *dep,
 				req->request.short_not_ok,
 				req->request.no_interrupt);
 	} else if (req->request.zero && req->request.length &&
-		   (IS_ALIGNED(req->request.length, maxp))) {
+		   (IS_ALIGNED(req->request.length,dep->endpoint.maxpacket))) {
 		struct dwc3	*dwc = dep->dwc;
 		struct dwc3_trb	*trb;
 
