@@ -67,7 +67,6 @@
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER0>;
 			operating-points-v2 = <&cluster0_opp>;
 			#cooling-cells = <2>;
-			dynamic-power-coefficient = <110>;
 			sched-energy-costs = <&CPU_COST_A53 &CLUSTER_COST_A53>;
 		};
 
@@ -121,7 +120,6 @@
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER1>;
 			operating-points-v2 = <&cluster1_opp>;
 			#cooling-cells = <2>;
-			dynamic-power-coefficient = <550>;
 			sched-energy-costs = <&CPU_COST_A72 &CLUSTER_COST_A72>;
 		};
 
