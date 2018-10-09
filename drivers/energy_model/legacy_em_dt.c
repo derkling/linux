@@ -92,6 +92,8 @@ static int init_em_dt_callback(struct notifier_block *nb, unsigned long val,
 		goto unlock;
 	}
 
+	printk("--- max_freq=%lu\n", max_freq);
+
 	cpu = cpumask_first(policy->cpus);
 	cn = of_get_cpu_node(cpu, NULL);
 	if (!cn) {
@@ -125,10 +127,14 @@ static int init_em_dt_callback(struct notifier_block *nb, unsigned long val,
 
 	freq_power_tuples = true;
 
+	printk("--- freq_power_tuples=%d\n", freq_power_tuples);
+
 	/* Remove tuples for which frequency is higher than max frequency. */
 	for (i = 0, tmp = prop->value; i < nstates; i++, tmp += 2)
 		if (max_freq < be32_to_cpup(tmp))
 			prune++;
+
+	printk("--- nstates=%lu prune=%lu\n", nstates, prune);
 
 	nstates -= prune;
 copy:
