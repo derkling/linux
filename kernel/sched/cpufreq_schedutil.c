@@ -195,14 +195,17 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
  * based on the task model parameters and gives the minimal utilization
  * required to meet deadlines.
  */
-unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
-				  unsigned long max, enum schedutil_type type)
+unsigned int schedutil_cpu_util(int cpu, unsigned int util_cfs,
+				 unsigned int max, enum schedutil_type type,
+				 struct task_struct *p)
 {
-	unsigned long dl_util, util, irq;
+	unsigned int dl_util, util, irq;
 	struct rq *rq = cpu_rq(cpu);
 
-	if (type == FREQUENCY_UTIL && rt_rq_is_runnable(&rq->rt))
+	if (!IS_BUILTIN(CONFIG_UCLAMP_TASK) &&
+	    type == FREQUENCY_UTIL && rt_rq_is_runnable(&rq->rt)) {
 		return max;
+	}
 
 	/*
 	 * Early check to see if IRQ/steal time saturates the CPU, can be
@@ -218,9 +221,16 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 	 * CFS tasks and we use the same metric to track the effective
 	 * utilization (PELT windows are synchronized) we can directly add them
 	 * to obtain the CPU's actual utilization.
+	 *
+	 * CFS and RT utilization can be boosted or capped, depending on
+	 * utilization clamp constraints requested by currently RUNNABLE
+	 * tasks.
+	 * When there are no CFS RUNNABLE tasks, clamps are released and
+	 * frequency will be gracefully reduced with the utilization decay.
 	 */
-	util = util_cfs;
-	util += cpu_util_rt(rq);
+	util = util_cfs + cpu_util_rt(rq);
+	if (type == FREQUENCY_UTIL)
+		util = uclamp_util_with(rq, util, p);
 
 	dl_util = cpu_util_dl(rq);
 
@@ -274,13 +284,14 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
 {
 	struct rq *rq = cpu_rq(sg_cpu->cpu);
-	unsigned long util = cpu_util_cfs(rq);
-	unsigned long max = arch_scale_cpu_capacity(NULL, sg_cpu->cpu);
+	unsigned int util_cfs = cpu_util_cfs(rq);
+	unsigned int cpu_cap = arch_scale_cpu_capacity(NULL, sg_cpu->cpu);
 
-	sg_cpu->max = max;
+	sg_cpu->max = cpu_cap;
 	sg_cpu->bw_dl = cpu_bw_dl(rq);
 
-	return schedutil_freq_util(sg_cpu->cpu, util, max, FREQUENCY_UTIL);
+	return schedutil_cpu_util(sg_cpu->cpu, util_cfs, cpu_cap,
+				  FREQUENCY_UTIL, NULL);
 }
 
 /**
@@ -327,6 +338,7 @@ static void sugov_iowait_boost(struct sugov_cpu *sg_cpu, u64 time,
 			       unsigned int flags)
 {
 	bool set_iowait_boost = flags & SCHED_CPUFREQ_IOWAIT;
+	unsigned int max_boost;
 
 	/* Reset boost if the CPU appears to have been idle enough */
 	if (sg_cpu->iowait_boost &&
@@ -342,11 +354,22 @@ static void sugov_iowait_boost(struct sugov_cpu *sg_cpu, u64 time,
 		return;
 	sg_cpu->iowait_boost_pending = true;
 
+	/*
+	 * Boost FAIR tasks only up to the CPU clamped utilization.
+	 *
+	 * Since DL tasks have a much more advanced bandwidth control, it's
+	 * safe to assume that IO boost does not apply to those tasks.
+	 * Instead, for CFS and RT tasks we clamp the IO boost max value
+	 * considering the current constraints for the CPU.
+	 */
+	max_boost = sg_cpu->iowait_boost_max;
+	max_boost = uclamp_util(cpu_rq(sg_cpu->cpu), max_boost);
+
 	/* Double the boost at each request */
 	if (sg_cpu->iowait_boost) {
 		sg_cpu->iowait_boost <<= 1;
-		if (sg_cpu->iowait_boost > sg_cpu->iowait_boost_max)
-			sg_cpu->iowait_boost = sg_cpu->iowait_boost_max;
+		if (sg_cpu->iowait_boost > max_boost)
+			sg_cpu->iowait_boost = max_boost;
 		return;
 	}
 

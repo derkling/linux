@@ -280,6 +280,18 @@ struct vtime {
 	u64			gtime;
 };
 
+/**
+ * enum uclamp_id - Utilization clamp constraints
+ * @UCLAMP_MIN:	Minimum utilization
+ * @UCLAMP_MAX:	Maximum utilization
+ * @UCLAMP_CNT:	Utilization clamp constraints count
+ */
+enum uclamp_id {
+	UCLAMP_MIN = 0,
+	UCLAMP_MAX,
+	UCLAMP_CNT
+};
+
 struct sched_info {
 #ifdef CONFIG_SCHED_INFO
 	/* Cumulative counters: */
@@ -310,6 +322,12 @@ struct sched_info {
  */
 # define SCHED_FIXEDPOINT_SHIFT		10
 # define SCHED_FIXEDPOINT_SCALE		(1L << SCHED_FIXEDPOINT_SHIFT)
+
+/*
+ * Increase resolution of cpu_capacity calculations
+ */
+#define SCHED_CAPACITY_SHIFT		SCHED_FIXEDPOINT_SHIFT
+#define SCHED_CAPACITY_SCALE		(1L << SCHED_CAPACITY_SHIFT)
 
 struct load_weight {
 	unsigned long			weight;
@@ -568,6 +586,64 @@ struct sched_dl_entity {
 	struct hrtimer inactive_timer;
 };
 
+#ifdef CONFIG_UCLAMP_TASK
+/*
+ * Number of utilization clamp buckets.
+ */
+#define UCLAMP_BUCKETS CONFIG_UCLAMP_BUCKETS_COUNT
+
+/*
+ * Utilization clamp bucket
+ * @value:		clamp value "requested" by a se
+ * @bucket_id:		clamp bucket corresponding to the "requested" value
+ * @effective:		clamp value and bucket actually "assigned" to the se
+ * @active:		the se currently refcounted in a rq's clamp bucket
+ * @user_defined:	the requested clamp value comes from user-space
+ *
+ * A utilization clamp bucket maps a:
+ *   clamp value (value), i.e.
+ *   util_{min,max} value (possibly) requested from userspace
+ * to a:
+ *   clamp bucket (bucket_id), i.e.
+ *   index of the per-rq RUNNABLE tasks refcounting array
+ *
+ * Both bucket_id and effective::bucket_id are bucket index matching the
+ * corresponding clamp value which are pre-computed and stored to avoid
+ * expensive integer divisions from the fast path.
+ *
+ * The active bit is set whenever a task has got an effective::value assigned,
+ * which can be different from the user requested clamp value. This allows to
+ * know a task is actually refcounting a rq's clamp effective::bucket_id.
+ *
+ * The user_defined bit is set whenever a task has got a task-specific clamp
+ * value requested from userspace, i.e. the system defaults apply to this task
+ * just as a restriction. This allows to relax default clamps when a less
+ * restrictive task-specific value has been requested, thus allowing to
+ * implement a "nice" semantic. For example, a task running with a 20%
+ * default boost can still drop its own boosting to 0%.
+ */
+struct uclamp_se {
+	/* Clamp value "requested" by a scheduling entity */
+	unsigned int value		: bits_per(SCHED_CAPACITY_SCALE);
+	unsigned int bucket_id		: bits_per(UCLAMP_BUCKETS);
+	unsigned int active		: 1;
+	unsigned int user_defined	: 1;
+	/*
+	 * Clamp value "obtained" by a scheduling entity.
+	 *
+	 * For a task, this is the value (possibly) enforced by the
+	 * task group the task is currently part of or by the system
+	 * default clamp values, whichever is the most restrictive.
+	 * For task groups, this is the value (possibly) enforced by a
+	 * parent task group.
+	 */
+	struct {
+		unsigned int value	: bits_per(SCHED_CAPACITY_SCALE);
+		unsigned int bucket_id	: bits_per(UCLAMP_BUCKETS);
+	} effective;
+};
+#endif /* CONFIG_UCLAMP_TASK */
+
 union rcu_special {
 	struct {
 		u8			blocked;
@@ -647,6 +723,10 @@ struct task_struct {
 	struct task_group		*sched_task_group;
 #endif
 	struct sched_dl_entity		dl;
+
+#ifdef CONFIG_UCLAMP_TASK
+	struct uclamp_se		uclamp[UCLAMP_CNT];
+#endif
 
 #ifdef CONFIG_PREEMPT_NOTIFIERS
 	/* List of struct preempt_notifier: */
