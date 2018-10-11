@@ -1,3 +1,5 @@
+/* #define DEBUG 1*/
+
 #include <linux/debugfs.h>
 #include <linux/errno.h>
 #include <linux/init.h>
@@ -26,7 +28,7 @@ static inline unsigned long read_ ## _name(void)               \
        _DEFINE_SYSREG_READ_FUNC(_name, _name)
 
 #define _DEFINE_SYSREG_WRITE_FUNC(_name, _reg_name)            \
-static inline void write_ ## _name(unsigned long v)   	       \
+static inline void write_ ## _name(unsigned long v)	       \
 {                                                              \
        __asm__ volatile ("msr " #_reg_name ", %0" :: "r" (v)); \
 }
@@ -48,26 +50,37 @@ DEFINE_SYSREG_ACCESS_FUNCS(pmintenset_el1);
 DEFINE_SYSREG_ACCESS_FUNCS(pmevtyper0_el0);
 DEFINE_SYSREG_ACCESS_FUNCS(pmevcntr0_el0);
 
-#define CYCLES_EV 0x11
+#define CYCLES_EV	0x11
+#define BUF_SIZE	30
+#define NUM_REAL_OPPS	5
 
-#define BUF_SIZE 30
+/*
+ * TODO: we could generate more frequencies if we want better granularity but we
+ * won't do this for the moment; When we do, this will come from DT together
+ * with the table for periods.
+ */
+#define NUM_SIM_OPPS	5
 
-#define CT_NONE_ID 0
-#define CT_MEDIUM_ID 1
-#define CT_BIG_ID 2
+#define NUM_CT_CLUSTERS	2
 
-#define NUM_BIG_OPPS 1
-#define NUM_MEDIUM_OPPS 2
+#define CT_CLUSTER_0_ID	0
 
-static unsigned long default_cpu_mask = 0x30;
+/* Cluster 1 would be MEDIUM */
+#define CT_CLUSTER_1_ID	1
+
+/* Cluster 2 would be BIG */
+#define CT_CLUSTER_2_ID	2
+
+
+/* Only the big cluster will be split */
+static unsigned long default_cpu_mask = 0xF0;
+#define NUM_CPUS	8
+
 static u64 default_period = ULONG_MAX-1;
 
-/* TODO: read these from DT on init */
-#define NUM_CT_CLUSTERS 3
-#define NUM_CPUS 8
 static int CPU_IRQ_MAP[NUM_CPUS] = {7, 8, 9, 10, 11, 12, 13, 14};
 
-static char names[BUF_SIZE*NUM_CPUS];
+static char names[BUF_SIZE * NUM_CPUS];
 
 spinlock_t cycle_thief_lock;
 
@@ -80,7 +93,7 @@ typedef struct {
 static cycle_thief_data_t ct_data[NUM_CPUS];
 
 typedef struct {
-	unsigned int current_idx;
+	int current_idx;
 	int num_cpus;
 	int *cpus;
 } cycle_thief_cluster_t;
@@ -89,10 +102,47 @@ static cycle_thief_cluster_t ct_clusters[NUM_CT_CLUSTERS];
 
 bool enabled = false;
 
-static u64 period_table[NUM_BIG_OPPS][NUM_MEDIUM_OPPS] = {
-	{ // 1805000
-		3820,  // 903000
-		12084  // 1421000
+/* TODO: This should be read from DT at some point */
+static u64 period_table[NUM_REAL_OPPS][NUM_SIM_OPPS] = {
+	/* From 903000 kHz */
+	{
+	 0,
+	 0,
+	 0,
+	 0,
+	 0
+	},
+	{
+	 /* From 1421000 kHz */
+	 4106, // to 903 KHz
+	 0,
+	 0,
+	 0,
+	 0
+	},
+	/* From 1805000 kHz */
+	{
+	  3012, // to 903000 kHz
+	  8800, // to 1421000 kHz
+	  0,
+	  0,
+	  0
+	},
+	/* From 2112000 kHz */
+	{
+	  2657, // to 903000 kHz
+	  5633, // to 1421000 kHz
+	  14600, // to 1805000 kHz
+	  0,
+	  0
+	},
+	/* From 2362000 kHz */
+	{
+	  2385,  // to 903000 kHz
+	  4450,  // to 1421000 kHz
+	  8454,  // to 1805000 kHz
+	  20015, // to 2112000 kHz
+	  0
 	},
 };
 
@@ -130,7 +180,7 @@ static irqreturn_t handle_overflow_irq(int irq,  void *dev) {
 
 	data->overflow_count++;
 
-	// clear the cycle counter overflow bit
+	// Clear the cycle counter overflow bit
 	pmovsclr = (unsigned int)read_pmovsclr_el0();
 	pmovsclr |= 1 << 31;
 	write_pmovsclr_el0(pmovsclr);
@@ -152,7 +202,7 @@ static void register_cycle_thief_interrupt(int cpu) {
 	if ((res = request_irq(irq, handle_overflow_irq,
 				IRQF_NOBALANCING | IRQF_NO_THREAD,
 				name, (void *)cpu))) {
-		printk("ERROR: could not get PMU IRQ %d on cpu %d; got %d\n",
+		pr_debug("ERROR: could not get PMU IRQ %d on cpu %d; got %d\n",
 				irq, cpu, res);
 	}
 #pragma GCC diagnostic pop
@@ -161,7 +211,7 @@ static void register_cycle_thief_interrupt(int cpu) {
 	cpumask_set_cpu(cpu, &irq_mask);
 	irq_set_affinity(irq, &irq_mask);
 
-	printk("Using IRQ %d for PMU on cpu %d\n", irq, cpu);
+	pr_debug("Using IRQ %d for PMU on cpu %d\n", irq, cpu);
 
 }
 
@@ -177,11 +227,13 @@ static void setup_cycle_thief(void *info) {
 	write_pmcr_el0(pmcr);
 
 	// Enable cycle counter by setting PMCNTENSET.C
+	// Count enable set register
 	pmcntenset = (unsigned int)read_pmcntenset_el0();
 	pmcntenset |= 1 << 31;
 	write_pmcntenset_el0(pmcntenset);
 
 	// Enable cycle counter overflow interrupt
+	// Interrupt enable set register
 	pmintenset = (unsigned int)read_pmintenset_el1();
 	pmintenset |= 1 << 31;
 	write_pmintenset_el1(pmintenset);
@@ -226,7 +278,8 @@ inline void cycle_thief_save(int index) {
 	cycle_thief_data_t *data;
 
 	if (!index) {
-		return; // do nothing on WFI
+		// do nothing on WFI
+		return;
 	}
 
 	cpu = smp_processor_id();
@@ -242,7 +295,8 @@ inline void cycle_thief_restore(int index) {
 	cycle_thief_data_t *data;
 
 	if (!index || !enabled) {
-		return; // do nothing on WFI or if disabled
+		// do nothing on WFI or if disabled
+		return;
 	}
 
 	cpu = smp_processor_id();
@@ -266,7 +320,7 @@ ssize_t cycles_read(struct file *filp, char *buff,
 	smp_call_function_single(cpu, read_cycle_counter,
 			(void *)&cycles, 1);
 
-	printk("cycle thief cpu %u cycles: %llu\n", cpu, cycles);
+	pr_debug("cycle thief cpu %u cycles: %llu\n", cpu, cycles);
 
 	len = snprintf(kbuf, BUF_SIZE-1, "%llu", cycles);
 	kbuf[len++] = '\n';
@@ -298,7 +352,7 @@ ssize_t period_read(struct file *filp, char *buff,
 	period = ct_data[cpu].period;
 	spin_unlock(&cycle_thief_lock);
 
-	printk("cycle thief cpu %u period: %llu\n", cpu, period);
+	pr_debug("cycle thief cpu %u period: %llu\n", cpu, period);
 
 	len = snprintf(kbuf, BUF_SIZE-1, "%llu", period);
 	kbuf[len++] = '\n';
@@ -314,67 +368,96 @@ struct file_operations period_fops = {
 };
 
 /*
- * must be called with cycle_thief_lock held.
+ * Must be called with cycle_thief_lock held.
  */
-void adjust_medium_rate(unsigned int medium_index, unsigned int big_index) {
+int adjust_rate(unsigned int sim_index, unsigned int real_index,
+		unsigned int cluster_id) {
 	int cpu, i;
 	u64 new_period;
 	cycle_thief_data_t *data;
 
-	printk("cycle thief: medium index %u big index %u\n", medium_index, big_index);
-	new_period = period_table[big_index][medium_index];
+	pr_debug("cycle thief: sim index %u real index %u\n", sim_index,
+							    real_index);
+	new_period = period_table[real_index][sim_index];
 
-	if (big_index >= NUM_BIG_OPPS || medium_index >= NUM_MEDIUM_OPPS) {
-		printk("Requisted index out of range\n");
-		dump_stack();
-		return;
+	if (!new_period) {
+		if (sim_index > real_index) {
+			/*
+			 * You can't obtain higher simulated frequency from
+			 * lower real frequency
+			 */
+			pr_debug("cycle thief: attempt to set invalid frequency\n");
+			return -1;
+		}
+		pr_debug("cycle thief: real index equals sim index\n");
+		new_period = default_period;
 	}
 
-	printk("cycle thief: setting medium period to %llu\n", new_period);
+	if (real_index >= NUM_REAL_OPPS || sim_index >= NUM_SIM_OPPS) {
+		pr_debug("cycle_thief: requested index out of range\n");
+		dump_stack();
+		return -1;
+	}
 
-	for (i = 0; i < ct_clusters[CT_MEDIUM_ID].num_cpus; i++) {
-		cpu = ct_clusters[CT_MEDIUM_ID].cpus[i];
+	pr_debug("cycle thief: setting cluster %u period to %llu\n",
+		 cluster_id, new_period);
+
+	for (i = 0; i < ct_clusters[cluster_id].num_cpus; i++) {
+		cpu = ct_clusters[cluster_id].cpus[i];
 		data = get_cycle_thief_data(cpu);
 		data->period = new_period;
 	}
+
+	return 0;
 }
 
 /*
  * returns: 0 if no actual frequency ajustment necessary
- * 	    1 if frequency adjustment is necessary
- *
+ *          1 if frequency adjustment is necessary
+ * TODO: the adjustment in period is done before the actual frequency changes
+ * which is a problem as you might be throttled or receive higher performance
+ * for a short while before the real frequency changes
  */
 int cycle_thief_set_rate(u32 id, unsigned int index) {
-	unsigned int other_idx;
-	int ret;
+	unsigned int new_idx_1, new_idx_2;
+	int real_new_idx;
 
+	if ((id == CT_CLUSTER_0_ID) || (id > CT_CLUSTER_2_ID))
+		/* Change in OPP is permitted*/
+		return -1;
 
-	printk("cycle thief set rate id %u, idx %u\n", id, index);
-
+	pr_debug("cycle thief set rate id %u, idx %u\n", id, index);
 
 	spin_lock(&cycle_thief_lock);
 
 	switch (id){
-	case CT_NONE_ID:
-		ret = 1;
+	case CT_CLUSTER_1_ID:
+		new_idx_1 = index;
+		new_idx_2 = (ct_clusters[CT_CLUSTER_2_ID].current_idx < 0)? 0 :
+			    ct_clusters[CT_CLUSTER_2_ID].current_idx;
 		break;
-	case CT_MEDIUM_ID:
-		other_idx = ct_clusters[CT_BIG_ID].current_idx;
-		adjust_medium_rate(index, other_idx);
-		ret = 0;
+	case CT_CLUSTER_2_ID:
+		new_idx_2 = index;
+		new_idx_1 =  (ct_clusters[CT_CLUSTER_1_ID].current_idx < 0)? 0 :
+			     ct_clusters[CT_CLUSTER_1_ID].current_idx;
 		break;
-	case CT_BIG_ID:
-		other_idx = ct_clusters[CT_MEDIUM_ID].current_idx;
-		adjust_medium_rate(other_idx, index);
-		ret = 1;
-		break;
-	default:
-		ret = 1;
 	}
+
+	real_new_idx = max(new_idx_1, new_idx_2);
+
+	/*
+	 * TODO: could be optimised a bit by only calling one adjust_rate if
+	 * change is not needed - max has not changed but I'll leave it for
+	 * later
+	 */
+	if (!adjust_rate(new_idx_1, real_new_idx, CT_CLUSTER_1_ID))
+		ct_clusters[CT_CLUSTER_1_ID].current_idx = new_idx_1;
+	if (!adjust_rate(new_idx_2, real_new_idx, CT_CLUSTER_2_ID))
+		ct_clusters[CT_CLUSTER_2_ID].current_idx = new_idx_2;
 
 	spin_unlock(&cycle_thief_lock);
 
-	return ret;
+	return real_new_idx;
 }
 
 static inline void print_regs(void) {
@@ -393,8 +476,8 @@ static inline void print_regs(void) {
 	pmevcntr0 = read_pmevcntr0_el0();
 
 	trace_printk("regs on cpu %i:\n\tpmcr: 0x%x\n\tpmcntenset: 0x%x\n\t"
-	       "pmintenset: 0x%x\n\tpmccntr: %llu\n\tpmevcntr0: %llu\n",
-	      cpu, pmcr, pmcntenset, pmintenset, pmccntr, pmevcntr0);
+		     "pmintenset: 0x%x\n\tpmccntr: %llu\n\tpmevcntr0: %llu\n",
+		     cpu, pmcr, pmcntenset, pmintenset, pmccntr, pmevcntr0);
 
 	preempt_enable();
 }
@@ -403,7 +486,7 @@ static void enable_cycle_thief(void) {
 	int cpu;
 	cpumask_t *cpu_mask;
 
-	printk("Enabling cycle thief\n");
+	pr_err("Enabling cycle thief\n");
 
 	cpu_mask = to_cpumask(&default_cpu_mask);
 
@@ -497,7 +580,8 @@ int cycle_thief_init(void) {
 	char *name;
 	cycle_thief_data_t *data;
 	struct dentry *cpu_dir;
-
+	unsigned long data_size_m = 0;
+	unsigned long data_size_b = 0;
 
 	root_debugfs_dir = debugfs_create_dir("cycle_thief", NULL);
 	debugfs_create_file("enabled", S_IRUGO, root_debugfs_dir,
@@ -520,17 +604,19 @@ int cycle_thief_init(void) {
 #pragma GCC diagnostic pop
 	}
 
-	ct_clusters[CT_MEDIUM_ID].current_idx = 0;
-	ct_clusters[CT_MEDIUM_ID].num_cpus = 2;
-	ct_clusters[CT_MEDIUM_ID].cpus = kzalloc(sizeof(int)*ct_clusters[CT_MEDIUM_ID].num_cpus, GFP_KERNEL);
-	ct_clusters[CT_MEDIUM_ID].cpus[0] = 4;
-	ct_clusters[CT_MEDIUM_ID].cpus[1] = 5;
+	ct_clusters[CT_CLUSTER_1_ID].current_idx = -1;
+	ct_clusters[CT_CLUSTER_1_ID].num_cpus = 2;
+        data_size_m = sizeof(int) * ct_clusters[CT_CLUSTER_1_ID].num_cpus;
+	ct_clusters[CT_CLUSTER_1_ID].cpus = kzalloc(data_size_m, GFP_KERNEL);
+	ct_clusters[CT_CLUSTER_1_ID].cpus[0] = 6;
+	ct_clusters[CT_CLUSTER_1_ID].cpus[1] = 7;
 
-	ct_clusters[CT_BIG_ID].current_idx = 0;
-	ct_clusters[CT_BIG_ID].num_cpus = 2;
-	ct_clusters[CT_BIG_ID].cpus = kzalloc(sizeof(int)*ct_clusters[CT_BIG_ID].num_cpus, GFP_KERNEL);
-	ct_clusters[CT_BIG_ID].cpus[0] = 6;
-	ct_clusters[CT_BIG_ID].cpus[1] = 7;
+	ct_clusters[CT_CLUSTER_2_ID].current_idx = -1;
+	ct_clusters[CT_CLUSTER_2_ID].num_cpus = 2;
+	data_size_b = sizeof(int) * ct_clusters[CT_CLUSTER_2_ID].num_cpus;
+	ct_clusters[CT_CLUSTER_2_ID].cpus = kzalloc(data_size_b, GFP_KERNEL);
+	ct_clusters[CT_CLUSTER_2_ID].cpus[0] = 4;
+	ct_clusters[CT_CLUSTER_2_ID].cpus[1] = 5;
 
 	trace_printk("Cycle thief initialized\n");
 

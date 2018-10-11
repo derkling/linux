@@ -40,16 +40,18 @@
 			};
 			cluster1 {
 				core0 {
+					cpu = <&cpu6>;
+				};
+				core1 {
+					cpu = <&cpu7>;
+				};
+			};
+			cluster2 {
+				core0 {
 					cpu = <&cpu4>;
 				};
 				core1 {
 					cpu = <&cpu5>;
-				};
-				core2 {
-					cpu = <&cpu6>;
-				};
-				core3 {
-					cpu = <&cpu7>;
 				};
 			};
 		};
@@ -114,12 +116,12 @@
 			next-level-cache = <&A73_L2>;
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP_1>;
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER1>;
-			operating-points-v2 = <&cluster1_opp>;
+			operating-points-v2 = <&cluster2_opp>;
 			cooling-min-level = <4>;
 			cooling-max-level = <0>;
 			#cooling-cells = <2>; /* min followed by max */
 			dynamic-power-coefficient = <550>;
-			sched-energy-costs = <&CPU_COST_A72 &CLUSTER_COST_A72>;
+			sched-energy-costs = <&CPU_COST_A72_2 &CLUSTER_COST_A72_2>;
 		};
 
 		cpu5: cpu@101 {
@@ -130,8 +132,8 @@
 			next-level-cache = <&A73_L2>;
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP_1>;
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER1>;
-			operating-points-v2 = <&cluster1_opp>;
-			sched-energy-costs = <&CPU_COST_A72 &CLUSTER_COST_A72>;
+			operating-points-v2 = <&cluster2_opp>;
+			sched-energy-costs = <&CPU_COST_A72_2 &CLUSTER_COST_A72_2>;
 		};
 
 		cpu6: cpu@102 {
@@ -142,8 +144,8 @@
 			next-level-cache = <&A73_L2>;
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP_1>;
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER1>;
-			operating-points-v2 = <&cluster2_opp>;
-			sched-energy-costs = <&CPU_COST_A72 &CLUSTER_COST_A72>;
+			operating-points-v2 = <&cluster1_opp>;
+			sched-energy-costs = <&CPU_COST_A72_1 &CLUSTER_COST_A72_1>;
 		};
 
 		cpu7: cpu@103 {
@@ -154,8 +156,8 @@
 			next-level-cache = <&A73_L2>;
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP_1>;
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER1>;
-			operating-points-v2 = <&cluster2_opp>;
-			sched-energy-costs = <&CPU_COST_A72 &CLUSTER_COST_A72>;
+			operating-points-v2 = <&cluster1_opp>;
+			sched-energy-costs = <&CPU_COST_A72_1 &CLUSTER_COST_A72_1>;
 		};
 
 		idle-states {
@@ -222,6 +224,18 @@
 			opp-microvolt = <900000>;
 			clock-latency-ns = <300000>;
 		};
+
+		opp03 {
+			opp-hz = /bits/ 64 <1709000000>;
+			opp-microvolt = <1000000>;
+			clock-latency-ns = <300000>;
+		};
+
+		opp04 {
+			opp-hz = /bits/ 64 <1844000000>;
+			opp-microvolt = <1100000>;
+			clock-latency-ns = <300000>;
+		};
 	};
 
 	cluster1_opp: opp_table1 {
@@ -240,16 +254,59 @@
 			opp-microvolt = <800000>;
 			clock-latency-ns = <300000>;
 		};
-	};
+
+		opp12 {
+			opp-hz = /bits/ 64 <1805000000>;
+			opp-microvolt = <900000>;
+			clock-latency-ns = <300000>;
+		};
+
+		opp13 {
+			opp-hz = /bits/ 64 <2112000000>;
+			opp-microvolt = <1000000>;
+			clock-latency-ns = <300000>;
+		};
+
+		opp14 {
+			opp-hz = /bits/ 64 <2362000000>;
+			opp-microvolt = <1100000>;
+			clock-latency-ns = <300000>;
+		};
+
+        };
 
 	cluster2_opp: opp_table2 {
 		compatible = "operating-points-v2";
 		opp-shared;
 		cycle-thief-id = <2>;
 
-		opp20 {
+		opp15 {
+			opp-hz = /bits/ 64 <903000000>;
+			opp-microvolt = <700000>;
+			clock-latency-ns = <300000>;
+		};
+
+		opp16 {
+			opp-hz = /bits/ 64 <1421000000>;
+			opp-microvolt = <800000>;
+			clock-latency-ns = <300000>;
+		};
+
+		opp17 {
 			opp-hz = /bits/ 64 <1805000000>;
 			opp-microvolt = <900000>;
+			clock-latency-ns = <300000>;
+		};
+
+		opp18 {
+			opp-hz = /bits/ 64 <2112000000>;
+			opp-microvolt = <1000000>;
+			clock-latency-ns = <300000>;
+		};
+
+		opp19 {
+			opp-hz = /bits/ 64 <2362000000>;
+			opp-microvolt = <1100000>;
 			clock-latency-ns = <300000>;
 		};
 

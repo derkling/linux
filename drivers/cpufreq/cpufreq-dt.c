@@ -46,20 +46,23 @@ struct opp_table *_find_opp_table(struct device *dev);
 static int set_target(struct cpufreq_policy *policy, unsigned int index)
 {
 	u32 id;
-	int ret;
 	struct private_data *priv = policy->driver_data;
 	struct opp_table *table = _find_opp_table(priv->cpu_dev);
-
+	int new_index;
 
 	if (policy->cur > policy->max)
 		policy->cur = policy->max;
 
 	id = table->cycle_thief_id;
-	if (cycle_thief_set_rate(id, index)) {
+	new_index = cycle_thief_set_rate(id, index);
 
-		return dev_pm_opp_set_rate(priv->cpu_dev,
-					   policy->freq_table[index].frequency * 1000);
-	}
+	if (new_index >= 0)
+		dev_pm_opp_set_rate(priv->cpu_dev,
+				    policy->freq_table[new_index].frequency * 1000);
+	else
+		dev_pm_opp_set_rate(priv->cpu_dev,
+				    policy->freq_table[index].frequency * 1000);
+
 	return 0;
 }
 
