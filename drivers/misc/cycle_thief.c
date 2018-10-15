@@ -405,7 +405,10 @@ int adjust_rate(unsigned int sim_index, unsigned int real_index,
 	for (i = 0; i < ct_clusters[cluster_id].num_cpus; i++) {
 		cpu = ct_clusters[cluster_id].cpus[i];
 		data = get_cycle_thief_data(cpu);
-		data->period = new_period;
+		if (cluster_id == CT_CLUSTER_1_ID)
+			data->period = (u64)((new_period * 930) / 1024);
+		else
+			data->period = new_period;
 	}
 
 	return 0;
