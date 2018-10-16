@@ -1303,15 +1303,24 @@ static int __setscheduler_uclamp(struct task_struct *p,
 	unsigned int upper_bound = p->uclamp[UCLAMP_MAX].value;
 	int result = 0;
 
+	printk("min=%d upper_bound=%d", attr->sched_util_min, upper_bound);
+
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN)
 		lower_bound = attr->sched_util_min;
+
+	printk("Min sanity check OK\n");
+	printk("max=%d lower_bound=%d", attr->sched_util_max, lower_bound);
 
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX)
 		upper_bound = attr->sched_util_max;
 
+	printk("Max sanity check OK\n");
+
 	if (lower_bound > upper_bound ||
 	    upper_bound > SCHED_CAPACITY_SCALE)
 		return -EINVAL;
+
+	printk("Min/Max sanity check OK\n");
 
 	mutex_lock(&uclamp_mutex);
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN) {
@@ -4855,6 +4864,9 @@ recheck:
 	if (attr->sched_flags & ~(SCHED_FLAG_ALL | SCHED_FLAG_SUGOV))
 		return -EINVAL;
 
+	printk(KERN_WARNING "__sched_setscheduler: sched_priority=%d flags=%llu\n",
+	       attr->sched_priority, attr->sched_flags);
+
 	/*
 	 * Valid priorities for SCHED_FIFO and SCHED_RR are
 	 * 1..MAX_USER_RT_PRIO-1, valid priority for SCHED_NORMAL,
@@ -4932,6 +4944,7 @@ recheck:
 		retval = __setscheduler_uclamp(p, attr);
 		if (retval)
 			return retval;
+		printk(KERN_WARNING "__sched_setscheduler: uclamp updated\n");
 	}
 
 	/*
@@ -4966,6 +4979,10 @@ recheck:
 
 		p->sched_reset_on_fork = reset_on_fork;
 		task_rq_unlock(rq, p, &rf);
+
+		printk(KERN_WARNING "__sched_setscheduler: DONE "
+				    "(policy not changed)\n");
+
 		return 0;
 	}
 change:
@@ -5070,6 +5087,8 @@ change:
 	/* Run balance callbacks after we've adjusted the PI chain: */
 	balance_callback(rq);
 	preempt_enable();
+
+	printk(KERN_WARNING "__sched_setscheduler: DONE (policy changed)\n");
 
 	return 0;
 }
@@ -7272,7 +7291,9 @@ static void cpu_util_update_hier(struct cgroup_subsys_state *css,
 {
 	struct cgroup_subsys_state *top_css = css;
 	struct uclamp_se *uc_se, *uc_parent;
+	char path[32];
 
+	printk("\n\n\nUpdate cycle START\n");
 	css_for_each_descendant_pre(css, top_css) {
 		/*
 		 * The first visited task group is top_css, which clamp value
@@ -7285,6 +7306,10 @@ static void cpu_util_update_hier(struct cgroup_subsys_state *css,
 			bucket_id = uc_se->effective.bucket_id;
 		}
 
+		cgroup_path(css->cgroup, path, 32);
+		printk("Updated %s: clamp_id=%d value=%d\n",
+		       path, clamp_id, value);
+
 		/*
 		 * Skip the whole subtrees if the current effective clamp is
 		 * already matching the TG's clamp value.
@@ -7295,6 +7320,12 @@ static void cpu_util_update_hier(struct cgroup_subsys_state *css,
 		if (uc_se->effective.value == value &&
 		    uc_parent->effective.value >= value) {
 			css = css_rightmost_descendant(css);
+
+			printk("eff=%d == value=%d <= p.eff=%d",
+			       uc_se->effective.value, value,
+			       uc_parent->effective.value);
+			printk("Already ok: DONE");
+
 			continue;
 		}
 
@@ -7302,9 +7333,13 @@ static void cpu_util_update_hier(struct cgroup_subsys_state *css,
 		if (uc_parent->effective.value < value) {
 			value = uc_parent->effective.value;
 			bucket_id = uc_parent->effective.bucket_id;
+			printk("Parent with more restrictive effective value=%d\n",
+			       value);
 		}
-		if (uc_se->effective.value == value)
+		if (uc_se->effective.value == value) {
+			printk("Already at effective value: DONE\n");
 			continue;
+		}
 
 		uc_se->effective.value = value;
 		uc_se->effective.bucket_id = bucket_id;
@@ -7312,7 +7347,10 @@ static void cpu_util_update_hier(struct cgroup_subsys_state *css,
 		/* Immediately updated descendants active tasks */
 		if (css != top_css)
 			uclamp_bucket_inc_tg(css, clamp_id, bucket_id);
+
+		printk("Updated effective value: DONE\n");
 	}
+	printk("Update cycle DONE\n");
 }
 
 static int cpu_util_min_write_u64(struct cgroup_subsys_state *css,
