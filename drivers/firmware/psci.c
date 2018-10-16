@@ -157,14 +157,14 @@ static int psci_to_linux_errno(int errno)
 /* physical address, hardcoded value
  * XXX VALUE CHANGES MUST BE SYNCHRONIZED WITH ATF
  */
-static uint32_t memPointer = 0xf0000000;
+static volatile uint32_t memPointer = 0xf0000000;
 /* shared memory size */
 static uint32_t reserveSize =  0x1000;
 
 #define MPIDR_CLUSTER_MASK 0xff00
 #define MPIDR_CPU_MASK 0xff
 
-inline static uint64_t read_mpidr(void)
+inline static volatile uint64_t read_mpidr(void)
 {
     return read_sysreg(mpidr_el1);
 }
@@ -212,12 +212,13 @@ struct CounterData
     uint64_t retiredInstructionsBeforeSleepL;
 
     uint64_t wake_timestamp;
+    uint64_t sleep_state;
 };
 
 /*
  * virtual address where the shared memory page is mapped onton
  */
-static struct CounterData *virtAddress = NULL;
+static volatile struct CounterData *virtAddress = NULL;
 
 #define PSCI_DEBUG 0
 /* debug related enum */
@@ -390,21 +391,21 @@ static int psci_cpu_suspend(u32 state, unsigned long entry_point)
 	// pattern is meant to be.
 	err = invoke_psci_fn(fn, state, entry_point, 0);
 
-	// Get the value of the timer!
-	wake_time = read_sysreg(cntpct_el0);
+	/* // Get the value of the timer! */
+	/* wake_time = read_sysreg(cntpct_el0); */
 
-	// We get the PSCI version here because this also triggers the
-	// transfer of the timestamp! HACK!
-	psci_get_version_orig();
+	/* // We get the PSCI version here because this also triggers the */
+	/* // transfer of the timestamp! HACK! */
+	/* psci_get_version_orig(); */
 
-	if (virtAddress != NULL) {
-		uint64_t mpidr = read_mpidr();
-		uint64_t linearCpuId = getLinearCpuId(mpidr);
+	/* if (virtAddress != NULL) { */
+	/* 	uint64_t mpidr = read_mpidr(); */
+	/* 	uint64_t linearCpuId = getLinearCpuId(mpidr); */
 
-		trace_printk("wake_start: %llu, wake_end: %llu",
-			     virtAddress[linearCpuId].wake_timestamp,
-			     wake_time);
-	}
+	/* 	trace_printk("wake_start: %llu, wake_end: %llu", */
+	/* 		     virtAddress[linearCpuId].wake_timestamp, */
+	/* 		     wake_time); */
+	/* } */
 
     /*debugCounters();*/
 
@@ -630,10 +631,30 @@ int psci_cpu_init_idle(unsigned int cpu)
 	return ret;
 }
 
+static void calc_wake_time(void)
+{
+	uint64_t wake_time = read_sysreg(cntpct_el0);
+
+	// We get the PSCI version here because this also triggers the
+	// transfer of the timestamp! HACK!
+	psci_get_version_orig();
+
+	if (virtAddress != NULL) {
+		uint64_t mpidr = read_mpidr();
+		uint64_t linearCpuId = getLinearCpuId(mpidr);
+
+		trace_printk("wake_start: %llu, wake_end: %llu, sleep_state: 0x%llx",
+			     virtAddress[linearCpuId].wake_timestamp,
+			     wake_time, virtAddress[linearCpuId].sleep_state);
+
+		virtAddress[linearCpuId].wake_timestamp = 0;
+	}
+}
+
 static int psci_suspend_finisher(unsigned long index)
 {
 	u32 *state = __this_cpu_read(psci_power_state);
-
+	calc_wake_time();
 	return psci_ops.cpu_suspend(state[index - 1],
 				    virt_to_phys(cpu_resume));
 }
@@ -649,9 +670,10 @@ int psci_cpu_suspend_enter(unsigned long index)
 	if (WARN_ON_ONCE(!index))
 		return -EINVAL;
 
-	if (!psci_power_state_loses_context(state[index - 1]))
+	if (!psci_power_state_loses_context(state[index - 1])) {
 		ret = psci_ops.cpu_suspend(state[index - 1], 0);
-	else
+		calc_wake_time(); // TODO: This might need removing again!
+	} else
 		ret = cpu_suspend(index, psci_suspend_finisher);
 
 	return ret;
