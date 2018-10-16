@@ -774,6 +774,10 @@ uclamp_idle_value(struct rq *rq, unsigned int clamp_id, unsigned int clamp_value
 	 */
 	if (clamp_id == UCLAMP_MAX) {
 		rq->uclamp_flags |= UCLAMP_FLAG_IDLE;
+
+		trace_printk("uclamp_rq_update: cpu=%d idle_clamp=%u",
+			     cpu_of(rq), clamp_value);
+
 		return clamp_value;
 	}
 
@@ -856,6 +860,10 @@ uclamp_effective_get(struct task_struct *p, unsigned int clamp_id,
 	*clamp_value = p->uclamp[clamp_id].value;
 	*bucket_id = p->uclamp[clamp_id].bucket_id;
 
+	trace_printk("uclamp_effective_bucket_id: pid=%d comm=%s "
+		     "case=ts clamp_id=%u bucket_id=%u value=%d",
+		     p->pid, p->comm, clamp_id, bucket_id, clamp_value);
+
 	if (!uclamp_apply_defaults(p)) {
 #ifdef CONFIG_UCLAMP_TASK_GROUP
 		unsigned int clamp_max, bucket_max;
@@ -870,6 +878,14 @@ uclamp_effective_get(struct task_struct *p, unsigned int clamp_id,
 			*clamp_value = clamp_max;
 			*bucket_id = bucket_max;
 		}
+
+		trace_printk("uclamp_effective_bucket_id: pid=%d comm=%s "
+			     "case=tg clamp_id=%u bucket_id=%u value=%d "
+			     "user_defined=%d bucket_max=%d clamp_max=%d",
+			     p->pid, p->comm, clamp_id, *bucket_id, *clamp_value,
+			     p->uclamp[clamp_id].user_defined,
+			     bucket_max, clamp_max);
+
 #endif
 		/*
 		 * If we have task groups and we are running in a child group,
@@ -883,6 +899,10 @@ uclamp_effective_get(struct task_struct *p, unsigned int clamp_id,
 	if (unlikely(*clamp_value > uclamp_default[clamp_id].value)) {
 		*clamp_value = uclamp_default[clamp_id].value;
 		*bucket_id = uclamp_default[clamp_id].bucket_id;
+
+		trace_printk("uclamp_effective_bucket_id: pid=%d comm=%s "
+			     "case=sd clamp_id=%u bucket_id=%u value=%d",
+			     p->pid, p->comm, clamp_id, bucket_id, clamp_value);
 	}
 }
 
@@ -957,6 +977,14 @@ static inline void uclamp_rq_inc_id(struct task_struct *p, struct rq *rq,
 	/* Update rq's clamp value if required */
 	rq_clamp = READ_ONCE(rq->uclamp[clamp_id].value);
 	WRITE_ONCE(rq->uclamp[clamp_id].value, max(rq_clamp, tsk_clamp));
+
+	trace_printk("uclamp_rq_inc_id: pid=%d comm=%s cpu=%d "
+		     "clamp_id=%d bucket_id=%u tks_clamp=%u "
+		     "bkt_clamp=%u clamp_rq=%u",
+		     p->pid, p->comm, cpu_of(rq),
+		     clamp_id, bucket_id, tsk_clamp,
+		     rq->uclamp[clamp_id].bucket[bucket_id].value,
+		     READ_ONCE(rq->uclamp[clamp_id].value));
 }
 
 /*
@@ -970,9 +998,10 @@ static inline void uclamp_rq_inc_id(struct task_struct *p, struct rq *rq,
 static inline void uclamp_rq_dec_id(struct task_struct *p, struct rq *rq,
 				     unsigned int clamp_id)
 {
-	unsigned int rq_clamp, bkt_clamp;
+	unsigned int rq_clamp, bkt_clamp, tsk_clamp;
 	unsigned int bucket_id;
 
+	tsk_clamp = uclamp_effective_value(p, clamp_id);
 	bucket_id = uclamp_effective_bucket_id(p, clamp_id);
 	p->uclamp[clamp_id].active = false;
 
@@ -988,6 +1017,11 @@ static inline void uclamp_rq_dec_id(struct task_struct *p, struct rq *rq,
 	/* The rq's clamp value is expected to always track the max */
 	rq_clamp = READ_ONCE(rq->uclamp[clamp_id].value);
 	SCHED_WARN_ON(bkt_clamp > rq_clamp);
+
+	trace_printk("uclamp_rq_dec_id: clamp_id=%u bucket_id=%u "
+		    "clamp_value=%u clamp_rq=%u",
+		    clamp_id, bucket_id, bkt_clamp, rq_clamp);
+
 	if (bkt_clamp >= rq_clamp) {
 		/*
 		 * Reset rq's clamp bucket value to its nominal value whenever
@@ -997,6 +1031,14 @@ static inline void uclamp_rq_dec_id(struct task_struct *p, struct rq *rq,
 			uclamp_bucket_value(rq_clamp);
 		uclamp_rq_update(rq, clamp_id, bkt_clamp);
 	}
+
+	trace_printk("uclamp_rq_dec_id: pid=%d comm=%s cpu=%d "
+		     "clamp_id=%d bucket_id=%u tks_clamp=%u "
+		     "bkt_clamp=%u clamp_rq=%u",
+		     p->pid, p->comm, cpu_of(rq),
+		     clamp_id, bucket_id, tsk_clamp,
+		     rq->uclamp[clamp_id].bucket[bucket_id].value,
+		     READ_ONCE(rq->uclamp[clamp_id].value));
 }
 
 static inline void uclamp_rq_inc(struct rq *rq, struct task_struct *p)
