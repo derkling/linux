@@ -746,6 +746,9 @@ unsigned int sysctl_sched_uclamp_util_max = SCHED_CAPACITY_SCALE;
 static struct uclamp_se uclamp_default[UCLAMP_CNT];
 static struct uclamp_se uclamp_default_perf[UCLAMP_CNT];
 
+static atomic_t forks_count;
+static atomic_t exits_count;
+
 /**
  * uclamp_map: reference counts a utilization "clamp value"
  * @value:    the utilization "clamp value" required
@@ -1395,6 +1398,8 @@ void uclamp_exit_task(struct task_struct *p)
 {
 	uclamp_group_put(UCLAMP_MIN, p->uclamp[UCLAMP_MIN].group_id);
 	uclamp_group_put(UCLAMP_MAX, p->uclamp[UCLAMP_MAX].group_id);
+
+	atomic_inc(&exits_count);
 }
 
 /**
@@ -1406,6 +1411,9 @@ static void uclamp_fork(struct task_struct *p, bool reset)
 
 	if (unlikely(!p->sched_class->uclamp_enabled))
 		return;
+
+	printk("uclamp_fork: comm=%s pid=%d reset=%d",
+	       p->comm, p->pid, reset ? 1 : 0);
 
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
 		unsigned int clamp_value = p->uclamp[clamp_id].value;
@@ -1419,6 +1427,8 @@ static void uclamp_fork(struct task_struct *p, bool reset)
 		uclamp_group_get(NULL, NULL, clamp_id, &p->uclamp[clamp_id],
 				 clamp_value);
 	}
+
+	atomic_inc(&forks_count);
 }
 
 /**
