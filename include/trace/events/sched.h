@@ -1024,6 +1024,141 @@ TRACE_EVENT(sched_overutilized,
 );
 
 #endif /* CONFIG_SMP */
+
+#ifdef CONFIG_UCLAMP_TASK
+
+struct rq;
+
+TRACE_EVENT_CONDITION(uclamp_util_se,
+
+	TP_PROTO(bool is_task, struct task_struct *p, struct rq *rq),
+
+	TP_ARGS(is_task, p, rq),
+
+	TP_CONDITION(is_task),
+
+	TP_STRUCT__entry(
+		__field(	pid_t,	pid			)
+		__array(	char,	comm,   TASK_COMM_LEN	)
+		__field(	 int,	cpu			)
+		__field(unsigned long,	util_avg		)
+		__field(unsigned long,	uclamp_avg		)
+		__field(unsigned long,	uclamp_min		)
+		__field(unsigned long,	uclamp_max		)
+	),
+
+	TP_fast_assign(
+		__entry->pid            = p->pid;
+		memcpy(__entry->comm, p->comm, TASK_COMM_LEN);
+		__entry->cpu            = rq->cpu;
+		__entry->util_avg       = p->se.avg.util_avg;
+		__entry->uclamp_avg     = uclamp_util(rq, p->se.avg.util_avg);
+		__entry->uclamp_min     = rq->uclamp[UCLAMP_MIN].value;
+		__entry->uclamp_max     = rq->uclamp[UCLAMP_MAX].value;
+		),
+
+	TP_printk("pid=%d comm=%s cpu=%d util_avg=%lu uclamp_avg=%lu "
+		  "uclamp_min=%lu uclamp_max=%lu",
+		  __entry->pid, __entry->comm, __entry->cpu,
+		  __entry->util_avg, __entry->uclamp_avg,
+		  __entry->uclamp_min, __entry->uclamp_max)
+);
+
+TRACE_EVENT_CONDITION(uclamp_util_cfs,
+
+	TP_PROTO(bool is_root, int cpu, struct cfs_rq *cfs_rq),
+
+	TP_ARGS(is_root, cpu, cfs_rq),
+
+	TP_CONDITION(is_root),
+
+	TP_STRUCT__entry(
+		__field(	 int,	cpu			)
+		__field(unsigned long,	util_avg		)
+		__field(unsigned long,	uclamp_avg		)
+		__field(unsigned long,	uclamp_min		)
+		__field(unsigned long,	uclamp_max		)
+	),
+
+	TP_fast_assign(
+		__entry->cpu            = cpu;
+		__entry->util_avg       = cfs_rq->avg.util_avg;
+		__entry->uclamp_avg     = uclamp_util(cpu_rq(cpu), cfs_rq->avg.util_avg);
+		__entry->uclamp_min     = cpu_rq(cpu)->uclamp[UCLAMP_MIN].value;
+		__entry->uclamp_max     = cpu_rq(cpu)->uclamp[UCLAMP_MAX].value;
+		),
+
+	TP_printk("cpu=%d util_avg=%lu uclamp_avg=%lu "
+		  "uclamp_min=%lu uclamp_max=%lu",
+		  __entry->cpu, __entry->util_avg, __entry->uclamp_avg,
+		  __entry->uclamp_min, __entry->uclamp_max)
+);
+
+TRACE_EVENT(uclamp_rq,
+
+	TP_PROTO(struct task_struct *tsk, struct rq *rq,
+		 unsigned int clamp_id, bool inc, bool bug),
+
+	TP_ARGS(tsk, rq, clamp_id, inc, bug),
+
+	TP_STRUCT__entry(
+		__array( char,  comm,   TASK_COMM_LEN	)
+		__field( pid_t,         pid		)
+		__field( unsigned int, 	cpu		)
+		__field( unsigned int,	clamp_id	)
+		__field( unsigned int,	se_bkt_id	)
+		__field( unsigned int,	se_bkt_value	)
+		__field( unsigned int,	rq_bkt_tasks	)
+		__field( unsigned int,	rq_bkt_value	)
+		__field( unsigned int,	rq_value	)
+		__array( char, 	   op,  4		)
+		__field( bool,		bug		)
+	),
+
+	TP_fast_assign(
+		struct uclamp_rq *uc_rq = &rq->uclamp[clamp_id];
+		struct uclamp_se *uc_se = &tsk->uclamp[clamp_id];
+		struct uclamp_bucket *bucket =
+			&uc_rq->bucket[uc_se->bucket_id];
+
+		memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
+		__entry->pid    	= tsk->pid;
+		__entry->cpu		= cpu_of(rq);
+		__entry->clamp_id 	= clamp_id;
+		__entry->se_bkt_id 	= uc_se->bucket_id;
+		__entry->se_bkt_value	= uc_se->value;
+		__entry->rq_bkt_tasks	= bucket->tasks;
+		__entry->rq_bkt_value	= bucket->value;
+		__entry->rq_value 	= uc_rq->value;
+		if (inc)
+			memcpy(__entry->op, "inc\0", 4);
+		else
+			memcpy(__entry->op, "dec\0", 4);
+		__entry->bug 		= bug;
+	),
+
+	TP_printk("bug=%d op=%s rq_bkt_tasks=%u cpu=%d clamp_id=%d "
+		  "se_bkt_id=%u se_bkt_value=%u "
+		  "rq_bkt_value=%u rq_value=%u "
+		  "pid=%d comm=%s",
+		__entry->bug,
+		__entry->op,
+		__entry->rq_bkt_tasks,
+		__entry->cpu,
+		__entry->clamp_id,
+		__entry->se_bkt_id,
+		__entry->se_bkt_value,
+		__entry->rq_bkt_value,
+		__entry->rq_value,
+		__entry->pid,
+		__entry->comm)
+);
+#else
+#define trace_uclamp_util_se(is_task, p, rq) while(false) {}
+#define trace_uclamp_util_cfs(is_root, cpu, cfs_rq) while(false) {}
+#define trace_uclamp_rq(tsk, rq, clamp_id, inc, bug) while(false) {}
+#endif /* CONFIG_UCLAMP_TASK */
+
 #endif /* _TRACE_SCHED_H */
 
 /* This part must be outside protection */
