@@ -2306,6 +2306,12 @@ unsigned int uclamp_util_with(struct rq *rq, unsigned int util,
 	if (unlikely(min_util >= max_util))
 		return min_util;
 
+	trace_printk("uclamp_util: cpu=%d util=%u uclamp_util=%u "
+		     "uclamp_min=%u uclamp_max=%u",
+		     cpu_of(rq), util,
+		     clamp(util, min_util, max_util),
+		     min_util, max_util);
+
 	return clamp(util, min_util, max_util);
 }
 
