@@ -746,6 +746,8 @@ unsigned int sysctl_sched_uclamp_util_max = SCHED_CAPACITY_SCALE;
  * Tasks specific clamp values are required to be within this range
  */
 static struct uclamp_se uclamp_default[UCLAMP_CNT];
+static atomic_t forks_count;
+static atomic_t exits_count;
 
 #define UCLAMP_BUCKET_DELTA (SCHED_CAPACITY_SCALE / CONFIG_UCLAMP_BUCKETS_COUNT)
 #define UCLAMP_BUCKET_UPPER (UCLAMP_BUCKET_DELTA  * CONFIG_UCLAMP_BUCKETS_COUNT)
@@ -1178,6 +1180,21 @@ static void __setscheduler_uclamp(struct task_struct *p,
 	}
 }
 
+void uclamp_exit_task(struct task_struct *p)
+{
+	if (unlikely(!p->sched_class->uclamp_enabled))
+		return;
+
+	atomic_inc(&exits_count);
+
+	{
+	int forks = atomic_read(&forks_count);
+	int exits = atomic_read(&exits_count);
+
+	WARN_ON(forks < exits);
+	}
+}
+
 static void uclamp_fork(struct task_struct *p, bool reset)
 {
 	unsigned int clamp_id;
@@ -1188,6 +1205,11 @@ static void uclamp_fork(struct task_struct *p, bool reset)
 		p->uclamp[clamp_id].active = false;
 	if (likely(!reset))
 		return;
+
+	atomic_inc(&forks_count);
+
+	printk("uclamp_fork: comm=%s pid=%d reset=%d",
+	       p->comm, p->pid, reset ? 1 : 0);
 
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
 		unsigned int clamp_value = uclamp_none(clamp_id);
