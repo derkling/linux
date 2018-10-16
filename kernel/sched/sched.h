@@ -2283,6 +2283,9 @@ static inline unsigned int uclamp_util(struct rq *rq, unsigned int util)
 	unsigned int min_util = rq->uclamp.value[UCLAMP_MIN];
 	unsigned int max_util = rq->uclamp.value[UCLAMP_MAX];
 
+	trace_printk("uclamp_util: cpu=%d util=%d util_min=%d util_max=%d",
+		     cpu_of(rq), util, min_util, max_util);
+
 	return clamp(util, min_util, max_util);
 }
 #else /* CONFIG_UCLAMP_TASK */
