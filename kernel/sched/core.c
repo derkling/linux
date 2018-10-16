@@ -922,6 +922,9 @@ static inline void uclamp_rq_inc_id(struct rq *rq, struct task_struct *p,
 
 	if (uc_se->value > READ_ONCE(uc_rq->value))
 		WRITE_ONCE(uc_rq->value, uc_se->value);
+
+	trace_uclamp_rq(p, rq, clamp_id, true, (uc_rq->value < bucket->value));
+
 }
 
 /*
@@ -956,8 +959,10 @@ static inline void uclamp_rq_dec_id(struct rq *rq, struct task_struct *p,
 	 * The rq clamp bucket value is reset to its base value whenever
 	 * there are no more RUNNABLE tasks refcounting it.
 	 */
-	if (likely(bucket->tasks))
+	if (likely(bucket->tasks)) {
+		trace_uclamp_rq(p, rq, clamp_id, false, false);
 		return;
+	}
 
 	rq_clamp = READ_ONCE(uc_rq->value);
 	/*
@@ -965,10 +970,16 @@ static inline void uclamp_rq_dec_id(struct rq *rq, struct task_struct *p,
 	 * e.g. due to future modification, warn and fixup the expected value.
 	 */
 	SCHED_WARN_ON(bucket->value > rq_clamp);
+	if (bucket->value > rq_clamp) {
+		trace_uclamp_rq(p, rq, clamp_id, false, true);
+		tracing_off();
+	}
 	if (bucket->value >= rq_clamp) {
 		bkt_clamp = uclamp_rq_max_value(rq, clamp_id, uc_se->value);
 		WRITE_ONCE(uc_rq->value, bkt_clamp);
 	}
+
+	trace_uclamp_rq(p, rq, clamp_id, false, false);
 }
 
 static inline void uclamp_rq_inc(struct rq *rq, struct task_struct *p)
