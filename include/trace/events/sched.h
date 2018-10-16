@@ -796,6 +796,80 @@ TRACE_EVENT(sched_util_est_cpu,
 		  __entry->util_est_enqueued)
 );
 #endif /* CONFIG_SMP */
+
+#ifdef CONFIG_UCLAMP_TASK
+
+struct rq;
+
+TRACE_EVENT_CONDITION(uclamp_util_se,
+
+	TP_PROTO(bool is_task, struct task_struct *p, struct rq *rq),
+
+	TP_ARGS(is_task, p, rq),
+
+	TP_CONDITION(is_task),
+
+	TP_STRUCT__entry(
+		__field(	pid_t,	pid			)
+		__array(	char,	comm,   TASK_COMM_LEN	)
+		__field(	 int,	cpu			)
+		__field(unsigned long,	util_avg		)
+		__field(unsigned long,	uclamp_avg		)
+		__field(unsigned long,	uclamp_min		)
+		__field(unsigned long,	uclamp_max		)
+	),
+
+	TP_fast_assign(
+		__entry->pid            = p->pid;
+		memcpy(__entry->comm, p->comm, TASK_COMM_LEN);
+		__entry->cpu            = rq->cpu;
+		__entry->util_avg       = p->se.avg.util_avg;
+		__entry->uclamp_avg     = uclamp_util(rq, p->se.avg.util_avg);
+		__entry->uclamp_min     = rq->uclamp[UCLAMP_MIN].value;
+		__entry->uclamp_max     = rq->uclamp[UCLAMP_MAX].value;
+		),
+
+	TP_printk("pid=%d comm=%s cpu=%d util_avg=%lu uclamp_avg=%lu "
+		  "uclamp_min=%lu uclamp_max=%lu",
+		  __entry->pid, __entry->comm, __entry->cpu,
+		  __entry->util_avg, __entry->uclamp_avg,
+		  __entry->uclamp_min, __entry->uclamp_max)
+);
+
+TRACE_EVENT_CONDITION(uclamp_util_cfs,
+
+	TP_PROTO(bool is_root, int cpu, struct cfs_rq *cfs_rq),
+
+	TP_ARGS(is_root, cpu, cfs_rq),
+
+	TP_CONDITION(is_root),
+
+	TP_STRUCT__entry(
+		__field(	 int,	cpu			)
+		__field(unsigned long,	util_avg		)
+		__field(unsigned long,	uclamp_avg		)
+		__field(unsigned long,	uclamp_min		)
+		__field(unsigned long,	uclamp_max		)
+	),
+
+	TP_fast_assign(
+		__entry->cpu            = cpu;
+		__entry->util_avg       = cfs_rq->avg.util_avg;
+		__entry->uclamp_avg     = uclamp_util(cpu_rq(cpu), cfs_rq->avg.util_avg);
+		__entry->uclamp_min     = cpu_rq(cpu)->uclamp[UCLAMP_MIN].value;
+		__entry->uclamp_max     = cpu_rq(cpu)->uclamp[UCLAMP_MAX].value;
+		),
+
+	TP_printk("cpu=%d util_avg=%lu uclamp_avg=%lu "
+		  "uclamp_min=%lu uclamp_max=%lu",
+		  __entry->cpu, __entry->util_avg, __entry->uclamp_avg,
+		  __entry->uclamp_min, __entry->uclamp_max)
+);
+#else
+#define trace_uclamp_util_se(is_task, p, rq) while(false) {}
+#define trace_uclamp_util_cfs(is_root, cpu, cfs_rq) while(false) {}
+#endif /* CONFIG_UCLAMP_TASK */
+
 #endif /* _TRACE_SCHED_H */
 
 /* This part must be outside protection */
