@@ -826,6 +826,10 @@ uclamp_idle_value(struct rq *rq, unsigned int clamp_id,
 	 */
 	if (clamp_id == UCLAMP_MAX) {
 		rq->uclamp_flags |= UCLAMP_FLAG_IDLE;
+
+		trace_printk("uclamp_rq_update: cpu=%d idle_clamp=%u",
+			     cpu_of(rq), clamp_value);
+
 		return clamp_value;
 	}
 
@@ -869,7 +873,13 @@ uclamp_tg_restrict(struct task_struct *p, unsigned int clamp_id)
 	struct uclamp_se uc_req = p->uclamp_req[clamp_id];
 #ifdef CONFIG_UCLAMP_TASK_GROUP
 	struct uclamp_se uc_max;
+#endif
 
+	trace_printk("uclamp_eff_get,ts: pid=%d comm=%s clamp_id=%u "
+		     "bucket_id=%u value=%d",
+		     p->pid, p->comm, clamp_id, uc_req.bucket_id, uc_req.value);
+
+#ifdef CONFIG_UCLAMP_TASK_GROUP
 	/*
 	 * Tasks in autogroups or root task group will be
 	 * restricted by system defaults.
@@ -880,8 +890,17 @@ uclamp_tg_restrict(struct task_struct *p, unsigned int clamp_id)
 		return uc_req;
 
 	uc_max = task_group(p)->uclamp[clamp_id];
-	if (uc_req.value > uc_max.value || !uc_req.user_defined)
+	if (uc_req.value > uc_max.value || !uc_req.user_defined) {
+
+		trace_printk("uclamp_eff_get,tg: pid=%d comm=%s clamp_id=%u "
+			     "ts(bucket_id=%u value=%u) user_defined=%u "
+			     "tg(bucket_id=%u value=%u)",
+			     p->pid, p->comm, clamp_id,
+			     uc_req.bucket_id, uc_req.value, uc_req.user_defined,
+			     uc_max.bucket_id, uc_max.value);
+
 		return uc_max;
+	}
 #endif
 
 	return uc_req;
@@ -902,8 +921,15 @@ uclamp_eff_get(struct task_struct *p, unsigned int clamp_id)
 	struct uclamp_se uc_max = uclamp_default[clamp_id];
 
 	/* System default restrictions always apply */
-	if (unlikely(uc_req.value > uc_max.value))
+	if (unlikely(uc_req.value > uc_max.value)) {
+
+		trace_printk("uclamp_eff_get,sd: pid=%d comm=%s clamp_id=%u "
+			     "bucket_id=%u value=%u",
+			     p->pid, p->comm, clamp_id,
+			     uc_max.bucket_id, uc_max.value);
+
 		return uc_max;
+	}
 
 	return uc_req;
 }
@@ -958,6 +984,13 @@ static inline void uclamp_rq_inc_id(struct rq *rq, struct task_struct *p,
 
 	if (uc_se->value > READ_ONCE(uc_rq->value))
 		WRITE_ONCE(uc_rq->value, uc_se->value);
+
+	trace_printk("uclamp_rq_inc_id: pid=%d comm=%s cpu=%d clamp_id=%d "
+		     "se_eff(bucket_id=%u, value=%u) "
+		     "bkt_value=%u rq_value=%u",
+		     p->pid, p->comm, cpu_of(rq), clamp_id,
+		     uc_se->bucket_id, uc_se->value,
+		     bucket->value, READ_ONCE(uc_rq->value));
 }
 
 /*
@@ -1000,11 +1033,26 @@ static inline void uclamp_rq_dec_id(struct rq *rq, struct task_struct *p,
 	 * Defensive programming: this should never happen. If it happens,
 	 * e.g. due to future modification, warn and fixup the expected value.
 	 */
+	if (bucket->value > rq_clamp) {
+		trace_printk("uclamp_rq_dec_id: WARN pid=%d comm=%s cpu=%d "
+		       "clamp_id=%d bucket_id=%u tks_clamp=%u "
+		       "bkt_clamp=%u clamp_rq=%u",
+		       p->pid, p->comm, cpu_of(rq),
+		       clamp_id, uc_se->bucket_id, uc_se->value,
+		       bucket->value, rq_clamp);
+	}
 	SCHED_WARN_ON(bucket->value > rq_clamp);
 	if (bucket->value >= rq_clamp) {
 		bkt_clamp = uclamp_rq_max_value(rq, clamp_id, uc_se->value);
 		WRITE_ONCE(uc_rq->value, bkt_clamp);
 	}
+
+	trace_printk("uclamp_rq_dec_id: pid=%d comm=%s cpu=%d clamp_id=%d "
+		     "se_eff(bucket_id=%u, value=%u) "
+		     "bkt_value=%u rq_value=%u",
+		     p->pid, p->comm, cpu_of(rq), clamp_id,
+		     uc_se->bucket_id, uc_se->value,
+		     bucket->value, READ_ONCE(uc_rq->value));
 }
 
 static inline void uclamp_rq_inc(struct rq *rq, struct task_struct *p)
