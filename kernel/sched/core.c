@@ -1069,13 +1069,22 @@ done:
 	task_rq_unlock(rq, p, &rf);
 }
 
-static void uclamp_bucket_dec(unsigned int clamp_id, unsigned int bucket_id)
+static void uclamp_bucket_dec(unsigned int clamp_id, unsigned int bucket_id,
+			      const char *source)
 {
 	union uclamp_map *uc_maps = &uclamp_maps[clamp_id][0];
 	union uclamp_map uc_map_old, uc_map_new;
+	bool failed = false;
 
 	uc_map_old.data = atomic_long_read(&uc_maps[bucket_id].adata);
 	do {
+
+		if (unlikely(failed)) {
+			printk("    uclamp_bucket_dec: clamp_id=%u bucket_id=%u count=%lu FAILED\n",
+			       clamp_id, bucket_id, (unsigned long)uc_map_old.se_count);
+		}
+		failed = true;
+
 		/*
 		 * Refcounting consistency check. If we release a non
 		 * referenced bucket: refcounting is broken and we warn.
@@ -1090,6 +1099,18 @@ static void uclamp_bucket_dec(unsigned int clamp_id, unsigned int bucket_id)
 
 	} while (!atomic_long_try_cmpxchg(&uc_maps[bucket_id].adata,
 					  &uc_map_old.data, uc_map_new.data));
+
+	{
+		int forks = atomic_read(&forks_count);
+		int exits = atomic_read(&exits_count);
+
+		printk("  %s_%s PUT[%2u:%4lu]: %5lu (f:%4d, e:%4d, t:%4d)\n",
+		       source, clamp_id ? "Max" : "Min", bucket_id,
+		       (unsigned long)uc_maps[bucket_id].value,
+		       (unsigned long)uc_maps[bucket_id].se_count,
+		       forks, exits, forks-exits);
+	}
+
 }
 
 static inline void uclamp_bucket_inc_tg(struct cgroup_subsys_state *css,
@@ -1108,7 +1129,8 @@ static inline void uclamp_bucket_inc_tg(struct cgroup_subsys_state *css,
 static void uclamp_bucket_inc(struct task_struct *p,
 			      struct cgroup_subsys_state *css,
 			      struct uclamp_se *uc_se,
-			      unsigned int clamp_id, unsigned int clamp_value)
+			      unsigned int clamp_id, unsigned int clamp_value,
+			      const char *source)
 {
 	union uclamp_map *uc_maps = &uclamp_maps[clamp_id][0];
 	unsigned int prev_bucket_id = uc_se->bucket_id;
@@ -1116,11 +1138,19 @@ static void uclamp_bucket_inc(struct task_struct *p,
 	unsigned int free_bucket_id;
 	unsigned int bucket_value;
 	unsigned int bucket_id;
+	bool failed = false;
 	int cpu;
 
 	bucket_value = uclamp_bucket_value(clamp_value);
 
 	do {
+
+		if (unlikely(failed)) {
+			printk("    uclamp_bucket_inc: clamp_id=%u bucket_id=%u count=%lu FAILED\n",
+			       clamp_id, bucket_id, (unsigned long)uc_map_old.se_count);
+		}
+		failed = true;
+
 		/* Find the bucket_id of an already mapped clamp bucket... */
 		free_bucket_id = UCLAMP_BUCKETS;
 		for (bucket_id = 0; bucket_id < UCLAMP_BUCKETS; ++bucket_id) {
@@ -1151,8 +1181,18 @@ static void uclamp_bucket_inc(struct task_struct *p,
 		uc_map_new.se_count = uc_map_old.se_count + 1;
 		uc_map_new.value = bucket_value;
 
+//		printk("    se_count: %u(@%d), value: %u(@%d)\n",
+//				(unsigned)uc_map_new.value, bits_per(SCHED_CAPACITY_SCALE),
+//				(unsigned)uc_map_new.se_count,
+//				(BITS_PER_LONG -  bits_per(SCHED_CAPACITY_SCALE)));
+
 	} while (!atomic_long_try_cmpxchg(&uc_maps[bucket_id].adata,
 					  &uc_map_old.data, uc_map_new.data));
+
+//	printk("    old.se_count: %u, new.se_count: %u\n",
+//			(unsigned)uc_map_old.se_count, (unsigned)uc_map_new.se_count);
+//	printk("    old.value: %u, new.value: %u\n",
+//			uc_map_old.value, uc_map_new.value);
 
 	/*
 	 * Ensure each CPU tracks the correct value for this clamp bucket.
@@ -1160,6 +1200,10 @@ static void uclamp_bucket_inc(struct task_struct *p,
 	 * clamp value is requested for the first time from a slow-path.
 	 */
 	if (unlikely(!uc_map_old.se_count)) {
+
+		printk("    uclamp_bucket_inc: clamp_id=%u bucket_id=%u clamp_value=%u INIT\n",
+		       clamp_id, bucket_id, bucket_value);
+
 		for_each_possible_cpu(cpu) {
 			struct uclamp_cpu *uc_cpu =
 				&cpu_rq(cpu)->uclamp[clamp_id];
@@ -1173,6 +1217,9 @@ static void uclamp_bucket_inc(struct task_struct *p,
 			if (uc_cpu->bucket[bucket_id].value == bucket_value)
 				continue;
 			uc_cpu->bucket[bucket_id].value = bucket_value;
+			printk("        cpu_rq(%d)->uclamp[%d].bucket[%d].value = %d\n",
+					cpu, clamp_id, bucket_id,
+					cpu_rq(cpu)->uclamp[clamp_id].bucket[bucket_id].value);
 		}
 	}
 
@@ -1186,13 +1233,24 @@ static void uclamp_bucket_inc(struct task_struct *p,
 		uclamp_task_update_active(p, clamp_id);
 
 	if (uc_se->mapped)
-		uclamp_bucket_dec(clamp_id, prev_bucket_id);
+		uclamp_bucket_dec(clamp_id, prev_bucket_id, source);
 
 	/*
 	 * Task's sched_entity are refcounted in the fast-path only when they
 	 * have got a valid clamp_bucket assigned.
 	 */
 	uc_se->mapped = true;
+
+	{
+		int forks = atomic_read(&forks_count);
+		int exits = atomic_read(&exits_count);
+
+		printk("  %s_%s GET[%2u:%4lu]: %5lu (f:%4d, e:%4d, t:%4d)\n",
+		       source, clamp_id ? "Max" : "Min", bucket_id,
+		       (unsigned long)uc_maps[bucket_id].value,
+		       (unsigned long)uc_maps[bucket_id].se_count,
+		       forks, exits, forks-exits);
+	}
 }
 
 int sched_uclamp_handler(struct ctl_table *table, int write,
@@ -1221,11 +1279,11 @@ int sched_uclamp_handler(struct ctl_table *table, int write,
 
 	if (old_min != sysctl_sched_uclamp_util_min) {
 		uclamp_bucket_inc(NULL, NULL, &uclamp_default[UCLAMP_MIN],
-				  UCLAMP_MIN, sysctl_sched_uclamp_util_min);
+				  UCLAMP_MIN, sysctl_sched_uclamp_util_min, "SyDef");
 	}
 	if (old_max != sysctl_sched_uclamp_util_max) {
 		uclamp_bucket_inc(NULL, NULL, &uclamp_default[UCLAMP_MAX],
-				  UCLAMP_MAX, sysctl_sched_uclamp_util_max);
+				  UCLAMP_MAX, sysctl_sched_uclamp_util_max, "SyDef");
 	}
 	goto done;
 
@@ -1260,12 +1318,12 @@ static int __setscheduler_uclamp(struct task_struct *p,
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN) {
 		p->uclamp[UCLAMP_MIN].user_defined = true;
 		uclamp_bucket_inc(p, NULL, &p->uclamp[UCLAMP_MIN],
-				  UCLAMP_MIN, lower_bound);
+				  UCLAMP_MIN, lower_bound, "SyCal");
 	}
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX) {
 		p->uclamp[UCLAMP_MAX].user_defined = true;
 		uclamp_bucket_inc(p, NULL, &p->uclamp[UCLAMP_MAX],
-				  UCLAMP_MAX, upper_bound);
+				  UCLAMP_MAX, upper_bound, "SyCal");
 	}
 	mutex_unlock(&uclamp_mutex);
 
@@ -1284,7 +1342,7 @@ void uclamp_exit_task(struct task_struct *p)
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
 		if (!p->uclamp[clamp_id].mapped)
 			continue;
-		uclamp_bucket_dec(clamp_id, p->uclamp[clamp_id].bucket_id);
+		uclamp_bucket_dec(clamp_id, p->uclamp[clamp_id].bucket_id, "SeExt");
 	}
 }
 
@@ -1311,7 +1369,7 @@ static void uclamp_fork(struct task_struct *p, bool reset)
 		p->uclamp[clamp_id].mapped = false;
 		p->uclamp[clamp_id].active = false;
 		uclamp_bucket_inc(NULL, NULL, &p->uclamp[clamp_id],
-				  clamp_id, clamp_value);
+				  clamp_id, clamp_value, "SeFrk");
 	}
 }
 
@@ -1333,22 +1391,22 @@ static void __init init_uclamp(void)
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
 		uc_se = &init_task.uclamp[clamp_id];
 		uclamp_bucket_inc(NULL, NULL, uc_se, clamp_id,
-				  uclamp_none(clamp_id));
+				  uclamp_none(clamp_id), "SeIni");
 
 		uc_se = &uclamp_default[clamp_id];
 		uclamp_bucket_inc(NULL, NULL, uc_se, clamp_id,
-				  uclamp_none(clamp_id));
+				  uclamp_none(clamp_id), "SdIni");
 
 		/* RT tasks by default will go to max frequency */
 		uc_se = &uclamp_default_perf[clamp_id];
 		uclamp_bucket_inc(NULL, NULL, uc_se, clamp_id,
-				  uclamp_none(UCLAMP_MAX));
+				  uclamp_none(UCLAMP_MAX), "SpIni");
 
 #ifdef CONFIG_UCLAMP_TASK_GROUP
 		/* Init root TG's clamp bucket */
 		uc_se = &root_task_group.uclamp[clamp_id];
 		uclamp_bucket_inc(NULL, NULL, uc_se, clamp_id,
-				  uclamp_none(UCLAMP_MAX));
+				  uclamp_none(UCLAMP_MAX), "TgIni");
 		uc_se->effective.bucket_id = uc_se->bucket_id;
 		uc_se->effective.value = uc_se->value;
 #endif
@@ -6936,7 +6994,7 @@ static inline void free_uclamp_sched_group(struct task_group *tg)
 	int clamp_id;
 
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id)
-		uclamp_bucket_dec(clamp_id, tg->uclamp[clamp_id].bucket_id);
+		uclamp_bucket_dec(clamp_id, tg->uclamp[clamp_id].bucket_id, "TgFre");
 #endif
 }
 
@@ -6948,7 +7006,7 @@ static inline int alloc_uclamp_sched_group(struct task_group *tg,
 
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
 		uclamp_bucket_inc(NULL, NULL, &tg->uclamp[clamp_id],
-				  clamp_id, parent->uclamp[clamp_id].value);
+				  clamp_id, parent->uclamp[clamp_id].value, "TgNew");
 		tg->uclamp[clamp_id].effective.value =
 			parent->uclamp[clamp_id].effective.value;
 		tg->uclamp[clamp_id].effective.bucket_id =
@@ -7278,7 +7336,7 @@ static int cpu_util_min_write_u64(struct cgroup_subsys_state *css,
 
 	/* Update TG's reference count */
 	uclamp_bucket_inc(NULL, css, &tg->uclamp[UCLAMP_MIN],
-			  UCLAMP_MIN, min_value);
+			  UCLAMP_MIN, min_value, "TgUpd");
 
 	/* Update effective clamps to track the most restrictive value */
 	cpu_util_update_hier(css, UCLAMP_MIN, tg->uclamp[UCLAMP_MIN].bucket_id,
@@ -7313,7 +7371,7 @@ static int cpu_util_max_write_u64(struct cgroup_subsys_state *css,
 
 	/* Update TG's reference count */
 	uclamp_bucket_inc(NULL, css, &tg->uclamp[UCLAMP_MAX],
-			  UCLAMP_MAX, max_value);
+			  UCLAMP_MAX, max_value, "TgUpd");
 
 	/* Update effective clamps to track the most restrictive value */
 	cpu_util_update_hier(css, UCLAMP_MAX, tg->uclamp[UCLAMP_MAX].bucket_id,
