@@ -774,8 +774,8 @@ extern void rto_push_irq_work_func(struct irq_work *work);
  * clamp value.
  */
 struct uclamp_group {
-	int value;
-	int tasks;
+	unsigned long value : SCHED_CAPACITY_SHIFT + 1;
+	unsigned long tasks : BITS_PER_LONG - SCHED_CAPACITY_SHIFT - 1;
 };
 
 /**
@@ -2193,24 +2193,6 @@ static inline u64 irq_time_read(int cpu)
 	return total;
 }
 #endif /* CONFIG_IRQ_TIME_ACCOUNTING */
-
-#ifdef CONFIG_UCLAMP_TASK
-/**
- * uclamp_group_active: check if a clamp group is active on a CPU
- * @uc_grp: the clamp groups for a CPU
- * @group_id: the clamp group to check
- *
- * A clamp group affects a CPU if it has at least one RUNNABLE task.
- *
- * Return: true if the specified CPU has at least one RUNNABLE task
- *         for the specified clamp group.
- */
-static inline bool uclamp_group_active(struct uclamp_group *uc_grp,
-				       int group_id)
-{
-	return uc_grp[group_id].tasks > 0;
-}
-#endif /* CONFIG_UCLAMP_TASK */
 
 #ifdef CONFIG_CPU_FREQ
 DECLARE_PER_CPU(struct update_util_data *, cpufreq_update_util_data);
