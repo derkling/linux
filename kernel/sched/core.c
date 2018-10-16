@@ -1168,7 +1168,8 @@ done:
  * count for the clamp group mapping its current clamp value. A clamp group is
  * released when there are no more task groups referencing its clamp value.
  */
-static void uclamp_group_put(int clamp_id, int group_id)
+static void uclamp_group_put(int clamp_id, int group_id,
+			     const char *source)
 {
 	union uclamp_map *uc_maps = &uclamp_maps[clamp_id][0];
 	union uclamp_map uc_map_old, uc_map_new;
@@ -1180,6 +1181,10 @@ static void uclamp_group_put(int clamp_id, int group_id)
 
 	do {
 		uc_map_old.data = atomic_long_read(&uc_maps[group_id].adata);
+
+		printk("uclamp_group_put: clamp_id=%d group_id=%d count=%lu\n",
+		       clamp_id, group_id, (unsigned long)uc_map_old.se_count);
+
 #ifdef CONFIG_SCHED_DEBUG
 #define UCLAMP_GRPERR "invalid SE clamp group [%d:%d] refcount\n"
 		if (unlikely(!uc_map_old.se_count)) {
@@ -1193,6 +1198,12 @@ static void uclamp_group_put(int clamp_id, int group_id)
 					  uc_map_old.data,
 					  uc_map_new.data);
 	} while (res != uc_map_old.data);
+
+	printk("%s_%s PUT (f:%4d, e:%4d) [%d:%d]=%lu\n",
+	       source, clamp_id ? "Max" : "Min",
+	       atomic_read(&forks_count), atomic_read(&exits_count),
+	       clamp_id, group_id,
+	       (unsigned long)uc_maps[group_id].se_count);
 }
 
 static inline void uclamp_group_get_tg(struct cgroup_subsys_state *css,
@@ -1232,7 +1243,8 @@ static inline void uclamp_group_get_tg(struct cgroup_subsys_state *css,
 static void uclamp_group_get(struct task_struct *p,
 			     struct cgroup_subsys_state *css,
 			     int clamp_id, struct uclamp_se *uc_se,
-			     unsigned int clamp_value)
+			     unsigned int clamp_value,
+			     const char *source)
 {
 	union uclamp_map *uc_maps = &uclamp_maps[clamp_id][0];
 	union uclamp_map uc_map_old, uc_map_new;
@@ -1258,6 +1270,9 @@ retry:
 		group_id = free_group_id;
 		uc_map_old.data = atomic_long_read(&uc_maps[group_id].adata);
 	}
+
+	printk("uclamp_group_get: clamp_id=%d group_id=%d count=%lu\n",
+	       clamp_id, group_id, (unsigned long)uc_map_old.se_count);
 
 	uc_map_new.se_count = uc_map_old.se_count + 1;
 	uc_map_new.value = group_value;
@@ -1304,6 +1319,12 @@ done:
 	if (uc_se->active)
 		uclamp_group_put(clamp_id, prev_group_id, source);
 	uc_se->active = 1;
+
+	printk("%s_%s GET (f:%4d, e:%4d) [%d:%d]=%lu\n",
+	       source, clamp_id ? "Max" : "Min",
+	       atomic_read(&forks_count), atomic_read(&exits_count),
+	       clamp_id, group_id,
+	       (unsigned long)uc_maps[group_id].se_count);
 }
 
 int sched_uclamp_handler(struct ctl_table *table, int write,
@@ -1373,13 +1394,13 @@ static int __setscheduler_uclamp(struct task_struct *p,
 	/* Update each required clamp group */
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN) {
 		p->uclamp[UCLAMP_MIN].user_defined = true;
-		uclamp_group_get(p, NULL, UCLAMP_MIN,
-				 &p->uclamp[UCLAMP_MIN], lower_bound);
+		uclamp_group_get(p, NULL, UCLAMP_MIN, &p->uclamp[UCLAMP_MIN],
+				 lower_bound, "SyCal");
 	}
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX) {
 		p->uclamp[UCLAMP_MAX].user_defined = true;
-		uclamp_group_get(p, NULL, UCLAMP_MAX,
-				 &p->uclamp[UCLAMP_MAX], upper_bound);
+		uclamp_group_get(p, NULL, UCLAMP_MAX, &p->uclamp[UCLAMP_MAX],
+				 upper_bound, "SyCal");
 	}
 
 	mutex_unlock(&uclamp_mutex);
@@ -1396,8 +1417,8 @@ static int __setscheduler_uclamp(struct task_struct *p,
  */
 void uclamp_exit_task(struct task_struct *p)
 {
-	uclamp_group_put(UCLAMP_MIN, p->uclamp[UCLAMP_MIN].group_id);
-	uclamp_group_put(UCLAMP_MAX, p->uclamp[UCLAMP_MAX].group_id);
+	uclamp_group_put(UCLAMP_MIN, p->uclamp[UCLAMP_MIN].group_id, "SeExt");
+	uclamp_group_put(UCLAMP_MAX, p->uclamp[UCLAMP_MAX].group_id, "SeExt");
 
 	atomic_inc(&exits_count);
 }
@@ -1425,7 +1446,7 @@ static void uclamp_fork(struct task_struct *p, bool reset)
 
 		p->uclamp[clamp_id].active = 0;
 		uclamp_group_get(NULL, NULL, clamp_id, &p->uclamp[clamp_id],
-				 clamp_value);
+				 clamp_value, "SeFrk");
 	}
 
 	atomic_inc(&forks_count);
@@ -1449,22 +1470,22 @@ static void __init init_uclamp(void)
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
 		uc_se = &init_task.uclamp[clamp_id];
 		uclamp_group_get(NULL, NULL, clamp_id, uc_se,
-				 uclamp_none(clamp_id));
+				 uclamp_none(clamp_id), "SeIni");
 
 		uc_se = &uclamp_default[clamp_id];
 		uclamp_group_get(NULL, NULL, clamp_id, uc_se,
-				 uclamp_none(clamp_id));
+				 uclamp_none(clamp_id), "SdIni");
 
 		/* RT tasks by default will go to max frequency */
 		uc_se = &uclamp_default_perf[clamp_id];
 		uclamp_group_get(NULL, NULL, clamp_id, uc_se,
-				 uclamp_none(UCLAMP_MAX));
+				 uclamp_none(UCLAMP_MAX), "SpIni");
 
 #ifdef CONFIG_UCLAMP_TASK_GROUP
 		/* Init root TG's clamp group */
 		uc_se = &root_task_group.uclamp[clamp_id];
 		uclamp_group_get(NULL, NULL, clamp_id, uc_se,
-				 uclamp_none(UCLAMP_MAX));
+				 uclamp_none(UCLAMP_MAX), "TgIni");
 		uc_se->effective.group_id = uc_se->group_id;
 		uc_se->effective.value = uc_se->value;
 #endif
@@ -7052,7 +7073,7 @@ static inline void free_uclamp_sched_group(struct task_group *tg)
 	int clamp_id = 0;
 
 	for ( ; clamp_id < UCLAMP_CNT; ++clamp_id)
-		uclamp_group_put(clamp_id, tg->uclamp[clamp_id].group_id);
+		uclamp_group_put(clamp_id, tg->uclamp[clamp_id].group_id, "TgFre");
 }
 
 /**
@@ -7074,7 +7095,7 @@ static inline int alloc_uclamp_sched_group(struct task_group *tg,
 
 	for ( ; clamp_id < UCLAMP_CNT; ++clamp_id) {
 		uclamp_group_get(NULL, NULL, clamp_id, &tg->uclamp[clamp_id],
-				 parent->uclamp[clamp_id].value);
+				 parent->uclamp[clamp_id].value, "TgNew");
 		tg->uclamp[clamp_id].effective.value =
 			parent->uclamp[clamp_id].effective.value;
 		tg->uclamp[clamp_id].effective.group_id =
@@ -7437,7 +7458,8 @@ static int cpu_util_min_write_u64(struct cgroup_subsys_state *css,
 	}
 
 	/* Update TG's reference count */
-	uclamp_group_get(NULL, css, UCLAMP_MIN, &tg->uclamp[UCLAMP_MIN], min_value);
+	uclamp_group_get(NULL, css, UCLAMP_MIN, &tg->uclamp[UCLAMP_MIN],
+			 min_value, "TgUpd");
 
 	/* Update effective clamps to track the most restrictive value */
 	cpu_util_update_hier(css, UCLAMP_MIN, min_value,
@@ -7471,7 +7493,8 @@ static int cpu_util_max_write_u64(struct cgroup_subsys_state *css,
 	}
 
 	/* Update TG's reference count */
-	uclamp_group_get(NULL, css, UCLAMP_MAX, &tg->uclamp[UCLAMP_MAX], max_value);
+	uclamp_group_get(NULL, css, UCLAMP_MAX, &tg->uclamp[UCLAMP_MAX],
+			 max_value, "TgUpd");
 
 	/* Update effective clamps to track the most restrictive value */
 	cpu_util_update_hier(css, UCLAMP_MAX, max_value,
