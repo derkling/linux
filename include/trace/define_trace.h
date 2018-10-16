@@ -72,6 +72,10 @@
 #define DECLARE_TRACE(name, proto, args)	\
 	DEFINE_TRACE(name)
 
+#undef DECLARE_TRACE_CONDITION
+#define DECLARE_TRACE_CONDITION(name, proto, args, cond)	\
+	DEFINE_TRACE_CONDITION(name)
+
 #undef TRACE_INCLUDE
 #undef __TRACE_INCLUDE
 
@@ -98,6 +102,9 @@
 #undef DECLARE_TRACE
 #define DECLARE_TRACE(name, proto, args)
 
+#undef DECLARE_TRACE_CONDITION
+#define DECLARE_TRACE_CONDITION(name, proto, args, cond)
+
 #ifdef TRACEPOINTS_ENABLED
 #include <trace/trace_events.h>
 #include <trace/perf.h>
@@ -117,6 +124,7 @@
 #undef DEFINE_EVENT_CONDITION
 #undef TRACE_HEADER_MULTI_READ
 #undef DECLARE_TRACE
+#undef DECLARE_TRACE_CONDITION
 
 /* Only undef what we defined in this file */
 #ifdef UNDEF_TRACE_INCLUDE_FILE
