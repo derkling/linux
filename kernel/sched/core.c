@@ -884,6 +884,8 @@ static inline void uclamp_cpu_update(struct rq *rq, int clamp_id,
 		if (clamp_id == UCLAMP_MAX) {
 			rq->uclamp.flags |= UCLAMP_FLAG_IDLE;
 			max_value = last_clamp_value;
+			trace_printk("uclamp_cpu_update: cpu=%d idle_clamp=%d",
+				     cpu_of(rq), max_value);
 		} else {
 			max_value = uclamp_none(UCLAMP_MIN);
 		}
@@ -924,6 +926,11 @@ static inline int uclamp_effective_group_id(struct task_struct *p, int clamp_id)
 	clamp_value = p->uclamp[clamp_id].value;
 	group_id = p->uclamp[clamp_id].group_id;
 
+	trace_printk("uclamp_effective_group_id: pid=%d comm=%s "
+		     "case=ts group_id=%d value=%d",
+		     p->pid, p->comm, group_id, clamp_value);
+
+
 	/* RT tasks have different default values */
 	if (task_has_rt_policy(p)) {
 		default_value = uclamp_default_perf[clamp_id].value;
@@ -939,6 +946,11 @@ static inline int uclamp_effective_group_id(struct task_struct *p, int clamp_id)
 
 		clamp_value = default_value;
 		group_id = default_group;
+
+		trace_printk("uclamp_effective_group_id: pid=%d comm=%s "
+			     "case=sd group_id=%d value=%d",
+			     p->pid, p->comm, group_id, clamp_value);
+
 	}
 
 #ifdef CONFIG_UCLAMP_TASK_GROUP
@@ -951,6 +963,11 @@ static inline int uclamp_effective_group_id(struct task_struct *p, int clamp_id)
 	     (task_group(p) == &root_task_group)) {
 		clamp_value = task_group(p)->uclamp[clamp_id].value;
 		group_id = task_group(p)->uclamp[clamp_id].group_id;
+
+		trace_printk("uclamp_effective_group_id: pid=%d comm=%s "
+			     "case=tg group_id=%d value=%d",
+			     p->pid, p->comm, group_id, clamp_value);
+
 	}
 #endif
 
@@ -1003,6 +1020,12 @@ static inline void uclamp_cpu_get_id(struct task_struct *p,
 	 */
 	if (rq->uclamp.value[clamp_id] < effective)
 		rq->uclamp.value[clamp_id] = effective;
+
+	trace_printk("uclamp_cpu_get_id: pid=%d comm=%s cpu=%d "
+		     "clamp_id=%d group_id=%d clamp_value=%d",
+		     p->pid, p->comm, cpu_of(rq),
+		     clamp_id, group_id, effective);
+
 }
 
 /**
