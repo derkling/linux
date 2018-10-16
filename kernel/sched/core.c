@@ -1104,6 +1104,24 @@ static inline void uclamp_cpu_get(struct rq *rq, struct task_struct *p)
 
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id)
 		uclamp_cpu_get_id(p, rq, clamp_id);
+
+//	trace_printk("uclamp_cpu_get_se: pid=%d comm=%s cpu=%d "
+//		     "util_avg=%lu clamp_util_avg=%d "
+//		     "uclamp_min=%d uclamp_max=%d",
+//		     p->pid, p->comm, cpu_of(rq),
+//		     p->se.avg.util_avg,
+//		     uclamp_util(rq, p->se.avg.util_avg),
+//		     p->uclamp[UCLAMP_MIN].value,
+//		     p->uclamp[UCLAMP_MAX].value);
+//
+//	trace_printk("uclamp_cpu_get_rq: cpu=%d "
+//		     "util_avg=%lu clamp_util_avg=%d "
+//		     "uclamp_min=%d uclamp_max=%d",
+//		     cpu_of(rq),
+//		     rq->cfs.avg.util_avg,
+//		     uclamp_util(rq, rq->cfs.avg.util_avg),
+//		     rq->uclamp[UCLAMP_MIN].value,
+//		     rq->uclamp[UCLAMP_MAX].value);
 }
 
 /**
@@ -1129,6 +1147,15 @@ static inline void uclamp_cpu_put(struct rq *rq, struct task_struct *p)
 
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id)
 		uclamp_cpu_put_id(p, rq, clamp_id);
+
+//	trace_printk("uclamp_cpu_put_rq: cpu=%d "
+//		     "util_avg=%lu clamp_util_avg=%d "
+//		     "uclamp_min=%d uclamp_max=%d",
+//		     cpu_of(rq),
+//		     rq->cfs.avg.util_avg,
+//		     uclamp_util(rq, rq->cfs.avg.util_avg),
+//		     uclamp_value(rq, UCLAMP_MIN),
+//		     uclamp_value(rq, UCLAMP_MAX));
 }
 
 /**
