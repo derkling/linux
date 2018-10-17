@@ -48,17 +48,20 @@ static int set_target(struct cpufreq_policy *policy, unsigned int index)
 	u32 id;
 	struct private_data *priv = policy->driver_data;
 	struct opp_table *table = _find_opp_table(priv->cpu_dev);
-	int new_index;
+	int new_frequency;
 
 	if (policy->cur > policy->max)
 		policy->cur = policy->max;
 
 	id = table->cycle_thief_id;
-	new_index = cycle_thief_set_rate(id, index);
-
-	if (new_index >= 0)
+	new_frequency = cycle_thief_set_rate(id,
+		        policy->freq_table[index].frequency);
+	/* New frequency might be altered based on the request of the other
+	 * cluster */
+	if (new_frequency >= 0)
 		dev_pm_opp_set_rate(priv->cpu_dev,
-				    policy->freq_table[new_index].frequency * 1000);
+				    (u64)new_frequency * 1000);
+	/* Do not alter real frequency reqested */
 	else
 		dev_pm_opp_set_rate(priv->cpu_dev,
 				    policy->freq_table[index].frequency * 1000);

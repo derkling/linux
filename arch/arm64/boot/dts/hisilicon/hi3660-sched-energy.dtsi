@@ -10,31 +10,29 @@ energy-costs {
 	//Littles
 	CPU_COST_A53: core-cost0 {
 		busy-cost-data = <
-			133    87
-			250    164
-			351    265
-			429    388
-			462    502
+			157 28
+			296 70
+			415 124
+			508 187
 		>;
 		idle-cost-data = <
-			5
-			5
+			0
+			0
 			0
 			0
 		>;
 	};
 	CLUSTER_COST_A53: cluster-cost0 {
 		busy-cost-data = <
-			133   12
-			250   22
-			351   36
-			429   67
-			462   144
+			157 0
+			296 0
+			415 0
+			508 0
 		>;
 		idle-cost-data = <
-			12
-			12
-			12
+			0
+			0
+			0
 			0
 		>;
 	};
@@ -42,31 +40,29 @@ energy-costs {
 	//Mediums
 	CPU_COST_A72_1: core-cost1 {
 		busy-cost-data = <
-			390    404
-			615    861
-			782    1398
-			915    2200
-			1024   2848
+			364 220
+			576 500
+			691 720
+			883 1161
 		>;
 		idle-cost-data = <
-			18
-			18
+			0
+			0
 			0
 			0
 		>;
 	};
 	CLUSTER_COST_A72_1: cluster-cost1 {
 		busy-cost-data = <
-			390   102
-			615   124
-			782   221
-			915   330
-			1024  433
+			364 0
+			576 0
+			691 0
+			883 0
 		>;
 		idle-cost-data = <
-			102
-			102
-			102
+			0
+			0
+			0
 			0
 		>;
 	};
@@ -74,31 +70,29 @@ energy-costs {
 	//Bigs
 	CPU_COST_A72_2: core-cost2 {
 		busy-cost-data = <
-			390    404
-			615    861
-			782    1398
-			915    2200
-			1024   2848
+			629 700
+			803 1125
+			917 1625
+			1024 2200
 		>;
 		idle-cost-data = <
-			18
-			18
+			0
+			0
 			0
 			0
 		>;
 	};
 	CLUSTER_COST_A72_2: cluster-cost2 {
 		busy-cost-data = <
-			390   102
-			615   124
-			782   221
-			915   330
-			1024  433
+			629 0
+			803 0
+			917 0
+			1024 0
 		>;
 		idle-cost-data = <
-			102
-			102
-			102
+			0
+			0
+			0
 			0
 		>;
 	};

@@ -61,7 +61,7 @@ DEFINE_SYSREG_ACCESS_FUNCS(pmevcntr0_el0);
  */
 #define NUM_SIM_OPPS	5
 
-#define NUM_CT_CLUSTERS	2
+#define NUM_CT_CLUSTERS	3
 
 #define CT_CLUSTER_0_ID	0
 
@@ -102,6 +102,12 @@ static cycle_thief_cluster_t ct_clusters[NUM_CT_CLUSTERS];
 
 bool enabled = false;
 
+static unsigned int cpu_invariance_scale[NUM_CT_CLUSTERS][NUM_SIM_OPPS] = {
+	{ 1024, 1024, 1024, 1024, 1024 },
+	{ 940, 840, 840, 640, 640 },
+	{ 1024, 1024, 1024, 1024, 1024 }
+};
+
 /* TODO: This should be read from DT at some point */
 static u64 period_table[NUM_REAL_OPPS][NUM_SIM_OPPS] = {
 	/* From 903000 kHz */
@@ -114,7 +120,7 @@ static u64 period_table[NUM_REAL_OPPS][NUM_SIM_OPPS] = {
 	},
 	{
 	 /* From 1421000 kHz */
-	 4106, // to 903 KHz
+	 4106, // to 903000 KHz
 	 0,
 	 0,
 	 0,
@@ -145,6 +151,28 @@ static u64 period_table[NUM_REAL_OPPS][NUM_SIM_OPPS] = {
 	  0
 	},
 };
+
+static unsigned int freq_mapping[NUM_REAL_OPPS] = {
+	903000,
+	1421000,
+	1805000,
+	2112000,
+	2362000
+};
+
+static int get_index(unsigned int freq) {
+	switch (freq){
+	case 903000: return 0;
+	case 1421000: return 1;
+	case 1805000: return 2;
+	case 2112000: return 3;
+	case 2362000: return 4;
+	default:
+		   pr_err("cycle thief: invalid frequency: %u\n", freq);
+	}
+
+	return -1;
+}
 
 static struct dentry *root_debugfs_dir;
 
@@ -405,10 +433,9 @@ int adjust_rate(unsigned int sim_index, unsigned int real_index,
 	for (i = 0; i < ct_clusters[cluster_id].num_cpus; i++) {
 		cpu = ct_clusters[cluster_id].cpus[i];
 		data = get_cycle_thief_data(cpu);
-		if (cluster_id == CT_CLUSTER_1_ID)
-			data->period = (u64)((new_period * 930) / 1024);
-		else
-			data->period = new_period;
+		data->period = (u64) new_period *
+			       cpu_invariance_scale[cluster_id][sim_index] /
+			       1024;
 	}
 
 	return 0;
@@ -421,12 +448,17 @@ int adjust_rate(unsigned int sim_index, unsigned int real_index,
  * which is a problem as you might be throttled or receive higher performance
  * for a short while before the real frequency changes
  */
-int cycle_thief_set_rate(u32 id, unsigned int index) {
+int cycle_thief_set_rate(u32 id, unsigned int frequency) {
 	unsigned int new_idx_1, new_idx_2;
 	int real_new_idx;
+	int index;
 
-	if ((id == CT_CLUSTER_0_ID) || (id > CT_CLUSTER_2_ID))
+	if (!enabled || (id == CT_CLUSTER_0_ID) || (id > CT_CLUSTER_2_ID))
 		/* Change in OPP is permitted*/
+		return -1;
+
+	index = get_index(frequency);
+	if (index < 0)
 		return -1;
 
 	pr_debug("cycle thief set rate id %u, idx %u\n", id, index);
@@ -460,7 +492,8 @@ int cycle_thief_set_rate(u32 id, unsigned int index) {
 
 	spin_unlock(&cycle_thief_lock);
 
-	return real_new_idx;
+
+	return freq_mapping[real_new_idx];
 }
 
 static inline void print_regs(void) {
@@ -489,7 +522,12 @@ static void enable_cycle_thief(void) {
 	int cpu;
 	cpumask_t *cpu_mask;
 
-	pr_err("Enabling cycle thief\n");
+	if (enabled) {
+		pr_err("cycle thief: already enabled\n");
+		return;
+	}
+
+	pr_err("cycle thief: enabling cycle thief\n");
 
 	cpu_mask = to_cpumask(&default_cpu_mask);
 
@@ -538,7 +576,7 @@ ssize_t enabled_read(struct file *filp, char *buff,
 
 static ssize_t enabled_write(struct file *file, const char __user *buf,
 			      size_t len, loff_t *ppos) {
-	int ret;
+	int ret = 0;
 	bool new_enabled;
 	char *kbuf = kmalloc(len + 1, GFP_KERNEL);
 
@@ -629,5 +667,5 @@ int cycle_thief_init(void) {
 void cycle_thief_exit(void) {
 	disable_cycle_thief();
 	debugfs_remove_recursive(root_debugfs_dir);
-	trace_printk("Cycle thief exited\n");
+	trace_printk("cycle thief: exited\n");
 }
