@@ -961,8 +961,8 @@ static inline int uclamp_effective_group_id(struct task_struct *p, int clamp_id)
 	 */
 	if (!(task_group_is_autogroup(task_group(p))) ||
 	     (task_group(p) == &root_task_group)) {
-		clamp_value = task_group(p)->uclamp[clamp_id].value;
-		group_id = task_group(p)->uclamp[clamp_id].group_id;
+		clamp_value = task_group(p)->uclamp[clamp_id].effective.value;
+		group_id = task_group(p)->uclamp[clamp_id].effective.group_id;
 
 		trace_printk("uclamp_effective_group_id: pid=%d comm=%s "
 			     "case=tg group_id=%d value=%d",
