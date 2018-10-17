@@ -1272,6 +1272,7 @@ static void uclamp_group_get(struct task_struct *p,
 	union uclamp_map *uc_maps = &uclamp_maps[clamp_id][0];
 	union uclamp_map uc_map_old, uc_map_new;
 	int prev_group_id = uc_se->group_id;
+	unsigned int group_min;
 	int free_group_id = -1;
 	unsigned long res;
 	int group_id = 0;
@@ -1279,12 +1280,12 @@ static void uclamp_group_get(struct task_struct *p,
 
 retry:
 
-	clamp_value = uclamp_round(clamp_value);
 	for ( ; group_id <= CONFIG_UCLAMP_GROUPS_COUNT; ++group_id) {
+	group_min = uclamp_round(clamp_value);
 		uc_map_old.data = atomic_long_read(&uc_maps[group_id].adata);
 		if (free_group_id < 0 && !uc_map_old.se_count)
 			free_group_id = group_id;
-		if (uc_map_old.value == clamp_value)
+		if (uc_map_old.value == group_min)
 			break;
 	}
 	if (group_id > CONFIG_UCLAMP_GROUPS_COUNT) {
@@ -1296,7 +1297,7 @@ retry:
 	       clamp_id, group_id, (unsigned long)uc_map_old.se_count);
 
 	uc_map_new.se_count = uc_map_old.se_count + 1;
-	uc_map_new.value = clamp_value;
+	uc_map_new.value = group_min;
 	res = atomic_long_cmpxchg(&uc_maps[group_id].adata,
 				  uc_map_old.data, uc_map_new.data);
 	if (res != uc_map_old.data) {
@@ -1319,9 +1320,9 @@ retry:
 #endif
 		}
 
-		if (uc_cpu->group[clamp_id][group_id].value == clamp_value)
+		if (uc_cpu->group[clamp_id][group_id].value == group_min)
 			continue;
-		uc_cpu->group[clamp_id][group_id].value = clamp_value;
+		uc_cpu->group[clamp_id][group_id].value = group_min;
 	}
 
 done:
