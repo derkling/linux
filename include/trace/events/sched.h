@@ -809,8 +809,8 @@ TRACE_EVENT_CONDITION(uclamp_util_se,
 		__entry->cpu            = rq->cpu;
 		__entry->util_avg       = p->se.avg.util_avg;
 		__entry->uclamp_avg     = uclamp_util(rq, p->se.avg.util_avg);
-		__entry->uclamp_min     = uclamp_util(rq, UCLAMP_MIN);
-		__entry->uclamp_max     = uclamp_util(rq, UCLAMP_MAX);
+		__entry->uclamp_min     = rq->uclamp.value[UCLAMP_MIN];
+		__entry->uclamp_max     = rq->uclamp.value[UCLAMP_MAX];
 		),
 
 	TP_printk("uclamp_util_se: pid=%d comm=%s cpu=%d util_avg=%lu "
