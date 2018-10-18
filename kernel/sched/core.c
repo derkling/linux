@@ -1393,29 +1393,6 @@ done:
 	return result;
 }
 
-/**
- * uclamp_group_set: set the initial clamp groups for a given SE
- * @clamp_id: the clamp index affected by the task
- * @group_id: the clamp group to refcount
- * @uc_se: the utilization clamp data for the task
- * @clamp_value: the new clamp value for the task
- *
- * New scheduling entity (SE) are created by cloning an existing one.
- * For those new SE, we don't need to put a reference to a pre-existing clamp
- * group. This is achieved by this function by forcing the SE's current
- * group_id to be negative.
- */
-static void uclamp_group_set(int clamp_id, int group_id,
-			     struct uclamp_se *uc_se,
-			     unsigned int clamp_value,
-			     const char *source)
-{
-	uc_se->group_id = -1;
-	uc_se->effective.group_id = -1;
-
-	uclamp_group_get(NULL, clamp_id, uc_se, clamp_value, source);
-}
-
 static int __setscheduler_uclamp(struct task_struct *p,
 				 const struct sched_attr *attr)
 {
@@ -1489,14 +1466,12 @@ static void uclamp_fork(struct task_struct *p, bool reset)
 
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
 		unsigned int clamp_value = p->uclamp[clamp_id].value;
-		int group_id = p->uclamp[clamp_id].group_id;
 
 		if (unlikely(reset)) {
 			clamp_value = uclamp_none(clamp_id);
-			group_id = 0;
 		}
 
-		uclamp_group_set(clamp_id, group_id, &p->uclamp[clamp_id],
+		uclamp_group_get(NULL, clamp_id, &p->uclamp[clamp_id],
 				 clamp_value, "SeFrk");
 	}
 
@@ -1520,22 +1495,22 @@ static void __init init_uclamp(void)
 	memset(uclamp_maps, 0, sizeof(uclamp_maps));
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
 		uc_se = &init_task.uclamp[clamp_id];
-		uclamp_group_set(clamp_id, 0, uc_se,
+		uclamp_group_get(NULL, clamp_id, uc_se,
 				 uclamp_none(clamp_id), "SeIni");
 
 		uc_se = &uclamp_default[clamp_id];
-		uclamp_group_set(clamp_id, 0, uc_se,
+		uclamp_group_get(NULL, clamp_id, uc_se,
 				 uclamp_none(clamp_id), "SdIni");
 
 		/* RT tasks by default will go to max frequency */
 		uc_se = &uclamp_default_perf[clamp_id];
-		uclamp_group_set(clamp_id, 0, uc_se,
+		uclamp_group_get(NULL, clamp_id, uc_se,
 				 uclamp_none(UCLAMP_MAX), "SpIni");
 
 #ifdef CONFIG_UCLAMP_TASK_GROUP
 		/* Init root TG's clamp group */
 		uc_se = &root_task_group.uclamp[clamp_id];
-		uclamp_group_set(clamp_id, 0, uc_se,
+		uclamp_group_get(NULL, clamp_id, uc_se,
 				 uclamp_none(UCLAMP_MAX), "TgIni");
 		uc_se->effective.group_id = uc_se->group_id;
 		uc_se->effective.value = uc_se->value;
@@ -7155,8 +7130,7 @@ static inline int alloc_uclamp_sched_group(struct task_group *tg,
 	int clamp_id = 0;
 
 	for ( ; clamp_id < UCLAMP_CNT; ++clamp_id) {
-		uclamp_group_set(clamp_id, parent->uclamp[clamp_id].group_id,
-				 &tg->uclamp[clamp_id],
+		uclamp_group_get(NULL, clamp_id, &tg->uclamp[clamp_id],
 				 parent->uclamp[clamp_id].value,
 				 "TgNew");
 		tg->uclamp[clamp_id].effective.value =
