@@ -1426,10 +1426,12 @@ static int __setscheduler_uclamp(struct task_struct *p,
 
 	/* Update each required clamp group */
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN) {
+		p->uclamp[UCLAMP_MIN].user_defined = true;
 		uclamp_group_get(p, UCLAMP_MIN, &p->uclamp[UCLAMP_MIN],
 				 lower_bound, "SyCal");
 	}
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX) {
+		p->uclamp[UCLAMP_MAX].user_defined = true;
 		uclamp_group_get(p, UCLAMP_MAX, &p->uclamp[UCLAMP_MAX],
 				 upper_bound, "SyCal");
 	}
@@ -1472,6 +1474,7 @@ static void uclamp_fork(struct task_struct *p, bool reset)
 
 		if (unlikely(reset)) {
 			clamp_value = uclamp_none(clamp_id);
+			p->uclamp[clamp_id].user_defined = 0;
 		}
 
 		p->uclamp[clamp_id].active = 0;
