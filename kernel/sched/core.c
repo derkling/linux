@@ -914,7 +914,7 @@ static inline int uclamp_effective_group_id(struct task_struct *p, int clamp_id)
 	int group_id;
 
 	/* Taks currently refcounted into a CPU clamp group */
-	if (p->uclamp[clamp_id].effective.group_id >= 0)
+	if (p->uclamp[clamp_id].active)
 		return p->uclamp[clamp_id].effective.group_id;
 
 	/* Task specific clamp value */
@@ -989,6 +989,7 @@ static inline void uclamp_cpu_get_id(struct task_struct *p,
 	int group_id = uclamp_effective_group_id(p, clamp_id);
 	unsigned int effective;
 
+	p->uclamp[clamp_id].active = 1;
 	rq->uclamp.group[clamp_id][group_id].tasks += 1;
 	effective = p->uclamp[clamp_id].effective.value;
 
@@ -1051,7 +1052,7 @@ static inline void uclamp_cpu_put_id(struct task_struct *p,
 		     cpu_of(rq), clamp_id, group_id);
 	}
 #endif
-	p->uclamp[clamp_id].effective.group_id = -1;
+	p->uclamp[clamp_id].active = 0;
 
 	/* If this is not the last task, no updates are required */
 	if (likely(rq->uclamp.group[clamp_id][group_id].tasks))
@@ -1339,7 +1340,9 @@ done:
 		uclamp_task_update_active(p, clamp_id, group_id);
 
 	/* Release the previous clamp group */
-	uclamp_group_put(clamp_id, prev_group_id, source);
+	if (uc_se->active)
+		uclamp_group_put(clamp_id, prev_group_id, source);
+	uc_se->active = 1;
 
 	printk("%s_%s GET (f:%4d, e:%4d) [%d:%d]=%lu\n",
 	       source, clamp_id ? "Max" : "Min",
@@ -1471,6 +1474,7 @@ static void uclamp_fork(struct task_struct *p, bool reset)
 			clamp_value = uclamp_none(clamp_id);
 		}
 
+		p->uclamp[clamp_id].active = 0;
 		uclamp_group_get(NULL, clamp_id, &p->uclamp[clamp_id],
 				 clamp_value, "SeFrk");
 	}
