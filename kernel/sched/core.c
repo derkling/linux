@@ -925,6 +925,27 @@ static inline int uclamp_effective_group_id(struct task_struct *p, int clamp_id)
 		     "case=ts clamp_id=%d group_id=%d value=%d",
 		     p->pid, p->comm, clamp_id, group_id, clamp_value);
 
+#ifdef CONFIG_UCLAMP_TASK_GROUP
+	/*
+	 * Tasks in the root group or autogroups are always and only limited
+	 * by system defaults. All others instead are limited by their TG's
+	 * specific value.
+	 */
+	if (!(task_group_is_autogroup(task_group(p))) ||
+	     (task_group(p) == &root_task_group)) {
+		unsigned int clamp_max =
+			task_group(p)->uclamp[clamp_id].effective.value;
+		unsigned int group_max =
+			task_group(p)->uclamp[clamp_id].effective.group_id;
+
+		if (!p->uclamp[clamp_id].user_defined ||
+		    clamp_value > clamp_max) {
+			clamp_value = clamp_max;
+			group_id = group_max;
+		}
+
+	}
+#endif
 
 	/* RT tasks have different default values */
 	if (task_has_rt_policy(p)) {
@@ -947,24 +968,6 @@ static inline int uclamp_effective_group_id(struct task_struct *p, int clamp_id)
 			     p->pid, p->comm, clamp_id, group_id, clamp_value);
 
 	}
-
-#ifdef CONFIG_UCLAMP_TASK_GROUP
-	/*
-	 * Tasks in the root group or autogroups are always and only limited
-	 * by system defaults. All others instead are limited by their TG's
-	 * specific value.
-	 */
-	if (!(task_group_is_autogroup(task_group(p))) ||
-	     (task_group(p) == &root_task_group)) {
-		clamp_value = task_group(p)->uclamp[clamp_id].effective.value;
-		group_id = task_group(p)->uclamp[clamp_id].effective.group_id;
-
-		trace_printk("uclamp_effective_group_id: pid=%d comm=%s "
-			     "case=tg group_id=%d value=%d",
-			     p->pid, p->comm, group_id, clamp_value);
-
-	}
-#endif
 
 	p->uclamp[clamp_id].effective.value = clamp_value;
 	p->uclamp[clamp_id].effective.group_id = group_id;
