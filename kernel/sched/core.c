@@ -785,15 +785,11 @@ union uclamp_map {
  * Thus, the column index of a given (clamp_id, value) pair represents the
  * clamp group (group_id) used by the fast-path's per-CPU accounting.
  *
- * NOTE: first clamp group (group_id=0) is reserved for tracking of non
- * clamped tasks.  Thus we allocate one more slot than the value of
- * CONFIG_UCLAMP_GROUPS_COUNT.
- *
  * Here is the map layout and, right below, how entries are accessed by the
  * following code.
  *
  *                          uclamp_maps is a matrix of
- *          +------- UCLAMP_CNT by CONFIG_UCLAMP_GROUPS_COUNT+1 entries
+ *          +------- UCLAMP_CNT by UCLAMP_GROUPS entries
  *          |                                |
  *          |                /---------------+---------------\
  *          |               +------------+       +------------+
@@ -810,8 +806,7 @@ union uclamp_map {
  *                                                clamp_value =
  *                                       uc_map[group_id].value
  */
-static union uclamp_map uclamp_maps[UCLAMP_CNT]
-				   [CONFIG_UCLAMP_GROUPS_COUNT + 1];
+static union uclamp_map uclamp_maps[UCLAMP_CNT][UCLAMP_GROUPS];
 
 #define UCLAMP_ENOSPC_FMT "Cannot allocate more than " \
 	__stringify(CONFIG_UCLAMP_GROUPS_COUNT) " UTIL_%s clamp groups\n"
@@ -855,10 +850,10 @@ static inline int uclamp_round(int value)
 static inline void uclamp_cpu_update(struct rq *rq, int clamp_id,
 				     unsigned int last_clamp_value)
 {
-	unsigned int group_id = 0;
+	unsigned int group_id;
 	int max_value = -1;
 
-	for ( ; group_id <= CONFIG_UCLAMP_GROUPS_COUNT; ++group_id) {
+	for (group_id = 0; group_id < UCLAMP_GROUPS; ++group_id) {
 		if (!rq->uclamp.group[clamp_id][group_id].tasks)
 			continue;
 		/* Both min and max clamp are MAX aggregated */
@@ -1288,15 +1283,15 @@ static void uclamp_group_get(struct task_struct *p,
 
 retry:
 
-	for ( ; group_id <= CONFIG_UCLAMP_GROUPS_COUNT; ++group_id) {
 	group_min = uclamp_round(clamp_value);
+	for ( ; group_id < UCLAMP_GROUPS; ++group_id) {
 		uc_map_old.data = atomic_long_read(&uc_maps[group_id].adata);
 		if (free_group_id < 0 && !uc_map_old.se_count)
 			free_group_id = group_id;
 		if (uc_map_old.value == group_min)
 			break;
 	}
-	if (group_id > CONFIG_UCLAMP_GROUPS_COUNT) {
+	if (group_id >= UCLAMP_GROUPS) {
 		group_id = free_group_id;
 		uc_map_old.data = atomic_long_read(&uc_maps[group_id].adata);
 	}

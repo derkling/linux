@@ -575,6 +575,15 @@ struct sched_dl_entity {
 	struct hrtimer inactive_timer;
 };
 
+/*
+ * Number of utiliation clamp groups
+ *
+ * The first clamp group (group_id=0) is used for tracking of non clamped
+ * tasks.  Thus we allocate one more slot than the value the kernel
+ * has been configured for, i.e. CONFIG_UCLAMP_GROUPS_COUNT.
+ */
+#define UCLAMP_GROUPS (CONFIG_UCLAMP_GROUPS_COUNT + 1)
+
 /**
  * Utilization's clamp group
  *
