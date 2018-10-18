@@ -51,7 +51,7 @@ DEFINE_SYSREG_ACCESS_FUNCS(pmevtyper0_el0);
 DEFINE_SYSREG_ACCESS_FUNCS(pmevcntr0_el0);
 
 #define CYCLES_EV	0x11
-#define BUF_SIZE	30
+#define BUF_SIZE	128
 #define NUM_REAL_OPPS	5
 
 /*
@@ -102,54 +102,41 @@ static cycle_thief_cluster_t ct_clusters[NUM_CT_CLUSTERS];
 
 bool enabled = false;
 
-static unsigned int cpu_invariance_scale[NUM_CT_CLUSTERS][NUM_SIM_OPPS] = {
-	{ 1024, 1024, 1024, 1024, 1024 },
-	{ 940, 840, 840, 640, 640 },
-	{ 1024, 1024, 1024, 1024, 1024 }
-};
-
 /* TODO: This should be read from DT at some point */
-static u64 period_table[NUM_REAL_OPPS][NUM_SIM_OPPS] = {
-	/* From 903000 kHz */
+static u64 period_table[NUM_CT_CLUSTERS][NUM_REAL_OPPS][NUM_SIM_OPPS] =
+{
 	{
-	 0,
-	 0,
-	 0,
-	 0,
-	 0
+		{ 0, 0, 0, 0, 0 },
+		{ 0, 0, 0, 0, 0 },
+		{ 0, 0, 0, 0, 0 },
+		{ 0, 0, 0, 0, 0 },
+		{ 0, 0, 0, 0, 0 }
 	},
 	{
-	 /* From 1421000 kHz */
-	 4106, // to 903000 KHz
-	 0,
-	 0,
-	 0,
-	 0
+		/* From 903000 kHz */
+		{ 26020, 0, 0, 0, 0 },
+		/* From 1421000 kHz */
+		{ 4246, 27806, 0, 0, 0 },
+		/* From 1805000 kHz */
+		{ 3032, 6752, 16132, 0, 0 },
+		/* From 2112000 kHz */
+		{ 2677, 4757, 8577, 60097, 0 },
+		/* From 2362000 kHz */
+		{ 2405, 4025, 6045, 16845, 0},
+
 	},
-	/* From 1805000 kHz */
 	{
-	  3012, // to 903000 kHz
-	  8800, // to 1421000 kHz
-	  0,
-	  0,
-	  0
-	},
-	/* From 2112000 kHz */
-	{
-	  2657, // to 903000 kHz
-	  5633, // to 1421000 kHz
-	  14600, // to 1805000 kHz
-	  0,
-	  0
-	},
-	/* From 2362000 kHz */
-	{
-	  2385,  // to 903000 kHz
-	  4450,  // to 1421000 kHz
-	  8454,  // to 1805000 kHz
-	  20015, // to 2112000 kHz
-	  0
-	},
+		/* From 903000 kHz */
+		{ 0, 0, 0, 0, 0 },
+		/* From 1421000 kHz */
+		{ 4106, 0, 0, 0, 0 },
+		/* From 1805000 kHz */
+		{ 3012, 8800, 0, 0, 0 },
+		/* From 2112000 kHz */
+		{ 2657, 5633, 14600, 0, 0 },
+		/* From 2362000 kHz */
+		{ 2385, 4450, 8454, 20015, 0 },
+	}
 };
 
 static unsigned int freq_mapping[NUM_REAL_OPPS] = {
@@ -204,7 +191,6 @@ static irqreturn_t handle_overflow_irq(int irq,  void *dev) {
 	cpu = smp_processor_id();
 
 	data = get_cycle_thief_data(cpu);
-
 
 	data->overflow_count++;
 
@@ -339,8 +325,7 @@ ssize_t cycles_read(struct file *filp, char *buff,
 	char kbuf[BUF_SIZE];
 	int cpu;
 	u64 cycles;
-	size_t len, ret;
-	loff_t zero = 0;
+	size_t len, ret = 0;
 
 #pragma GCC diagnostic ignored "-Wpointer-to-int-cast"
 	cpu = (int)filp->f_inode->i_private;
@@ -354,8 +339,7 @@ ssize_t cycles_read(struct file *filp, char *buff,
 	kbuf[len++] = '\n';
 	kbuf[len] = '\0';
 
-	memset(buff, 0, count);
-	ret = simple_read_from_buffer(buff, count, &zero, kbuf, len);
+	ret = simple_read_from_buffer(buff, count, offp, kbuf, len);
 
 	return ret;
 }
@@ -368,9 +352,8 @@ ssize_t period_read(struct file *filp, char *buff,
 		size_t count, loff_t *offp) {
 	char kbuf[BUF_SIZE];
 	int cpu;
-	size_t len, ret;
+	size_t len, ret = 0;
 	u64 period;
-	loff_t zero = 0;
 
 #pragma GCC diagnostic ignored "-Wpointer-to-int-cast"
 	cpu = (int)filp->f_inode->i_private;
@@ -386,13 +369,55 @@ ssize_t period_read(struct file *filp, char *buff,
 	kbuf[len++] = '\n';
 	kbuf[len] = '\0';
 
-	memset(buff, 0, count);
-	ret = simple_read_from_buffer(buff, count, &zero, kbuf, len);
+	ret = simple_read_from_buffer(buff, count, offp, kbuf, len);
+	return ret;
+}
+
+static ssize_t set_period_write(struct file *filp , const char __user *buf,
+			      size_t len, loff_t *ppos) {
+	int ret = 0;
+	int cpu;
+	u64 new_period;
+	char *kbuf = kmalloc(len + 1, GFP_KERNEL);
+	cycle_thief_data_t *data;
+
+#pragma GCC diagnostic ignored "-Wpointer-to-int-cast"
+	cpu = (int)filp->f_inode->i_private;
+#pragma GCC diagnostic pop
+
+	if (!kbuf)
+		return -ENOMEM;
+
+	ret = simple_write_to_buffer(kbuf, len, ppos, buf, len);
+	if (ret != len) {
+		ret = ret >= 0 ? -EIO : ret;
+		goto out;
+	}
+	kbuf[len] = '\0';
+
+	if ((ret = kstrtou64(kbuf, 0, &new_period))) {
+		goto out;
+	}
+
+	if (!new_period)
+		new_period = default_period;
+
+	spin_lock(&cycle_thief_lock);
+	data = get_cycle_thief_data(cpu);
+	data->period = new_period;
+	spin_unlock(&cycle_thief_lock);
+
+out:
+	kfree(kbuf);
 	return ret;
 }
 
 struct file_operations period_fops = {
 	.read = period_read
+};
+
+struct file_operations set_period_fops = {
+	.write = set_period_write
 };
 
 /*
@@ -406,7 +431,7 @@ int adjust_rate(unsigned int sim_index, unsigned int real_index,
 
 	pr_debug("cycle thief: sim index %u real index %u\n", sim_index,
 							    real_index);
-	new_period = period_table[real_index][sim_index];
+	new_period = period_table[cluster_id][real_index][sim_index];
 
 	if (!new_period) {
 		if (sim_index > real_index) {
@@ -433,9 +458,7 @@ int adjust_rate(unsigned int sim_index, unsigned int real_index,
 	for (i = 0; i < ct_clusters[cluster_id].num_cpus; i++) {
 		cpu = ct_clusters[cluster_id].cpus[i];
 		data = get_cycle_thief_data(cpu);
-		data->period = (u64) new_period *
-			       cpu_invariance_scale[cluster_id][sim_index] /
-			       1024;
+		data->period = new_period;
 	}
 
 	return 0;
@@ -558,18 +581,17 @@ static void disable_cycle_thief(void) {
 	}
 }
 
-ssize_t enabled_read(struct file *filp, char *buff,
-		size_t count, loff_t *offp) {
+ssize_t enabled_read(struct file *filp, char __user *buff,
+		     size_t count, loff_t *offp) {
+
 	char kbuf[BUF_SIZE];
-	size_t len, ret;
-	loff_t zero = 0;
+	size_t len, ret = 0;
 
 	len = snprintf(kbuf, BUF_SIZE-1, "%u", enabled);
 	kbuf[len++] = '\n';
 	kbuf[len] = '\0';
 
-	memset(buff, 0, count);
-	ret = simple_read_from_buffer(buff, count, &zero, kbuf, len);
+	ret = simple_read_from_buffer(buff, count, offp, kbuf, len);
 
 	return ret;
 }
@@ -595,6 +617,7 @@ static ssize_t enabled_write(struct file *file, const char __user *buf,
 	}
 
 	if (new_enabled == enabled) {
+		pr_err("cycle thief: already enabled\n");
 		goto out;
 	}
 
@@ -642,6 +665,8 @@ int cycle_thief_init(void) {
 				(void *)cpu, &cycles_fops);
 		debugfs_create_file("period", S_IRUGO, cpu_dir,
 				(void *)cpu, &period_fops);
+		debugfs_create_file("set_period", S_IRUGO, cpu_dir,
+				(void *)cpu, &set_period_fops);
 #pragma GCC diagnostic pop
 	}
 
