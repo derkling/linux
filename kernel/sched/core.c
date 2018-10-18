@@ -927,8 +927,8 @@ static inline int uclamp_effective_group_id(struct task_struct *p, int clamp_id)
 	group_id = p->uclamp[clamp_id].group_id;
 
 	trace_printk("uclamp_effective_group_id: pid=%d comm=%s "
-		     "case=ts group_id=%d value=%d",
-		     p->pid, p->comm, group_id, clamp_value);
+		     "case=ts clamp_id=%d group_id=%d value=%d",
+		     p->pid, p->comm, clamp_id, group_id, clamp_value);
 
 
 	/* RT tasks have different default values */
@@ -948,8 +948,8 @@ static inline int uclamp_effective_group_id(struct task_struct *p, int clamp_id)
 		group_id = default_group;
 
 		trace_printk("uclamp_effective_group_id: pid=%d comm=%s "
-			     "case=sd group_id=%d value=%d",
-			     p->pid, p->comm, group_id, clamp_value);
+			     "case=sd clamp_id=%d group_id=%d value=%d",
+			     p->pid, p->comm, clamp_id, group_id, clamp_value);
 
 	}
 
@@ -1022,9 +1022,10 @@ static inline void uclamp_cpu_get_id(struct task_struct *p,
 		rq->uclamp.value[clamp_id] = effective;
 
 	trace_printk("uclamp_cpu_get_id: pid=%d comm=%s cpu=%d "
-		     "clamp_id=%d group_id=%d clamp_value=%d",
+		     "clamp_id=%d group_id=%d clamp_value=%d clamp_rq=%d",
 		     p->pid, p->comm, cpu_of(rq),
-		     clamp_id, group_id, effective);
+		     clamp_id, group_id, effective,
+		     rq->uclamp.value[clamp_id]);
 
 }
 
@@ -1072,6 +1073,13 @@ static inline void uclamp_cpu_put_id(struct task_struct *p,
 		     cpu_of(rq), clamp_id, group_id);
 	}
 #endif
+
+	trace_printk("uclamp_cpu_put_id: clamp_id=%u group_id=%u "
+		    "clamp_value=%u clamp_rq=%u clamp_map=%u",
+		    clamp_id, group_id, clamp_value,
+		    rq->uclamp.value[clamp_id],
+		    uclamp_maps[clamp_id][group_id].value);
+
 	if (clamp_value >= rq->uclamp.value[clamp_id]) {
 		/* Reset CPU's clamp value to rounded clamp group value */
 		rq->uclamp.group[clamp_id][group_id].value =
