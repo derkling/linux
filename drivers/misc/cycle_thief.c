@@ -50,7 +50,7 @@ DEFINE_SYSREG_ACCESS_FUNCS(pmevcntr0_el0);
 
 #define CYCLES_EV 0x11
 
-#define BUF_SIZE 30
+#define BUF_SIZE 128
 
 #define CT_NONE_ID 0
 #define CT_MEDIUM_ID 1
@@ -169,7 +169,6 @@ static irqreturn_t handle_overflow_irq(int irq,  void *dev) {
 	cpu = smp_processor_id();
 
 	data = get_cycle_thief_data(cpu);
-
 
 	data->overflow_count++;
 
@@ -300,8 +299,7 @@ ssize_t cycles_read(struct file *filp, char *buff,
 	char kbuf[BUF_SIZE];
 	int cpu;
 	u64 cycles;
-	size_t len, ret;
-	loff_t zero = 0;
+	size_t len, ret = 0;
 
 #pragma GCC diagnostic ignored "-Wpointer-to-int-cast"
 	cpu = (int)filp->f_inode->i_private;
@@ -315,8 +313,7 @@ ssize_t cycles_read(struct file *filp, char *buff,
 	kbuf[len++] = '\n';
 	kbuf[len] = '\0';
 
-	memset(buff, 0, count);
-	ret = simple_read_from_buffer(buff, count, &zero, kbuf, len);
+	ret = simple_read_from_buffer(buff, count, offp, kbuf, len);
 
 	return ret;
 }
@@ -329,13 +326,12 @@ ssize_t period_read(struct file *filp, char *buff,
 		size_t count, loff_t *offp) {
 	char kbuf[BUF_SIZE];
 	int cpu;
-	size_t len, ret;
+	size_t len, ret = 0;
 	u64 period;
-	loff_t zero = 0;
 
-#pragma GCC diagnostic ignored "-Wpointer-to-int-cast"
+#pragma gcc diagnostic ignored "-wpointer-to-int-cast"
 	cpu = (int)filp->f_inode->i_private;
-#pragma GCC diagnostic pop
+#pragma gcc diagnostic pop
 
 	spin_lock(&cycle_thief_lock);
 	period = ct_data[cpu].period;
@@ -347,13 +343,55 @@ ssize_t period_read(struct file *filp, char *buff,
 	kbuf[len++] = '\n';
 	kbuf[len] = '\0';
 
-	memset(buff, 0, count);
-	ret = simple_read_from_buffer(buff, count, &zero, kbuf, len);
+	ret = simple_read_from_buffer(buff, count, offp, kbuf, len);
+	return ret;
+}
+
+static ssize_t set_period_write(struct file *filp , const char __user *buf,
+			      size_t len, loff_t *ppos) {
+	int ret = 0;
+	int cpu;
+	u64 new_period;
+	char *kbuf = kmalloc(len + 1, GFP_KERNEL);
+	cycle_thief_data_t *data;
+
+#pragma gcc diagnostic ignored "-wpointer-to-int-cast"
+	cpu = (int)filp->f_inode->i_private;
+#pragma gcc diagnostic pop
+
+	if (!kbuf)
+		return -ENOMEM;
+
+	ret = simple_write_to_buffer(kbuf, len, ppos, buf, len);
+	if (ret != len) {
+		ret = ret >= 0 ? -EIO : ret;
+		goto out;
+	}
+	kbuf[len] = '\0';
+
+	if (ret = kstrtou64(kbuf, 0, &new_period)) {
+		goto out;
+	}
+
+	if (!new_period)
+		new_period = default_period;
+
+	spin_lock(&cycle_thief_lock);
+	data = get_cycle_thief_data(cpu);
+	data->period = new_period;
+	spin_unlock(&cycle_thief_lock);
+
+out:
+	kfree(kbuf);
 	return ret;
 }
 
 struct file_operations period_fops = {
 	.read = period_read
+};
+
+struct file_operations set_period_fops = {
+	.write = set_period_write
 };
 
 /*
@@ -400,11 +438,9 @@ int adjust_medium_rate(unsigned int medium_index, unsigned int big_index) {
  */
 int cycle_thief_set_rate(u32 id, unsigned int index) {
 	unsigned int other_idx;
-	int ret;
-
+	int ret = 0;
 
 	printk("cycle thief set rate id %u, idx %u\n", id, index);
-
 
 	spin_lock(&cycle_thief_lock);
 
@@ -490,25 +526,24 @@ static void disable_cycle_thief(void) {
 	}
 }
 
-ssize_t enabled_read(struct file *filp, char *buff,
-		size_t count, loff_t *offp) {
+ssize_t enabled_read(struct file *filp, char __user *buff,
+		     size_t count, loff_t *offp) {
+
 	char kbuf[BUF_SIZE];
-	size_t len, ret;
-	loff_t zero = 0;
+	size_t len, ret = 0;
 
 	len = snprintf(kbuf, BUF_SIZE-1, "%u", enabled);
 	kbuf[len++] = '\n';
 	kbuf[len] = '\0';
 
-	memset(buff, 0, count);
-	ret = simple_read_from_buffer(buff, count, &zero, kbuf, len);
+	ret = simple_read_from_buffer(buff, count, offp, kbuf, len);
 
 	return ret;
 }
 
 static ssize_t enabled_write(struct file *file, const char __user *buf,
 			      size_t len, loff_t *ppos) {
-	int ret;
+	int ret = 0;
 	bool new_enabled;
 	char *kbuf = kmalloc(len + 1, GFP_KERNEL);
 
@@ -527,6 +562,7 @@ static ssize_t enabled_write(struct file *file, const char __user *buf,
 	}
 
 	if (new_enabled == enabled) {
+		pr_err("cycle thief: already enabled\n");
 		goto out;
 	}
 
@@ -573,6 +609,8 @@ int cycle_thief_init(void) {
 				(void *)cpu, &cycles_fops);
 		debugfs_create_file("period", S_IRUGO, cpu_dir,
 				(void *)cpu, &period_fops);
+		debugfs_create_file("set_period", S_IRUGO, cpu_dir,
+				(void *)cpu, &set_period_fops);
 #pragma GCC diagnostic pop
 	}
 
