@@ -1227,7 +1227,7 @@ static void uclamp_group_put(int clamp_id, int group_id,
 	do {
 		uc_map_old.data = atomic_long_read(&uc_maps[group_id].adata);
 
-		printk("uclamp_group_put: %d:%d count=%lu\n",
+		printk("uclamp_group_put: clamp_id=%d group_id=%d count=%lu\n",
 		       clamp_id, group_id, (unsigned long)uc_map_old.se_count);
 
 #ifdef CONFIG_SCHED_DEBUG
