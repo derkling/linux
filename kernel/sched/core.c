@@ -944,6 +944,13 @@ static inline int uclamp_effective_group_id(struct task_struct *p, int clamp_id)
 			group_id = group_max;
 		}
 
+		trace_printk("uclamp_effective_group_id: pid=%d comm=%s "
+			     "case=tg clamp_id=%d group_id=%d value=%d "
+			     "user_defined=%d clamp_max=%d group_max=%d",
+			     p->pid, p->comm, clamp_id, group_id, clamp_value,
+			     p->uclamp[clamp_id].user_defined,
+			     clamp_max, group_max);
+
 	}
 #endif
 
