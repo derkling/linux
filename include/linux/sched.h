@@ -318,6 +318,12 @@ struct sched_info {
 # define SCHED_FIXEDPOINT_SHIFT		10
 # define SCHED_FIXEDPOINT_SCALE		(1L << SCHED_FIXEDPOINT_SHIFT)
 
+/*
+ * Increase resolution of cpu_capacity calculations
+ */
+#define SCHED_CAPACITY_SHIFT	SCHED_FIXEDPOINT_SHIFT
+#define SCHED_CAPACITY_SCALE	(1L << SCHED_CAPACITY_SHIFT)
+
 struct load_weight {
 	unsigned long			weight;
 	u32				inv_weight;
@@ -595,16 +601,16 @@ struct sched_dl_entity {
  * task groups's clamps can be restricted by their parent task group.
  */
 struct uclamp_se {
-	unsigned int value;
-	int group_id;
+	unsigned int value		: SCHED_CAPACITY_SHIFT + 1;
+	unsigned int group_id		: order_base_2(UCLAMP_GROUPS);
 	/*
 	 * Effective clamp value a task or task group is accounted in.
 	 * For task groups, this is the value (eventually) enforced by a
 	 * parent task group.
 	 */
 	struct {
-		unsigned int value;
-		int group_id;
+		unsigned int value	: SCHED_CAPACITY_SHIFT + 1;
+		unsigned int group_id	: order_base_2(UCLAMP_GROUPS);
 	} effective;
 };
 
