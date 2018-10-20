@@ -384,6 +384,7 @@ static int _of_add_opp_table_v2(struct device *dev, struct device_node *opp_np)
 	struct opp_table *opp_table;
 	int ret = 0, count = 0, pstate_count = 0;
 	struct dev_pm_opp *opp;
+	u32 val;
 
 	opp_table = _managed_opp(opp_np);
 	if (opp_table) {
@@ -436,6 +437,9 @@ static int _of_add_opp_table_v2(struct device *dev, struct device_node *opp_np)
 		opp_table->shared_opp = OPP_TABLE_ACCESS_SHARED;
 	else
 		opp_table->shared_opp = OPP_TABLE_ACCESS_EXCLUSIVE;
+
+	if (!of_property_read_u32(opp_np, "cycle-thief-id", &val))
+		 opp_table->cycle_thief_id = val;
 
 put_opp_table:
 	dev_pm_opp_put_opp_table(opp_table);

@@ -41,11 +41,23 @@ static struct freq_attr *cpufreq_dt_attr[] = {
 	NULL,
 };
 
+int cycle_thief_set_rate(u32 id, unsigned int index);
+struct opp_table *_find_opp_table(struct device *dev);
+
 static int set_target(struct cpufreq_policy *policy, unsigned int index)
 {
+	u32 id;
 	struct private_data *priv = policy->driver_data;
 	unsigned long freq = policy->freq_table[index].frequency;
-	int ret;
+	struct opp_table *table = _find_opp_table(priv->cpu_dev);
+	int new_freq;
+	int ret = 0;
+
+	id = table->cycle_thief_id;
+	new_freq = cycle_thief_set_rate(id, freq);
+
+	if (new_freq >= 0)
+		freq = (unsigned long)new_freq;
 
 	ret = dev_pm_opp_set_rate(priv->cpu_dev, freq * 1000);
 

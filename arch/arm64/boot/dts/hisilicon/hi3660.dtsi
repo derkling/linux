@@ -41,16 +41,18 @@
 			};
 			cluster1 {
 				core0 {
+					cpu = <&cpu6>;
+				};
+				core1 {
+					cpu = <&cpu7>;
+				};
+			};
+			cluster2 {
+				core0 {
 					cpu = <&cpu4>;
 				};
 				core1 {
 					cpu = <&cpu5>;
-				};
-				core2 {
-					cpu = <&cpu6>;
-				};
-				core3 {
-					cpu = <&cpu7>;
 				};
 			};
 		};
@@ -114,7 +116,7 @@
 			cpu-idle-states = <&CPU_SLEEP_1 &CLUSTER_SLEEP_1>;
 			capacity-dmips-mhz = <1024>;
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER1>;
-			operating-points-v2 = <&cluster1_opp>;
+			operating-points-v2 = <&cluster2_opp>;
 			#cooling-cells = <2>;
 			dynamic-power-coefficient = <550>;
 		};
@@ -128,7 +130,7 @@
 			cpu-idle-states = <&CPU_SLEEP_1 &CLUSTER_SLEEP_1>;
 			capacity-dmips-mhz = <1024>;
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER1>;
-			operating-points-v2 = <&cluster1_opp>;
+			operating-points-v2 = <&cluster2_opp>;
 		};
 
 		cpu6: cpu@102 {
@@ -138,8 +140,10 @@
 			enable-method = "psci";
 			next-level-cache = <&A73_L2>;
 			cpu-idle-states = <&CPU_SLEEP_1 &CLUSTER_SLEEP_1>;
-			capacity-dmips-mhz = <1024>;
+			capacity-dmips-mhz = <883>;
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER1>;
+			dynamic-power-coefficient = <393>;
+			#cooling-cells = <2>;
 			operating-points-v2 = <&cluster1_opp>;
 		};
 
@@ -150,7 +154,7 @@
 			enable-method = "psci";
 			next-level-cache = <&A73_L2>;
 			cpu-idle-states = <&CPU_SLEEP_1 &CLUSTER_SLEEP_1>;
-			capacity-dmips-mhz = <1024>;
+			capacity-dmips-mhz = <883>;
 			clocks = <&stub_clock HI3660_CLK_STUB_CLUSTER1>;
 			operating-points-v2 = <&cluster1_opp>;
 		};
@@ -207,6 +211,7 @@
 	cluster0_opp: opp_table0 {
 		compatible = "operating-points-v2";
 		opp-shared;
+		cycle-thief-id = <0>;
 
 		opp00 {
 			opp-hz = /bits/ 64 <533000000>;
@@ -231,17 +236,12 @@
 			opp-microvolt = <1000000>;
 			clock-latency-ns = <300000>;
 		};
-
-		opp04 {
-			opp-hz = /bits/ 64 <1844000000>;
-			opp-microvolt = <1100000>;
-			clock-latency-ns = <300000>;
-		};
 	};
 
 	cluster1_opp: opp_table1 {
 		compatible = "operating-points-v2";
 		opp-shared;
+		cycle-thief-id = <1>;
 
 		opp10 {
 			opp-hz = /bits/ 64 <903000000>;
@@ -266,13 +266,38 @@
 			opp-microvolt = <1000000>;
 			clock-latency-ns = <300000>;
 		};
+	};
 
-		opp14 {
+	cluster2_opp: opp_table2 {
+		compatible = "operating-points-v2";
+		opp-shared;
+		cycle-thief-id = <2>;
+
+		opp16 {
+			opp-hz = /bits/ 64 <1421000000>;
+			opp-microvolt = <800000>;
+			clock-latency-ns = <300000>;
+		};
+
+		opp17 {
+			opp-hz = /bits/ 64 <1805000000>;
+			opp-microvolt = <900000>;
+			clock-latency-ns = <300000>;
+		};
+
+		opp18 {
+			opp-hz = /bits/ 64 <2112000000>;
+			opp-microvolt = <1000000>;
+			clock-latency-ns = <300000>;
+		};
+
+		opp19 {
 			opp-hz = /bits/ 64 <2362000000>;
 			opp-microvolt = <1100000>;
 			clock-latency-ns = <300000>;
 		};
 	};
+
 
 	gic: interrupt-controller@e82b0000 {
 		compatible = "arm,gic-400";
@@ -1207,6 +1232,11 @@
 						cooling-device = <&cpu0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
 					};
 					map1 {
+						trip = <&target>;
+						contribution = <512>;
+						cooling-device = <&cpu6 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+					};
+					map2 {
 						trip = <&target>;
 						contribution = <512>;
 						cooling-device = <&cpu4 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;

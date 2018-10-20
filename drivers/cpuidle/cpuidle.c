@@ -188,6 +188,9 @@ int cpuidle_enter_s2idle(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 }
 #endif /* CONFIG_SUSPEND */
 
+void cycle_thief_save(int index);
+void cycle_thief_restore(int index);
+
 /**
  * cpuidle_enter_state - enter the state and update stats
  * @dev: cpuidle device for this cpu
@@ -226,9 +229,11 @@ int cpuidle_enter_state(struct cpuidle_device *dev, struct cpuidle_driver *drv,
 	trace_cpu_idle_rcuidle(index, dev->cpu);
 	time_start = ns_to_ktime(local_clock());
 
+	cycle_thief_save(index);
 	stop_critical_timings();
 	entered_state = target_state->enter(dev, drv, index);
 	start_critical_timings();
+	cycle_thief_restore(index);
 
 	sched_clock_idle_wakeup_event();
 	time_end = ns_to_ktime(local_clock());
