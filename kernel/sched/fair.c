@@ -3724,6 +3724,8 @@ util_est_dequeue(struct cfs_rq *cfs_rq, struct task_struct *p, bool task_sleep)
 	WRITE_ONCE(p->se.avg.util_est, ue);
 }
 
+#define IF_SMP(statement)	statement
+
 static void overload_clear(struct rq *rq)
 {
 	struct sparsemask *overload_cpus;
@@ -3768,6 +3770,8 @@ static inline int idle_balance(struct rq *rq, struct rq_flags *rf)
 {
 	return 0;
 }
+
+#define IF_SMP(statement)	/* empty */
 
 static inline void overload_clear(struct rq *rq) {}
 static inline void overload_set(struct rq *rq) {}
@@ -6756,7 +6760,18 @@ done: __maybe_unused;
 	return p;
 
 idle:
+	/*
+	 * We must set idle_stamp _before_ calling idle_balance(), such that we
+	 * measure the duration of idle_balance() as idle time.
+	 */
+	IF_SMP(rq->idle_stamp = rq_clock(rq);)
+
 	new_tasks = idle_balance(rq, rf);
+
+	if (new_tasks)
+		IF_SMP(rq->idle_stamp = 0;)
+
+	schedstat_end_time(rq->find_time, time);
 
 	/*
 	 * Because idle_balance() releases (and re-acquires) rq->lock, it is
@@ -9520,12 +9535,6 @@ static int idle_balance(struct rq *this_rq, struct rq_flags *rf)
 	u64 curr_cost = 0;
 
 	/*
-	 * We must set idle_stamp _before_ calling idle_balance(), such that we
-	 * measure the duration of idle_balance() as idle time.
-	 */
-	this_rq->idle_stamp = rq_clock(this_rq);
-
-	/*
 	 * Do not pull tasks towards !active CPUs...
 	 */
 	if (!cpu_active(this_cpu))
@@ -9615,9 +9624,6 @@ out:
 	/* Is there a task of a high priority class? */
 	if (this_rq->nr_running != this_rq->cfs.h_nr_running)
 		pulled_task = -1;
-
-	if (pulled_task)
-		this_rq->idle_stamp = 0;
 
 	rq_repin_lock(this_rq, rf);
 
