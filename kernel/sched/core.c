@@ -900,6 +900,7 @@ static inline void uclamp_rq_inc_id(struct task_struct *p, struct rq *rq,
 	struct uclamp_bucket *bucket;
 
 	lockdep_assert_held(&rq->lock);
+	BUG_ON(uc_se->active);
 
 	/* Update task effective clamp */
 	p->uclamp[clamp_id] = uclamp_eff_get(p, clamp_id);
@@ -943,9 +944,10 @@ static inline void uclamp_rq_dec_id(struct task_struct *p, struct rq *rq,
 	unsigned int rq_clamp;
 
 	lockdep_assert_held(&rq->lock);
+	BUG_ON(!uc_se->active);
 
 	bucket = &uc_rq->bucket[uc_se->bucket_id];
-	SCHED_WARN_ON(!bucket->tasks);
+	BUG_ON(!bucket->tasks);
 	if (likely(bucket->tasks))
 		bucket->tasks--;
 	uc_se->active = false;
@@ -966,7 +968,7 @@ static inline void uclamp_rq_dec_id(struct task_struct *p, struct rq *rq,
 	 * Defensive programming: this should never happen. If it happens,
 	 * e.g. due to future modification, warn and fixup the expected value.
 	 */
-	SCHED_WARN_ON(bucket->value > rq_clamp);
+	BUG_ON(bucket->value > rq_clamp);
 	if (bucket->value > rq_clamp) {
 		trace_uclamp_rq(p, rq, clamp_id, false, true);
 		tracing_off();
@@ -1242,6 +1244,16 @@ static void __init init_uclamp(void)
 	struct uclamp_se uc_max = {};
 	unsigned int clamp_id;
 	int cpu;
+
+	BUG_ON(bits_per(0) != 1);
+	BUG_ON(bits_per(1) != 1);
+	BUG_ON(bits_per(2) != 2);
+	BUG_ON(bits_per(3) != 2);
+	BUG_ON(bits_per(4) != 3);
+	BUG_ON(bits_per(1023) != 10);
+	BUG_ON(bits_per(1024) != 11);
+	BUG_ON(uclamp_bucket_id(0) != 0);
+	BUG_ON(uclamp_bucket_id(1024) != (UCLAMP_BUCKETS-1));
 
 	mutex_init(&uclamp_mutex);
 
