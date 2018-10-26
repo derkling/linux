@@ -1020,7 +1020,7 @@ static inline void uclamp_cpu_dec_id(struct task_struct *p, struct rq *rq,
 	bucket_id = uclamp_effective_bucket_id(p, clamp_id);
 	p->uclamp[clamp_id].active = false;
 
-	SCHED_WARN_ON(!rq->uclamp[clamp_id].bucket[bucket_id].tasks);
+	BUG_ON(!rq->uclamp[clamp_id].bucket[bucket_id].tasks);
 	if (likely(rq->uclamp[clamp_id].bucket[bucket_id].tasks))
 		rq->uclamp[clamp_id].bucket[bucket_id].tasks--;
 
@@ -1030,7 +1030,7 @@ static inline void uclamp_cpu_dec_id(struct task_struct *p, struct rq *rq,
 	clamp_value = rq->uclamp[clamp_id].bucket[bucket_id].value;
 
 	/* The CPU's clamp value is expected to always track the max */
-	SCHED_WARN_ON(clamp_value > rq->uclamp[clamp_id].value);
+	BUG_ON(clamp_value > READ_ONCE(rq->uclamp[clamp_id].value));
 
 	trace_printk("uclamp_cpu_dec_id: clamp_id=%u bucket_id=%u "
 		    "clamp_value=%u clamp_rq=%u clamp_map=%u",
@@ -1124,7 +1124,7 @@ static void uclamp_bucket_dec(unsigned int clamp_id, unsigned int bucket_id,
 		 * referenced bucket: refcounting is broken and we warn.
 		 */
 		if (unlikely(!uc_map_old.se_count)) {
-			SCHED_WARN_ON(!uc_map_old.se_count);
+			BUG_ON(!uc_map_old.se_count);
 			return;
 		}
 
@@ -1143,6 +1143,7 @@ static void uclamp_bucket_dec(unsigned int clamp_id, unsigned int bucket_id,
 		       (unsigned long)uc_maps[bucket_id].value,
 		       (unsigned long)uc_maps[bucket_id].se_count,
 		       forks, exits, forks-exits);
+		BUG_ON(forks < exits);
 	}
 
 }
@@ -1205,7 +1206,7 @@ static void uclamp_bucket_inc(struct task_struct *p,
 			 * tracked at all if not yet mapped (i.e. it's new).
 			 */
 			if (unlikely(free_bucket_id == UCLAMP_BUCKETS)) {
-				SCHED_WARN_ON(free_bucket_id == UCLAMP_BUCKETS);
+				BUG_ON(free_bucket_id == UCLAMP_BUCKETS);
 				return;
 			}
 			bucket_id = free_bucket_id;
@@ -1243,7 +1244,7 @@ static void uclamp_bucket_inc(struct task_struct *p,
 				&cpu_rq(cpu)->uclamp[clamp_id];
 
 			/* CPU's tasks count must be 0 for free buckets */
-			SCHED_WARN_ON(uc_cpu->bucket[bucket_id].tasks);
+			BUG_ON(uc_cpu->bucket[bucket_id].tasks);
 			if (unlikely(uc_cpu->bucket[bucket_id].tasks))
 				uc_cpu->bucket[bucket_id].tasks = 0;
 
@@ -1256,6 +1257,10 @@ static void uclamp_bucket_inc(struct task_struct *p,
 					cpu_rq(cpu)->uclamp[clamp_id].bucket[bucket_id].value);
 		}
 	}
+
+	BUG_ON(!uc_maps[bucket_id].se_count);
+	BUG_ON(uc_maps[bucket_id].value != bucket_value);
+	BUG_ON(cpu_rq(0)->uclamp[clamp_id].bucket[bucket_id].value != bucket_value);
 
 	uc_se->value = clamp_value;
 	uc_se->bucket_id = bucket_id;
@@ -1284,6 +1289,7 @@ static void uclamp_bucket_inc(struct task_struct *p,
 		       (unsigned long)uc_maps[bucket_id].value,
 		       (unsigned long)uc_maps[bucket_id].se_count,
 		       forks, exits, forks-exits);
+		BUG_ON(forks < exits);
 	}
 }
 
@@ -1421,6 +1427,14 @@ static void __init init_uclamp(void)
 	struct uclamp_se *uc_se;
 	unsigned int clamp_id;
 	int cpu;
+
+	BUG_ON(bits_per(0) != 1);
+	BUG_ON(bits_per(1) != 1);
+	BUG_ON(bits_per(2) != 2);
+	BUG_ON(bits_per(3) != 2);
+	BUG_ON(bits_per(4) != 3);
+	BUG_ON(bits_per(1023) != 10);
+	BUG_ON(bits_per(1024) != 11);
 
 	mutex_init(&uclamp_mutex);
 
