@@ -1005,7 +1005,7 @@ static inline void uclamp_rq_dec_id(struct task_struct *p, struct rq *rq,
 	bucket_id = uclamp_effective_bucket_id(p, clamp_id);
 	p->uclamp[clamp_id].active = false;
 
-	SCHED_WARN_ON(!rq->uclamp[clamp_id].bucket[bucket_id].tasks);
+	BUG_ON(!rq->uclamp[clamp_id].bucket[bucket_id].tasks);
 	if (likely(rq->uclamp[clamp_id].bucket[bucket_id].tasks))
 		rq->uclamp[clamp_id].bucket[bucket_id].tasks--;
 
@@ -1016,7 +1016,7 @@ static inline void uclamp_rq_dec_id(struct task_struct *p, struct rq *rq,
 
 	/* The rq's clamp value is expected to always track the max */
 	rq_clamp = READ_ONCE(rq->uclamp[clamp_id].value);
-	SCHED_WARN_ON(bkt_clamp > rq_clamp);
+	BUG_ON(bkt_clamp > rq_clamp);
 
 	trace_printk("uclamp_rq_dec_id: clamp_id=%u bucket_id=%u "
 		    "clamp_value=%u clamp_rq=%u",
@@ -1243,7 +1243,7 @@ void uclamp_exit_task(struct task_struct *p)
 	int forks = atomic_read(&forks_count);
 	int exits = atomic_read(&exits_count);
 
-	WARN_ON(forks < exits);
+	BUG_ON(forks < exits);
 	}
 }
 
@@ -1276,6 +1276,14 @@ static void __init init_uclamp(void)
 {
 	unsigned int clamp_id;
 	int cpu;
+
+	BUG_ON(bits_per(0) != 1);
+	BUG_ON(bits_per(1) != 1);
+	BUG_ON(bits_per(2) != 2);
+	BUG_ON(bits_per(3) != 2);
+	BUG_ON(bits_per(4) != 3);
+	BUG_ON(bits_per(1023) != 10);
+	BUG_ON(bits_per(1024) != 11);
 
 	mutex_init(&uclamp_mutex);
 
