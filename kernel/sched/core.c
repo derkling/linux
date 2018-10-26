@@ -1018,7 +1018,7 @@ static inline void uclamp_cpu_dec_id(struct task_struct *p, struct rq *rq,
 	group_id = uclamp_effective_group_id(p, clamp_id);
 	p->uclamp[clamp_id].active = false;
 
-	SCHED_WARN_ON(!rq->uclamp[clamp_id].group[group_id].tasks);
+	BUG_ON(!rq->uclamp[clamp_id].group[group_id].tasks);
 	if (likely(rq->uclamp[clamp_id].group[group_id].tasks))
 		rq->uclamp[clamp_id].group[group_id].tasks--;
 
@@ -1028,7 +1028,7 @@ static inline void uclamp_cpu_dec_id(struct task_struct *p, struct rq *rq,
 	clamp_value = rq->uclamp[clamp_id].group[group_id].value;
 
 	/* The CPU's clamp value is expected to always track the max */
-	SCHED_WARN_ON(clamp_value > rq->uclamp[clamp_id].value);
+	BUG_ON(clamp_value > READ_ONCE(rq->uclamp[clamp_id].value));
 
 	trace_printk("uclamp_cpu_put_id: clamp_id=%u group_id=%u "
 		    "clamp_value=%u clamp_rq=%u clamp_map=%u",
@@ -1122,7 +1122,7 @@ static void uclamp_group_dec(unsigned int clamp_id, unsigned int group_id,
 		 * referenced group: refcounting is broken and we warn.
 		 */
 		if (unlikely(!uc_map_old.se_count)) {
-			SCHED_WARN_ON(!uc_map_old.se_count);
+			BUG_ON(!uc_map_old.se_count);
 			return;
 		}
 
@@ -1141,6 +1141,7 @@ static void uclamp_group_dec(unsigned int clamp_id, unsigned int group_id,
 		       (unsigned long)uc_maps[group_id].value,
 		       (unsigned long)uc_maps[group_id].se_count,
 		       forks, exits, forks-exits);
+		BUG_ON(forks < exits);
 	}
 
 }
@@ -1203,7 +1204,7 @@ static void uclamp_group_inc(struct task_struct *p,
 			 * tracked at all if not yet mapped (i.e. it's new).
 			 */
 			if (unlikely(free_group_id == UCLAMP_GROUPS)) {
-				SCHED_WARN_ON(free_group_id == UCLAMP_GROUPS);
+				BUG_ON(free_group_id == UCLAMP_GROUPS);
 				return;
 			}
 			group_id = free_group_id;
@@ -1241,7 +1242,7 @@ static void uclamp_group_inc(struct task_struct *p,
 				&cpu_rq(cpu)->uclamp[clamp_id];
 
 			/* CPU's tasks count must always be 0 for free groups */
-			SCHED_WARN_ON(uc_cpu->group[group_id].tasks);
+			BUG_ON(uc_cpu->group[group_id].tasks);
 			if (unlikely(uc_cpu->group[group_id].tasks))
 				uc_cpu->group[group_id].tasks = 0;
 
@@ -1254,6 +1255,10 @@ static void uclamp_group_inc(struct task_struct *p,
 					cpu_rq(cpu)->uclamp[clamp_id].group[group_id].value);
 		}
 	}
+
+	BUG_ON(!uc_maps[group_id].se_count);
+	BUG_ON(uc_maps[group_id].value != group_value);
+	BUG_ON(cpu_rq(0)->uclamp[clamp_id].group[group_id].value != group_value);
 
 	uc_se->value = clamp_value;
 	uc_se->group_id = group_id;
@@ -1282,6 +1287,7 @@ static void uclamp_group_inc(struct task_struct *p,
 		       (unsigned long)uc_maps[group_id].value,
 		       (unsigned long)uc_maps[group_id].se_count,
 		       forks, exits, forks-exits);
+		BUG_ON(forks < exits);
 	}
 }
 
@@ -1419,6 +1425,14 @@ static void __init init_uclamp(void)
 	struct uclamp_se *uc_se;
 	unsigned int clamp_id;
 	int cpu;
+
+	BUG_ON(bits_for(0) != 1);
+	BUG_ON(bits_for(1) != 1);
+	BUG_ON(bits_for(2) != 2);
+	BUG_ON(bits_for(3) != 2);
+	BUG_ON(bits_for(4) != 3);
+	BUG_ON(bits_for(1023) != 10);
+	BUG_ON(bits_for(1024) != 11);
 
 	mutex_init(&uclamp_mutex);
 
