@@ -1078,8 +1078,9 @@ static inline void uclamp_cpu_put_id(struct task_struct *p, struct rq *rq,
 		rq->uclamp.group[clamp_id][group_id].tasks -= 1;
 #ifdef CONFIG_SCHED_DEBUG
 	else {
-		WARN(1, "invalid CPU[%d] clamp group [%u:%u] refcount\n",
+		printk("invalid CPU[%d] clamp group [%u:%u] refcount\n",
 		     cpu_of(rq), clamp_id, group_id);
+		BUG_ON(!rq->uclamp.group[clamp_id][group_id].tasks);
 	}
 #endif
 
@@ -1089,8 +1090,9 @@ static inline void uclamp_cpu_put_id(struct task_struct *p, struct rq *rq,
 	clamp_value = rq->uclamp.group[clamp_id][group_id].value;
 #ifdef CONFIG_SCHED_DEBUG
 	if (unlikely(clamp_value > rq->uclamp.value[clamp_id])) {
-		WARN(1, "invalid CPU[%d] clamp group [%u:%u] value\n",
+		printk("invalid CPU[%d] clamp group [%u:%u] value\n",
 		     cpu_of(rq), clamp_id, group_id);
+		BUG_ON(clamp_value > rq->uclamp.value[clamp_id]);
 	}
 #endif
 
@@ -1223,6 +1225,7 @@ retry:
 
 	uc_map_old.data = atomic_long_read(&uc_maps[group_id].adata);
 
+	BUG_ON(uc_map_old.se_count > 1000000UL);
 
 #ifdef CONFIG_SCHED_DEBUG
 #define UCLAMP_GRPERR "invalid SE clamp group [%u:%u] refcount\n"
@@ -1250,6 +1253,7 @@ retry:
 		       (unsigned long)uc_maps[group_id].value,
 		       (unsigned long)uc_maps[group_id].se_count,
 		       forks, exits, forks-exits);
+		BUG_ON(forks < exits);
 	}
 }
 
@@ -1346,8 +1350,9 @@ retry:
 		if (unlikely(uc_cpu->group[clamp_id][group_id].tasks)) {
 			uc_cpu->group[clamp_id][group_id].tasks = 0;
 #ifdef CONFIG_SCHED_DEBUG
-			WARN(1, "invalid CPU[%d] clamp group [%u:%u] refcount\n",
-			     cpu, clamp_id, group_id);
+			printk("  invalid CPU[%d] clamp group [%u:%u] refcount\n",
+			       cpu, clamp_id, group_id);
+			BUG_ON(uc_cpu->group[clamp_id][group_id].tasks);
 #endif
 		}
 
@@ -1384,6 +1389,7 @@ done:
 		       (unsigned long)uc_maps[group_id].value,
 		       (unsigned long)uc_maps[group_id].se_count,
 		       forks, exits, forks-exits);
+		BUG_ON(forks < exits);
 	}
 }
 
