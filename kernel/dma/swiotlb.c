@@ -21,7 +21,6 @@
 
 #include <linux/cache.h>
 #include <linux/dma-direct.h>
-#include <linux/dma-noncoherent.h>
 #include <linux/mm.h>
 #include <linux/export.h>
 #include <linux/spinlock.h>
@@ -672,17 +671,11 @@ dma_addr_t swiotlb_map_page(struct device *dev, struct page *page,
 	 * we can safely return the device addr and not worry about bounce
 	 * buffering it.
 	 */
-	if (!dma_capable(dev, dev_addr, size) ||
-	    swiotlb_force == SWIOTLB_FORCE) {
-		trace_swiotlb_bounced(dev, dev_addr, size, swiotlb_force);
-		dev_addr = swiotlb_bounce_page(dev, &phys, size, dir, attrs);
-	}
+	if (dma_capable(dev, dev_addr, size) && swiotlb_force != SWIOTLB_FORCE)
+		return dev_addr;
 
-	if (!dev_is_dma_coherent(dev) &&
-	    (attrs & DMA_ATTR_SKIP_CPU_SYNC) == 0)
-		arch_sync_dma_for_device(dev, phys, size, dir);
-
-	return dev_addr;
+	trace_swiotlb_bounced(dev, dev_addr, size, swiotlb_force);
+	return swiotlb_bounce_page(dev, &phys, size, dir, attrs);
 }
 
 /*
@@ -700,10 +693,6 @@ void swiotlb_unmap_page(struct device *hwdev, dma_addr_t dev_addr,
 	phys_addr_t paddr = dma_to_phys(hwdev, dev_addr);
 
 	BUG_ON(dir == DMA_NONE);
-
-	if (!dev_is_dma_coherent(hwdev) &&
-	    (attrs & DMA_ATTR_SKIP_CPU_SYNC) == 0)
-		arch_sync_dma_for_cpu(hwdev, paddr, size, dir);
 
 	if (is_swiotlb_buffer(paddr)) {
 		swiotlb_tbl_unmap_single(hwdev, paddr, size, dir, attrs);
@@ -741,17 +730,15 @@ swiotlb_sync_single(struct device *hwdev, dma_addr_t dev_addr,
 
 	BUG_ON(dir == DMA_NONE);
 
-	if (!dev_is_dma_coherent(hwdev) && target == SYNC_FOR_CPU)
-		arch_sync_dma_for_cpu(hwdev, paddr, size, dir);
-
-	if (is_swiotlb_buffer(paddr))
+	if (is_swiotlb_buffer(paddr)) {
 		swiotlb_tbl_sync_single(hwdev, paddr, size, dir, target);
+		return;
+	}
 
-	if (!dev_is_dma_coherent(hwdev) && target == SYNC_FOR_DEVICE)
-		arch_sync_dma_for_device(hwdev, paddr, size, dir);
+	if (dir != DMA_FROM_DEVICE)
+		return;
 
-	if (!is_swiotlb_buffer(paddr) && dir == DMA_FROM_DEVICE)
-		dma_mark_clean(phys_to_virt(paddr), size);
+	dma_mark_clean(phys_to_virt(paddr), size);
 }
 
 void
