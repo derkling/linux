@@ -199,7 +199,7 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
  * required to meet deadlines.
  */
 unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
-				  unsigned long max, enum schedutil_type type)
+				  unsigned long max, struct task_struct *p)
 {
 	struct rq *rq = cpu_rq(cpu);
 	unsigned long util, irq, dl;
@@ -220,16 +220,15 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 	 * to obtain the CPU's actual utilization.
 	 */
 	util = cpu_util_rt(rq) + util_cfs;
-	if (type == FREQUENCY_UTIL) {
-		/*
-		 * CFS and RT utilization can be boosted or capped, depending
-		 * on utilization clamp constraints requested by currently
-		 * RUNNABLE tasks.  When there are no CFS RUNNABLE tasks,
-		 * clamps are released and OPPs will be gracefully reduced
-		 * with the utilization decay.
-		 */
-		util = uclamp_util(rq, util);
-	}
+
+	/*
+	 * CFS and RT utilization can be boosted or capped, depending
+	 * on utilization clamp constraints requested by currently
+	 * RUNNABLE tasks.  When there are no CFS RUNNABLE tasks,
+	 * clamps are released and OPPs will be gracefully reduced
+	 * with the utilization decay.
+	 */
+	util = uclamp_util_with(rq, util, p);
 	if (unlikely(util >= max))
 		return max;
 
@@ -274,7 +273,7 @@ static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
 	sg_cpu->max = max;
 	sg_cpu->bw_dl = cpu_bw_dl(rq);
 
-	return schedutil_freq_util(sg_cpu->cpu, util, max, FREQUENCY_UTIL);
+	return schedutil_freq_util(sg_cpu->cpu, util, max, NULL);
 }
 
 /**

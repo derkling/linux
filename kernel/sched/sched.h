@@ -2308,8 +2308,38 @@ static inline unsigned int uclamp_util(struct rq *rq, unsigned int util)
 
 	return clamp(util, min_util, max_util);
 }
+
+static inline unsigned int
+uclamp_util_with(struct rq *rq, unsigned int util, struct task_struct *p)
+{
+	unsigned int clamp_value[UCLAMP_CNT];
+	unsigned int cpu = rq->cpu;
+	unsigned int clamp_id;
+
+	if (unlikely(!p || (task_on_rq_queued(p) && task_cpu(p) == cpu)))
+		return uclamp_util(rq, util);
+
+	/* Max aggregate task and cpu clamp values */
+	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
+		clamp_value[clamp_id] = rq->uclamp.value[clamp_id];
+		if (clamp_value[clamp_id] >= p->uclamp[clamp_id].value)
+			continue;
+		clamp_value[clamp_id] = clamp_value[clamp_id];
+	}
+
+	/* Fixup for min/max defined by different sched entities */
+	if (clamp_value[UCLAMP_MIN] > clamp_value[UCLAMP_MAX])
+		clamp_value[UCLAMP_MAX] = clamp_value[UCLAMP_MIN];
+
+	return clamp(util, clamp_value[UCLAMP_MIN], clamp_value[UCLAMP_MAX]);
+}
 #else /* CONFIG_UCLAMP_TASK */
 static inline unsigned int uclamp_util(struct rq *rq, unsigned int util)
+{
+	return util;
+}
+static inline unsigned int
+uclamp_util_with(struct rq *rq, unsigned int util, struct task_struct *p)
 {
 	return util;
 }
@@ -2324,29 +2354,15 @@ static inline unsigned int uclamp_util(struct rq *rq, unsigned int util)
 #endif
 
 #ifdef CONFIG_CPU_FREQ_GOV_SCHEDUTIL
-/**
- * enum schedutil_type - CPU utilization type
- * @FREQUENCY_UTIL:	Utilization used to select frequency
- * @ENERGY_UTIL:	Utilization used during energy calculation
- *
- * The utilization signals of all scheduling classes (CFS/RT/DL) and IRQ time
- * need to be aggregated differently depending on the usage made of them. This
- * enum is used within schedutil_freq_util() to differentiate the types of
- * utilization expected by the callers, and adjust the aggregation accordingly.
- */
-enum schedutil_type {
-	FREQUENCY_UTIL,
-	ENERGY_UTIL,
-};
-
 unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
-			          unsigned long max, enum schedutil_type type);
+			          unsigned long max, struct task_struct *p);
 
-static inline unsigned long schedutil_energy_util(int cpu, unsigned long cfs)
+static inline unsigned long
+schedutil_energy_util(int cpu, unsigned long cfs, struct task_struct *p)
 {
 	unsigned long max = arch_scale_cpu_capacity(NULL, cpu);
 
-	return schedutil_freq_util(cpu, cfs, max, ENERGY_UTIL);
+	return schedutil_freq_util(cpu, cfs, max, p);
 }
 
 static inline unsigned long cpu_bw_dl(struct rq *rq)

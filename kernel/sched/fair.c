@@ -6399,7 +6399,7 @@ compute_energy(struct task_struct *p, int dst_cpu, struct perf_domain *pd)
 		 */
 		for_each_cpu_and(cpu, perf_domain_span(pd), cpu_online_mask) {
 			util = cpu_util_next(cpu, p, dst_cpu);
-			util = schedutil_energy_util(cpu, util);
+			util = schedutil_energy_util(cpu, util, p);
 			max_util = max(util, max_util);
 			sum_util += util;
 		}
