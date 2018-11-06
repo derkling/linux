@@ -243,11 +243,9 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 	 * util + bw_dl as requested freq. However, cpufreq is not yet ready
 	 * for such an interface. So, we only do the latter for now
 	 */
-	dl = sg_cpu->bw_dl;
-	if (rq->dl.dl_nr_running && rq->cfs.nr_running &&
-	    dl < cpu_util_dl(rq) {
-	    dl = cpu_util_dl(rq)
-	}
+	dl = cpu_bw_dl(rq);
+	if (rq->dl.dl_nr_running && rq->cfs.nr_running)
+		dl = max(dl, cpu_util_dl(rq));
 	util += dl;
 	if (util >= max)
 		return max;
