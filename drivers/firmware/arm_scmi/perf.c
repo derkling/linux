@@ -19,6 +19,7 @@
 #include <linux/cpu.h>
 #include <linux/debugfs.h>
 #include <linux/of.h>
+#include <linux/io.h>
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
 #include <linux/pm_opp.h>
@@ -133,11 +134,25 @@ struct perf_dom_info {
 	struct dentry *dom_dir; /* debug fs directory */
 };
 
+/* This entry is not same as in Spec. Modified to reflect SCP implementation */
+struct perf_domain_stats_entry {
+	u16 perf_levels;
+	u16 current_level;
+	u32 perf_clipping_incidents;
+} __packed;
+
+struct perf_stats_header {
+	char signature[4];
+	u16 rev;
+	u16 attr;
+	u16 num_domains;
+	u8 reserved[6];
+} __packed;
+
 struct scmi_perf_info {
 	int num_domains;
 	bool power_scale_mw;
-	u64 stats_addr;
-	u32 stats_size;
+	struct perf_stats_header *stat_header;
 	struct dentry *scmi_debugfs_dir;
 	struct scmi_handle *handle;
 	struct perf_dom_info *dom_info;
@@ -155,6 +170,8 @@ static int scmi_perf_attributes_get(const struct scmi_handle *handle,
 				    struct scmi_perf_info *perf_info)
 {
 	int ret;
+	u64 stats_addr;
+	u32 stats_size;
 	struct scmi_xfer *t;
 	struct scmi_msg_resp_perf_attributes *attr;
 
@@ -171,9 +188,11 @@ static int scmi_perf_attributes_get(const struct scmi_handle *handle,
 
 		perf_info->num_domains = le16_to_cpu(attr->num_domains);
 		perf_info->power_scale_mw = POWER_SCALE_IN_MILLIWATT(flags);
-		perf_info->stats_addr = le32_to_cpu(attr->stats_addr_low) |
+		stats_addr = le32_to_cpu(attr->stats_addr_low) |
 				(u64)le32_to_cpu(attr->stats_addr_high) << 32;
-		perf_info->stats_size = le32_to_cpu(attr->stats_size);
+		stats_size = le32_to_cpu(attr->stats_size);
+		perf_info->stat_header = memremap(stats_addr, stats_size,
+					 MEMREMAP_WB);
 	}
 
 	scmi_one_xfer_put(handle, t);
@@ -709,10 +728,65 @@ static struct scmi_perf_ops perf_ops = {
 	.freq_get = scmi_dvfs_freq_get,
 };
 
+#define SCMI_PERF_DOMAIN_ARRAY_OFFSET	0x10
+#define SCMI_PERF_DOMAIN_OFFSET_LEN	0x4
+
+static int scmi_perf_stats_show(struct seq_file *s, void *unused)
+{
+	u32 index;
+	u64 offset;
+	struct perf_domain_stats_entry *stats_entry;
+
+	seq_puts(s, "****************************************************\n");
+	seq_puts(s, "Performance Stats Table\n");
+	seq_puts(s, "****************************************************\n");
+
+	seq_printf(s, "Signature %c%c%c%c\n",
+		   perf_info.stat_header->signature[3],
+		   perf_info.stat_header->signature[2],
+		   perf_info.stat_header->signature[1],
+		   perf_info.stat_header->signature[0]);
+	seq_printf(s, "Revision = %d\n", perf_info.stat_header->rev);
+	seq_printf(s, "Attributes = %d\n", perf_info.stat_header->attr);
+	seq_printf(s, "Num. of Domains %d\n",
+			perf_info.stat_header->num_domains);
+
+	for (index = 0; index < (perf_info.stat_header->num_domains); index++) {
+		offset = (u64)(perf_info.stat_header) +
+			 *((u8 *)(perf_info.stat_header) +
+			   SCMI_PERF_DOMAIN_ARRAY_OFFSET +
+			   SCMI_PERF_DOMAIN_OFFSET_LEN*index);
+		stats_entry = (struct perf_domain_stats_entry *)offset;
+
+		seq_puts(s, "\n-----------------------------------------\n");
+		seq_printf(s, "Domain %d\n", index);
+		seq_puts(s, "-----------------------------------------\n");
+		seq_printf(s, "Perf. levels = %d\n", stats_entry->perf_levels);
+		seq_printf(s, "Current Perf level = %d\n",
+				stats_entry->current_level);
+		seq_printf(s, "Number of Perf. Clipping Incidents = %d\n",
+				stats_entry->perf_clipping_incidents);
+	}
+	return 0;
+}
+
+static int scmi_perf_stats_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, scmi_perf_stats_show, inode->i_private);
+}
+
+static const struct file_operations scmi_perf_stats_fops = {
+	.open = scmi_perf_stats_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
 int scmi_perf_protocol_init(struct scmi_handle *handle)
 {
 	int domain;
 	u32 version;
+	struct dentry *stats_f;
 
 	scmi_version_get(handle, SCMI_PROTOCOL_PERF, &version);
 
@@ -732,6 +806,13 @@ int scmi_perf_protocol_init(struct scmi_handle *handle)
 	perf_info.scmi_debugfs_dir = debugfs_create_dir("scmi", NULL);
 	if (!perf_info.scmi_debugfs_dir)
 		pr_err("unable to create debugfs directory for scmi\n");
+	else {
+		stats_f = debugfs_create_file("perf_stats", 0644,
+					      perf_info.scmi_debugfs_dir, NULL,
+					      &scmi_perf_stats_fops);
+		if (!stats_f)
+			pr_err("unable to create stats debugfs file!\n");
+	}
 
 	for (domain = 0; domain < perf_info.num_domains; domain++) {
 		struct perf_dom_info *dom = perf_info.dom_info + domain;
