@@ -41,6 +41,13 @@
 #include <asm/smp_plat.h>
 #include <asm/suspend.h>
 
+/* Uncomment below if tracing for Wake time is to be enabled */
+//#define PSCI_TRACE_WAKE_TIME
+
+#ifdef PSCI_TRACE_WAKE_TIME
+#define NO_TC_DELAY     199960	/* This is reset value set by ATF */
+#endif
+
 /*
  * While a 64-bit OS can make calls with SMC32 calling conventions, for some
  * calls it is necessary to use SMC64 to pass or return 64-bit values.
@@ -212,7 +219,7 @@ struct CounterData
     uint64_t retiredInstructionsBeforeSleepL;
 
     uint64_t wake_timestamp;
-    uint64_t sleep_state;
+    uint64_t post_traffic_cop_timestamp;
 };
 
 /*
@@ -274,7 +281,7 @@ uint64_t get_constant_frequency_counter_debug(enum DebugCallee debug_callee, uin
 /* sample the constant frequency counter */
 volatile uint64_t get_constant_frequency_counter(void)
 {
- #if CONFIG_GEM5_ACTMON
+ #ifdef CONFIG_GEM5_ACTMON
     return read_sysreg(pmevcntr0_el0);
 #elif CONFIG_JUNO_ACTMON
     return get_constant_frequency_counter_debug(BLANK, 0);
@@ -286,7 +293,7 @@ volatile uint64_t get_constant_frequency_counter(void)
 /* sample the cpu cycle counter */
 uint64_t get_core_cycle_counter(void)
 {
-#if CONFIG_GEM5_ACTMON
+#ifdef CONFIG_GEM5_ACTMON
     return read_sysreg(pmccntr_el0);
 #elif CONFIG_JUNO_ACTMON
     return read_sysreg(pmccntr_el0);
@@ -298,7 +305,7 @@ uint64_t get_core_cycle_counter(void)
 /* sample numer of instructions retired counter */
 uint64_t get_instructions_retired_counter(void)
 {
- #if CONFIG_GEM5_ACTMON
+ #ifdef CONFIG_GEM5_ACTMON
     return read_sysreg(pmevcntr1_el0);
 #elif CONFIG_JUNO_ACTMON
     return (((uint64_t)read_sysreg(pmevcntr1_el0))<<32) | read_sysreg(pmevcntr0_el0);
@@ -310,7 +317,7 @@ uint64_t get_instructions_retired_counter(void)
 /* sample memory stall cycles - only available on gem5 */
 uint64_t get_memory_stall_cycle_counter(void)
 {
- #if CONFIG_GEM5_ACTMON
+ #ifdef CONFIG_GEM5_ACTMON
     return read_sysreg(pmevcntr2_el0);
 #elif CONFIG_JUNO_ACTMON
     panic("backend mem stall not present on Juno");
@@ -326,28 +333,22 @@ void debugCounters(void)
     {
         uint64_t cycleCounter     = get_core_cycle_counter();
         uint64_t constFreqCounter = get_constant_frequency_counter();
-        uint64_t instRetired      = get_instructions_retired_counter();
+        //uint64_t instRetired      = get_instructions_retired_counter();
 
         static uint64_t lastCycleValue;
         static uint64_t lastConstValue;
 
-        pr_info("id %llx   const=%llx cycle=%llx  ratio %lld part %lld\n", cpuId, constFreqCounter, cycleCounter, (cycleCounter*1000)/constFreqCounter, ((cycleCounter-lastCycleValue)*1000)/(constFreqCounter - lastConstValue)  );
+        pr_info("id %d const=%llx cycle=%llx  ratio %lld part %lld\n", cpuId, constFreqCounter, cycleCounter, (cycleCounter*1000)/constFreqCounter, ((cycleCounter-lastCycleValue)*1000)/(constFreqCounter - lastConstValue)  );
 
         lastConstValue = constFreqCounter;
         lastCycleValue = cycleCounter;
     }
 }
 
-static u32 psci_get_version_orig(void)
-{
-	return invoke_psci_fn(PSCI_0_2_FN_PSCI_VERSION, 0, 0, 0);
-}
-
-
 static u32 psci_get_version(void)
 {
 
-#if CONFIG_GEM5_ACTMON
+#ifdef CONFIG_GEM5_ACTMON
     /* Initialize PMU configuration
      * enable bit in pmcr
      * enable pmcntenset_el0
@@ -379,33 +380,12 @@ static int psci_cpu_suspend(u32 state, unsigned long entry_point)
 {
 	int err;
 	u32 fn;
-	uint64_t wake_time;
 
     /*debugCounters();*/
 	fn = psci_function_id[PSCI_FN_CPU_SUSPEND];
 
-	// This is the command that actually changes the CPU power
-	// state. Note that we are not using SCMI for this, but SCMI
-	// is used for other core management things, such as taking a
-	// core offline. It would be good to know what the usage
-	// pattern is meant to be.
 	err = invoke_psci_fn(fn, state, entry_point, 0);
 
-	/* // Get the value of the timer! */
-	/* wake_time = read_sysreg(cntpct_el0); */
-
-	/* // We get the PSCI version here because this also triggers the */
-	/* // transfer of the timestamp! HACK! */
-	/* psci_get_version_orig(); */
-
-	/* if (virtAddress != NULL) { */
-	/* 	uint64_t mpidr = read_mpidr(); */
-	/* 	uint64_t linearCpuId = getLinearCpuId(mpidr); */
-
-	/* 	trace_printk("wake_start: %llu, wake_end: %llu", */
-	/* 		     virtAddress[linearCpuId].wake_timestamp, */
-	/* 		     wake_time); */
-	/* } */
 
     /*debugCounters();*/
 
@@ -485,13 +465,13 @@ static int get_set_conduit_method(struct device_node *np)
 
 static void psci_sys_reset(enum reboot_mode reboot_mode, const char *cmd)
 {
-    pr_info("SYS RESET\n");
+	pr_info("SYS RESET\n");
 	invoke_psci_fn(PSCI_0_2_FN_SYSTEM_RESET, 0, 0, 0);
 }
 
 static void psci_sys_poweroff(void)
 {
-    pr_info("SYS OFF\n");
+	pr_info("SYS OFF\n");
 	invoke_psci_fn(PSCI_0_2_FN_SYSTEM_OFF, 0, 0, 0);
 }
 
@@ -631,30 +611,37 @@ int psci_cpu_init_idle(unsigned int cpu)
 	return ret;
 }
 
+#ifdef PSCI_TRACE_WAKE_TIME
+static u32 psci_get_version_ts_copy(void)
+{
+	return invoke_psci_fn(PSCI_0_2_FN_PSCI_VERSION, 0, 0, 0);
+}
+
 static void calc_wake_time(void)
 {
-	uint64_t wake_time = read_sysreg(cntpct_el0);
+	u64 tc_delay_ns;
 
 	// We get the PSCI version here because this also triggers the
 	// transfer of the timestamp! HACK!
-	psci_get_version_orig();
+	psci_get_version_ts_copy();
 
 	if (virtAddress != NULL) {
 		uint64_t mpidr = read_mpidr();
 		uint64_t linearCpuId = getLinearCpuId(mpidr);
 
-		trace_printk("wake_start: %llu, wake_end: %llu, sleep_state: 0x%llx",
-			     virtAddress[linearCpuId].wake_timestamp,
-			     wake_time, virtAddress[linearCpuId].sleep_state);
-
+		tc_delay_ns = (virtAddress[linearCpuId].post_traffic_cop_timestamp -
+				virtAddress[linearCpuId].wake_timestamp)*20;
+		if (tc_delay_ns != NO_TC_DELAY)
+			trace_printk("Traffic-Cop Latency %llu ns\n", tc_delay_ns);
 		virtAddress[linearCpuId].wake_timestamp = 0;
+		virtAddress[linearCpuId].post_traffic_cop_timestamp = 0;
 	}
 }
+#endif
 
 static int psci_suspend_finisher(unsigned long index)
 {
 	u32 *state = __this_cpu_read(psci_power_state);
-	calc_wake_time();
 	return psci_ops.cpu_suspend(state[index - 1],
 				    virt_to_phys(cpu_resume));
 }
@@ -672,9 +659,13 @@ int psci_cpu_suspend_enter(unsigned long index)
 
 	if (!psci_power_state_loses_context(state[index - 1])) {
 		ret = psci_ops.cpu_suspend(state[index - 1], 0);
-		calc_wake_time(); // TODO: This might need removing again!
-	} else
+	} else {
 		ret = cpu_suspend(index, psci_suspend_finisher);
+	}
+
+#ifdef PSCI_TRACE_WAKE_TIME
+	calc_wake_time();
+#endif
 
 	return ret;
 }
