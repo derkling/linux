@@ -218,8 +218,10 @@ struct CounterData
     uint64_t retiredInstructionsBeforeSleepH;
     uint64_t retiredInstructionsBeforeSleepL;
 
+#ifdef PSCI_TRACE_WAKE_TIME
     uint64_t wake_timestamp;
     uint64_t post_traffic_cop_timestamp;
+#endif
 };
 
 /*
