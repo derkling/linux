@@ -2472,7 +2472,7 @@ static int walk_sys_regs(struct kvm_vcpu *vcpu, u64 __user *uind)
 	while (i1 || i2) {
 		int cmp = cmp_sys_reg(i1, i2);
 		/* target-specific overrides generic entry. */
-		if (cmp <= 0)
+		if (i1 && cmp <= 0)
 			err = walk_one_sys_reg(i1, &uind, &total);
 		else
 			err = walk_one_sys_reg(i2, &uind, &total);
