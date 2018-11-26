@@ -10,16 +10,22 @@
 void arch_static_call_transform(void *site, void *tramp, void *func)
 {
 	unsigned char opcodes[CALL_INSN_SIZE];
-	unsigned char insn_opcode;
+	unsigned char insn_opcode, expected;
 	unsigned long insn;
 	s32 dest_relative;
 
 	mutex_lock(&text_mutex);
 
-	insn = (unsigned long)tramp;
+	if (IS_ENABLED(CONFIG_HAVE_STATIC_CALL_INLINE)) {
+		insn = (unsigned long)site;
+		expected = CALL_INSN_OPCODE;
+	} else {
+		insn = (unsigned long)tramp;
+		expected = JMP32_INSN_OPCODE;
+	}
 
 	insn_opcode = *(unsigned char *)insn;
-	if (insn_opcode != 0xE9) {
+	if (insn_opcode != expected) {
 		WARN_ONCE(1, "unexpected static call insn opcode 0x%x at %pS",
 			  insn_opcode, (void *)insn);
 		goto unlock;

@@ -59,7 +59,7 @@
 #include <linux/cpu.h>
 #include <linux/static_call_types.h>
 
-#ifdef CONFIG_HAVE_STATIC_CALL
+#if defined(CONFIG_HAVE_STATIC_CALL) && !defined(COMPILE_OFFSETS)
 #include <asm/static_call.h>
 extern void arch_static_call_transform(void *site, void *tramp, void *func);
 #endif
