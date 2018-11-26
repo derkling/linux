@@ -795,6 +795,36 @@ TRACE_EVENT(sched_util_est_cpu,
 		  __entry->util_avg,
 		  __entry->util_est_enqueued)
 );
+
+/*
+ * Tracepoint for energy calculations in EAS.
+ */
+TRACE_EVENT(sched_compute_energy,
+
+	TP_PROTO(struct task_struct *tsk, int dst_cpu, unsigned long energy),
+
+	TP_ARGS(tsk, dst_cpu, energy),
+
+	TP_STRUCT__entry(
+		__array( char, comm,	TASK_COMM_LEN	)
+		__field( pid_t,		pid		)
+		__field( int,		prev_cpu	)
+		__field( int,		dst_cpu		)
+		__field( unsigned long,	energy		)
+	),
+
+	TP_fast_assign(
+		memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
+		__entry->pid		= tsk->pid;
+		__entry->prev_cpu	= tsk->wake_cpu;
+		__entry->dst_cpu	= dst_cpu;
+		__entry->energy		= energy;
+	),
+
+	TP_printk("comm=%s pid=%d prev_cpu=%d dst_cpu=%d energy=%lu",
+			__entry->comm, __entry->pid, __entry->prev_cpu,
+			__entry->dst_cpu, __entry->energy)
+);
 #endif /* CONFIG_SMP */
 
 #ifdef CONFIG_UCLAMP_TASK
