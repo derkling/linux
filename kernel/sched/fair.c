@@ -6494,6 +6494,8 @@ compute_energy(struct task_struct *p, int dst_cpu, struct perf_domain *pd)
 		energy += em_pd_energy(pd->em_pd, max_util, sum_util);
 	}
 
+	trace_sched_compute_energy(p, dst_cpu, energy);
+
 	return energy;
 }
 
