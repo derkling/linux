@@ -3250,7 +3250,10 @@ static inline unsigned long get_preempt_disable_ip(struct task_struct *p)
 static noinline void __schedule_bug(struct task_struct *prev)
 {
 	/* Save this before calling printk(), since that will clobber it */
-	unsigned long preempt_disable_ip = get_preempt_disable_ip(current);
+	unsigned long __maybe_unused preempt_disable_ip;
+
+	if (IS_ENABLED(CONFIG_DEBUG_PREEMPT))
+		preempt_disable_ip = get_preempt_disable_ip(current);
 
 	if (oops_in_progress)
 		return;
