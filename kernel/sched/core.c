@@ -882,6 +882,9 @@ static inline unsigned int uclamp_effective_bucket_id(struct task_struct *p,
 	unsigned int clamp_value;
 	unsigned int bucket_id;
 
+	/* printk("uclamp_effective_bucket_id: pid=%d active=%d\n", */
+	/* 		p->pid, p->uclamp[clamp_id].active); */
+
 	/* Task currently refcounted: use back-annotate effective value */
 	if (p->uclamp[clamp_id].active)
 		return p->uclamp[clamp_id].effective.bucket_id;
@@ -889,6 +892,9 @@ static inline unsigned int uclamp_effective_bucket_id(struct task_struct *p,
 	/* Task specific clamp value */
 	clamp_value = p->uclamp[clamp_id].value;
 	bucket_id = p->uclamp[clamp_id].bucket_id;
+
+	/* BUG_ON(p->uclamp[clamp_id].value != uclamp_none(clamp_id)); */
+	/* BUG_ON(p->uclamp[clamp_id].bucket_id != 0); */
 
 	trace_printk("uclamp_effective_bucket_id: pid=%d comm=%s "
 		     "case=ts clamp_id=%u bucket_id=%u value=%d",
@@ -946,6 +952,17 @@ done:
 	p->uclamp[clamp_id].effective.value = clamp_value;
 	p->uclamp[clamp_id].effective.bucket_id = bucket_id;
 
+	/* printk("uclamp_effective_bucket_id: effective.value=%d clamp_value=%d uclamp_none=%d\n", */
+	/* 		p->uclamp[clamp_id].effective.value, */
+	/* 		clamp_value, uclamp_none(clamp_id)); */
+	/* BUG_ON(clamp_value != uclamp_none(clamp_id)); */
+// FAILS HERE: clamp_value != 1024
+	/* BUG_ON(p->uclamp[clamp_id].effective.value != uclamp_none(clamp_id)); */
+
+	/* BUG_ON(p->uclamp[clamp_id].value != uclamp_none(clamp_id)); */
+	/* BUG_ON(p->uclamp[clamp_id].bucket_id != 0); */
+	/* BUG_ON(bucket_id != 0); */
+
 	return bucket_id;
 }
 
@@ -972,14 +989,23 @@ static inline void uclamp_cpu_inc_id(struct task_struct *p, struct rq *rq,
 	if (unlikely(!p->uclamp[clamp_id].mapped))
 		return;
 
+	/* BUG_ON(rq->uclamp[clamp_id].value != uclamp_none(clamp_id)); */
+	/* BUG_ON(p->uclamp[clamp_id].value != uclamp_none(clamp_id)); */
+
 	bucket_id = uclamp_effective_bucket_id(p, clamp_id);
 	p->uclamp[clamp_id].active = true;
 
+	/* BUG_ON(bucket_id != 0); */
+
 	rq->uclamp[clamp_id].bucket[bucket_id].tasks++;
+
+	/* BUG_ON(p->uclamp[clamp_id].effective.value != uclamp_none(clamp_id)); */
 
 	/* Reset clamp holds on idle exit */
 	tsk_clamp = uclamp_effective_value(p, clamp_id);
 	uclamp_idle_reset(rq, clamp_id, tsk_clamp);
+
+	/* BUG_ON(tsk_clamp != uclamp_none(clamp_id)); */
 
 	/* CPU's clamp buckets track the max effective clamp value */
 	grp_clamp = rq->uclamp[clamp_id].bucket[bucket_id].value;
@@ -996,6 +1022,10 @@ static inline void uclamp_cpu_inc_id(struct task_struct *p, struct rq *rq,
 		     p->pid, p->comm, cpu_of(rq),
 		     clamp_id, bucket_id, tsk_clamp,
 		     rq->uclamp[clamp_id].value);
+
+	/* printk("uclamp_cpu_get_id: tks_clamp=%d grp_clamp=%d cpu_clamp=%d\n", */
+	/* 		tsk_clamp, grp_clamp, cpu_clamp); */
+	/* BUG_ON(rq->uclamp[clamp_id].value != uclamp_none(clamp_id)); */
 
 }
 
@@ -1016,6 +1046,8 @@ static inline void uclamp_cpu_dec_id(struct task_struct *p, struct rq *rq,
 
 	if (unlikely(!p->uclamp[clamp_id].mapped))
 		return;
+
+	/* BUG_ON(rq->uclamp[clamp_id].value != uclamp_none(clamp_id)); */
 
 	bucket_id = uclamp_effective_bucket_id(p, clamp_id);
 	p->uclamp[clamp_id].active = false;
@@ -1419,6 +1451,8 @@ static void uclamp_fork(struct task_struct *p, bool reset)
 		p->uclamp[clamp_id].active = false;
 		uclamp_bucket_inc(NULL, NULL, &p->uclamp[clamp_id],
 				 clamp_id, clamp_value, "SeFrk");
+
+		/* BUG_ON(p->uclamp[clamp_id].value != uclamp_none(clamp_id)); */
 	}
 }
 
