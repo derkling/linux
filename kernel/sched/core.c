@@ -842,6 +842,12 @@ static inline void uclamp_cpu_update(struct rq *rq, unsigned int clamp_id,
 		/* Both min and max clamps are MAX aggregated */
 		group_value = rq->uclamp[clamp_id].group[group_id].value;
 		max_value = max(max_value, group_value);
+
+		printk("     uclamp_cpu_update: clamp_id=%d group_id=%d tasks=%u value=%u max=%u\n",
+				clamp_id, group_id,
+				rq->uclamp[clamp_id].group[group_id].tasks,
+				group_value, max_value);
+
 		if (max_value >= SCHED_CAPACITY_SCALE)
 			break;
 	}
@@ -850,6 +856,10 @@ static inline void uclamp_cpu_update(struct rq *rq, unsigned int clamp_id,
 		max_value = uclamp_idle_value(rq, clamp_id, clamp_value);
 
 	WRITE_ONCE(rq->uclamp[clamp_id].value, max_value);
+
+	printk("     uclamp_cpu_update: clamp_id=%d cpu_clamp=%u\n",
+			clamp_id, rq->uclamp[clamp_id].value);
+
 }
 
 static inline bool uclamp_apply_defaults(struct task_struct *p)
@@ -883,8 +893,12 @@ static inline unsigned int uclamp_effective_group_id(struct task_struct *p,
 	unsigned int group_id;
 
 	/* Task currently refcounted: use back-annotate effective value */
-	if (p->uclamp[clamp_id].active)
+	if (p->uclamp[clamp_id].active) {
+		printk("uclamp_effective_group_id: pid=%d group_id=%d value=%u ACTIVE\n",
+				p->pid, p->uclamp[clamp_id].effective.group_id,
+				p->uclamp[clamp_id].effective.value);
 		return p->uclamp[clamp_id].effective.group_id;
+	}
 
 	/* Task specific clamp value */
 	clamp_value = p->uclamp[clamp_id].value;
@@ -946,6 +960,9 @@ done:
 	p->uclamp[clamp_id].effective.value = clamp_value;
 	p->uclamp[clamp_id].effective.group_id = group_id;
 
+	printk("uclamp_effective_group_id: pid=%d group_id=%d value=%u INACTIVE\n",
+			p->pid, group_id, clamp_value);
+
 	return group_id;
 }
 
@@ -975,7 +992,7 @@ static inline void uclamp_cpu_inc_id(struct task_struct *p, struct rq *rq,
 	group_id = uclamp_effective_group_id(p, clamp_id);
 	p->uclamp[clamp_id].active = true;
 
-	rq->uclamp[clamp_id].group[group_id].tasks++;
+	rq->uclamp[clamp_id].group[group_id].tasks += 1;
 
 	/* Reset clamp holds on idle exit */
 	tsk_clamp = uclamp_effective_value(p, clamp_id);
@@ -988,6 +1005,12 @@ static inline void uclamp_cpu_inc_id(struct task_struct *p, struct rq *rq,
 	/* Update CPU clamp value if required */
 	cpu_clamp = READ_ONCE(rq->uclamp[clamp_id].value);
 	WRITE_ONCE(rq->uclamp[clamp_id].value, max(cpu_clamp, tsk_clamp));
+
+//	cpu_clamp = READ_ONCE(rq->uclamp[clamp_id].value);
+//	printk(">>>>>> ENQ: pid=%d (%px) comm=%s cpu=%d rq=%px clamp_id=%d cpu_value=%u grp_value=%u tsk_clamp=%u tasks=%d\n",
+//			p->pid, p, p->comm, smp_processor_id(), rq, clamp_id,
+//			cpu_clamp, grp_clamp, tsk_clamp,
+//			rq->uclamp[clamp_id].group[group_id].tasks);
 
 	trace_printk("uclamp_cpu_get_id: pid=%d comm=%s cpu=%d "
 		     "clamp_id=%d group_id=%u clamp_value=%u clamp_rq=%d",
@@ -1012,22 +1035,33 @@ static inline void uclamp_cpu_dec_id(struct task_struct *p, struct rq *rq,
 	unsigned int clamp_value;
 	unsigned int group_id;
 
-	if (unlikely(!p->uclamp[clamp_id].mapped))
+	if (unlikely(!p->uclamp[clamp_id].mapped)) {
+		// printk("uclamp_cpu_dec_id: pid=%d NOT MAPPED\n", p->pid);
 		return;
+	}
 
 	group_id = uclamp_effective_group_id(p, clamp_id);
 	p->uclamp[clamp_id].active = false;
 
 	BUG_ON(!rq->uclamp[clamp_id].group[group_id].tasks);
 	if (likely(rq->uclamp[clamp_id].group[group_id].tasks))
-		rq->uclamp[clamp_id].group[group_id].tasks--;
+		rq->uclamp[clamp_id].group[group_id].tasks -= 1;
 
 	/* We accept to (possibly) overboost tasks still RUNNABLE */
-	if (likely(rq->uclamp[clamp_id].group[group_id].tasks))
+	if (likely(rq->uclamp[clamp_id].group[group_id].tasks)) {
+		// printk("uclamp_cpu_dec_id: clamp_id=%d group_id=%d tasks=%d\n",
+		// 		clamp_id, group_id,
+		// 		rq->uclamp[clamp_id].group[group_id].tasks);
 		return;
+	}
 	clamp_value = rq->uclamp[clamp_id].group[group_id].value;
 
 	/* The CPU's clamp value is expected to always track the max */
+//	printk("<<<<<< DEQ: pid=%d (%px) comm=%s cpu=%d rq=%px clamp_id=%d cpu_clamp=%u grp_clamp=%u tasks=%d\n",
+//			p->pid, p, p->comm, smp_processor_id(), rq, clamp_id,
+//			READ_ONCE(rq->uclamp[clamp_id].value),
+//			clamp_value,
+//			rq->uclamp[clamp_id].group[group_id].tasks);
 	BUG_ON(clamp_value > READ_ONCE(rq->uclamp[clamp_id].value));
 
 	trace_printk("uclamp_cpu_put_id: clamp_id=%u group_id=%u "
@@ -1056,6 +1090,12 @@ static inline void uclamp_cpu_inc(struct rq *rq, struct task_struct *p)
 
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id)
 		uclamp_cpu_inc_id(p, rq, clamp_id);
+
+	printk("UUUUU uclamp_cpu_inc: cpu=%d cpu_min=%u cpu_max=%u\n",
+			smp_processor_id(),
+			rq->uclamp[UCLAMP_MIN].value,
+			rq->uclamp[UCLAMP_MAX].value);
+
 }
 
 static inline void uclamp_cpu_dec(struct rq *rq, struct task_struct *p)
@@ -1067,6 +1107,12 @@ static inline void uclamp_cpu_dec(struct rq *rq, struct task_struct *p)
 
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id)
 		uclamp_cpu_dec_id(p, rq, clamp_id);
+
+	printk("UUUUU uclamp_cpu_dec: cpu=%d cpu_min=%u cpu_max=%u\n",
+			smp_processor_id(),
+			rq->uclamp[UCLAMP_MIN].value,
+			rq->uclamp[UCLAMP_MAX].value);
+
 }
 
 static inline void
@@ -1112,7 +1158,7 @@ static void uclamp_group_dec(unsigned int clamp_id, unsigned int group_id,
 	do {
 
 		if (unlikely(failed)) {
-			printk("    uclamp_group_dec: clamp_id=%u group_id=%u count=%lu FAILED\n",
+			printk(" uclamp_group_dec: clamp_id=%u group_id=%u count=%lu FAILED\n",
 			       clamp_id, group_id, (unsigned long)uc_map_old.se_count);
 		}
 		failed = true;
@@ -1127,7 +1173,7 @@ static void uclamp_group_dec(unsigned int clamp_id, unsigned int group_id,
 		}
 
 		uc_map_new = uc_map_old;
-		uc_map_new.se_count--;
+		uc_map_new.se_count -= 1;
 
 	} while (!atomic_long_try_cmpxchg(&uc_maps[group_id].adata,
 					  &uc_map_old.data, uc_map_new.data));
@@ -1179,7 +1225,7 @@ static void uclamp_group_inc(struct task_struct *p,
 	do {
 
 		if (unlikely(failed)) {
-			printk("    uclamp_group_inc: clamp_id=%u group_id=%u count=%lu FAILED\n",
+			printk(" uclamp_group_inc: clamp_id=%u group_id=%u count=%lu FAILED\n",
 			       clamp_id, group_id, (unsigned long)uc_map_old.se_count);
 		}
 		failed = true;
@@ -1234,7 +1280,7 @@ static void uclamp_group_inc(struct task_struct *p,
 	 */
 	if (unlikely(!uc_map_old.se_count)) {
 
-		printk("    uclamp_group_inc: clamp_id=%u group_id=%u clamp_value=%u INIT\n",
+		printk(" uclamp_group_inc: clamp_id=%u group_id=%u clamp_value=%u INIT\n",
 		       clamp_id, group_id, group_value);
 
 		for_each_possible_cpu(cpu) {
@@ -1386,6 +1432,10 @@ void uclamp_exit_task(struct task_struct *p)
 
 	atomic_inc(&exits_count);
 
+	printk("EEEEEE uclamp_exit: comm=%s pid=%d cpu=%d",
+	       p->comm, p->pid, smp_processor_id());
+
+
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
 		if (!p->uclamp[clamp_id].mapped)
 			continue;
@@ -1402,8 +1452,8 @@ static void uclamp_fork(struct task_struct *p, bool reset)
 
 	atomic_inc(&forks_count);
 
-	printk("uclamp_fork: comm=%s pid=%d reset=%d",
-	       p->comm, p->pid, reset ? 1 : 0);
+	printk("FFFFFF uclamp_fork: comm=%s pid=%d reset=%d cpu=%d",
+	       p->comm, p->pid, reset ? 1 : 0, smp_processor_id());
 
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
 		unsigned int clamp_value = p->uclamp[clamp_id].value;
@@ -1513,6 +1563,7 @@ void activate_task(struct rq *rq, struct task_struct *p, int flags)
 	if (task_contributes_to_load(p))
 		rq->nr_uninterruptible--;
 
+	printk("activate_task: pid=%d\n", p->pid);
 	enqueue_task(rq, p, flags);
 }
 
@@ -1689,6 +1740,7 @@ static struct rq *move_queued_task(struct rq *rq, struct rq_flags *rf,
 
 	rq_lock(rq, rf);
 	BUG_ON(task_cpu(p) != new_cpu);
+	printk("move_queued_task: pid=%d\n", p->pid);
 	enqueue_task(rq, p, 0);
 	p->on_rq = TASK_ON_RQ_QUEUED;
 	check_preempt_curr(rq, p, 0);
@@ -1800,8 +1852,10 @@ void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
 
 	p->sched_class->set_cpus_allowed(p, new_mask);
 
-	if (queued)
+	if (queued) {
+		printk("do_set_cpus_allowed: pid=%d\n", p->pid);
 		enqueue_task(rq, p, ENQUEUE_RESTORE | ENQUEUE_NOCLOCK);
+	}
 	if (running)
 		set_curr_task(rq, p);
 }
@@ -4618,8 +4672,10 @@ void rt_mutex_setprio(struct task_struct *p, struct task_struct *pi_task)
 
 	p->prio = prio;
 
-	if (queued)
+	if (queued) {
+		printk("rt_mutex_setprio: pid=%d\n", p->pid);
 		enqueue_task(rq, p, queue_flag);
+	}
 	if (running)
 		set_curr_task(rq, p);
 
@@ -4679,6 +4735,7 @@ void set_user_nice(struct task_struct *p, long nice)
 	delta = p->prio - old_prio;
 
 	if (queued) {
+		printk("set_user_nice: pid=%d\n", p->pid);
 		enqueue_task(rq, p, ENQUEUE_RESTORE | ENQUEUE_NOCLOCK);
 		/*
 		 * If the task increased its priority or is running and
@@ -5125,6 +5182,7 @@ change:
 		if (oldprio < p->prio)
 			queue_flags |= ENQUEUE_HEAD;
 
+		printk("__sched_setscheduler: pid=%d\n", p->pid);
 		enqueue_task(rq, p, queue_flags);
 	}
 	if (running)
@@ -6324,8 +6382,10 @@ void sched_setnuma(struct task_struct *p, int nid)
 
 	p->numa_preferred_nid = nid;
 
-	if (queued)
+	if (queued) {
+		printk("sched_setnuma: pid=%d\n", p->pid);
 		enqueue_task(rq, p, ENQUEUE_RESTORE | ENQUEUE_NOCLOCK);
+	}
 	if (running)
 		set_curr_task(rq, p);
 	task_rq_unlock(rq, p, &rf);
@@ -7216,8 +7276,10 @@ void sched_move_task(struct task_struct *tsk)
 
 	sched_change_group(tsk, TASK_MOVE_GROUP);
 
-	if (queued)
+	if (queued) {
+		printk("sched_move_task: pid=%d\n", tsk->pid);
 		enqueue_task(rq, tsk, queue_flags);
+	}
 	if (running)
 		set_curr_task(rq, tsk);
 
