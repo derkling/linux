@@ -814,7 +814,7 @@ static inline void uclamp_idle_reset(struct rq *rq, unsigned int clamp_id,
 	if (!(rq->uclamp_flags & UCLAMP_FLAG_IDLE))
 		return;
 
-	WRITE_ONCE(rq->uclamp[clamp_id].value, clamp_value);
+	rq->uclamp[clamp_id].value = clamp_value;
 
 	/*
 	 * This function is called for both UCLAMP_MIN (before) and UCLAMP_MAX
@@ -849,7 +849,7 @@ static inline void uclamp_cpu_update(struct rq *rq, unsigned int clamp_id,
 	if (unlikely(!buckets_active))
 		max_value = uclamp_idle_value(rq, clamp_id, clamp_value);
 
-	WRITE_ONCE(rq->uclamp[clamp_id].value, max_value);
+	rq->uclamp[clamp_id].value = max_value;
 }
 
 static inline bool uclamp_apply_defaults(struct task_struct *p)
@@ -983,17 +983,19 @@ static inline void uclamp_cpu_inc_id(struct task_struct *p, struct rq *rq,
 
 	/* CPU's clamp buckets track the max effective clamp value */
 	grp_clamp = rq->uclamp[clamp_id].bucket[bucket_id].value;
-	rq->uclamp[clamp_id].bucket[bucket_id].value = max(grp_clamp, tsk_clamp);
+	grp_clamp = max(grp_clamp, tsk_clamp);
+	rq->uclamp[clamp_id].bucket[bucket_id].value = grp_clamp;
 
 	/* Update CPU clamp value if required */
-	cpu_clamp = READ_ONCE(rq->uclamp[clamp_id].value);
-	WRITE_ONCE(rq->uclamp[clamp_id].value, max(cpu_clamp, tsk_clamp));
+	cpu_clamp = rq->uclamp[clamp_id].value;
+	cpu_clamp = max(cpu_clamp, tsk_clamp);
+	rq->uclamp[clamp_id].value = cpu_clamp;
 
 	trace_printk("uclamp_cpu_inc_id: pid=%d comm=%s cpu=%d "
 		     "clamp_id=%d bucket_id=%u clamp_value=%u clamp_rq=%d",
 		     p->pid, p->comm, cpu_of(rq),
 		     clamp_id, bucket_id, tsk_clamp,
-		     READ_ONCE(rq->uclamp[clamp_id].value));
+		     rq->uclamp[clamp_id].value);
 
 }
 
@@ -1028,15 +1030,15 @@ static inline void uclamp_cpu_dec_id(struct task_struct *p, struct rq *rq,
 	clamp_value = rq->uclamp[clamp_id].bucket[bucket_id].value;
 
 	/* The CPU's clamp value is expected to always track the max */
-	BUG_ON(clamp_value > READ_ONCE(rq->uclamp[clamp_id].value));
+	BUG_ON(clamp_value > rq->uclamp[clamp_id].value);
 
 	trace_printk("uclamp_cpu_dec_id: clamp_id=%u bucket_id=%u "
 		    "clamp_value=%u clamp_rq=%u clamp_map=%u",
 		    clamp_id, bucket_id, clamp_value,
-		    READ_ONCE(rq->uclamp[clamp_id].value),
+		    rq->uclamp[clamp_id].value,
 		    uclamp_maps[clamp_id][bucket_id].value);
 
-	if (clamp_value >= READ_ONCE(rq->uclamp[clamp_id].value)) {
+	if (clamp_value >= rq->uclamp[clamp_id].value) {
 		/*
 		 * Reset CPU's clamp bucket value to its nominal value whenever
 		 * there are anymore RUNNABLE tasks refcounting it.
