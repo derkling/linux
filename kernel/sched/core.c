@@ -904,8 +904,8 @@ static inline unsigned int uclamp_effective_bucket_id(struct task_struct *p,
 	return bucket_id;
 }
 
-static unsigned int uclamp_effective_value(struct task_struct *p,
-					   unsigned int clamp_id)
+unsigned int uclamp_effective_value(struct task_struct *p,
+				    unsigned int clamp_id)
 {
 	unsigned int clamp_value, bucket_id;
 
