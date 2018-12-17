@@ -230,8 +230,9 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
  * based on the task model parameters and gives the minimal utilization
  * required to meet deadlines.
  */
-unsigned long schedutil_freq_util(int cpu, unsigned long util,
-				  unsigned long max, enum schedutil_type type)
+unsigned long schedutil_cpu_util(int cpu, unsigned long util,
+				 unsigned long max, enum schedutil_type type,
+				 struct task_struct *p)
 {
 	unsigned long dl_util, irq;
 	struct rq *rq = cpu_rq(cpu);
@@ -267,7 +268,7 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util,
 	 * frequency will be gracefully reduced with the utilization decay.
 	 */
 	if (type == FREQUENCY_UTIL)
-		util = uclamp_util(rq, util);
+		util = uclamp_util_with(rq, util, p);
 
 	/*
 	 * For frequency selection we do not make cpu_util_dl() a permanent part
@@ -326,7 +327,7 @@ static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
 	sg_cpu->max = max;
 	sg_cpu->bw_dl = cpu_bw_dl(rq);
 
-	return schedutil_freq_util(sg_cpu->cpu, util, max, FREQUENCY_UTIL);
+	return schedutil_cpu_util(sg_cpu->cpu, util, max, FREQUENCY_UTIL, NULL);
 }
 
 /**
