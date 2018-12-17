@@ -198,9 +198,11 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
  * based on the task model parameters and gives the minimal utilization
  * required to meet deadlines.
  */
-unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
-				  unsigned long max, enum schedutil_type type)
+unsigned long schedutil_cpu_util(int cpu, int util_cfs,
+				 enum schedutil_type type,
+				 struct task_struct *p)
 {
+	unsigned long max = arch_scale_cpu_capacity(NULL, cpu);
 	unsigned long dl_util, util, irq;
 	struct rq *rq = cpu_rq(cpu);
 
@@ -225,13 +227,10 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 	 * When there are no CFS RUNNABLE tasks, clamps are released and
 	 * frequency will be gracefully reduced with the utilization decay.
 	 */
-	util = cpu_util_rt(rq);
-	if (type == FREQUENCY_UTIL) {
-		util += cpu_util_cfs(rq);
-		util  = uclamp_util(rq, util);
-	} else {
-		util += util_cfs;
-	}
+	util  = cpu_util_rt(rq);
+	util += (util_cfs < 0) ? cpu_util_cfs(rq) : util_cfs;
+	if (type == FREQUENCY_UTIL)
+		util = uclamp_util_with(rq, util, p);
 
 	dl_util = cpu_util_dl(rq);
 
@@ -284,14 +283,10 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 
 static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
 {
-	struct rq *rq = cpu_rq(sg_cpu->cpu);
-	unsigned long util = cpu_util_cfs(rq);
-	unsigned long max = arch_scale_cpu_capacity(NULL, sg_cpu->cpu);
+	sg_cpu->max = arch_scale_cpu_capacity(NULL, sg_cpu->cpu);
+	sg_cpu->bw_dl = cpu_bw_dl(cpu_rq(sg_cpu->cpu));
 
-	sg_cpu->max = max;
-	sg_cpu->bw_dl = cpu_bw_dl(rq);
-
-	return schedutil_freq_util(sg_cpu->cpu, util, max, FREQUENCY_UTIL);
+	return schedutil_cpu_util(sg_cpu->cpu, -1, FREQUENCY_UTIL, NULL);
 }
 
 /**
