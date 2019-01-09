@@ -21,6 +21,7 @@
 #include <linux/rbtree_latch.h>
 #include <linux/error-injection.h>
 #include <linux/tracepoint-defs.h>
+#include <linux/static_call_types.h>
 
 #include <linux/percpu.h>
 #include <asm/module.h>
@@ -472,6 +473,10 @@ struct module {
 	unsigned int num_ftrace_callsites;
 	unsigned long *ftrace_callsites;
 #endif
+#ifdef CONFIG_HAVE_STATIC_CALL_INLINE
+	int num_static_call_sites;
+	struct static_call_site *static_call_sites;
+#endif
 
 #ifdef CONFIG_LIVEPATCH
 	bool klp; /* Is this a livepatch module? */
@@ -725,6 +730,11 @@ static inline bool within_module_init(unsigned long addr,
 }
 
 static inline bool within_module(unsigned long addr, const struct module *mod)
+{
+	return false;
+}
+
+static inline bool within_module_init(unsigned long addr, const struct module *mod)
 {
 	return false;
 }
