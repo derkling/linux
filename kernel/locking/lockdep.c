@@ -292,18 +292,22 @@ LIST_HEAD(all_lock_classes);
 static LIST_HEAD(free_lock_classes);
 /*
  * A data structure for delayed freeing of data structures that may be
- * accessed by RCU readers at the time these were freed. The size of the array
- * is a compromise between minimizing the amount of memory used by this array
- * and minimizing the number of wait_event() calls by get_pending_free_lock().
+ * accessed by RCU readers at the time these were freed.
  */
-static struct pending_free {
+
+struct pending_free {
+	int empty;
 	struct list_head zapped_classes;
-	struct rcu_head	 rcu_head;
-	bool		 scheduled;
-	DECLARE_BITMAP(list_entries_being_freed, MAX_LOCKDEP_ENTRIES);
-	DECLARE_BITMAP(lock_chains_being_freed, MAX_LOCKDEP_CHAINS);
-} pending_free[2];
-static DECLARE_WAIT_QUEUE_HEAD(rcu_cb);
+	DECLARE_BITMAP(zapped_list_entries, MAX_LOCKDEP_ENTRIES);
+	DECLARE_BITMAP(zapped_lock_chains,  MAX_LOCKDEP_CHAINS);
+};
+
+static struct pending_head {
+	struct rcu_head rcu_head;
+	int index;
+	int pending;
+	struct pending_free pf[2];
+} pending_head;
 
 /*
  * The lockdep classes are in a hash-table as well, for fast lookup:
@@ -853,10 +857,11 @@ static bool list_entry_being_freed(int list_entry_idx)
 	struct pending_free *pf;
 	int i;
 
-	for (i = 0, pf = pending_free; i < ARRAY_SIZE(pending_free);
-	     i++, pf++)
-		if (test_bit(list_entry_idx, pf->list_entries_being_freed))
+	for (i = 0; i < ARRAY_SIZE(pending_head.pf); i++) {
+		pf = &pending_head.pf[i];
+		if (test_bit(list_entry_idx, pf->zapped_list_entries))
 			return true;
+	}
 
 	return false;
 }
@@ -959,7 +964,6 @@ static bool check_data_structures(void)
 static void init_data_structures_once(void)
 {
 	static bool initialization_happened;
-	struct pending_free *pf;
 	int i;
 
 	if (likely(initialization_happened))
@@ -967,10 +971,10 @@ static void init_data_structures_once(void)
 
 	initialization_happened = true;
 
-	for (i = 0, pf = pending_free; i < ARRAY_SIZE(pending_free);
-	     i++, pf++) {
+	init_rcu_head(&pending_head.rcu_head);
+	for (i = 0; i < ARRAY_SIZE(pending_head.pf); i++) {
+		struct pending_free *pf = &pending_head.pf[i];
 		INIT_LIST_HEAD(&pf->zapped_classes);
-		init_rcu_head(&pf->rcu_head);
 	}
 
 	for (i = 0; i < ARRAY_SIZE(lock_classes); i++) {
@@ -4404,10 +4408,11 @@ static void remove_class_from_lock_chain(struct pending_free *pf,
 		if (chain_hlocks[i] != class - lock_classes)
 			continue;
 		/* The code below leaks one chain_hlock[] entry. */
-		if (--chain->depth > 0)
+		if (--chain->depth > 0) {
 			memmove(&chain_hlocks[i], &chain_hlocks[i + 1],
 				(chain->base + chain->depth - i) *
 				sizeof(chain_hlocks[0]));
+		}
 		/*
 		 * Each lock class occurs at most once in a lock chain so once
 		 * we found a match we can break out of this loop.
@@ -4430,7 +4435,8 @@ recalc:
 	 * hlist_for_each_entry_rcu() loop is safe.
 	 */
 	hlist_del_rcu(&chain->entry);
-	__set_bit(chain - lock_chains, pf->lock_chains_being_freed);
+	pf->empty = 0;
+	__set_bit(chain - lock_chains, pf->zapped_lock_chains);
 	if (chain->depth == 0)
 		return;
 	/*
@@ -4485,12 +4491,14 @@ static void zap_class(struct pending_free *pf, struct lock_class *class)
 			continue;
 		if (list_entry_being_freed(i))
 			continue;
-		set_bit(i, pf->list_entries_being_freed);
+		pf->empty = 0;
+		set_bit(i, pf->zapped_list_entries);
 		nr_list_entries--;
 		list_del_rcu(&entry->entry);
 	}
 	if (list_empty(&class->locks_after) &&
 	    list_empty(&class->locks_before)) {
+		pf->empty = 0;
 		list_move_tail(&class->lock_entry, &pf->zapped_classes);
 		hlist_del_rcu(&class->hash_entry);
 		WRITE_ONCE(class->key, NULL);
@@ -4528,114 +4536,89 @@ static bool inside_selftest(void)
 	return current == lockdep_selftest_task_struct;
 }
 
-/*
- * Free all lock classes that are on the pf->zapped_classes list and also all
- * list entries that have been marked as being freed. May be called from RCU
- * callback context.
- */
-static void free_zapped_classes(struct rcu_head *ch)
+/* must hold graph lock */
+struct pending_free *get_pf(void)
 {
-	struct pending_free *pf = container_of(ch, typeof(*pf), rcu_head);
+	struct pending_head *ph = &pending_head;
+
+	return ph->pf + ph->index;
+}
+
+static void pending_free_rcu(struct rcu_head *ch);
+
+/* Schedule an RCU callback. Must be called with the graph lock held. */
+static void put_pf(struct pending_free *pf)
+{
+	struct pending_head *ph = &pending_head;
+
+	WARN_ON_ONCE(inside_selftest());
+	WARN_ON_ONCE(pf != get_pf());
+
+	if (pf->empty)
+		return;
+
+	if (ph->pending)
+		return;
+
+	ph->pending = 1;
+	ph->index ^= 1;
+	/* Verify the list we just opened is empty. */
+	WARN_ON_ONCE(!get_pf()->empty);
+
+	call_rcu(&ph->rcu_head, pending_free_rcu);
+}
+
+static void __free_pending(struct pending_free *pf)
+{
 	struct lock_class *class;
+
+	if (check_data_structure_consistency)
+		WARN_ON_ONCE(!check_data_structures());
+
+	list_for_each_entry(class, &pf->zapped_classes, lock_entry)
+		reinit_class(class);
+
+	list_splice_init(&pf->zapped_classes, &free_lock_classes);
+
+	bitmap_andnot(list_entries_in_use, list_entries_in_use,
+		      pf->zapped_list_entries, ARRAY_SIZE(list_entries));
+	bitmap_clear(pf->zapped_list_entries, 0, ARRAY_SIZE(list_entries));
+#ifdef CONFIG_PROVE_LOCKING
+	bitmap_andnot(lock_chains_in_use, lock_chains_in_use,
+		      pf->zapped_lock_chains, ARRAY_SIZE(lock_chains));
+	bitmap_clear(pf->zapped_lock_chains, 0, ARRAY_SIZE(lock_chains));
+#endif
+
+	pf->empty = 1;
+}
+
+/*
+ * ph->pf + ph->index      := head open for addition
+ * ph->pf + (ph->idex ^ 1) := closed head, waiting for RCU QS
+ */
+static void pending_free_rcu(struct rcu_head *ch)
+{
+	struct pending_head *ph = container_of(ch, typeof(*ph), rcu_head);
+	struct pending_free *pf;
 	unsigned long flags;
+
+	if (WARN_ON_ONCE(ph != &pending_head))
+		return;
 
 	raw_local_irq_save(flags);
 	if (!graph_lock())
-		goto restore_irqs;
-	pf->scheduled = false;
-	if (check_data_structure_consistency)
-		WARN_ON_ONCE(!check_data_structures());
-	list_for_each_entry(class, &pf->zapped_classes, lock_entry) {
-		reinit_class(class);
-	}
-	list_splice_init(&pf->zapped_classes, &free_lock_classes);
-	bitmap_andnot(list_entries_in_use, list_entries_in_use,
-		      pf->list_entries_being_freed, ARRAY_SIZE(list_entries));
-	bitmap_clear(pf->list_entries_being_freed, 0, ARRAY_SIZE(list_entries));
-#ifdef CONFIG_PROVE_LOCKING
-	bitmap_andnot(lock_chains_in_use, lock_chains_in_use,
-		      pf->lock_chains_being_freed, ARRAY_SIZE(lock_chains));
-	bitmap_clear(pf->lock_chains_being_freed, 0, ARRAY_SIZE(lock_chains));
-#endif
+		goto out_irq;
+
+	pf = ph->pf + (ph->index ^ 1); /* closed head */
+	__free_pending(pf); /* empty now */
+	ph->pending = 0;
+
+	/* if there's anything on the open list, close and start a new callback */
+	put_pf(get_pf());
+
 	graph_unlock();
-restore_irqs:
+out_irq:
 	raw_local_irq_restore(flags);
-
-	wake_up(&rcu_cb);
-}
-
-/* Schedule an RCU callback. Must be called with the graph lock held. */
-static void schedule_free_zapped_classes(struct pending_free *pf)
-{
-	WARN_ON_ONCE(inside_selftest());
-	pf->scheduled = true;
-	call_rcu(&pf->rcu_head, free_zapped_classes);
-}
-
-/*
- * Find an element in the pending_free[] array for which no RCU callback is
- * pending.
- */
-static struct pending_free *get_pending_free(void)
-{
-	struct pending_free *pf;
-	int i;
-
-	for (i = 0, pf = pending_free; i < ARRAY_SIZE(pending_free);
-	     i++, pf++)
-		if (!pf->scheduled)
-			return pf;
-
-	return NULL;
-}
-
-/*
- * Find an element in the pending_free[] array for which no RCU callback is
- * pending and obtain the graph lock. May sleep.
- */
-static struct pending_free *get_pending_free_lock(unsigned long *flags)
-{
-	struct pending_free *pf;
-
-	WARN_ON_ONCE(inside_selftest());
-
-	while (true) {
-		raw_local_irq_save(*flags);
-		if (!graph_lock()) {
-			raw_local_irq_restore(*flags);
-			return NULL;
-		}
-		pf = get_pending_free();
-		if (pf)
-			break;
-		graph_unlock();
-		raw_local_irq_restore(*flags);
-
-		wait_event(rcu_cb, get_pending_free() != NULL);
-	}
-
-	return pf;
-}
-
-/*
- * Find an element in the pending_free[] array for which no RCU callback is
- * pending and obtain the graph lock. Ignores debug_locks. Does not sleep.
- */
-static struct pending_free *get_pending_free_lock_imm(unsigned long *flags)
-{
-	struct pending_free *pf;
-
-	WARN_ON_ONCE(!inside_selftest());
-
-	raw_local_irq_save(*flags);
-	arch_spin_lock(&lockdep_lock);
-	pf = get_pending_free();
-	if (!pf) {
-		arch_spin_unlock(&lockdep_lock);
-		raw_local_irq_restore(*flags);
-	}
-
-	return pf;
 }
 
 /*
@@ -4644,8 +4627,8 @@ static struct pending_free *get_pending_free_lock_imm(unsigned long *flags)
  * start + size). Move these lock classes to the zapped_classes list. Must
  * be called with the graph lock held.
  */
-static void __lockdep_free_key_range(struct pending_free *pf, void *start,
-				     unsigned long size)
+static void
+__lockdep_free_key_range(struct pending_free *pf, void *start, unsigned long size)
 {
 	struct lock_class *class;
 	struct hlist_head *head;
@@ -4682,12 +4665,16 @@ static void lockdep_free_key_range_reg(void *start, unsigned long size)
 
 	init_data_structures_once();
 
-	pf = get_pending_free_lock(&flags);
-	if (!pf)
-		return;
+	raw_local_irq_save(flags);
+	if (!graph_lock())
+		goto out_irq;
+
+	pf = get_pf();
 	__lockdep_free_key_range(pf, start, size);
-	schedule_free_zapped_classes(pf);
+	put_pf(pf);
+
 	graph_unlock();
+out_irq:
 	raw_local_irq_restore(flags);
 
 	/*
@@ -4701,23 +4688,25 @@ static void lockdep_free_key_range_reg(void *start, unsigned long size)
 
 /*
  * Free all lockdep keys in the range [start, start+size). Does not sleep.
- * Ignores debug_locks. Must only be used by the lockdep selftests.
+ * Must only be used by the lockdep selftests.
  */
 static void lockdep_free_key_range_imm(void *start, unsigned long size)
 {
-	struct pending_free *pf;
+	struct pending_free *pf = get_pf();
 	unsigned long flags;
 
 	init_data_structures_once();
 
-	pf = get_pending_free_lock_imm(&flags);
-	if (!pf)
-		return;
-	__lockdep_free_key_range(pf, start, size);
-	arch_spin_unlock(&lockdep_lock);
-	raw_local_irq_restore(flags);
+	raw_local_irq_save(flags);
+	if (!graph_lock())
+		goto out_irq;
 
-	free_zapped_classes(&pf->rcu_head);
+	__lockdep_free_key_range(pf, start, size);
+	__free_pending(pf);
+
+	graph_unlock();
+out_irq:
+	raw_local_irq_restore(flags);
 }
 
 void lockdep_free_key_range(void *start, unsigned long size)
@@ -4753,8 +4742,8 @@ static bool lock_class_cache_is_registered(struct lockdep_map *lock)
 }
 
 /* The caller must hold the graph lock. Does not sleep. */
-static void __lockdep_reset_lock(struct pending_free *pf,
-				 struct lockdep_map *lock)
+static void
+__lockdep_reset_lock(struct pending_free *pf, struct lockdep_map *lock)
 {
 	struct lock_class *class;
 	int j;
@@ -4789,32 +4778,38 @@ static void lockdep_reset_lock_reg(struct lockdep_map *lock)
 
 	might_sleep();
 
-	pf = get_pending_free_lock(&flags);
-	if (!pf)
-		return;
+	raw_local_irq_save(flags);
+	if (!graph_lock())
+		goto out_irq;
+
+	pf = get_pf();
 	__lockdep_reset_lock(pf, lock);
-	schedule_free_zapped_classes(pf);
+	put_pf(pf);
+
 	graph_unlock();
+out_irq:
 	raw_local_irq_restore(flags);
 }
 
 /*
- * Reset a lock. Does not sleep. Ignores debug_locks. Must only be used by the
+ * Reset a lock. Does not sleep. Must only be used by the
  * lockdep selftests.
  */
 static void lockdep_reset_lock_imm(struct lockdep_map *lock)
 {
-	struct pending_free *pf;
+	struct pending_free *pf = get_pf();
 	unsigned long flags;
 
-	pf = get_pending_free_lock_imm(&flags);
-	if (!pf)
-		return;
-	__lockdep_reset_lock(pf, lock);
-	arch_spin_unlock(&lockdep_lock);
-	raw_local_irq_restore(flags);
+	raw_local_irq_save(flags);
+	if (!graph_lock())
+		goto out_irq;
 
-	free_zapped_classes(&pf->rcu_head);
+	__lockdep_reset_lock(pf, lock);
+	__free_pending(pf);
+
+	graph_unlock();
+out_irq:
+	raw_local_irq_restore(flags);
 }
 
 void lockdep_reset_lock(struct lockdep_map *lock)
