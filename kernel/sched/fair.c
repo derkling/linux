@@ -2806,31 +2806,6 @@ static inline void update_cfs_shares(struct sched_entity *se)
 }
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 
-static inline void cfs_rq_util_change(struct cfs_rq *cfs_rq)
-{
-	struct rq *rq = rq_of(cfs_rq);
-
-	if (&rq->cfs == cfs_rq) {
-		/*
-		 * There are a few boundary cases this might miss but it should
-		 * get called often enough that that should (hopefully) not be
-		 * a real problem -- added to that it only calls on the local
-		 * CPU, so if we enqueue remotely we'll miss an update, but
-		 * the next tick/schedule should update.
-		 *
-		 * It will not get called when we go idle, because the idle
-		 * thread is a different class (!fair), nor will the utilization
-		 * number include things like RT tasks.
-		 *
-		 * As is, the util number is not freq-invariant (we'd have to
-		 * implement arch_scale_freq_capacity() for that).
-		 *
-		 * See cpu_util().
-		 */
-		cpufreq_update_util(rq, 0);
-	}
-}
-
 #ifdef CONFIG_SMP
 /*
  * Approximate:
@@ -3459,9 +3434,6 @@ update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq)
 	cfs_rq->load_last_update_time_copy = sa->last_update_time;
 #endif
 
-	if (decayed || removed_util)
-		cfs_rq_util_change(cfs_rq);
-
 	return decayed || removed_load;
 }
 
@@ -3526,8 +3498,6 @@ static void attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 	cfs_rq->avg.util_sum += se->avg.util_sum;
 	set_tg_cfs_propagate(cfs_rq);
 
-	cfs_rq_util_change(cfs_rq);
-
 	trace_sched_load_cfs_rq(cfs_rq);
 }
 
@@ -3547,8 +3517,6 @@ static void detach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 	sub_positive(&cfs_rq->avg.util_avg, se->avg.util_avg);
 	sub_positive(&cfs_rq->avg.util_sum, se->avg.util_sum);
 	set_tg_cfs_propagate(cfs_rq);
-
-	cfs_rq_util_change(cfs_rq);
 
 	trace_sched_load_cfs_rq(cfs_rq);
 }
@@ -3814,11 +3782,8 @@ int update_rt_rq_load_avg(u64 now, int cpu, struct rt_rq *rt_rq, int running)
 #define UPDATE_TG	0x0
 #define SKIP_AGE_LOAD	0x0
 
-static inline void update_load_avg(struct sched_entity *se, int not_used1)
-{
-	cfs_rq_util_change(cfs_rq_of(se));
-}
-
+static inline void
+update_load_avg(struct sched_entity *se, int not_used1) {}
 static inline void
 enqueue_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se) {}
 static inline void
@@ -4558,8 +4523,11 @@ static void throttle_cfs_rq(struct cfs_rq *cfs_rq)
 			dequeue = 0;
 	}
 
-	if (!se)
+	/* The tasks are no more visible from the root cfs_rq */
+	if (!se) {
 		sub_nr_running(rq, task_delta);
+		cpufreq_update_util(rq, 0);
+	}
 
 	cfs_rq->throttled = 1;
 	cfs_rq->throttled_clock = rq_clock(rq);
@@ -4625,8 +4593,11 @@ void unthrottle_cfs_rq(struct cfs_rq *cfs_rq)
 			break;
 	}
 
-	if (!se)
+	/* The tasks are now visible from the root cfs_rq */
+	if (!se) {
 		add_nr_running(rq, task_delta);
+		cpufreq_update_util(rq, 0);
+	}
 
 	/* determine whether we need to wake up potentially idle cpu */
 	if (rq->curr == rq->idle && rq->cfs.nr_running)
@@ -5235,14 +5206,6 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	 */
 	schedtune_enqueue_task(p, cpu_of(rq));
 
-	/*
-	 * If in_iowait is set, the code below may not trigger any cpufreq
-	 * utilization updates, so do it here explicitly with the IOWAIT flag
-	 * passed.
-	 */
-	if (p->in_iowait)
-		cpufreq_update_util(rq, SCHED_CPUFREQ_IOWAIT);
-
 	for_each_sched_entity(se) {
 		if (se->on_rq)
 			break;
@@ -5275,11 +5238,17 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		update_cfs_shares(se);
 	}
 
+	/* The task is visible from the root cfs_rq */
 	if (!se) {
 		add_nr_running(rq, 1);
 		if (!task_new)
 			update_overutilized_status(rq);
 		walt_inc_cumulative_runnable_avg(rq, p);
+
+		if (p->in_iowait)
+			flags |= SCHED_CPUFREQ_IOWAIT;
+
+		cpufreq_update_util(rq, flags);
 	}
 
 	hrtick_update(rq);
@@ -5348,12 +5317,14 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		update_cfs_shares(se);
 	}
 
+	/* The task is no more visible from the root cfs_rq */
 	if (!se) {
 		sub_nr_running(rq, 1);
 		walt_dec_cumulative_runnable_avg(rq, p);
 	}
 
 	util_est_dequeue(&rq->cfs, p, task_sleep);
+	cpufreq_update_util(rq, 0);
 	hrtick_update(rq);
 }
 
@@ -11402,6 +11373,8 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 	update_misfit_status(curr, rq);
 
 	update_overutilized_status(rq);
+
+	cpufreq_update_util(rq, 0);
 }
 
 /*
