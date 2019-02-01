@@ -1064,6 +1064,10 @@ uclamp_update_active_tasks(struct cgroup_subsys_state *css,
 	task_rq_unlock(rq, p, &rf);
 }
 
+static void cpu_util_update_hier(struct cgroup_subsys_state *css,
+				 unsigned int clamp_id, unsigned int bucket_id,
+				 unsigned int value);
+
 int sysctl_sched_uclamp_handler(struct ctl_table *table, int write,
 				void __user *buffer, size_t *lenp,
 				loff_t *ppos)
@@ -1098,6 +1102,15 @@ int sysctl_sched_uclamp_handler(struct ctl_table *table, int write,
 		uclamp_default[UCLAMP_MAX].bucket_id =
 			uclamp_bucket_id(sysctl_sched_uclamp_util_max);
 	}
+
+#ifdef CONFIG_UCLAMP_TASK_GROUP
+	cpu_util_update_hier(&root_task_group.css, UCLAMP_MIN,
+			     uclamp_default[UCLAMP_MIN].bucket_id,
+			     uclamp_default[UCLAMP_MIN].value);
+	cpu_util_update_hier(&root_task_group.css, UCLAMP_MAX,
+			     uclamp_default[UCLAMP_MAX].bucket_id,
+			     uclamp_default[UCLAMP_MAX].value);
+#endif
 
 	/*
 	 * Updating all the RUNNABLE task is expensive, keep it simple and do
