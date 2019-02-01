@@ -1098,6 +1098,17 @@ static void uclamp_fork(struct task_struct *p)
 
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id)
 		p->uclamp[clamp_id].active = false;
+
+	if (likely(!p->sched_reset_on_fork))
+		return;
+
+	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
+		unsigned int clamp_value = uclamp_none(clamp_id);
+
+		p->uclamp_req[clamp_id].user_defined = false;
+		p->uclamp_req[clamp_id].value = clamp_value;
+		p->uclamp_req[clamp_id].bucket_id = uclamp_bucket_id(clamp_value);
+	}
 }
 
 static void __init init_uclamp(void)
