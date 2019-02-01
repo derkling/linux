@@ -1047,6 +1047,8 @@ static int uclamp_validate(struct task_struct *p,
 static void __setscheduler_uclamp(struct task_struct *p,
 				  const struct sched_attr *attr)
 {
+	unsigned int clamp_id;
+
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP) {
 
 		if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN) {
@@ -1067,6 +1069,26 @@ static void __setscheduler_uclamp(struct task_struct *p,
 				uclamp_bucket_id(upper_bound);
 		}
 	}
+
+	/*
+	 * On scheduling class change, reset to default clamps for tasks
+	 * without a task-specific value.
+	 */
+	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
+		unsigned int clamp_value = uclamp_none(clamp_id);
+		struct uclamp_se *uc_se = &p->uclamp[clamp_id];
+
+		/* Keep using defined clamps across class changes */
+		if (uc_se->user_defined)
+			continue;
+
+		/* By default, RT tasks always get 100% boost */
+		if (unlikely(rt_task(p) && clamp_id == UCLAMP_MIN))
+			clamp_value = uclamp_none(UCLAMP_MAX);
+
+		uc_se->bucket_id = uclamp_bucket_id(clamp_value);
+		uc_se->value = clamp_value;
+	}
 }
 
 static void uclamp_fork(struct task_struct *p, bool reset)
@@ -1084,6 +1106,10 @@ static void uclamp_fork(struct task_struct *p, bool reset)
 
 	for (clamp_id = 0; clamp_id < UCLAMP_CNT; ++clamp_id) {
 		unsigned int clamp_value = uclamp_none(clamp_id);
+
+		/* By default, RT tasks always get 100% boost */
+		if (unlikely(rt_task(p) && clamp_id == UCLAMP_MIN))
+			clamp_value = uclamp_none(UCLAMP_MAX);
 
 		p->uclamp[clamp_id].user_defined = false;
 		p->uclamp[clamp_id].value = clamp_value;
