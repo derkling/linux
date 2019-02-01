@@ -739,7 +739,8 @@ static inline unsigned int uclamp_none(int clamp_id)
 	return SCHED_CAPACITY_SCALE;
 }
 
-static inline void uclamp_rq_update(struct rq *rq, unsigned int clamp_id)
+static inline void uclamp_rq_update(struct rq *rq, unsigned int clamp_id,
+				    unsigned int clamp_value)
 {
 	struct uclamp_bucket *bucket = rq->uclamp[clamp_id].bucket;
 	unsigned int max_value = uclamp_none(clamp_id);
@@ -828,7 +829,7 @@ static inline void uclamp_rq_dec_id(struct task_struct *p, struct rq *rq,
 		 */
 		rq->uclamp[clamp_id].bucket[bucket_id].value =
 			uclamp_bucket_value(rq_clamp);
-		uclamp_rq_update(rq, clamp_id);
+		uclamp_rq_update(rq, clamp_id, bkt_clamp);
 	}
 }
 
