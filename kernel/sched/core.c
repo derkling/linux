@@ -753,10 +753,10 @@ static inline void uclamp_rq_update(struct rq *rq, unsigned int clamp_id,
 	bucket_id = UCLAMP_BUCKETS;
 	do {
 		--bucket_id;
-		if (rq->uclamp[clamp_id].bucket[bucket_id].tasks) {
-			max_value = bucket[bucket_id].value;
-			break;
-		}
+		if (!rq->uclamp[clamp_id].bucket[bucket_id].tasks)
+			continue;
+		max_value = bucket[bucket_id].value;
+		break;
 	} while (bucket_id);
 
 	WRITE_ONCE(rq->uclamp[clamp_id].value, max_value);
