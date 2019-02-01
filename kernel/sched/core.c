@@ -1005,6 +1005,13 @@ static inline void uclamp_rq_dec(struct rq *rq, struct task_struct *p)
 		uclamp_rq_dec_id(rq, p, clamp_id);
 }
 
+#ifdef CONFIG_UCLAMP_TASK_GROUP
+static void cpu_util_update_eff(struct cgroup_subsys_state *css,
+				unsigned int clamp_id);
+#else
+#define cpu_util_update_eff(...)
+#endif
+
 int sysctl_sched_uclamp_handler(struct ctl_table *table, int write,
 				void __user *buffer, size_t *lenp,
 				loff_t *ppos)
@@ -1037,6 +1044,9 @@ int sysctl_sched_uclamp_handler(struct ctl_table *table, int write,
 		uclamp_se_set(&uclamp_default[UCLAMP_MAX],
 			      sysctl_sched_uclamp_util_max, false);
 	}
+
+	cpu_util_update_eff(&root_task_group.css, UCLAMP_MIN);
+	cpu_util_update_eff(&root_task_group.css, UCLAMP_MAX);
 
 	/*
 	 * Updating all the RUNNABLE task is expensive, keep it simple and do
