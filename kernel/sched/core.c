@@ -1236,12 +1236,12 @@ void uclamp_exit_task(struct task_struct *p)
 
 	atomic_inc(&exits_count);
 
-	{
-	int forks = atomic_read(&forks_count);
-	int exits = atomic_read(&exits_count);
-
-	BUG_ON(forks < exits);
-	}
+//	{
+//	int forks = atomic_read(&forks_count);
+//	int exits = atomic_read(&exits_count);
+//
+//	BUG_ON(forks < exits);
+//	}
 }
 
 static void uclamp_fork(struct task_struct *p, bool reset)
@@ -7259,6 +7259,11 @@ static void cpu_util_update_eff(struct cgroup_subsys_state *css,
 		       css_tg(css)->uclamp[clamp_id].value,
 		       css_tg(css)->uclamp[clamp_id].bucket_id);
 
+//		/* Immediately update descendants RUNNABLE tasks */
+//		if (css == top_css) {
+//			printk("Effective updated: skip RUNNABLES update\n");
+//			continue;
+//		}
 		printk("Effective updated: updating RUNNABLES...\n");
 
 		/* Immediately update descendants RUNNABLE tasks */
