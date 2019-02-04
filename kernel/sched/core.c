@@ -1270,12 +1270,12 @@ void uclamp_exit_task(struct task_struct *p)
 
 	atomic_inc(&exits_count);
 
-	{
-	int forks = atomic_read(&forks_count);
-	int exits = atomic_read(&exits_count);
-
-	BUG_ON(forks < exits);
-	}
+//	{
+//	int forks = atomic_read(&forks_count);
+//	int exits = atomic_read(&exits_count);
+//
+//	BUG_ON(forks < exits);
+//	}
 }
 
 static void uclamp_fork(struct task_struct *p, bool reset)
@@ -7296,6 +7296,11 @@ static void cpu_util_update_hier(struct cgroup_subsys_state *css,
 		uc_se->effective.value = value;
 		uc_se->effective.bucket_id = bucket_id;
 
+//		/* Immediately update descendants RUNNABLE tasks */
+//		if (css == top_css) {
+//			printk("Effective updated: skip RUNNABLES update\n");
+//			continue;
+//		}
 		printk("Effective updated: updating RUNNABLES...\n");
 		uclamp_update_active_tasks(css, clamp_id);
 	}
