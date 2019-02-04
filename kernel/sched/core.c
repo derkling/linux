@@ -7254,6 +7254,11 @@ static void cpu_util_update_eff(struct cgroup_subsys_state *css,
 		       css_tg(css)->uclamp[clamp_id].value,
 		       css_tg(css)->uclamp[clamp_id].bucket_id);
 
+//		/* Immediately update descendants RUNNABLE tasks */
+//		if (css == top_css) {
+//			printk("Effective updated: skip RUNNABLES update\n");
+//			continue;
+//		}
 		printk("Effective updated: updating RUNNABLES...\n");
 
 		/* Immediately update descendants RUNNABLE tasks */
