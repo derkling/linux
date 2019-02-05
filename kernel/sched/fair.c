@@ -6403,22 +6403,29 @@ static unsigned long cpu_util_without(int cpu, struct task_struct *p)
  */
 static int wake_cap(struct task_struct *p, int cpu, int prev_cpu)
 {
-	long min_cap, max_cap;
+	long affine_cap, min_cap, max_cap;
 
 	if (!static_branch_unlikely(&sched_asym_cpucapacity))
 		return 0;
 
-	min_cap = min(capacity_orig_of(prev_cpu), capacity_orig_of(cpu));
+	min_cap = cpu_rq(cpu)->rd->min_cpu_capacity;
 	max_cap = cpu_rq(cpu)->rd->max_cpu_capacity;
+	affine_cap = min(capacity_orig_of(prev_cpu), capacity_orig_of(cpu));
 
-	/* Minimum capacity is close to max, no need to abort wake_affine */
-	if (max_cap - min_cap < max_cap >> 3)
+	/* Affine capacity is close to max, the task wakes-up on big CPUs */
+	if (max_cap - affine_cap < max_cap >> 3) {
+		/* A small task on a big and busy CPU looks suspicious */
+		if (task_util(p) < min_cap && cpu_overutilized(cpu))
+			return 1;
+
+		/* Otherwise, no need to abort affine wake-up */
 		return 0;
+	}
 
 	/* Bring task utilization in sync with prev_cpu */
 	sync_entity_load_avg(&p->se);
 
-	return !task_fits_capacity(p, min_cap);
+	return !task_fits_capacity(p, affine_cap);
 }
 
 /*
