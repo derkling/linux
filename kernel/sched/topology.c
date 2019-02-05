@@ -504,6 +504,8 @@ static int init_rootdomain(struct root_domain *rd)
 	init_irq_work(&rd->rto_push_work, rto_push_irq_work_func);
 #endif
 
+	rd->min_cpu_capacity = SCHED_CAPACITY_SCALE;
+
 	init_dl_bw(&rd->dl_bw);
 	if (cpudl_init(&rd->cpudl) != 0)
 		goto free_rto_mask;
@@ -2004,6 +2006,9 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 		if (rq->cpu_capacity_orig > READ_ONCE(d.rd->max_cpu_capacity))
 			WRITE_ONCE(d.rd->max_cpu_capacity, rq->cpu_capacity_orig);
 
+		if (rq->cpu_capacity_orig < READ_ONCE(d.rd->min_cpu_capacity))
+			WRITE_ONCE(d.rd->min_cpu_capacity, rq->cpu_capacity_orig);
+
 		cpu_attach_domain(sd, d.rd, i);
 	}
 	rcu_read_unlock();
@@ -2012,8 +2017,9 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 		static_branch_enable_cpuslocked(&sched_asym_cpucapacity);
 
 	if (rq && sched_debug_enabled) {
-		pr_info("root domain span: %*pbl (max cpu_capacity = %lu)\n",
-			cpumask_pr_args(cpu_map), rq->rd->max_cpu_capacity);
+		pr_info("root domain span: %*pbl (max cpu_capacity = %lu, min cpu_capacity = %lu)\n",
+			cpumask_pr_args(cpu_map), rq->rd->max_cpu_capacity,
+			rq->rd->min_cpu_capacity);
 	}
 
 	ret = 0;
