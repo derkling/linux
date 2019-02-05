@@ -775,6 +775,7 @@ struct root_domain {
 	struct cpupri		cpupri;
 
 	unsigned long		max_cpu_capacity;
+	unsigned long		min_cpu_capacity;
 
 	/*
 	 * NULL-terminated list of performance domains intersecting with the
