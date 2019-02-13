@@ -13,6 +13,8 @@
 #include <linux/sched/cpufreq.h>
 #include <trace/events/power.h>
 
+#include <linux/energy_model.h>
+
 struct sugov_tunables {
 	struct gov_attr_set	attr_set;
 	unsigned int		rate_limit_us;
@@ -154,6 +156,10 @@ static inline bool sugov_cpu_is_busy(struct sugov_cpu *sg_cpu) { return false; }
  * @sg_policy: schedutil policy object to compute the new frequency for.
  * @util: Current CPU utilization.
  * @max: CPU capacity.
+ * @sum_util: Sum of CPU utilization of CPUs of the same policy.
+ * @busy: true if at least one CPU in the policy is busy, which means it had no
+ *	idle time since its last frequency change. This hints that a bigger bump
+ *	in frequency might be valuable to help it reach idle quicker.
  *
  * If the utilization is frequency-invariant, choose the new frequency to be
  * proportional to it, that is
@@ -171,14 +177,65 @@ static inline bool sugov_cpu_is_busy(struct sugov_cpu *sg_cpu) { return false; }
  * next_freq (as calculated above) is returned, subject to policy min/max and
  * cpufreq driver limitations.
  */
-static unsigned int get_next_freq(struct sugov_policy *sg_policy,
-				  unsigned long util, unsigned long max)
+static unsigned int get_next_freq(struct sugov_cpu *sg_cpu,
+	  unsigned long util, unsigned long max, unsigned long sum_util,
+	  bool busy)
 {
+	struct sugov_policy *sg_policy = sg_cpu->sg_policy;
 	struct cpufreq_policy *policy = sg_policy->policy;
 	unsigned int freq = arch_scale_freq_invariant() ?
 				policy->cpuinfo.max_freq : policy->cur;
+	int policy_cpu = sg_cpu->cpu;
+	struct em_perf_domain *pd = em_cpu_get(policy_cpu);
+	unsigned long min_pwr, max_pwr, pwr;
+	struct em_cap_state *cs;
+	int i;
+	unsigned long orig_freq;
+	unsigned long cpu_scale = arch_scale_cpu_capacity(NULL, policy_cpu);
 
 	freq = map_util_freq(util, freq, max);
+	orig_freq = freq;
+
+	/*
+	 * Minimum power we could run at if that CPU has the highest util of its
+	 * domain
+	 */
+	min_pwr = em_pd_energy(pd, util, sum_util);
+
+	/*
+	 * Maximum power we are ready to spend.
+	 * When one CPU is busy in the policy, we apply a boost to help it reach
+	 * the needed frequency faster.
+	 */
+	if (busy) {
+		max_pwr = min_pwr + (min_pwr / 2);
+		/*
+		 * To avoid selecting a high frequency because of rounding
+		 * errors, let's pull down the threshold a little bit
+		 */
+		max_pwr = max_pwr - 2 ? max_pwr > 2 : 0;
+		max_pwr = min_pwr ? min_pwr > max_pwr : max_pwr;
+	} else {
+		max_pwr = min_pwr;
+	}
+
+	// for consistent trace_printk
+	pwr = max_pwr;
+
+	/* Find the highest frequency that will not exceed max_pwr */
+	for (i = pd->nr_cap_states-1; i >= 0; i--) {
+		cs = &pd->table[i];
+		if (cs->frequency <= freq)
+			break;
+		pwr = (cs->cost * sum_util) / cpu_scale;
+		if (pwr <= max_pwr) {
+			freq = cs->frequency;
+			break;
+		}
+	}
+
+	trace_printk("cpu=%i orig_freq=%lu busy=%u util=%lu sum_util=%lu pwr=%lu min_pwr=%lu max_pwr=%lu",
+	     policy_cpu, orig_freq, busy, util, sum_util, pwr, min_pwr, max_pwr);
 
 	if (freq == sg_policy->cached_raw_freq && !sg_policy->need_freq_update)
 		return sg_policy->next_freq;
@@ -460,7 +517,7 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 	util = sugov_get_util(sg_cpu);
 	max = sg_cpu->max;
 	util = sugov_iowait_apply(sg_cpu, time, util, max);
-	next_f = get_next_freq(sg_policy, util, max);
+	next_f = get_next_freq(sg_cpu, util, max, util, busy);
 	/*
 	 * Do not reduce the frequency if the CPU has not been idle
 	 * recently, as the reduction is likely to be premature then.
@@ -490,8 +547,9 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 {
 	struct sugov_policy *sg_policy = sg_cpu->sg_policy;
 	struct cpufreq_policy *policy = sg_policy->policy;
-	unsigned long util = 0, max = 1;
+	unsigned long util = 0, max = 1, sum = 0;
 	unsigned int j;
+	bool busy = false;
 
 	for_each_cpu(j, policy->cpus) {
 		struct sugov_cpu *j_sg_cpu = &per_cpu(sugov_cpu, j);
@@ -500,6 +558,8 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 		j_util = sugov_get_util(j_sg_cpu);
 		j_max = j_sg_cpu->max;
 		j_util = sugov_iowait_apply(j_sg_cpu, time, j_util, j_max);
+		sum += j_util;
+		busy |= sugov_cpu_is_busy(j_sg_cpu);
 
 		if (j_util * max > j_max * util) {
 			util = j_util;
@@ -507,7 +567,7 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 		}
 	}
 
-	return get_next_freq(sg_policy, util, max);
+	return get_next_freq(sg_cpu, util, max, sum, busy);
 }
 
 static void
