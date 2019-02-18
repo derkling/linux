@@ -676,6 +676,9 @@ struct root_domain {
 	/* Maximum cpu capacity in the system. */
 	struct max_cpu_capacity max_cpu_capacity;
 
+	/*Minimum cpu capacity in the system. */
+	unsigned long           min_cpu_capacity;
+
 	/* First cpu with maximum and minimum original capacity */
 	int max_cap_orig_cpu, min_cap_orig_cpu;
 };

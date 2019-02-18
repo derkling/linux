@@ -306,6 +306,8 @@ static int init_rootdomain(struct root_domain *rd)
 
 	init_max_cpu_capacity(&rd->max_cpu_capacity);
 
+	rd->min_cpu_capacity = ULONG_MAX;
+
 	return 0;
 
 free_cpudl:
@@ -1883,6 +1885,10 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 		if ((min_cpu < 0) || (cpu_rq(i)->cpu_capacity_orig <
 		    cpu_rq(min_cpu)->cpu_capacity_orig))
 			WRITE_ONCE(d.rd->min_cap_orig_cpu, i);
+
+		/* Use READ_ONCE()/WRITE_ONCE() to avoid load/store tearing: */
+		if (cpu_rq(i)->cpu_capacity_orig < READ_ONCE(d.rd->min_cpu_capacity))
+			WRITE_ONCE(d.rd->min_cpu_capacity, cpu_rq(i)->cpu_capacity_orig);
 
 		cpu_attach_domain(sd, d.rd, i);
 	}

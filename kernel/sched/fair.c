@@ -7761,6 +7761,28 @@ static inline struct energy_env *get_eenv(struct task_struct *p, int prev_cpu)
 }
 
 /*
+ * A boosted task whould not be pulled onto a little CPU (e.g. by the sync
+ * flag).
+ * The task property 'boosted/not boosted' is mapped to the
+ * CPU property 'little/not little'. Note, that a medium CPU is not a
+ * little CPU.
+ *   task !boosted -> any CPU
+ *   task  boosted -> !little CPU
+ * We might want to change the name of this function.
+ */
+static inline bool
+cpu_is_in_target_set(struct task_struct *p, int cpu)
+{
+	if (!schedtune_task_boost(p))
+		return true;
+
+	if (cpu_rq(cpu)->cpu_capacity_orig > cpu_rq(cpu)->rd->min_cpu_capacity)
+		return true;
+
+	return false;
+}
+
+/*
  * Needs to be called inside rcu_read_lock critical section.
  * sd is a pointer to the sched domain we wish to use for an
  * energy-aware placement option.
@@ -7776,7 +7798,8 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 	struct energy_env *eenv;
 
 	if (sysctl_sched_sync_hint_enable && sync) {
-		if (cpumask_test_cpu(cpu, &p->cpus_allowed)) {
+		if (cpumask_test_cpu(cpu, &p->cpus_allowed) &&
+		    cpu_is_in_target_set(p, cpu)) {
 			return cpu;
 		}
 	}
