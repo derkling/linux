@@ -7773,13 +7773,24 @@ static inline struct energy_env *get_eenv(struct task_struct *p, int prev_cpu)
 static inline bool
 cpu_is_in_target_set(struct task_struct *p, int cpu)
 {
+	int ret = true;
+
 	if (!schedtune_task_boost(p))
-		return true;
+		goto exit;
 
 	if (cpu_rq(cpu)->cpu_capacity_orig > cpu_rq(cpu)->rd->min_cpu_capacity)
-		return true;
+		goto exit;
 
-	return false;
+	ret = false;
+
+exit:
+	printk_deferred("cpu=%d cap=%lu min_cap=%lu boosted=%d ret=%d %s\n", cpu,
+			cpu_rq(cpu)->cpu_capacity_orig,
+			cpu_rq(cpu)->rd->min_cpu_capacity,
+			schedtune_task_boost(p), ret,
+			p->comm);
+
+	return ret;
 }
 
 /*
