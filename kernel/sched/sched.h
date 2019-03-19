@@ -2833,3 +2833,19 @@ find_first_cpu_bit(struct task_struct *p, const cpumask_t *search_cpus,
 #else
 #define find_first_cpu_bit(...) -1
 #endif
+
+static inline void
+update_min_max_cap_orig_cpu(struct root_domain *rd, int cpu)
+{
+	struct rq *rq = cpu_rq(cpu);
+	int max_cpu = READ_ONCE(rd->max_cap_orig_cpu);
+	int min_cpu = READ_ONCE(rd->min_cap_orig_cpu);
+
+	if ((max_cpu < 0) || rq->cpu_capacity_orig >
+	    cpu_rq(max_cpu)->cpu_capacity_orig)
+		WRITE_ONCE(rd->max_cap_orig_cpu, cpu);
+
+	if ((min_cpu < 0) || rq->cpu_capacity_orig <
+	    cpu_rq(min_cpu)->cpu_capacity_orig)
+		WRITE_ONCE(rd->min_cap_orig_cpu, cpu);
+}
