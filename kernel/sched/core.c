@@ -1176,15 +1176,26 @@ static int uclamp_validate(struct task_struct *p,
 	unsigned int lower_bound = p->uclamp_req[UCLAMP_MIN].value;
 	unsigned int upper_bound = p->uclamp_req[UCLAMP_MAX].value;
 
+	printk("min=%d upper_bound=%d", attr->sched_util_min, upper_bound);
+
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN)
 		lower_bound = attr->sched_util_min;
+
+	printk("Min sanity check OK\n");
+	printk("max=%d lower_bound=%d", attr->sched_util_max, lower_bound);
+
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX)
 		upper_bound = attr->sched_util_max;
+
+	printk("Max sanity check OK\n");
 
 	if (lower_bound > upper_bound)
 		return -EINVAL;
 	if (upper_bound > SCHED_CAPACITY_SCALE)
 		return -EINVAL;
+
+	printk("Min/Max sanity check OK: util_min=%u util_max=%u\n",
+			lower_bound, upper_bound);
 
 	return 0;
 }
@@ -1219,11 +1230,13 @@ static void __setscheduler_uclamp(struct task_struct *p,
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN) {
 		uclamp_se_set(&p->uclamp_req[UCLAMP_MIN],
 			      attr->sched_util_min, true);
+		printk("Update util_min=%u\n", attr->sched_util_min);
 	}
 
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX) {
 		uclamp_se_set(&p->uclamp_req[UCLAMP_MAX],
 			      attr->sched_util_max, true);
+		printk("Update util_max=%u\n", attr->sched_util_max);
 	}
 }
 
@@ -4779,6 +4792,9 @@ recheck:
 	if (attr->sched_flags & ~(SCHED_FLAG_ALL | SCHED_FLAG_SUGOV))
 		return -EINVAL;
 
+	printk(KERN_WARNING "__sched_setscheduler: sched_priority=%d flags=%llu\n",
+	       attr->sched_priority, attr->sched_flags);
+
 	/*
 	 * Valid priorities for SCHED_FIFO and SCHED_RR are
 	 * 1..MAX_USER_RT_PRIO-1, valid priority for SCHED_NORMAL,
@@ -4856,6 +4872,7 @@ recheck:
 		retval = uclamp_validate(p, attr);
 		if (retval)
 			return retval;
+		printk(KERN_WARNING "__sched_setscheduler: uclamp updated\n");
 	}
 
 	if (pi)
@@ -4894,6 +4911,10 @@ recheck:
 			goto change;
 
 		p->sched_reset_on_fork = reset_on_fork;
+
+		printk(KERN_WARNING "__sched_setscheduler: DONE "
+		       "(policy not changed)\n");
+
 		retval = 0;
 		goto unlock;
 	}
@@ -5005,6 +5026,14 @@ change:
 	/* Run balance callbacks after we've adjusted the PI chain: */
 	balance_callback(rq);
 	preempt_enable();
+
+	printk(KERN_WARNING "__sched_setscheduler: DONE (policy changed)\n");
+
+	if (queued) {
+		printk(KERN_WARNING "cpu=%d util_min=%u util_max=%u\n", p->cpu,
+				READ_ONCE(rq->uclamp[UCLAMP_MIN].value),
+				READ_ONCE(rq->uclamp[UCLAMP_MAX].value));
+	}
 
 	return 0;
 
@@ -7206,22 +7235,40 @@ static void cpu_util_update_eff(struct cgroup_subsys_state *css)
 	unsigned int eff[UCLAMP_CNT];
 	enum uclamp_id clamp_id;
 	unsigned int clamps;
+	char path[32];
+
+	printk("\n\n\nUpdate cycle START\n");
 
 	css_for_each_descendant_pre(css, top_css) {
+		cgroup_path(css->cgroup, path, 32);
+
 		uc_parent = css_tg(css)->parent
 			? css_tg(css)->parent->uclamp : NULL;
 
 		for_each_clamp_id(clamp_id) {
 			/* Assume effective clamps matches requested clamps */
 			eff[clamp_id] = css_tg(css)->uclamp_req[clamp_id].value;
+
+			printk("REQ: %s: id=%d eff=%u\n",
+			       path, clamp_id, eff[clamp_id]);
+
 			/* Cap effective clamps with parent's effective clamps */
 			if (uc_parent &&
 			    eff[clamp_id] > uc_parent[clamp_id].value) {
 				eff[clamp_id] = uc_parent[clamp_id].value;
+
+				printk("PAR: %s: id=%d eff=%u\n",
+				       path, clamp_id, eff[clamp_id]);
 			}
 		}
 		/* Ensure protection is always capped by limit */
-		eff[UCLAMP_MIN] = min(eff[UCLAMP_MIN], eff[UCLAMP_MAX]);
+		/* eff[UCLAMP_MIN] = min(eff[UCLAMP_MIN], eff[UCLAMP_MAX]); */
+		if (eff[UCLAMP_MIN] > eff[UCLAMP_MAX]) {
+			eff[UCLAMP_MIN] = eff[UCLAMP_MAX];
+
+			printk("LIM: %s: id=%d eff=%u\n",
+			       path, UCLAMP_MIN, eff[UCLAMP_MIN]);
+		}
 
 		/* Propagate most restrictive effective clamps */
 		clamps = 0x0;
@@ -7232,15 +7279,23 @@ static void cpu_util_update_eff(struct cgroup_subsys_state *css)
 			uc_se[clamp_id].value = eff[clamp_id];
 			uc_se[clamp_id].bucket_id = uclamp_bucket_id(eff[clamp_id]);
 			clamps |= (0x1 << clamp_id);
+
+			printk("UPD: %s: id=%d eff=%u\n",
+			       path, clamp_id, eff[clamp_id]);
 		}
 		if (!clamps) {
 			css = css_rightmost_descendant(css);
+
+			printk("Skipping subtree\n");
+
 			continue;
 		}
 
 		/* Immediately update descendants RUNNABLE tasks */
 		uclamp_update_active_tasks(css, clamps);
 	}
+
+	printk("Update cycle DONE\n");
 }
 
 #define _POW10(exp) ((unsigned int)1e##exp)
