@@ -1192,6 +1192,62 @@ TRACE_EVENT(uclamp_rq,
 #define trace_uclamp_rq(tsk, rq, clamp_id, inc, bug) while(false) {}
 #endif /* CONFIG_UCLAMP_TASK */
 
+TRACE_EVENT(sched_grant_sync_flag,
+
+	TP_PROTO(int cpu, struct task_struct *p, int boosted, unsigned long util,
+		 unsigned long capacity, unsigned long prev_capacity,
+		 unsigned long avg_capacity, int *ret),
+
+	TP_ARGS(cpu, p, boosted, util, capacity, prev_capacity, avg_capacity, ret),
+
+	TP_STRUCT__entry(
+		__field(int, cpu)
+		__array(char, comm, TASK_COMM_LEN)
+		__field(pid_t, pid)
+		__bitmask(cpumask, num_possible_cpus())
+		__field(int, boosted)
+		__field(unsigned long, util)
+		__field(unsigned long, capacity)
+		__field(unsigned long, prev_capacity)
+		__field(unsigned long, avg_capacity)
+		__field(int, ret_0)
+		__field(int, ret_1)
+		__field(int, ret_2)
+		__field(int, ret_3)
+	),
+
+	TP_fast_assign(
+		__entry->cpu = cpu;
+		memcpy(__entry->comm, p->comm, TASK_COMM_LEN);
+		__entry->pid = p->pid;
+		__assign_bitmask(cpumask, cpumask_bits(&p->cpus_allowed), num_possible_cpus());
+		__entry->boosted = boosted;
+		__entry->util = util;
+		__entry->capacity = capacity;
+		__entry->prev_capacity = prev_capacity;
+		__entry->avg_capacity = avg_capacity;
+		__entry->ret_0 = ret[0];
+		__entry->ret_1 = ret[1];
+		__entry->ret_2 = ret[2];
+		__entry->ret_3 = ret[3];
+	),
+
+	TP_printk("CPU%d comm=%s pid=%d mask=%s boosted=%d util=%lu capacity=%lu prev_capacity=%lu avg_capacity=%lu ret_0=%d ret_1=%d ret_2=%d ret_3=%d",
+		__entry->cpu,
+		__entry->comm,
+		__entry->pid,
+		__get_bitmask(cpumask),
+		__entry->boosted,
+		__entry->util,
+		__entry->capacity,
+		__entry->prev_capacity,
+		__entry->avg_capacity,
+		__entry->ret_0,
+		__entry->ret_1,
+		__entry->ret_2,
+		__entry->ret_3)
+);
+
 #endif /* _TRACE_SCHED_H */
 
 /* This part must be outside protection */
