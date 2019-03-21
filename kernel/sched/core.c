@@ -1142,15 +1142,26 @@ static int uclamp_validate(struct task_struct *p,
 	unsigned int lower_bound = p->uclamp_req[UCLAMP_MIN].value;
 	unsigned int upper_bound = p->uclamp_req[UCLAMP_MAX].value;
 
+	printk("min=%d upper_bound=%d", attr->sched_util_min, upper_bound);
+
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN)
 		lower_bound = attr->sched_util_min;
+
+	printk("Min sanity check OK\n");
+	printk("max=%d lower_bound=%d", attr->sched_util_max, lower_bound);
+
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX)
 		upper_bound = attr->sched_util_max;
+
+	printk("Max sanity check OK\n");
 
 	if (lower_bound > upper_bound)
 		return -EINVAL;
 	if (upper_bound > SCHED_CAPACITY_SCALE)
 		return -EINVAL;
+
+	printk("Min/Max sanity check OK: util_min=%u util_max=%u\n",
+			lower_bound, upper_bound);
 
 	return 0;
 }
@@ -1185,11 +1196,13 @@ static void __setscheduler_uclamp(struct task_struct *p,
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN) {
 		uclamp_se_set(&p->uclamp_req[UCLAMP_MIN],
 			      attr->sched_util_min, true);
+		printk("Update util_min=%u\n", attr->sched_util_min);
 	}
 
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX) {
 		uclamp_se_set(&p->uclamp_req[UCLAMP_MAX],
 			      attr->sched_util_max, true);
+		printk("Update util_max=%u\n", attr->sched_util_max);
 	}
 }
 
@@ -4664,6 +4677,9 @@ recheck:
 	if (attr->sched_flags & ~(SCHED_FLAG_ALL | SCHED_FLAG_SUGOV))
 		return -EINVAL;
 
+	printk(KERN_WARNING "__sched_setscheduler: sched_priority=%d flags=%llu\n",
+	       attr->sched_priority, attr->sched_flags);
+
 	/*
 	 * Valid priorities for SCHED_FIFO and SCHED_RR are
 	 * 1..MAX_USER_RT_PRIO-1, valid priority for SCHED_NORMAL,
@@ -4741,6 +4757,7 @@ recheck:
 		retval = uclamp_validate(p, attr);
 		if (retval)
 			return retval;
+		printk(KERN_WARNING "__sched_setscheduler: uclamp updated\n");
 	}
 
 	/*
@@ -4777,6 +4794,10 @@ recheck:
 
 		p->sched_reset_on_fork = reset_on_fork;
 		task_rq_unlock(rq, p, &rf);
+
+		printk(KERN_WARNING "__sched_setscheduler: DONE "
+				    "(policy not changed)\n");
+
 		return 0;
 	}
 change:
@@ -4883,6 +4904,14 @@ change:
 	/* Run balance callbacks after we've adjusted the PI chain: */
 	balance_callback(rq);
 	preempt_enable();
+
+	printk(KERN_WARNING "__sched_setscheduler: DONE (policy changed)\n");
+
+	if (queued) {
+		printk(KERN_WARNING "cpu=%d util_min=%u util_max=%u\n", p->cpu,
+				READ_ONCE(rq->uclamp[UCLAMP_MIN].value),
+				READ_ONCE(rq->uclamp[UCLAMP_MAX].value));
+	}
 
 	return 0;
 }
@@ -7082,9 +7111,16 @@ static void cpu_util_update_eff(struct cgroup_subsys_state *css,
 	struct cgroup_subsys_state *top_css = css;
 	struct uclamp_se *uc_se, *uc_parent;
 	unsigned int value;
+	char path[32];
+
+	printk("\n\n\nUpdate cycle START\n");
 
 	css_for_each_descendant_pre(css, top_css) {
 		value = css_tg(css)->uclamp_req[clamp_id].value;
+
+		cgroup_path(css->cgroup, path, 32);
+		printk("Updating %s: clamp_id=%d value=%d\n",
+		       path, clamp_id, value);
 
 		uc_parent = NULL;
 		if (css_tg(css)->parent)
@@ -7100,21 +7136,43 @@ static void cpu_util_update_eff(struct cgroup_subsys_state *css,
 		if (uc_se->value == value &&
 		    uc_parent && uc_parent->value >= value) {
 			css = css_rightmost_descendant(css);
+
+			printk("eff=%d == value=%d <= p.eff=%d",
+			       uc_se->value, value,
+			       uc_parent->value);
+			printk("Already ok: DONE");
+
 			continue;
 		}
 
 		/* Propagate the most restrictive effective value */
-		if (uc_parent && uc_parent->value < value)
+		if (uc_parent && uc_parent->value < value) {
 			value = uc_parent->value;
-		if (uc_se->value == value)
+			printk("Parent with more restrictive effective value=%d\n",
+			       value);
+		}
+		if (uc_se->value == value) {
+			printk("Already at effective value: DONE\n");
 			continue;
+		}
 
 		uc_se->value = value;
 		uc_se->bucket_id = uclamp_bucket_id(value);
+		printk("Updated %s: req(value=%u, bucket_id=%u), "
+		       "eff(value=%u, bucket_id=%u)\n",
+		       path,
+		       css_tg(css)->uclamp_req[clamp_id].value,
+		       css_tg(css)->uclamp_req[clamp_id].bucket_id,
+		       css_tg(css)->uclamp[clamp_id].value,
+		       css_tg(css)->uclamp[clamp_id].bucket_id);
+
+		printk("Effective updated: updating RUNNABLES...\n");
 
 		/* Immediately update descendants RUNNABLE tasks */
 		uclamp_update_active_tasks(css, clamp_id);
 	}
+
+	printk("Update cycle DONE\n");
 }
 
 static int cpu_util_min_write_u64(struct cgroup_subsys_state *css,
