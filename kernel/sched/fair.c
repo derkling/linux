@@ -7111,6 +7111,8 @@ fail:
 	return -1;
 }
 
+static u8 grant_sync_debug;
+
 /*
  * select_task_rq_fair: Select target runqueue for the waking task in domains
  * that have the 'sd_flag' flag set. In practice, this is SD_BALANCE_WAKE,
@@ -11194,3 +11196,21 @@ __init void init_sched_fair_class(void)
 #endif /* SMP */
 
 }
+
+static int __init grant_sync_debug_init(void)
+{
+	struct dentry *dir, *file;
+
+	dir = debugfs_create_dir("sched", NULL);
+
+	if (IS_ERR(dir))
+		return -1;
+
+	file = debugfs_create_u8("grant_sync", 0664, dir, &grant_sync_debug);
+
+	if (!file || IS_ERR(file))
+		return -1;
+
+	return 0;
+}
+core_initcall(grant_sync_debug_init);
