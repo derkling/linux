@@ -7537,6 +7537,28 @@ unlock:
 
 static u8 grant_sync_debug;
 
+static int grant_sync_flag(struct task_struct *p, int cpu, int prev_cpu)
+{
+	struct rq *rq               = cpu_rq(cpu);
+	unsigned long util          = boosted_task_util(p);
+	unsigned long capacity      = rq->cpu_capacity_orig;
+	unsigned long prev_capacity = cpu_rq(prev_cpu)->cpu_capacity_orig;
+	unsigned long avg_capacity  = rq->rd->avg_cpu_capacity_orig;
+	int boosted                 = task_is_boosted(p);
+
+	int ret[4];
+
+	ret[0] = cpu_is_in_target_set(p, cpu);           /* 1. Existing condition         */
+	ret[1] = !boosted || util <= capacity;           /* 2. Quentin's proposal         */
+	ret[2] = !boosted || capacity >= prev_capacity;  /* 3. Cmp w/ prev CPU's cap orig */
+	ret[3] = !boosted || capacity > avg_capacity;    /* 4. Cmp w/ avg cap orig        */
+
+	trace_sched_grant_sync_flag(cpu, p, boosted, util, capacity, prev_capacity,
+				    avg_capacity, ret);
+
+	return ret[grant_sync_debug & 3];
+}
+
 /*
  * select_task_rq_fair: Select target runqueue for the waking task in domains
  * that have the 'sd_flag' flag set. In practice, this is SD_BALANCE_WAKE,
@@ -7566,7 +7588,7 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 
 			if (sysctl_sched_sync_hint_enable && sync &&
 			    !_wake_cap && about_to_idle &&
-			    cpu_is_in_target_set(p, cpu))
+			    grant_sync_flag(p, cpu, prev_cpu))
 				return cpu;
 		}
 
