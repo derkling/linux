@@ -31,6 +31,7 @@
 #include <linux/migrate.h>
 #include <linux/task_work.h>
 #include <linux/module.h>
+#include <linux/debugfs.h>
 
 #include "sched.h"
 #include "tune.h"
@@ -7534,6 +7535,8 @@ unlock:
 	return target_cpu;
 }
 
+static u8 grant_sync_debug;
+
 /*
  * select_task_rq_fair: Select target runqueue for the waking task in domains
  * that have the 'sd_flag' flag set. In practice, this is SD_BALANCE_WAKE,
@@ -11949,3 +11952,21 @@ void check_for_migration(struct rq *rq, struct task_struct *p)
 }
 
 #endif /* CONFIG_SCHED_WALT */
+
+static int __init grant_sync_debug_init(void)
+{
+	struct dentry *dir, *file;
+
+	dir = debugfs_create_dir("sched", NULL);
+
+	if (IS_ERR(dir))
+		return -1;
+
+	file = debugfs_create_u8("grant_sync", 0664, dir, &grant_sync_debug);
+
+	if (!file || IS_ERR(file))
+		return -1;
+
+	return 0;
+}
+core_initcall(grant_sync_debug_init);
