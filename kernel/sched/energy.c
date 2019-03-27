@@ -151,6 +151,7 @@ static int sched_energy_probe(struct platform_device *pdev)
 	unsigned long *max_frequencies = NULL;
 	int ret;
 	bool is_sge_valid = false;
+	unsigned long sum_cpu_capacity_orig = 0;
 
 	if (!sched_is_energy_aware())
 		return 0;
@@ -273,8 +274,13 @@ static int sched_energy_probe(struct platform_device *pdev)
 		cpu_rq(cpu)->cpu_capacity_orig = cpu_max_cap;
 	}
 
-	for_each_possible_cpu(cpu)
+	for_each_possible_cpu(cpu) {
 		update_min_max_cap_orig_cpu(cpu_rq(cpu)->rd, cpu);
+		sum_cpu_capacity_orig += cpu_rq(cpu)->cpu_capacity_orig;
+	}
+
+	WRITE_ONCE(cpu_rq(cpumask_first(cpu_possible_mask))->rd->avg_cpu_capacity_orig,
+		   sum_cpu_capacity_orig/cpumask_weight(cpu_possible_mask));
 
 	kfree(max_frequencies);
 

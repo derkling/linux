@@ -7704,6 +7704,7 @@ struct sched_domain *build_sched_domain(struct sched_domain_topology_level *tl,
 static int build_sched_domains(const struct cpumask *cpu_map,
 			       struct sched_domain_attr *attr)
 {
+	unsigned long sum_cpu_capacity_orig = 0;
 	enum s_alloc alloc_state;
 	struct sched_domain *sd;
 	struct s_data d;
@@ -7763,8 +7764,13 @@ static int build_sched_domains(const struct cpumask *cpu_map,
 		sd = *per_cpu_ptr(d.sd, i);
 
 		cpu_attach_domain(sd, d.rd, i);
+
+		sum_cpu_capacity_orig += cpu_rq(i)->cpu_capacity_orig;
 	}
 	rcu_read_unlock();
+
+	WRITE_ONCE(d.rd->avg_cpu_capacity_orig,
+		   sum_cpu_capacity_orig/cpumask_weight(cpu_map));
 
 	ret = 0;
 error:

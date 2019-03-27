@@ -676,6 +676,9 @@ struct root_domain {
 
 	/* First cpu with maximum and minimum original capacity */
 	int max_cap_orig_cpu, min_cap_orig_cpu;
+
+	/* Average original cpu capacity of the system. */
+	unsigned long avg_cpu_capacity_orig;
 };
 
 extern struct root_domain def_root_domain;
