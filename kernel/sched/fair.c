@@ -7028,12 +7028,6 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, int sy
 	struct sched_domain *sd;
 	cpumask_t *candidates;
 
-	if (sysctl_sched_sync_hint_enable && sync) {
-		cpu = smp_processor_id();
-		if (cpumask_test_cpu(cpu, &p->cpus_allowed))
-			return cpu;
-	}
-
 	rcu_read_lock();
 	pd = rcu_dereference(rd->pd);
 	if (!pd || READ_ONCE(rd->overutilized))
@@ -7113,6 +7107,32 @@ fail:
 
 static u8 grant_sync_debug;
 
+static int grant_sync_flag(struct task_struct *p, int cpu, int prev_cpu)
+{
+	struct rq *rq               = cpu_rq(cpu);
+	unsigned long util          = uclamp_task(p);
+	unsigned long capacity      = rq->cpu_capacity_orig;
+	unsigned long prev_capacity = cpu_rq(prev_cpu)->cpu_capacity_orig;
+	int boosted                 = uclamp_boosted(p);
+
+	int ret[4];
+
+	/*
+	 * Conditions 0 and 3 are disabled since:
+	 * - for 0) we don't have the start_cpu() of ACK 4.9
+	 * - for 3) we don't have the additional bits for avg_capacity
+	 */
+	ret[0] = 0;					/* 1. Existing condition	 */
+	ret[1] = !boosted || util <= capacity;		/* 2. Quentin's proposal	 */
+	ret[2] = !boosted || capacity >= prev_capacity;	/* 3. Cmp w/ prev CPU's cap orig */
+	ret[3] = 0;					/* 4. Cmp w/ avg cap orig	 */
+
+	trace_sched_grant_sync_flag(cpu, p, boosted, util, capacity,
+				    prev_capacity, -1, ret);
+
+	return ret[grant_sync_debug & 3];
+}
+
 /*
  * select_task_rq_fair: Select target runqueue for the waking task in domains
  * that have the 'sd_flag' flag set. In practice, this is SD_BALANCE_WAKE,
@@ -7139,8 +7159,20 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 		record_wakee(p);
 
 		if (static_branch_unlikely(&sched_energy_present)) {
+
 			if (uclamp_latency_sensitive(p) && !sched_feat(EAS_PREFER_IDLE) && !sync)
 				goto sd_loop;
+
+			if (sysctl_sched_sync_hint_enable && sync) {
+				bool about_to_idle = cpu_rq(cpu)->nr_running < 2;
+				bool not_wake_cap = !wake_cap(p, cpu, prev_cpu);
+
+				if (about_to_idle && not_wake_cap &&
+				    cpumask_test_cpu(cpu, &p->cpus_allowed) &&
+				    grant_sync_flag(p, cpu, prev_cpu)) {
+					return cpu;
+				}
+			}
 
 			new_cpu = find_energy_efficient_cpu(p, prev_cpu, sync);
 			if (new_cpu >= 0)
