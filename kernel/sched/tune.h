@@ -20,9 +20,6 @@ int schedtune_prefer_idle(struct task_struct *tsk);
 void schedtune_enqueue_task(struct task_struct *p, int cpu);
 void schedtune_dequeue_task(struct task_struct *p, int cpu);
 
-unsigned long cpu_util_freq(int cpu);
-unsigned long boosted_cpu_util(int cpu);
-
 #else /* CONFIG_SCHED_TUNE */
 
 #define schedtune_cpu_boost(cpu)  0
@@ -32,7 +29,5 @@ unsigned long boosted_cpu_util(int cpu);
 
 #define schedtune_enqueue_task(task, cpu) do { } while (0)
 #define schedtune_dequeue_task(task, cpu) do { } while (0)
-
-#define boosted_cpu_util(cpu) cpu_util_freq(cpu)
 
 #endif /* CONFIG_SCHED_TUNE */

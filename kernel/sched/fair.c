@@ -5626,11 +5626,6 @@ static unsigned long capacity_of(int cpu)
 	return cpu_rq(cpu)->cpu_capacity;
 }
 
-static unsigned long capacity_orig_of(int cpu)
-{
-	return cpu_rq(cpu)->cpu_capacity_orig;
-}
-
 static unsigned long cpu_avg_load_per_task(int cpu)
 {
 	struct rq *rq = cpu_rq(cpu);
@@ -5849,16 +5844,8 @@ schedtune_task_margin(struct task_struct *task)
 }
 
 unsigned long
-cpu_util_freq(int cpu) {
-	struct rq *rq = cpu_rq(cpu);
-
-	return min(cpu_util_cfs(rq) + cpu_util_rt(rq), capacity_orig_of(cpu));
-}
-
-unsigned long
-boosted_cpu_util(int cpu)
+stune_util(int cpu, unsigned int util)
 {
-	unsigned long util = cpu_util_freq(cpu);
 	long margin = schedtune_cpu_margin(util, cpu);
 
 	trace_sched_boost_cpu(cpu, util, margin);
