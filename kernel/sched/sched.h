@@ -2296,9 +2296,12 @@ static inline unsigned int uclamp_util(struct rq *rq, unsigned int util)
 	return clamp(util, min_util, max_util);
 }
 #else /* CONFIG_UCLAMP_TASK */
+
+unsigned long stune_util(int cpu, unsigned int util);
+
 static inline unsigned int uclamp_util(struct rq *rq, unsigned int util)
 {
-	return util;
+	return stune_util(cpu_of(rq), util);
 }
 #endif /* CONFIG_UCLAMP_TASK */
 
@@ -2368,6 +2371,17 @@ static inline unsigned long cpu_util_cfs(struct rq *rq)
 static inline unsigned long cpu_util_rt(struct rq *rq)
 {
 	return READ_ONCE(rq->avg_rt.util_avg);
+}
+
+static unsigned long capacity_orig_of(int cpu)
+{
+	return cpu_rq(cpu)->cpu_capacity_orig;
+}
+
+static inline unsigned long cpu_util_freq(int cpu) {
+	struct rq *rq = cpu_rq(cpu);
+
+	return min(cpu_util_cfs(rq) + cpu_util_rt(rq), capacity_orig_of(cpu));
 }
 #endif
 
