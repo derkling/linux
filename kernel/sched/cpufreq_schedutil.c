@@ -60,6 +60,10 @@ struct sugov_cpu {
 	unsigned long		bw_dl;
 	unsigned long		max;
 
+	unsigned long		ramp_boost;
+	unsigned long		util_est_enqueued;
+	unsigned long		util_avg;
+
 	/* The field below is for single-CPU policies only: */
 #ifdef CONFIG_NO_HZ_COMMON
 	unsigned long		saved_idle_calls;
@@ -172,6 +176,42 @@ static void sugov_deferred_update(struct sugov_policy *sg_policy, u64 time,
 		sg_policy->work_in_progress = true;
 		irq_work_queue(&sg_policy->irq_work);
 	}
+}
+
+static unsigned long sugov_cpu_ramp_boost(struct sugov_cpu *sg_cpu)
+{
+	return READ_ONCE(sg_cpu->ramp_boost);
+}
+
+static unsigned long sugov_cpu_ramp_boost_update(struct sugov_cpu *sg_cpu)
+{
+	struct rq *rq = cpu_rq(sg_cpu->cpu);
+	unsigned long util_est_enqueued;
+	unsigned long util_avg;
+	unsigned long boost = 0;
+
+	util_est_enqueued = READ_ONCE(rq->cfs.avg.util_est.enqueued);
+	util_avg = READ_ONCE(rq->cfs.avg.util_avg);
+
+	/*
+	 * Boost when util_avg becomes higher than the previous stable
+	 * knowledge of the enqueued tasks' set util, which is CPU's
+	 * util_est_enqueued.
+	 *
+	 * We try to spot changes in the workload itself, so we want to
+	 * avoid the noise of tasks being enqueued/dequeued. To do that,
+	 * we only trigger boosting when the "amount of work' enqueued
+	 * is stable.
+	 */
+	if (util_est_enqueued == sg_cpu->util_est_enqueued
+	    && util_avg >= sg_cpu->util_avg
+	    && util_avg > util_est_enqueued)
+		 boost = util_avg - util_est_enqueued;
+
+	sg_cpu->util_est_enqueued = util_est_enqueued;
+	sg_cpu->util_avg = util_avg;
+	WRITE_ONCE(sg_cpu->ramp_boost, boost);
+	return boost;
 }
 
 /**
@@ -504,6 +544,7 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 	busy = sugov_cpu_is_busy(sg_cpu);
 
 	util = sugov_get_util(sg_cpu);
+	sugov_cpu_ramp_boost_update(sg_cpu);
 	max = sg_cpu->max;
 	util = sugov_iowait_apply(sg_cpu, time, util, max);
 	next_f = get_next_freq(sg_policy, util, max);
@@ -544,6 +585,8 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 		unsigned long j_util, j_max;
 
 		j_util = sugov_get_util(j_sg_cpu);
+		if (j_sg_cpu == sg_cpu)
+			sugov_cpu_ramp_boost_update(sg_cpu);
 		j_max = j_sg_cpu->max;
 		j_util = sugov_iowait_apply(j_sg_cpu, time, j_util, j_max);
 
@@ -552,6 +595,7 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 			max = j_max;
 		}
 	}
+
 
 	return get_next_freq(sg_policy, util, max);
 }
