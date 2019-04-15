@@ -6819,6 +6819,21 @@ static void migrate_task_rq_fair(struct task_struct *p, int new_cpu)
 		 * wakee task is less decayed, but giving the wakee more load
 		 * sounds not bad.
 		 */
+		if (static_branch_unlikely(&sched_asym_cpucapacity) &&
+			p->state == TASK_WAKING) {
+			/*
+			 * On asymmetric capacity systems task util guides
+			 * wake placement so update rq_clock and cfs_rq
+			 */
+			struct cfs_rq *cfs_rq = task_cfs_rq(p);
+			struct rq *rq = task_rq(p);
+			struct rq_flags rf;
+
+			rq_lock_irqsave(rq, &rf);
+			update_rq_clock(rq);
+			update_cfs_rq_load_avg(cfs_rq_clock_pelt(cfs_rq), cfs_rq);
+			rq_unlock_irqrestore(rq, &rf);
+		}
 		remove_entity_load_avg(&p->se);
 	}
 
