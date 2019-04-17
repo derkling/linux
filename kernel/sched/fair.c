@@ -6513,6 +6513,10 @@ static void find_best_target(struct sched_domain *sd, cpumask_t *cpus,
 	bool boosted;
 	int i;
 
+	bool printk_enabled = false;
+	if (!strncmp(p->comm, "RenderThread", 12))
+		printk_enabled = true;
+
 	/*
 	 * In most cases, target_capacity tracks capacity_orig of the most
 	 * energy efficient CPU candidate, thus requiring to minimise
@@ -6524,6 +6528,11 @@ static void find_best_target(struct sched_domain *sd, cpumask_t *cpus,
 	 */
 	prefer_idle = uclamp_latency_sensitive(p);
 	boosted = uclamp_boosted(p);
+	if (printk_enabled) {
+		int b = boosted;
+		int p = prefer_idle;
+		trace_printk("boosted=%d prefer_idle=%d", b, p);
+	}
 	if (prefer_idle && boosted)
 		target_capacity = 0;
 
@@ -6567,7 +6576,6 @@ static void find_best_target(struct sched_domain *sd, cpumask_t *cpus,
 			if (idle_cpu(i))
 				idle_idx = idle_get_state_idx(cpu_rq(i));
 
-
 			/*
 			 * Case A) Latency sensitive tasks
 			 *
@@ -6598,6 +6606,14 @@ static void find_best_target(struct sched_domain *sd, cpumask_t *cpus,
 			 */
 			if (prefer_idle) {
 
+				if (printk_enabled) {
+					trace_printk("cpu=%d idle=%d capacity_orig=%d capacity_curr=%d wake_util=%d new_util=%d "
+						     "spare_cap=%d target_capacity=%d target_max_spare_cap=%d",
+						     i, idle_cpu(i), capacity_orig, capacity_curr, wake_util, new_util,
+						     spare_cap, target_capacity, target_max_spare_cap);
+				}
+
+
 				/*
 				 * Case A.1: IDLE CPU
 				 * Return the best IDLE CPU we find:
@@ -6608,11 +6624,17 @@ static void find_best_target(struct sched_domain *sd, cpumask_t *cpus,
 				 */
 				if (idle_cpu(i)) {
 					if (boosted &&
-					    capacity_orig < target_capacity)
+					    capacity_orig < target_capacity) {
+						if (printk_enabled)
+							trace_printk("continue 1, boosted=%d", boosted);
 						continue;
+					}
 					if (!boosted &&
-					    capacity_orig > target_capacity)
+					    capacity_orig > target_capacity) {
+						if (printk_enabled)
+							trace_printk("continue 2, boosted=%d", boosted);
 						continue;
+					}
 					/*
 					 * Minimise value of idle state: skip
 					 * deeper idle states and pick the
@@ -6620,12 +6642,19 @@ static void find_best_target(struct sched_domain *sd, cpumask_t *cpus,
 					 */
 					if (capacity_orig == target_capacity &&
 					    sysctl_sched_cstate_aware &&
-					    idle_idx >= shallowest_idle_cstate)
+					    idle_idx >= shallowest_idle_cstate) {
+						if (printk_enabled)
+							trace_printk("continue 3");
 						continue;
+					}
 
 					target_capacity = capacity_orig;
 					shallowest_idle_cstate = idle_idx;
 					best_idle_cpu = i;
+
+					if (printk_enabled)
+						trace_printk("update=best_idle cpu=%d", i);
+
 					continue;
 				}
 				if (best_idle_cpu != -1)
@@ -6655,6 +6684,10 @@ static void find_best_target(struct sched_domain *sd, cpumask_t *cpus,
 					continue;
 				min_wake_util = wake_util;
 				best_active_cpu = i;
+
+				if (printk_enabled)
+					trace_printk("update=best_active cpu=%d", i);
+
 				continue;
 			}
 

@@ -844,7 +844,7 @@ TRACE_EVENT(sched_util_est_cpu,
  */
 TRACE_EVENT(sched_find_best_target,
 
-	TP_PROTO(struct task_struct *tsk, bool prefer_idle, bool boosted,
+	TP_PROTO(struct task_struct *tsk, int prefer_idle, int boosted,
 		 unsigned long min_util, int best_idle, int best_active,
 		 int target, int backup),
 
@@ -855,8 +855,8 @@ TRACE_EVENT(sched_find_best_target,
 		__array( char,  comm,   TASK_COMM_LEN   )
 		__field( pid_t, pid                     )
 		__field( unsigned long, min_util        )
-		__field( bool,  prefer_idle             )
-		__field( bool,  boosted                 )
+		__field( int,	prefer_idle            	)
+		__field( int,  	boosted                	)
 		__field( int,   best_idle               )
 		__field( int,   best_active             )
 		__field( int,   target                  )
