@@ -31,3 +31,4 @@ core/watchdog
 core/headers
 core/rseq
 core/stacktrace
+core/speculation
