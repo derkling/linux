@@ -39,6 +39,10 @@ struct sugov_policy {
 	bool			work_in_progress;
 
 	bool			need_freq_update;
+
+#ifdef CONFIG_ENERGY_MODEL
+	struct em_perf_domain *pd;
+#endif
 };
 
 struct sugov_cpu {
@@ -63,6 +67,48 @@ struct sugov_cpu {
 static DEFINE_PER_CPU(struct sugov_cpu, sugov_cpu);
 
 /************************ Governor internals ***********************/
+
+#ifdef CONFIG_ENERGY_MODEL
+static void sugov_policy_attach_pd(struct sugov_policy *sg_policy)
+{
+	unsigned int cpu;
+	struct em_perf_domain *pd;
+
+	sg_policy->pd = NULL;
+	for_each_cpu(cpu, sg_policy->policy->cpus) {
+		pd = em_cpu_get(cpu);
+		if (sg_policy->pd) {
+			/*
+			 * Perf domain and sugov_policy are expected to cover
+			 * the same set of CPUs. If that is not the case, we
+			 * will not be able to choose a frequency for the policy
+			 * according to info from the perf domain.
+			 */
+			if (sg_policy->pd != pd) {
+				pr_warn("%s: CPU %u does not share the same perf domain as other CPU in the same cpufreq policy, no perf domain for that policy will be registered\n",
+					__func__, cpu);
+				sg_policy->pd = NULL;
+				break;
+			}
+		} else {
+			sg_policy->pd = pd;
+		}
+	}
+}
+
+static struct em_perf_domain *sugov_policy_get_pd(
+						struct sugov_policy *sg_policy)
+{
+	return sg_policy->pd;
+}
+#else /* CONFIG_ENERGY_MODEL */
+static void sugov_policy_attach_pd(struct sugov_policy *sg_policy) {}
+static struct em_perf_domain *sugov_policy_get_pd(
+						struct sugov_policy *sg_policy)
+{
+	return NULL;
+}
+#endif /* CONFIG_ENERGY_MODEL */
 
 static bool sugov_should_update_freq(struct sugov_policy *sg_policy, u64 time)
 {
@@ -849,6 +895,9 @@ static int sugov_start(struct cpufreq_policy *policy)
 							sugov_update_shared :
 							sugov_update_single);
 	}
+
+	sugov_policy_attach_pd(sg_policy);
+
 	return 0;
 }
 
