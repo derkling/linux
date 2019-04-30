@@ -244,14 +244,16 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
 	unsigned int freq = arch_scale_freq_invariant() ?
 				policy->cpuinfo.max_freq : policy->cur;
 	struct em_perf_domain *pd = sugov_policy_get_pd(sg_policy);
+	unsigned int base_freq;
 
-	freq = map_util_freq(util, freq, max);
+	base_freq = map_util_freq(util, freq, max);
 
 	/*
 	 * Try to get a higher frequency if one is available, given the extra
 	 * power we are ready to spend.
 	 */
-	freq = em_pd_get_higher_freq(pd, freq, boost);
+	freq = em_pd_get_higher_freq(pd, base_freq, boost);
+	trace_schedutil_em_boost(policy->cpu, util, boost, base_freq, freq);
 
 	if (freq == sg_policy->cached_raw_freq && !sg_policy->need_freq_update)
 		return sg_policy->next_freq;
