@@ -614,6 +614,10 @@ DECLARE_TRACE(pelt_se_tp,
 	TP_PROTO(struct sched_entity *se),
 	TP_ARGS(se));
 
+DECLARE_TRACE(sched_overutilized_tp,
+	TP_PROTO(int overutilized, struct root_domain *rd),
+	TP_ARGS(overutilized, rd));
+
 #endif /* _TRACE_SCHED_H */
 
 /* This part must be outside protection */
