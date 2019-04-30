@@ -173,6 +173,41 @@ TRACE_EVENT(cpu_frequency_limits,
 		  (unsigned long)__entry->cpu_id)
 );
 
+#ifdef CONFIG_CPU_FREQ_GOV_SCHEDUTIL
+TRACE_EVENT(schedutil_em_boost,
+
+	TP_PROTO(unsigned int cpu, unsigned long util,
+		 unsigned int cost_margin, unsigned int policy_cost_margin,
+		 unsigned int base_freq, unsigned int boosted_freq),
+
+	TP_ARGS(cpu, util, cost_margin, policy_cost_margin,
+		base_freq, boosted_freq),
+
+	TP_STRUCT__entry(
+		__field(unsigned int, cpu)
+		__field(unsigned long, util)
+		__field(unsigned int, cost_margin)
+		__field(unsigned int, policy_cost_margin)
+		__field(unsigned int, base_freq)
+		__field(unsigned int, boosted_freq)
+	),
+
+	TP_fast_assign(
+		__entry->cpu = cpu;
+		__entry->util = util;
+		__entry->cost_margin = cost_margin;
+		__entry->policy_cost_margin = policy_cost_margin;
+		__entry->base_freq = base_freq;
+		__entry->boosted_freq = boosted_freq;
+	),
+
+	TP_printk("cpu=%u util=%lu cost_margin=%u policy_cost_margin=%u base_freq=%u boosted_freq=%u",
+		__entry->cpu, __entry->util,
+		__entry->cost_margin, __entry->policy_cost_margin,
+		__entry->base_freq, __entry->boosted_freq)
+);
+#endif /* CONFIG_CPU_FREQ_GOV_SCHEDUTIL */
+
 TRACE_EVENT(device_pm_callback_start,
 
 	TP_PROTO(struct device *dev, const char *pm_ops, int event),
