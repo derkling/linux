@@ -222,6 +222,9 @@ static unsigned long sugov_cpu_ramp_boost_update(struct sugov_cpu *sg_cpu)
  * @sg_policy: schedutil policy object to compute the new frequency for.
  * @util: Current CPU utilization.
  * @max: CPU capacity.
+ * @boost: Extra power that can be spent on top of the minimum amount of power
+ *	required to meet capacity requirements, as a percentage between 0 and
+ *	EM_COST_MARGIN_SCALE.
  *
  * If the utilization is frequency-invariant, choose the new frequency to be
  * proportional to it, that is
@@ -240,7 +243,8 @@ static unsigned long sugov_cpu_ramp_boost_update(struct sugov_cpu *sg_cpu)
  * cpufreq driver limitations.
  */
 static unsigned int get_next_freq(struct sugov_policy *sg_policy,
-				  unsigned long util, unsigned long max)
+				  unsigned long util, unsigned long max,
+				  unsigned long boost)
 {
 	struct cpufreq_policy *policy = sg_policy->policy;
 	unsigned int freq = arch_scale_freq_invariant() ?
@@ -253,7 +257,7 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
 	 * Try to get a higher frequency if one is available, given the extra
 	 * power we are ready to spend.
 	 */
-	freq = em_pd_get_higher_freq(pd, freq, 0);
+	freq = em_pd_get_higher_freq(pd, freq, boost);
 
 	if (freq == sg_policy->cached_raw_freq && !sg_policy->need_freq_update)
 		return sg_policy->next_freq;
@@ -535,6 +539,7 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 	unsigned long util, max;
 	unsigned int next_f;
 	bool busy;
+	unsigned long ramp_boost = 0;
 
 	sugov_iowait_boost(sg_cpu, time, flags);
 	sg_cpu->last_update = time;
@@ -547,10 +552,10 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 	busy = sugov_cpu_is_busy(sg_cpu);
 
 	util = sugov_get_util(sg_cpu);
-	sugov_cpu_ramp_boost_update(sg_cpu);
+	ramp_boost = sugov_cpu_ramp_boost_update(sg_cpu);
 	max = sg_cpu->max;
 	util = sugov_iowait_apply(sg_cpu, time, util, max);
-	next_f = get_next_freq(sg_policy, util, max);
+	next_f = get_next_freq(sg_policy, util, max, ramp_boost);
 	/*
 	 * Do not reduce the frequency if the CPU has not been idle
 	 * recently, as the reduction is likely to be premature then.
@@ -582,6 +587,8 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 	struct cpufreq_policy *policy = sg_policy->policy;
 	unsigned long util = 0, max = 1;
 	unsigned int j;
+	unsigned long ramp_boost = 0;
+	unsigned long j_ramp_boost = 0;
 
 	for_each_cpu(j, policy->cpus) {
 		struct sugov_cpu *j_sg_cpu = &per_cpu(sugov_cpu, j);
@@ -589,7 +596,11 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 
 		j_util = sugov_get_util(j_sg_cpu);
 		if (j_sg_cpu == sg_cpu)
-			sugov_cpu_ramp_boost_update(sg_cpu);
+			j_ramp_boost = sugov_cpu_ramp_boost_update(sg_cpu);
+		else
+			j_ramp_boost = sugov_cpu_ramp_boost(j_sg_cpu);
+		ramp_boost = max(ramp_boost, j_ramp_boost);
+
 		j_max = j_sg_cpu->max;
 		j_util = sugov_iowait_apply(j_sg_cpu, time, j_util, j_max);
 
@@ -600,7 +611,7 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 	}
 
 
-	return get_next_freq(sg_policy, util, max);
+	return get_next_freq(sg_policy, util, max, ramp_boost);
 }
 
 static void
