@@ -408,6 +408,9 @@ do {										\
 	__wait_event_exclusive_cmd(wq_head, condition, cmd1, cmd2);		\
 } while (0)
 
+#define wait_event_exclusive(wq_head, condition)				\
+	wait_event_exclusive_cmd(wq_head, condition, ,)
+
 #define __wait_event_cmd(wq_head, condition, cmd1, cmd2)			\
 	(void)___wait_event(wq_head, condition, TASK_UNINTERRUPTIBLE, 0, 0,	\
 			    cmd1; schedule(); cmd2)
