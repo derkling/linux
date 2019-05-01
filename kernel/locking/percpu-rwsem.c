@@ -2,6 +2,7 @@
 #include <linux/atomic.h>
 #include <linux/rwsem.h>
 #include <linux/percpu.h>
+#include <linux/wait.h>
 #include <linux/lockdep.h>
 #include <linux/percpu-rwsem.h>
 #include <linux/rcupdate.h>
@@ -11,17 +12,19 @@
 #include "rwsem.h"
 
 int __percpu_init_rwsem(struct percpu_rw_semaphore *sem,
-			const char *name, struct lock_class_key *rwsem_key)
+			const char *name, struct lock_class_key *key)
 {
 	sem->read_count = alloc_percpu(int);
 	if (unlikely(!sem->read_count))
 		return -ENOMEM;
 
-	/* ->rw_sem represents the whole percpu_rw_semaphore for lockdep */
 	rcu_sync_init(&sem->rss, RCU_SCHED_SYNC);
-	__init_rwsem(&sem->rw_sem, name, rwsem_key);
-	rcuwait_init(&sem->writer);
-	sem->readers_block = 0;
+	init_waitqueue_head(&sem->waiters);
+	atomic_set(&sem->block, 0);
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+	debug_check_no_locks_freed((void *)sem, sizeof(*sem));
+	lockdep_init_map(&sem->dep_map, name, key, 0);
+#endif
 	return 0;
 }
 EXPORT_SYMBOL_GPL(__percpu_init_rwsem);
@@ -58,13 +61,14 @@ int __percpu_down_read(struct percpu_rw_semaphore *sem, int try)
 	 * writer missed them.
 	 */
 
+again:
 	smp_mb(); /* A matches D */
 
 	/*
 	 * If !readers_block the critical section starts here, matched by the
 	 * release in percpu_up_write().
 	 */
-	if (likely(!smp_load_acquire(&sem->readers_block)))
+	if (likely(!atomic_read_acquire(&sem->block)))
 		return 1;
 
 	/*
@@ -81,16 +85,16 @@ int __percpu_down_read(struct percpu_rw_semaphore *sem, int try)
 	 * and reschedule on the preempt_enable() in percpu_down_read().
 	 */
 	preempt_enable_no_resched();
+	wait_event(sem->waiters, !atomic_read_acquire(&sem->block));
+	preempt_disable();
+	__this_cpu_inc(*sem->read_count);
 
 	/*
-	 * Avoid lockdep for the down/up_read() we already have them.
+	 * percpu_down_write() could've set ->blocked right after we've seen it
+	 * 0 but missed our this_cpu_inc(), which is exactly the condition we
+	 * get called for from percpu_down_read().
 	 */
-	__down_read(&sem->rw_sem);
-	this_cpu_inc(*sem->read_count);
-	__up_read(&sem->rw_sem);
-
-	preempt_disable();
-	return 1;
+	goto again;
 }
 EXPORT_SYMBOL_GPL(__percpu_down_read);
 
@@ -105,7 +109,7 @@ void __percpu_up_read(struct percpu_rw_semaphore *sem)
 	__this_cpu_dec(*sem->read_count);
 
 	/* Prod writer to recheck readers_active */
-	rcuwait_wake_up(&sem->writer);
+	wake_up(&sem->waiters);
 }
 EXPORT_SYMBOL_GPL(__percpu_up_read);
 
@@ -140,20 +144,24 @@ static bool readers_active_check(struct percpu_rw_semaphore *sem)
 	return true;
 }
 
+static inline bool acquire_block(struct percpu_rw_semaphore *sem)
+{
+	if (atomic_read(&sem->block))
+		return false;
+
+	return atomic_xchg(&sem->block, 1) == 0;
+}
+
 void percpu_down_write(struct percpu_rw_semaphore *sem)
 {
+	rwsem_acquire(&sem->dep_map, 0, 0, _RET_IP_);
+
 	/* Notify readers to take the slow path. */
 	rcu_sync_enter(&sem->rss);
 
-	down_write(&sem->rw_sem);
+	wait_event_exclusive(sem->waiters, acquire_block(sem));
 
-	/*
-	 * Notify new readers to block; up until now, and thus throughout the
-	 * longish rcu_sync_enter() above, new readers could still come in.
-	 */
-	WRITE_ONCE(sem->readers_block, 1);
-
-	smp_mb(); /* D matches A */
+	/* smp_mb() implied by acquire_block() -- D matches A */
 
 	/*
 	 * If they don't see our writer of readers_block, then we are
@@ -162,7 +170,7 @@ void percpu_down_write(struct percpu_rw_semaphore *sem)
 	 */
 
 	/* Wait for all now active readers to complete. */
-	rcuwait_wait_event(&sem->writer, readers_active_check(sem));
+	wait_event(sem->waiters, readers_active_check(sem));
 }
 EXPORT_SYMBOL_GPL(percpu_down_write);
 
@@ -178,12 +186,8 @@ void percpu_up_write(struct percpu_rw_semaphore *sem)
 	 * Therefore we force it through the slow path which guarantees an
 	 * acquire and thereby guarantees the critical section's consistency.
 	 */
-	smp_store_release(&sem->readers_block, 0);
-
-	/*
-	 * Release the write lock, this will allow readers back in the game.
-	 */
-	up_write(&sem->rw_sem);
+	atomic_set_release(&sem->block, 0);
+	wake_up(&sem->waiters);
 
 	/*
 	 * Once this completes (at least one RCU-sched grace period hence) the
@@ -191,5 +195,7 @@ void percpu_up_write(struct percpu_rw_semaphore *sem)
 	 * exclusive write lock because its counting.
 	 */
 	rcu_sync_exit(&sem->rss);
+
+	rwsem_release(&sem->dep_map, 1, _RET_IP_);
 }
 EXPORT_SYMBOL_GPL(percpu_up_write);
