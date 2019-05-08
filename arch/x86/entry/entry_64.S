@@ -1173,12 +1173,18 @@ ENTRY(paranoid_entry)
 	cld
 	PUSH_AND_CLEAR_REGS save_ret=1
 	ENCODE_FRAME_POINTER 8
+
+	/* EBX = 1 -> kernel GSBASE active, no restore required */
 	movl	$1, %ebx
-	movl	$MSR_GS_BASE, %ecx
-	rdmsr
+	/*
+	 * The kernel-enforced convention is a negative GSBASE indicates
+	 * a kernel value.
+	 */
+	READ_MSR_GSBASE save_reg=%edx
 	testl	%edx, %edx
-	js	1f				/* negative -> in kernel */
+	js	1f
 	SWAPGS
+	/* EBX = 0 -> SWAPGS required on exit */
 	xorl	%ebx, %ebx
 
 1:
@@ -1213,7 +1219,8 @@ ENTRY(paranoid_exit)
 	UNWIND_HINT_REGS
 	DISABLE_INTERRUPTS(CLBR_ANY)
 	TRACE_IRQS_OFF_DEBUG
-	testl	%ebx, %ebx			/* swapgs needed? */
+	/* If EBX is 0, SWAPGS is required */
+	testl	%ebx, %ebx
 	jnz	.Lparanoid_exit_no_swapgs
 	TRACE_IRQS_IRETQ
 	/* Always restore stashed CR3 value (see paranoid_entry) */
