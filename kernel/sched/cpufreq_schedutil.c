@@ -62,6 +62,7 @@ struct sugov_cpu {
 	/* The field below is for single-CPU policies only: */
 #ifdef CONFIG_NO_HZ_COMMON
 	unsigned long		saved_idle_calls;
+	unsigned long		previous_util;
 #endif
 };
 
@@ -181,14 +182,35 @@ static bool sugov_cpu_is_busy(struct sugov_cpu *sg_cpu)
 	return ret;
 }
 
-static void sugov_cpu_is_busy_update(struct sugov_cpu *sg_cpu)
+static void sugov_cpu_is_busy_update(struct sugov_cpu *sg_cpu,
+				     unsigned long util)
 {
 	unsigned long idle_calls = tick_nohz_get_idle_calls_cpu(sg_cpu->cpu);
 	sg_cpu->saved_idle_calls = idle_calls;
+
+	/*
+	 * Make sure that this CPU will not be immediately considered as busy in
+	 * cases where the CPU has already entered an idle state. In that case,
+	 * the number of idle_calls will not vary anymore until it exits idle,
+	 * which would lead sugov_cpu_is_busy() to say that this CPU is busy,
+	 * because it has not (re)entered idle since the last time we looked at
+	 * it.
+	 * Assuming cpu0 and cpu1 are in the same policy, that will make sure
+	 * this sequence of events leads to right cpu1 business status from
+	 * get_next_freq(cpu=1)
+	 * cpu0: [enter idle] -> [get_next_freq] -> [doing nothing] -> [wakeup]
+	 * cpu1:                ...              -> [get_next_freq] ->   ...
+	 */
+	if (util <= sg_cpu->previous_util)
+		sg_cpu->saved_idle_calls--;
+
+	sg_cpu->previous_util = util;
 }
 #else
 static inline bool sugov_cpu_is_busy(struct sugov_cpu *sg_cpu) { return false; }
-static void sugov_cpu_is_busy_update(struct sugov_cpu *sg_cpu) {}
+static void sugov_cpu_is_busy_update(struct sugov_cpu *sg_cpu
+				     unsigned long util)
+{}
 #endif /* CONFIG_NO_HZ_COMMON */
 
 /**
@@ -497,10 +519,9 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 	if (!sugov_should_update_freq(sg_policy, time))
 		return;
 
-	busy = sugov_cpu_is_busy(sg_cpu);
-	sugov_cpu_is_busy_update(sg_cpu);
-
 	util = sugov_get_util(sg_cpu);
+	busy = sugov_cpu_is_busy(sg_cpu);
+	sugov_cpu_is_busy_update(sg_cpu, util);
 	max = sg_cpu->max;
 	util = sugov_iowait_apply(sg_cpu, time, util, max);
 	next_f = get_next_freq(sg_policy, util, max);
@@ -535,12 +556,15 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 	struct cpufreq_policy *policy = sg_policy->policy;
 	unsigned long util = 0, max = 1;
 	unsigned int j;
+	unsigned long sg_cpu_util = 0;
 
 	for_each_cpu(j, policy->cpus) {
 		struct sugov_cpu *j_sg_cpu = &per_cpu(sugov_cpu, j);
 		unsigned long j_util, j_max;
 
 		j_util = sugov_get_util(j_sg_cpu);
+		if (j_sg_cpu == sg_cpu)
+			sg_cpu_util = j_util;
 		j_max = j_sg_cpu->max;
 		j_util = sugov_iowait_apply(j_sg_cpu, time, j_util, j_max);
 
@@ -549,6 +573,14 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 			max = j_max;
 		}
 	}
+
+	/*
+	 * Only update the business status if we are looking at the CPU for
+	 * which a utilization change triggered a call to get_next_freq(). This
+	 * way, we don't affect the "busy" status of CPUs that don't have any
+	 * change in utilization.
+	 */
+	sugov_cpu_is_busy_update(sg_cpu, sg_cpu_util);
 
 	return get_next_freq(sg_policy, util, max);
 }
