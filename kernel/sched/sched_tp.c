@@ -26,7 +26,7 @@ static void sched_load_cfs_rq(void *data, struct cfs_rq *cfs_rq)
 	sched_trace_cfs_rq_path(cfs_rq, path, PATH_SIZE);
 	cpu = sched_trace_cfs_rq_cpu(cfs_rq);
 
-	trace_sched_pelt_cfs(cpu, path, avg);
+	trace_sched_load_cfs_rq(cpu, path, avg);
 }
 
 static void sched_load_rt(void *data, struct rq *rq)
@@ -79,7 +79,7 @@ static void sched_load_se(void *data, struct sched_entity *se)
 	comm = p ? p->comm : "(null)";
 	pid = p ? p->pid : -1;
 
-	trace_sched_pelt_se(cpu, path, comm, pid, &se->avg);
+	trace_sched_load_se(cpu, path, comm, pid, &se->avg);
 }
 
 static void sched_overutilized(void *data, int overutilized, struct root_domain *rd)
