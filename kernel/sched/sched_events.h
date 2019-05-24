@@ -10,7 +10,7 @@
 
 #include <linux/tracepoint.h>
 
-TRACE_EVENT(sched_pelt_cfs,
+TRACE_EVENT(sched_load_cfs_rq,
 
 	TP_PROTO(int cpu, char *path, const struct sched_avg *avg),
 
@@ -74,7 +74,7 @@ DEFINE_EVENT(sched_pelt_rq_template, sched_pelt_irq,
 	TP_PROTO(int cpu, const struct sched_avg *avg),
 	TP_ARGS(cpu, avg));
 
-TRACE_EVENT(sched_pelt_se,
+TRACE_EVENT(sched_load_se,
 
 	TP_PROTO(int cpu, char *path, char *comm, int pid, const struct sched_avg *avg),
 
