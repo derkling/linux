@@ -288,6 +288,10 @@ int __update_load_avg_se(u64 now, struct cfs_rq *cfs_rq, struct sched_entity *se
 		trace_uclamp_util_se(entity_is_task(se),
 				     container_of(se, struct task_struct, se),
 				     rq_of(cfs_rq));
+		if (entity_is_task(se)) {
+		    struct task_struct *p = container_of(se, struct task_struct, se);
+		    trace_sched_util_est_task(entity_is_task(se), p, &se->avg);
+		}
 
 		return 1;
 	}
@@ -308,6 +312,7 @@ int __update_load_avg_cfs_rq(u64 now, struct cfs_rq *cfs_rq)
 
 		trace_sched_load_cfs_rq(cfs_rq);
 		trace_uclamp_util_cfs(is_root_rq, cpu, cfs_rq);
+		trace_sched_util_est_cpu(is_root_rq, cpu, cfs_rq);
 
 		return 1;
 	}

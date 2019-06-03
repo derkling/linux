@@ -3653,8 +3653,8 @@ static inline void util_est_enqueue(struct cfs_rq *cfs_rq,
 	WRITE_ONCE(cfs_rq->avg.util_est.enqueued, enqueued);
 
 	/* Update plots for Task and CPU estimated utilization */
-	trace_sched_util_est_task(p, &p->se.avg);
-	trace_sched_util_est_cpu(cpu_of(rq_of(cfs_rq)), cfs_rq);
+	trace_sched_util_est_task(true, p, &p->se.avg);
+	trace_sched_util_est_cpu(true, cpu_of(rq_of(cfs_rq)), cfs_rq);
 }
 
 /*
@@ -3686,7 +3686,7 @@ util_est_dequeue(struct cfs_rq *cfs_rq, struct task_struct *p, bool task_sleep)
 	WRITE_ONCE(cfs_rq->avg.util_est.enqueued, ue.enqueued);
 
 	/* Update plots for CPU's estimated utilization */
-	trace_sched_util_est_cpu(cpu_of(rq_of(cfs_rq)), cfs_rq);
+	trace_sched_util_est_cpu(true, cpu_of(rq_of(cfs_rq)), cfs_rq);
 
 	/*
 	 * Skip update of task's estimated utilization when the task has not
@@ -3753,7 +3753,7 @@ done:
 	WRITE_ONCE(p->se.avg.util_est, ue);
 
 	/* Update plots for Task's estimated utilization */
-	trace_sched_util_est_task(p, &p->se.avg);
+	trace_sched_util_est_task(true, p, &p->se.avg);
 }
 
 static inline int task_fits_capacity(struct task_struct *p, long capacity)

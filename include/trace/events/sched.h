@@ -735,11 +735,13 @@ TRACE_EVENT(sched_load_tg,
 /*
  * Tracepoint for tasks' estimated utilization.
  */
-TRACE_EVENT(sched_util_est_task,
+TRACE_EVENT_CONDITION(sched_util_est_task,
 
-	TP_PROTO(struct task_struct *tsk, struct sched_avg *avg),
+	TP_PROTO(bool is_task, struct task_struct *tsk, struct sched_avg *avg),
 
-	TP_ARGS(tsk, avg),
+	TP_ARGS(is_task, tsk, avg),
+
+	TP_CONDITION(is_task),
 
 	TP_STRUCT__entry(
 		__array( char,	comm,	TASK_COMM_LEN		)
@@ -772,11 +774,13 @@ TRACE_EVENT(sched_util_est_task,
 /*
  * Tracepoint for root cfs_rq's estimated utilization.
  */
-TRACE_EVENT(sched_util_est_cpu,
+TRACE_EVENT_CONDITION(sched_util_est_cpu,
 
-	TP_PROTO(int cpu, struct cfs_rq *cfs_rq),
+	TP_PROTO(bool is_root, int cpu, struct cfs_rq *cfs_rq),
 
-	TP_ARGS(cpu, cfs_rq),
+	TP_ARGS(is_root, cpu, cfs_rq),
+
+	TP_CONDITION(is_root),
 
 	TP_STRUCT__entry(
 		__field( int,		cpu			)
