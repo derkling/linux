@@ -1955,6 +1955,14 @@ config TEST_STATIC_KEYS
 
 	  If unsure, say N.
 
+config TEST_STATIC_CALL
+	tristate "Test static call"
+	depends on m
+	help
+	  Test the static call interfaces.
+
+	  If unsure, say N.
+
 config TEST_KMOD
 	tristate "kmod stress tester"
 	depends on m
