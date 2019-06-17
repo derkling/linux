@@ -6705,8 +6705,10 @@ static inline void alloc_uclamp_sched_group(struct task_group *tg,
 #ifdef CONFIG_UCLAMP_TASK_GROUP
 	int clamp_id;
 
-	for_each_clamp_id(clamp_id)
-		tg->uclamp_req[clamp_id] = parent->uclamp_req[clamp_id];
+	for_each_clamp_id(clamp_id) {
+		uclamp_se_set(&tg->uclamp_req[clamp_id],
+			      uclamp_none(clamp_id), false);
+	}
 #endif
 }
 
