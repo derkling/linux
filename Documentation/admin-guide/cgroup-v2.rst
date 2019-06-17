@@ -1022,7 +1022,7 @@ All time durations are in microseconds.
 	Shows pressure stall information for CPU. See
 	Documentation/accounting/psi.txt for details.
 
-  cpu.util.min
+  cpu.uclamp.min
         A read-write single value file which exists on non-root cgroups.
         The default is "0", i.e. no utilization boosting.
 
@@ -1032,7 +1032,7 @@ All time durations are in microseconds.
         values similar to the sched_setattr(2). This minimum utilization
         value is used to clamp the task specific minimum utilization clamp.
 
-  cpu.util.max
+  cpu.uclamp.max
         A read-write single value file which exists on non-root cgroups.
         The default is "1024". i.e. no utilization capping
 

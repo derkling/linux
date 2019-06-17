@@ -6956,8 +6956,8 @@ static void cpu_cgroup_attach(struct cgroup_taskset *tset)
 }
 
 #ifdef CONFIG_UCLAMP_TASK_GROUP
-static int cpu_util_min_write_u64(struct cgroup_subsys_state *css,
-				  struct cftype *cftype, u64 min_value)
+static int cpu_uclamp_min_write_u64(struct cgroup_subsys_state *css,
+				    struct cftype *cftype, u64 min_value)
 {
 	struct task_group *tg;
 	int ret = 0;
@@ -6987,8 +6987,8 @@ out:
 	return ret;
 }
 
-static int cpu_util_max_write_u64(struct cgroup_subsys_state *css,
-				  struct cftype *cftype, u64 max_value)
+static int cpu_uclamp_max_write_u64(struct cgroup_subsys_state *css,
+				    struct cftype *cftype, u64 max_value)
 {
 	struct task_group *tg;
 	int ret = 0;
@@ -7032,14 +7032,14 @@ static inline u64 cpu_uclamp_read(struct cgroup_subsys_state *css,
 	return util_clamp;
 }
 
-static u64 cpu_util_min_read_u64(struct cgroup_subsys_state *css,
-				 struct cftype *cft)
+static u64 cpu_uclamp_min_read_u64(struct cgroup_subsys_state *css,
+				   struct cftype *cft)
 {
 	return cpu_uclamp_read(css, UCLAMP_MIN);
 }
 
-static u64 cpu_util_max_read_u64(struct cgroup_subsys_state *css,
-				 struct cftype *cft)
+static u64 cpu_uclamp_max_read_u64(struct cgroup_subsys_state *css,
+				   struct cftype *cft)
 {
 	return cpu_uclamp_read(css, UCLAMP_MAX);
 }
@@ -7392,14 +7392,14 @@ static struct cftype cpu_legacy_files[] = {
 #endif
 #ifdef CONFIG_UCLAMP_TASK_GROUP
 	{
-		.name = "util.min",
-		.read_u64 = cpu_util_min_read_u64,
-		.write_u64 = cpu_util_min_write_u64,
+		.name = "uclamp.min",
+		.read_u64 = cpu_uclamp_min_read_u64,
+		.write_u64 = cpu_uclamp_min_write_u64,
 	},
 	{
-		.name = "util.max",
-		.read_u64 = cpu_util_max_read_u64,
-		.write_u64 = cpu_util_max_write_u64,
+		.name = "uclamp.max",
+		.read_u64 = cpu_uclamp_max_read_u64,
+		.write_u64 = cpu_uclamp_max_write_u64,
 	},
 #endif
 	{ }	/* Terminate */
@@ -7571,16 +7571,16 @@ static struct cftype cpu_files[] = {
 #endif
 #ifdef CONFIG_UCLAMP_TASK_GROUP
 	{
-		.name = "util.min",
+		.name = "uclamp.min",
 		.flags = CFTYPE_NOT_ON_ROOT,
-		.read_u64 = cpu_util_min_read_u64,
-		.write_u64 = cpu_util_min_write_u64,
+		.read_u64 = cpu_uclamp_min_read_u64,
+		.write_u64 = cpu_uclamp_min_write_u64,
 	},
 	{
-		.name = "util.max",
+		.name = "uclamp.max",
 		.flags = CFTYPE_NOT_ON_ROOT,
-		.read_u64 = cpu_util_max_read_u64,
-		.write_u64 = cpu_util_max_write_u64,
+		.read_u64 = cpu_uclamp_max_read_u64,
+		.write_u64 = cpu_uclamp_max_write_u64,
 	},
 #endif
 	{ }	/* terminate */
