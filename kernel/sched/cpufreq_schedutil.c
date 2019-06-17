@@ -60,11 +60,9 @@ struct sugov_cpu {
 	unsigned long		bw_dl;
 	unsigned long		max;
 
-	/* The field below is for single-CPU policies only: */
-#ifdef CONFIG_NO_HZ_COMMON
-	unsigned long		saved_idle_calls;
-	unsigned long		previous_util;
-#endif
+	unsigned long		boost;
+	unsigned long		util_avg;
+	unsigned long		util_est_enqueued;
 };
 
 static DEFINE_PER_CPU(struct sugov_cpu, sugov_cpu);
@@ -175,44 +173,43 @@ static void sugov_deferred_update(struct sugov_policy *sg_policy, u64 time,
 	}
 }
 
-#ifdef CONFIG_NO_HZ_COMMON
 static bool sugov_cpu_is_busy(struct sugov_cpu *sg_cpu)
 {
-	unsigned long idle_calls = tick_nohz_get_idle_calls_cpu(sg_cpu->cpu);
-	bool ret = idle_calls == sg_cpu->saved_idle_calls;
-	return ret;
+	return READ_ONCE(sg_cpu->boost) > 0;
 }
 
 static void sugov_cpu_is_busy_update(struct sugov_cpu *sg_cpu,
 				     unsigned long util)
 {
-	unsigned long idle_calls = tick_nohz_get_idle_calls_cpu(sg_cpu->cpu);
-	sg_cpu->saved_idle_calls = idle_calls;
+	struct rq *rq = cpu_rq(sg_cpu->cpu);
+	unsigned long util_est_enqueued;
+	unsigned long util_avg;
+	unsigned long boost = 0;
+
+	util_est_enqueued = READ_ONCE(rq->cfs.avg.util_est.enqueued);
+	util_avg = READ_ONCE(rq->cfs.avg.util_avg);
 
 	/*
-	 * Make sure that this CPU will not be immediately considered as busy in
-	 * cases where the CPU has already entered an idle state. In that case,
-	 * the number of idle_calls will not vary anymore until it exits idle,
-	 * which would lead sugov_cpu_is_busy() to say that this CPU is busy,
-	 * because it has not (re)entered idle since the last time we looked at
-	 * it.
-	 * Assuming cpu0 and cpu1 are in the same policy, that will make sure
-	 * this sequence of events leads to right cpu1 business status from
-	 * get_next_freq(cpu=1)
-	 * cpu0: [enter idle] -> [get_next_freq] -> [doing nothing] -> [wakeup]
-	 * cpu1:                ...              -> [get_next_freq] ->   ...
+	 * Boost when util_avg becomes higher than the previous stable
+	 * knowledge of the enqueued tasks' set util, which is CPU's
+	 * util_est_enqueued.
+	 *
+	 * We try to spot changes in the workload itself, so we want to
+	 * avoid the noise of tasks being enqueued/dequeued. To do that,
+	 * we only trigger boosting when the "amount of work' enqueued
+	 * is stable.
+	 *
+	 * Also, we only want to boost when util_avg is increasing
+	 * enough to justify faster frequency increase than usual.
 	 */
-	if (util <= sg_cpu->previous_util)
-		sg_cpu->saved_idle_calls--;
+	if (util_est_enqueued == sg_cpu->util_est_enqueued
+	    && util_avg > util_est_enqueued)
+		 boost = util_avg - util_est_enqueued;
 
-	sg_cpu->previous_util = util;
+	sg_cpu->util_est_enqueued = util_est_enqueued;
+	sg_cpu->util_avg = util_avg;
+	WRITE_ONCE(sg_cpu->boost, boost);
 }
-#else
-static inline bool sugov_cpu_is_busy(struct sugov_cpu *sg_cpu) { return false; }
-static void sugov_cpu_is_busy_update(struct sugov_cpu *sg_cpu
-				     unsigned long util)
-{}
-#endif /* CONFIG_NO_HZ_COMMON */
 
 /**
  * get_next_freq - Compute a new frequency for a given cpufreq policy.
