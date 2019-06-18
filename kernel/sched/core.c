@@ -6969,7 +6969,8 @@ static inline int uclamp_scale_from_percent(char *buf, u64 *value)
 		if (ret)
 			return ret;
 
-		*value = (percent << SCHED_CAPACITY_SHIFT) / 10000;
+		percent <<= SCHED_CAPACITY_SHIFT;
+		*value = DIV_ROUND_CLOSEST_ULL(percent, 10000);
 	}
 
 	return 0;
@@ -6977,7 +6978,7 @@ static inline int uclamp_scale_from_percent(char *buf, u64 *value)
 
 static inline u64 uclamp_percent_from_scale(u64 value)
 {
-	return (value * 10000) >> SCHED_CAPACITY_SHIFT;
+	return DIV_ROUND_CLOSEST_ULL(value * 10000, SCHED_CAPACITY_SCALE);
 }
 
 static ssize_t cpu_uclamp_min_write(struct kernfs_open_file *of,
