@@ -17,3 +17,4 @@ timers/cleanup
 timers/ptp
 timers/nohz
 timers/2038
+timers/vdso
