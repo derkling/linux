@@ -7019,20 +7019,9 @@ static ssize_t cpu_uclamp_min_write(struct kernfs_open_file *of,
 	rcu_read_lock();
 
 	tg = css_tg(of_css(of));
-	if (tg == &root_task_group) {
-		ret = -EINVAL;
-		goto out;
-	}
-	if (tg->uclamp_req[UCLAMP_MIN].value == min_value)
-		goto out;
-	if (tg->uclamp_req[UCLAMP_MAX].value < min_value) {
-		ret = -EINVAL;
-		goto out;
-	}
+	if (tg->uclamp_req[UCLAMP_MIN].value != min_value)
+		uclamp_se_set(&tg->uclamp_req[UCLAMP_MIN], min_value, false);
 
-	uclamp_se_set(&tg->uclamp_req[UCLAMP_MIN], min_value, false);
-
-out:
 	rcu_read_unlock();
 
 	return nbytes;
@@ -7055,20 +7044,9 @@ static ssize_t cpu_uclamp_max_write(struct kernfs_open_file *of,
 	rcu_read_lock();
 
 	tg = css_tg(of_css(of));
-	if (tg == &root_task_group) {
-		ret = -EINVAL;
-		goto out;
-	}
-	if (tg->uclamp_req[UCLAMP_MAX].value == max_value)
-		goto out;
-	if (tg->uclamp_req[UCLAMP_MIN].value > max_value) {
-		ret = -EINVAL;
-		goto out;
-	}
+	if (tg->uclamp_req[UCLAMP_MAX].value != max_value)
+		uclamp_se_set(&tg->uclamp_req[UCLAMP_MAX], max_value, false);
 
-	uclamp_se_set(&tg->uclamp_req[UCLAMP_MAX], max_value, false);
-
-out:
 	rcu_read_unlock();
 
 	return nbytes;

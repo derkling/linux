@@ -951,11 +951,12 @@ controller implements weight and absolute bandwidth limit models for
 normal scheduling policy and absolute bandwidth allocation model for
 realtime scheduling policy.
 
-Cycles distribution is based, by default, on a temporal base and it
-does not account for the frequency at which tasks are executed.
-The (optional) utilization clamping support allows to enforce a minimum
-bandwidth, which should always be provided by a CPU, and a maximum bandwidth,
-which should never be exceeded by a CPU.
+In all the above models, cycles distribution is defined only on a temporal
+base and it does not account for the frequency at which tasks are executed.
+The (optional) utilization clamping support allows to hint the schedutil
+cpufreq governor about the minimum desired frequency which should always be
+provided by a CPU, as well as the maximum desired frequency, which should not
+be exceeded by a CPU.
 
 WARNING: cgroup2 doesn't yet support control of realtime processes and
 the cpu controller can only be enabled when all RT processes are in
