@@ -6993,41 +6993,47 @@ static void cpu_cgroup_attach(struct cgroup_taskset *tset)
 }
 
 #ifdef CONFIG_UCLAMP_TASK_GROUP
-static void cpu_util_update_eff(struct cgroup_subsys_state *css,
-				unsigned int clamp_id)
+static void cpu_util_update_eff(struct cgroup_subsys_state *css)
 {
 	struct cgroup_subsys_state *top_css = css;
-	struct uclamp_se *uc_se, *uc_parent;
-	unsigned int value;
+	unsigned int eff[UCLAMP_CNT];
+	struct uclamp_se *uc_se;
+	unsigned int clamp_id;
+	unsigned int clamps;
 
 	css_for_each_descendant_pre(css, top_css) {
-		value = css_tg(css)->uclamp_req[clamp_id].value;
+		cgroup_path(css->cgroup, path, 32);
 
-		uc_parent = NULL;
-		if (css_tg(css)->parent)
-			uc_parent = &css_tg(css)->parent->uclamp[clamp_id];
+		for_each_clamp_id(clamp_id)
+			eff[clamp_id] = css_tg(css)->uclamp_req[clamp_id].value;
 
-		/*
-		 * Skip the whole subtrees if the current effective clamp is
-		 * already matching the TG's clamp value.
-		 * In this case, all the subtrees already have top_value, or a
-		 * more restrictive value, as effective clamp.
-		 */
-		uc_se = &css_tg(css)->uclamp[clamp_id];
-		if (uc_se->value == value &&
-		    uc_parent && uc_parent->value >= value) {
+		/* Cap local protection and limit with parent's ones */
+		if (css_tg(css)->parent) {
+			uc_se = css_tg(css)->parent->uclamp;
+
+			for_each_clamp_id(clamp_id) {
+				if (eff[clamp_id] > uc_se[clamp_id].value)
+					eff[clamp_id] = uc_se[clamp_id].value;
+			}
+		}
+
+		/* Cap local protection with local limit */
+		eff[UCLAMP_MIN] = min(eff[UCLAMP_MIN], eff[UCLAMP_MAX]);
+
+		/* Propagate most restrictive effective clamps */
+		clamps = 0x0;
+		uc_se = css_tg(css)->uclamp;
+		for_each_clamp_id(clamp_id) {
+			if (eff[clamp_id] == uc_se[clamp_id].value)
+				continue;
+			uc_se[clamp_id].value = eff[clamp_id];
+			uc_se[clamp_id].bucket_id = uclamp_bucket_id(eff[clamp_id]);
+			clamps |= (0x1 << clamp_id);
+		}
+		if (!clamps) {
 			css = css_rightmost_descendant(css);
 			continue;
 		}
-
-		/* Propagate the most restrictive effective value */
-		if (uc_parent && uc_parent->value < value)
-			value = uc_parent->value;
-		if (uc_se->value == value)
-			continue;
-
-		uc_se->value = value;
-		uc_se->bucket_id = uclamp_bucket_id(value);
 	}
 }
 
@@ -7078,7 +7084,7 @@ static ssize_t cpu_uclamp_min_write(struct kernfs_open_file *of,
 		uclamp_se_set(&tg->uclamp_req[UCLAMP_MIN], min_value, false);
 
 	/* Update effective clamps to track the most restrictive value */
-	cpu_util_update_eff(of_css(of), UCLAMP_MIN);
+	cpu_util_update_eff(of_css(of));
 
 	rcu_read_unlock();
 	mutex_unlock(&uclamp_mutex);
@@ -7108,7 +7114,7 @@ static ssize_t cpu_uclamp_max_write(struct kernfs_open_file *of,
 		uclamp_se_set(&tg->uclamp_req[UCLAMP_MAX], max_value, false);
 
 	/* Update effective clamps to track the most restrictive value */
-	cpu_util_update_eff(of_css(of), UCLAMP_MAX);
+	cpu_util_update_eff(of_css(of));
 
 	rcu_read_unlock();
 	mutex_unlock(&uclamp_mutex);
