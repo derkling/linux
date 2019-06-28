@@ -5,9 +5,11 @@
 #define HAVE_JUMP_LABEL_BATCH
 
 #ifdef CONFIG_X86_64
-# define STATIC_KEY_INIT_NOP P6_NOP5_ATOMIC
+# define STATIC_KEY_NOP2 P6_NOP2
+# define STATIC_KEY_NOP5 P6_NOP5_ATOMIC
 #else
-# define STATIC_KEY_INIT_NOP GENERIC_NOP5_ATOMIC
+# define STATIC_KEY_NOP2 GENERIC_NOP2
+# define STATIC_KEY_NOP5 GENERIC_NOP5_ATOMIC
 #endif
 
 #include <asm/asm.h>
@@ -29,7 +31,7 @@
 static __always_inline bool arch_static_branch(struct static_key *key, bool branch)
 {
 	asm_volatile_goto("1:"
-		".byte " __stringify(STATIC_KEY_INIT_NOP) "\n\t"
+		".byte " __stringify(STATIC_KEY_NOP5) "\n\t"
 		JUMP_TABLE_ENTRY
 		: :  "i" (key), "i" (branch) : : l_yes);
 

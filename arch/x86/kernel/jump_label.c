@@ -17,10 +17,13 @@
 #include <asm/text-patching.h>
 
 union jump_code_union {
-	char code[JUMP_LABEL_NOP_SIZE];
+	char code[JMP32_INSN_SIZE];
 	struct {
-		char jump;
-		int offset;
+		char opcode;
+		union {
+			s8	d8;
+			s32	d32;
+		};
 	} __attribute__((packed));
 };
 
@@ -29,42 +32,58 @@ int arch_jump_entry_size(struct jump_entry *entry)
 	return JMP32_INSN_SIZE;
 }
 
-static void __jump_label_set_jump_code(struct jump_entry *entry,
-				       enum jump_label_type type,
-				       union jump_code_union *code,
-				       int init)
+static inline bool __jump_disp_is_byte(s32 disp)
 {
-	const unsigned char default_nop[] = { STATIC_KEY_INIT_NOP };
-	const unsigned char *ideal_nop = ideal_nops[NOP_ATOMIC5];
-	unsigned char *ip = (void *)jump_entry_code(entry);
+	return (disp >> 31) == (disp >> 7);
+}
+
+static int __jump_label_set_jump_code(struct jump_entry *entry,
+				      enum jump_label_type type,
+				      union jump_code_union *code,
+				      int init)
+{
+	static unsigned char default_nop2[] = { STATIC_KEY_NOP2 };
+	static unsigned char default_nop5[] = { STATIC_KEY_NOP5 };
+	s32 disp = jump_entry_target(entry) - jump_entry_code(entry);
+	void *ip = (void *)jump_entry_code(entry);
+	const unsigned char *nop;
 	const void *expect;
-	int line;
+	int line, size;
 
-	code->jump = 0xe9;
-	code->offset = jump_entry_target(entry) -
-		       (jump_entry_code(entry) + JUMP_LABEL_NOP_SIZE);
+	size = arch_jump_entry_size(entry);
+	disp -= size;
+	if (size == JMP8_INSN_SIZE) {
+		BUG_ON(!__jump_disp_is_byte(disp));
+		code->opcode = JMP8_INSN_OPCODE;
+		code->d8 = disp;
+		nop = init ? default_nop2 : ideal_nops[2];
+	} else {
+		code->opcode = JMP32_INSN_OPCODE;
+		code->d32 = disp;
+		nop = init ? default_nop5 : ideal_nops[NOP_ATOMIC5];
+	}
 
-	if (init) {
-		expect = default_nop; line = __LINE__;
-	} else if (type == JUMP_LABEL_JMP) {
-		expect = ideal_nop; line = __LINE__;
+	if (init || type == JUMP_LABEL_JMP) {
+		expect = nop; line = __LINE__;
 	} else {
 		expect = code->code; line = __LINE__;
 	}
 
-	if (memcmp(ip, expect, JUMP_LABEL_NOP_SIZE)) {
+	if (memcmp(ip, expect, size)) {
 		/*
 		 * The location is not an op that we were expecting.
 		 * Something went wrong. Crash the box, as something could be
 		 * corrupting the kernel.
 		 */
-		pr_crit("jump_label: Fatal kernel bug, unexpected op at %pS [%p] (%5ph != %5ph)) line:%d init:%d type:%d\n",
-				ip, ip, ip, expect, line, init, type);
+		pr_crit("jump_label: Fatal kernel bug, unexpected op at %pS [%p] (%5ph != %5ph)) line:%d init:%d size:%d type:%d\n",
+			ip, ip, ip, expect, line, init, size, type);
 		BUG();
 	}
 
 	if (type == JUMP_LABEL_NOP)
-		memcpy(code, ideal_nop, JUMP_LABEL_NOP_SIZE);
+		memcpy(code, nop, size);
+
+	return size;
 }
 
 static void __ref __jump_label_transform(struct jump_entry *entry,
@@ -72,8 +91,9 @@ static void __ref __jump_label_transform(struct jump_entry *entry,
 					 int init)
 {
 	union jump_code_union code;
+	int size;
 
-	__jump_label_set_jump_code(entry, type, &code, init);
+	size = __jump_label_set_jump_code(entry, type, &code, init);
 
 	/*
 	 * As long as only a single processor is running and the code is still
@@ -87,12 +107,11 @@ static void __ref __jump_label_transform(struct jump_entry *entry,
 	 * always nop being the 'currently valid' instruction
 	 */
 	if (init || system_state == SYSTEM_BOOTING) {
-		text_poke_early((void *)jump_entry_code(entry), &code,
-				JUMP_LABEL_NOP_SIZE);
+		text_poke_early((void *)jump_entry_code(entry), &code, size);
 		return;
 	}
 
-	text_poke_bp((void *)jump_entry_code(entry), &code, JUMP_LABEL_NOP_SIZE, NULL);
+	text_poke_bp((void *)jump_entry_code(entry), &code, size, NULL);
 }
 
 void arch_jump_label_transform(struct jump_entry *entry,
@@ -112,6 +131,7 @@ bool arch_jump_label_transform_queue(struct jump_entry *entry,
 {
 	struct text_poke_loc *tp;
 	void *entry_code;
+	int size;
 
 	if (system_state == SYSTEM_BOOTING) {
 		/*
@@ -148,10 +168,10 @@ bool arch_jump_label_transform_queue(struct jump_entry *entry,
 			return false;
 	}
 
-	__jump_label_set_jump_code(entry, type,
+	size = __jump_label_set_jump_code(entry, type,
 				   (union jump_code_union *)&tp->text, 0);
 
-	text_poke_loc_init(tp, entry_code, NULL, JUMP_LABEL_NOP_SIZE, NULL);
+	text_poke_loc_init(tp, entry_code, NULL, size, NULL);
 
 	tp_vec_nr++;
 
