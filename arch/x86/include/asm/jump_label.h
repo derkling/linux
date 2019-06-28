@@ -55,36 +55,16 @@ l_yes:
 
 #else	/* __ASSEMBLY__ */
 
-.macro STATIC_JUMP_IF_TRUE target, key, def
+.macro STATIC_BRANCH_FALSE_LIKELY target, key
 .Lstatic_jump_\@:
-	.if \def
 	/* Equivalent to "jmp.d32 \target" */
 	.byte		0xe9
-	.long		\target - .Lstatic_jump_after_\@
-.Lstatic_jump_after_\@:
-	.else
-	.byte		STATIC_KEY_INIT_NOP
-	.endif
-	.pushsection __jump_table, "aw"
-	_ASM_ALIGN
-	.long		.Lstatic_jump_\@ - ., \target - .
-	_ASM_PTR	\key - .
-	.popsection
-.endm
+	.long		\target - (. + 4)
 
-.macro STATIC_JUMP_IF_FALSE target, key, def
-.Lstatic_jump_\@:
-	.if \def
-	.byte		STATIC_KEY_INIT_NOP
-	.else
-	/* Equivalent to "jmp.d32 \target" */
-	.byte		0xe9
-	.long		\target - .Lstatic_jump_after_\@
-.Lstatic_jump_after_\@:
-	.endif
 	.pushsection __jump_table, "aw"
 	_ASM_ALIGN
-	.long		.Lstatic_jump_\@ - ., \target - .
+	.long		.Lstatic_jump_\@ - .
+	.long		\target - .
 	_ASM_PTR	\key + 1 - .
 	.popsection
 .endm
