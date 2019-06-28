@@ -24,17 +24,6 @@ union jump_code_union {
 	} __attribute__((packed));
 };
 
-static void bug_at(unsigned char *ip, int line)
-{
-	/*
-	 * The location is not an op that we were expecting.
-	 * Something went wrong. Crash the box, as something could be
-	 * corrupting the kernel.
-	 */
-	pr_crit("jump_label: Fatal kernel bug, unexpected op at %pS [%p] (%5ph) %d\n", ip, ip, ip, line);
-	BUG();
-}
-
 static void __jump_label_set_jump_code(struct jump_entry *entry,
 				       enum jump_label_type type,
 				       union jump_code_union *code,
@@ -42,6 +31,7 @@ static void __jump_label_set_jump_code(struct jump_entry *entry,
 {
 	const unsigned char default_nop[] = { STATIC_KEY_INIT_NOP };
 	const unsigned char *ideal_nop = ideal_nops[NOP_ATOMIC5];
+	unsigned char *ip = (void *)jump_entry_code(entry);
 	const void *expect;
 	int line;
 
@@ -57,8 +47,16 @@ static void __jump_label_set_jump_code(struct jump_entry *entry,
 		expect = code->code; line = __LINE__;
 	}
 
-	if (memcmp((void *)jump_entry_code(entry), expect, JUMP_LABEL_NOP_SIZE))
-		bug_at((void *)jump_entry_code(entry), line);
+	if (memcmp(ip, expect, JUMP_LABEL_NOP_SIZE)) {
+		/*
+		 * The location is not an op that we were expecting.
+		 * Something went wrong. Crash the box, as something could be
+		 * corrupting the kernel.
+		 */
+		pr_crit("jump_label: Fatal kernel bug, unexpected op at %pS [%p] (%5ph != %5ph)) line:%d init:%d type:%d\n",
+				ip, ip, ip, expect, line, init, type);
+		BUG();
+	}
 
 	if (type == JUMP_LABEL_NOP)
 		memcpy(code, ideal_nop, JUMP_LABEL_NOP_SIZE);
