@@ -177,21 +177,10 @@ __init_or_module void arch_jump_label_transform_static(struct jump_entry *entry,
 				      enum jump_label_type type)
 {
 	/*
-	 * This function is called at boot up and when modules are
-	 * first loaded. Check if the default nop, the one that is
-	 * inserted at compile time, is the ideal nop. If it is, then
-	 * we do not need to update the nop, and we can leave it as is.
-	 * If it is not, then we need to update the nop to the ideal nop.
+	 * Rewrite the NOP on init / module-load to ensure we got the ideal
+	 * nop.  Don't bother with trying to figure out what size and what nop
+	 * it should be for now, simply do an unconditional rewrite.
 	 */
-	if (jlstate == JL_STATE_START) {
-		const unsigned char default_nop[] = { STATIC_KEY_INIT_NOP };
-		const unsigned char *ideal_nop = ideal_nops[NOP_ATOMIC5];
-
-		if (memcmp(ideal_nop, default_nop, 5) != 0)
-			jlstate = JL_STATE_UPDATE;
-		else
-			jlstate = JL_STATE_NO_UPDATE;
-	}
-	if (jlstate == JL_STATE_UPDATE)
+	if (jlstate == JL_STATE_UPDATE || jlstate == JL_STATE_START)
 		__jump_label_transform(entry, type, 1);
 }
