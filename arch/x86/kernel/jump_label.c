@@ -24,6 +24,11 @@ union jump_code_union {
 	} __attribute__((packed));
 };
 
+int arch_jump_entry_size(struct jump_entry *entry)
+{
+	return JMP32_INSN_SIZE;
+}
+
 static void __jump_label_set_jump_code(struct jump_entry *entry,
 				       enum jump_label_type type,
 				       union jump_code_union *code,
