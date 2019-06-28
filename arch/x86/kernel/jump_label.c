@@ -29,7 +29,24 @@ union jump_code_union {
 
 int arch_jump_entry_size(struct jump_entry *entry)
 {
+#ifdef USE_VARIABLE_JMP
+	struct insn insn;
+
+	/*
+	 * Because the instruction size heuristic doesn't purely rely on
+	 * displacement, but also on section, and we're hindered by GNU as UB
+	 * to emit the assemble time choice, we have to discover the size at
+	 * runtime.
+	 */
+	kernel_insn_init(&insn, (void *)jump_entry_code(entry), MAX_INSN_SIZE);
+	insn_get_length(&insn);
+	BUG_ON(!insn_complete(&insn));
+	BUG_ON(insn.length != 2 && insn.length != 5);
+
+	return insn.length;
+#else
 	return JMP32_INSN_SIZE;
+#endif
 }
 
 static inline bool __jump_disp_is_byte(s32 disp)
