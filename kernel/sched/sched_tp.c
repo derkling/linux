@@ -27,7 +27,7 @@ static inline struct cfs_rq *get_se_cfs_rq(struct sched_entity *se)
 
 static void sched_pelt_cfs(void *data, struct cfs_rq *cfs_rq)
 {
-	if (trace_sched_pelt_cfs_enabled()) {
+	if (trace_sched_load_cfs_rq_enabled()) {
 		const struct sched_avg *avg;
 		char path[PATH_SIZE];
 		int cpu;
@@ -36,7 +36,7 @@ static void sched_pelt_cfs(void *data, struct cfs_rq *cfs_rq)
 		sched_trace_cfs_rq_path(cfs_rq, path, PATH_SIZE);
 		cpu = sched_trace_cfs_rq_cpu(cfs_rq);
 
-		trace_sched_pelt_cfs(cpu, path, avg);
+		trace_sched_load_cfs_rq(cpu, path, avg);
 	}
 }
 
@@ -81,7 +81,7 @@ static void sched_pelt_irq(void *data, struct rq *rq)
 
 static void sched_pelt_se(void *data, struct sched_entity *se)
 {
-	if (trace_sched_pelt_se_enabled()) {
+	if (trace_sched_load_se_enabled()) {
 		void *gcfs_rq = get_group_cfs_rq(se);
 		void *cfs_rq = get_se_cfs_rq(se);
 		struct task_struct *p;
@@ -97,7 +97,7 @@ static void sched_pelt_se(void *data, struct sched_entity *se)
 		comm = p ? p->comm : "(null)";
 		pid = p ? p->pid : -1;
 
-		trace_sched_pelt_se(cpu, path, comm, pid, &se->avg);
+		trace_sched_load_se(cpu, path, comm, pid, &se->avg);
 	}
 }
 
