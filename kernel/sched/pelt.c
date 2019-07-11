@@ -34,7 +34,7 @@
  * Approximate:
  *   val * y^n,    where y^32 ~= 0.5 (~1 scheduling period)
  */
-static u64 decay_pelt(u64 val, u64 n, unsigned int avg_period)
+static u64 pelt_decay(u64 val, u64 n, unsigned int avg_period)
 {
 	unsigned int local_n;
 
@@ -49,7 +49,7 @@ static u64 decay_pelt(u64 val, u64 n, unsigned int avg_period)
 	 *    y^n = 1/2^(n/PERIOD) * y^(n%PERIOD)
 	 * With a look-up table which covers y^n (n<PERIOD)
 	 *
-	 * To achieve constant time decay_pelt.
+	 * To achieve constant time pelt_decay.
 	 */
 	if (unlikely(local_n >= avg_period)) {
 		val >>= local_n / avg_period;
@@ -61,7 +61,7 @@ static u64 decay_pelt(u64 val, u64 n, unsigned int avg_period)
 }
 
 static u32
-__accumulate_pelt_segments(u64 periods, u32 d1, u32 d3,
+pelt_accumulate_segments(u64 periods, u32 d1, u32 d3,
 			   unsigned int avg_period,
 			   unsigned int avg_max)
 {
@@ -70,7 +70,7 @@ __accumulate_pelt_segments(u64 periods, u32 d1, u32 d3,
 	/*
 	 * c1 = d1 y^p
 	 */
-	c1 = decay_pelt((u64)d1, periods, avg_period);
+	c1 = pelt_decay((u64)d1, periods, avg_period);
 
 	/*
 	 *            p-1
@@ -81,7 +81,7 @@ __accumulate_pelt_segments(u64 periods, u32 d1, u32 d3,
 	 *    = 1024 ( \Sum y^n - \Sum y^n - y^0 )
 	 *              n=0        n=p
 	 */
-	c2 = avg_max - decay_pelt(avg_max, periods, avg_period) - 1024;
+	c2 = avg_max - pelt_decay(avg_max, periods, avg_period) - 1024;
 
 	return c1 + c2 + c3;
 }
@@ -124,16 +124,16 @@ accumulate_sum(u64 delta, struct sched_avg *sa,
 	 * Step 1: decay old *_sum if we crossed period boundaries.
 	 */
 	if (periods) {
-		sa->load_sum = decay_pelt(sa->load_sum, periods, avg_period);
+		sa->load_sum = pelt_decay(sa->load_sum, periods, avg_period);
 		sa->runnable_load_sum =
-			decay_pelt(sa->runnable_load_sum, periods, avg_period);
-		sa->util_sum = decay_pelt((u64)(sa->util_sum), periods, avg_period);
+			pelt_decay(sa->runnable_load_sum, periods, avg_period);
+		sa->util_sum = pelt_decay((u64)(sa->util_sum), periods, avg_period);
 
 		/*
 		 * Step 2
 		 */
 		delta %= 1024;
-		contrib = __accumulate_pelt_segments(periods,
+		contrib = pelt_accumulate_segments(periods,
 						     1024 - sa->period_contrib,
 						     delta, avg_period, avg_max);
 	}
