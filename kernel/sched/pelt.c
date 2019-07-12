@@ -30,15 +30,30 @@
 
 #include <trace/events/sched.h>
 
+/* Map each PELT signal to the corresponding constants */
+struct pelt_const {
+	unsigned int avg_period;
+	unsigned int avg_max;
+} pelt_const[] = {
+	{PELT_LOAD_PERIOD,	PELT_LOAD_MAX},
+	{PELT_UTIL_PERIOD,	PELT_UTIL_MAX},
+};
+// TODO: add check on sizeof(pelt_const) matching the number of PELT signals
+
+#define PELT_PERIOD(signal)	(pelt_const[signal].avg_period)
+#define PELT_MAX(signal)	(pelt_const[signal].avg_max)
+
 /*
  * Approximate:
  *   val * y^n,    where y^32 ~= 0.5 (~1 scheduling period)
  */
-static u64 pelt_decay(u64 val, u64 n, unsigned int avg_period)
+static __always_inline u64
+pelt_decay(u64 val, u64 n, enum pelt_signal signal)
 {
 	unsigned int local_n;
+	u32 yN_inv;
 
-	if (unlikely(n > avg_period * 63))
+	if (unlikely(n > PELT_PERIOD(signal) * 63))
 		return 0;
 
 	/* after bounds checking we can collapse to 32-bit */
@@ -51,26 +66,29 @@ static u64 pelt_decay(u64 val, u64 n, unsigned int avg_period)
 	 *
 	 * To achieve constant time pelt_decay.
 	 */
-	if (unlikely(local_n >= avg_period)) {
-		val >>= local_n / avg_period;
-		local_n %= avg_period;
+	if (unlikely(local_n >= PELT_PERIOD(signal))) {
+		val >>= local_n / PELT_PERIOD(signal);
+		local_n %= PELT_PERIOD(signal);
 	}
 
-	val = mul_u64_u32_shr(val, runnable_avg_yN_inv[local_n], 32);
+	if (signal == PELT_LOAD)
+		yN_inv = pelt_load_yN_inv[local_n];
+	if (signal == PELT_UTIL)
+		yN_inv = pelt_util_yN_inv[local_n];
+
+	val = mul_u64_u32_shr(val, yN_inv, 32);
 	return val;
 }
 
-static u32
-pelt_accumulate_segments(u64 periods, u32 d1, u32 d3,
-			   unsigned int avg_period,
-			   unsigned int avg_max)
+static __always_inline u32
+pelt_accumulate_segments(u64 periods, u32 d1, u32 d3, enum pelt_signal signal)
 {
 	u32 c1, c2, c3 = d3; /* y^0 == 1 */
 
 	/*
 	 * c1 = d1 y^p
 	 */
-	c1 = pelt_decay((u64)d1, periods, avg_period);
+	c1 = pelt_decay((u64)d1, periods, signal);
 
 	/*
 	 *            p-1
@@ -81,12 +99,267 @@ pelt_accumulate_segments(u64 periods, u32 d1, u32 d3,
 	 *    = 1024 ( \Sum y^n - \Sum y^n - y^0 )
 	 *              n=0        n=p
 	 */
-	c2 = avg_max - pelt_decay(avg_max, periods, avg_period) - 1024;
+	c2 = PELT_MAX(signal) - pelt_decay(PELT_MAX(signal), periods, signal) - 1024;
 
 	return c1 + c2 + c3;
 }
 
 #define cap_scale(v, s) ((v)*(s) >> SCHED_CAPACITY_SHIFT)
+
+static __always_inline u64
+pelt_get_periods(u64 delta, u32 period_contrib)
+{
+	/* A period is 1024us (~1ms) */
+	return ((delta + period_contrib) / 1024);
+
+}
+
+static __always_inline u32
+pelt_get_contrib(u64 delta, u32 period_contrib, enum pelt_signal signal)
+{
+	u64 periods = pelt_get_periods(delta, period_contrib);
+
+	if (periods) {
+		delta = (delta + period_contrib) % 1024;
+		period_contrib = 1024 - period_contrib;
+
+		return pelt_accumulate_segments(periods, period_contrib,
+						delta, signal);
+	}
+
+	/* p == 0 -> delta < 1024 */
+	return (u32)delta;
+}
+
+static __always_inline u64
+__accumulate_sum(u32 contrib, u64 periods, u64 value, u64 sum,
+		    enum pelt_signal signal)
+{
+	if (periods)
+		sum = pelt_decay(sum, periods, signal);
+	if (value)
+		sum += value * contrib;
+
+	return sum;
+}
+
+
+static __always_inline void
+pelt_accumulate_sum(u64 delta, struct pelt_attrs *pa, enum pelt_flavour flavour,
+		    unsigned long load, unsigned long runnable, int running)
+{
+	u32 contrib = pelt_get_contrib(delta, pa->period_contrib, signal);
+	u64 periods = pelt_get_periods(delta, pa->period_contrib);
+	struct pelt_signal *ps;
+
+	if (flavour == PELT_ALL) {
+		ps = &pelt_all_of(pa)->load;
+		ps->sum = __accumulate_sum(contrib, periods, load,
+					   ps->sum, PELT_LOAD);
+
+		ps = &pelt_all_of(pa)->runnable;
+		ps->sum = __accumulate_sum(contrib, periods, runnable,
+					   ps->sum, PELT_LOAD);
+
+		ps = &pelt_util_of(pa)->running;
+		ps->sum = __accumulate_sum(contrib, periods,
+					   running * SCHED_CAPACITY_SCALE,
+					   ps->sum, PELT_UTIL);
+	}
+
+	if (flavour == PELT_LOAD) {
+		ps = &pelt_load_of(pa)->load;
+		ps->sum = __accumulate_sum(contrib, periods, load,
+					   ps->sum, PELT_LOAD);
+
+		ps = &pelt_load_of(pa)->runnable;
+		ps->sum = __accumulate_sum(contrib, periods, runnable,
+					   ps->sum, PELT_LOAD);
+	}
+
+	if (flavour == PELT_UTIL) {
+		ps = &pelt_util_of(pa)->running;
+		ps->sum = __accumulate_sum(contrib, periods,
+					   running * SCHED_CAPACITY_SCALE,
+					   ps->sum, PELT_UTIL);
+	}
+}
+
+static __always_inline int
+pelt_update_sum(u64 now, struct pelt_attrs *pa, struct pelt_flavour flavour,
+		unsigned long load, unsigned long runnable, int running)
+{
+	u64 periods;
+	u64 delta;
+
+	delta = now - pa->last_update_time;
+	/*
+	 * This should only happen when time goes backwards, which it
+	 * unfortunately does during sched clock init when we swap over to TSC.
+	 */
+	if ((s64)delta < 0) {
+		pa->last_update_time = now;
+		return 0;
+	}
+
+	/*
+	 * Use 1024ns as the unit of measurement since it's a reasonable
+	 * approximation of 1us and fast to compute.
+	 */
+	delta >>= 10;
+	if (!delta)
+		return 0;
+
+	pa->last_update_time += delta << 10;
+
+	/*
+	 * running is a subset of runnable (weight) so running can't be set if
+	 * runnable is clear. But there are some corner cases where the current
+	 * se has been already dequeued but cfs_rq->curr still points to it.
+	 * This means that weight will be 0 but not running for a sched_entity
+	 * but also for a cfs_rq if the latter becomes idle. As an example,
+	 * this happens during idle_balance() which calls
+	 * update_blocked_averages()
+	 */
+	if (!load)
+		runnable = running = 0;
+
+	/*
+	 * Now we know we crossed measurement unit boundaries. The *_avg
+	 * accrues by two steps:
+	 *
+	 * Step 1: accumulate *_sum since last_update_time. If we haven't
+	 * crossed period boundaries, finish.
+	 */
+	crossed = pelt_accumulate_sum(delta, pa, flavour,
+				      load, runnable, running);
+
+	return (!!crossed);
+}
+
+static __always_inline void
+pelt_update_avg(struct pelt_attrs *pa, enum pelt_flavour flavour,
+		unsigned long load, unsigned long runnable)
+{
+	struct pelt_signal *ps;
+	u32 divider;
+
+	if (flavour == PELT_ALL) {
+		divider = PELT_MAX(PELT_LOAD) - 1024 + pa->period_contrib;
+
+		ps = &pelt_all_of(pa)->load;
+		ps->avg = div_u64(load * ps->sum, divider);
+
+		ps = &pelt_all_of(pa)->runnable;
+		ps->avg = div_u64(runnable * ps->sum, divider);
+
+		divider = PELT_MAX(PELT_UTIL) - 1024 + pa->period_contrib;
+
+		ps = &pelt_all_of(pa)->running;
+		ps->avg = ps->sum / divider;
+	}
+
+	if (flavour == PELT_LOAD) {
+		divider = PELT_MAX(PELT_LOAD) - 1024 + pa->period_contrib;
+
+		ps = &pelt_load_of(pa)->load;
+		ps->avg = div_u64(load * ps->sum, divider);
+
+		ps = &pelt_load_of(pa)->runnable;
+		ps->avg = div_u64(runnable * ps->sum, divider);
+	}
+
+	if (flavour == PELT_UTIL) {
+		divider = PELT_MAX(PELT_UTIL) - 1024 + pa->period_contrib;
+
+		ps = &pelt_util_of(pa)->running;
+		ps->avg = ps->sum / divider;
+	}
+}
+
+
+
+int __update_load_avg_blocked_se(u64 now, struct sched_entity *se)
+{
+}
+
+int __update_load_avg_se(u64 now, struct cfs_rq *cfs_rq, struct sched_entity *se)
+{
+}
+
+int __update_load_avg_cfs_rq(u64 now, struct cfs_rq *cfs_rq)
+{
+}
+
+
+int update_rt_rq_load_avg(u64 now, struct rq *rq, int running)
+{
+	if (pelt_update_sum(now, &rq->pelt_rt.attrs,
+			    PELT_UTIL, running, running, running)) {
+
+		pelt_update_avg(&rq->pelt_rt.attrs, 1, 1);
+		trace_pelt_dl_tp(rq);
+		return 1;
+	}
+
+	return 0;
+}
+
+int update_dl_rq_load_avg(u64 now, struct rq *rq, int running)
+{
+	if (pelt_update_sum((now, &rq->pelt_dl.attrs,
+			     PELT_UTIL, running, running, running)) {
+
+		pelt_update_avg(&rq->pelt_dl.attrs, 1, 1);
+		trace_pelt_dl_tp(rq);
+		return 1;
+	}
+
+	return 0;
+}
+
+#ifdef CONFIG_HAVE_SCHED_AVG_IRQ
+int update_irq_load_avg(struct rq *rq, u64 running)
+{
+	int ret = 0;
+
+	/*
+	 * We can't use clock_pelt because irq time is not accounted in
+	 * clock_task. Instead we directly scale the running time to
+	 * reflect the real amount of computation
+	 */
+	running = cap_scale(running, arch_scale_freq_capacity(cpu_of(rq)));
+	running = cap_scale(running, arch_scale_cpu_capacity(cpu_of(rq)));
+
+	/*
+	 * We know the time that has been used by interrupt since last update
+	 * but we don't when. Let be pessimistic and assume that interrupt has
+	 * happened just before the update. This is not so far from reality
+	 * because interrupt will most probably wake up task and trig an update
+	 * of rq clock during which the metric is updated.
+	 * We start to decay with normal context time and then we add the
+	 * interrupt context time.
+	 * We can safely remove running from rq->clock because
+	 * rq->clock += delta with delta >= running
+	 */
+	ret  = pelt_update_sum(rq->clock - running, &rq->pelt_irq.attrs,
+			       PELT_UTIL, 0, 0, 0);
+	ret += pelt_update_sum(rq->clock, &rq->plet_irq.attrs,
+			       PELT_UTIL, 1, 1, 1);
+
+	if (ret) {
+		pelt_update_avg(&rq->pelt_irq.attrs, PELT_UTIL, 1, 1);
+		trace_pelt_irq_tp(rq);
+	}
+
+	return ret;
+}
+#endif
+
+
+/******************************************************************************
+                                 ORIGINAL VERISON
+ ******************************************************************************/
 
 /*
  * Accumulate the three separate parts of the sum; d1 the remainder

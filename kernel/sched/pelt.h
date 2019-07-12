@@ -17,6 +17,55 @@ update_irq_load_avg(struct rq *rq, u64 running)
 }
 #endif
 
+typedef enum pelt_flavour {
+	PELT_ALL = 0,
+	PELT_LOAD,
+	PELT_UTIL,
+	PELT_UTIL_EST,
+};
+
+/* PELT signals */
+typedef enum pelt_signal {
+	PELT_LOAD = 0,
+	PELT_UTIL,
+};
+#define UPDATE_LOAD	0x1 << PELT_LOAD,
+#define UPDATE_UTIL	0x1 << PELT_UTIL,
+
+struct pelt_attrs {
+	u64 last_update_time;
+	u32 period_contrib;
+};
+
+struct pelt_signal {
+	u64		sum;
+	unsigned long	avg;
+};
+
+struct pelt_all {
+	struct pelt_attrs	attrs;
+	struct pelt_signal	load;
+	struct pelt_signal	runnable;
+	struct pelt_signal	running;
+	struct util_est		est;
+} ____cache_aligned;
+
+struct pelt_load {
+	struct pelt_attrs	attrs;
+	struct pelt_signal	load;
+	struct pelt_signal	runnable;
+} ____cache_aligned;
+
+struct pelt_util {
+	struct pelt_attrs	attrs;
+	struct pelt_signal	running;
+	struct util_est		est;
+} ____cache_aligned;
+
+#define pelt_all_of(pa)		container_of(pa, struct pelt_all, attrs)
+#define pelt_load_of(pa)	container_of(pa, struct pelt_load, attrs)
+#define pelt_util_of(pa)	container_of(pa, struct pelt_util, attrs)
+
 /*
  * When a task is dequeued, its estimated utilization should not be update if
  * its util_avg has not been updated at least once.

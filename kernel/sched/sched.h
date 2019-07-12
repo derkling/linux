@@ -507,6 +507,9 @@ struct cfs_rq {
 #endif
 
 #ifdef CONFIG_SMP
+
+	struct pelt_tg		pelt;
+
 	/*
 	 * CFS load tracking
 	 */
@@ -930,6 +933,25 @@ struct rq {
 	int			online;
 
 	struct list_head cfs_tasks;
+
+
+
+
+
+
+
+	struct pelt_rq		pelt_rt;
+	struct pelt_rq		pelt_dl;
+#ifdef CONFIG_HAVE_SCHED_AVG_IRQ
+	struct pelt_rq		pelt_irq;
+#endif
+
+
+
+
+
+
+
 
 	struct sched_avg	avg_rt;
 	struct sched_avg	avg_dl;
