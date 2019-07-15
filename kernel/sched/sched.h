@@ -395,6 +395,8 @@ struct task_group {
 	struct cfs_bandwidth	cfs_bandwidth;
 
 #ifdef CONFIG_UCLAMP_TASK_GROUP
+	/* The two decimal precision [%] value requested from user-space */
+	unsigned int		uclamp_pct[UCLAMP_CNT];
 	/* Clamp values requested for a task group */
 	struct uclamp_se	uclamp_req[UCLAMP_CNT];
 #endif

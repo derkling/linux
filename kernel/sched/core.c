@@ -6988,50 +6988,60 @@ static void cpu_cgroup_attach(struct cgroup_taskset *tset)
 }
 
 #ifdef CONFIG_UCLAMP_TASK_GROUP
-static inline int uclamp_scale_from_percent(char *buf, u64 *value)
+struct uclamp_request {
+#define UCLAMP_PERCENT_SHIFT	(10 ^ 2)
+#define UCLAMP_PERCENT_SCALE	(100 * UCLAMP_PERCENT_SHIFT)
+	s64 percent;
+	u64 util;
+	int ret;
+};
+
+static inline struct uclamp_request
+capacity_from_percent(char *buf)
 {
-	*value = SCHED_CAPACITY_SCALE;
+	struct uclamp_request req = {
+		.percent = UCLAMP_PERCENT_SCALE,
+		.util = SCHED_CAPACITY_SCALE,
+		.ret = 0,
+	};
 
 	buf = strim(buf);
 	if (strncmp("max", buf, 4)) {
-		s64 percent;
-		int ret;
+		req.ret = cgroup_parse_float(buf, UCLAMP_PERCENT_SHIFT,
+					     &req.percent);
+		if (req.ret)
+			return req;
+		if (req.percent > UCLAMP_PERCENT_SCALE) {
+			req.ret = -ERANGE;
+			return req;
+		}
 
-		ret = cgroup_parse_float(buf, 2, &percent);
-		if (ret)
-			return ret;
-
-		percent <<= SCHED_CAPACITY_SHIFT;
-		*value = DIV_ROUND_CLOSEST_ULL(percent, 10000);
+		req.util = req.percent << SCHED_CAPACITY_SHIFT;
+		req.util = DIV_ROUND_CLOSEST_ULL(req.util, UCLAMP_PERCENT_SCALE);
 	}
 
-	return 0;
-}
-
-static inline u64 uclamp_percent_from_scale(u64 value)
-{
-	return DIV_ROUND_CLOSEST_ULL(value * 10000, SCHED_CAPACITY_SCALE);
+	return req;
 }
 
 static ssize_t cpu_uclamp_min_write(struct kernfs_open_file *of,
 				    char *buf, size_t nbytes,
 				    loff_t off)
 {
+	struct uclamp_request req;
 	struct task_group *tg;
-	u64 min_value;
-	int ret;
 
-	ret = uclamp_scale_from_percent(buf, &min_value);
-	if (ret)
-		return ret;
-	if (min_value > SCHED_CAPACITY_SCALE)
-		return -ERANGE;
+	req = capacity_from_percent(buf);
+	if (req.ret)
+		return req.ret;
 
 	rcu_read_lock();
 
 	tg = css_tg(of_css(of));
-	if (tg->uclamp_req[UCLAMP_MIN].value != min_value)
-		uclamp_se_set(&tg->uclamp_req[UCLAMP_MIN], min_value, false);
+	if (tg->uclamp_req[UCLAMP_MIN].value != req.util)
+		uclamp_se_set(&tg->uclamp_req[UCLAMP_MIN], req.util, false);
+
+	/* Keep track of the actual requested value */
+	tg->uclamp_pct[UCLAMP_MIN] = req.percent;
 
 	rcu_read_unlock();
 
@@ -7042,21 +7052,21 @@ static ssize_t cpu_uclamp_max_write(struct kernfs_open_file *of,
 				    char *buf, size_t nbytes,
 				    loff_t off)
 {
+	struct uclamp_request req;
 	struct task_group *tg;
-	u64 max_value;
-	int ret;
 
-	ret = uclamp_scale_from_percent(buf, &max_value);
-	if (ret)
-		return ret;
-	if (max_value > SCHED_CAPACITY_SCALE)
-		return -ERANGE;
+	req = capacity_from_percent(buf);
+	if (req.ret)
+		return req.ret;
 
 	rcu_read_lock();
 
 	tg = css_tg(of_css(of));
-	if (tg->uclamp_req[UCLAMP_MAX].value != max_value)
-		uclamp_se_set(&tg->uclamp_req[UCLAMP_MAX], max_value, false);
+	if (tg->uclamp_req[UCLAMP_MAX].value != req.util)
+		uclamp_se_set(&tg->uclamp_req[UCLAMP_MAX], req.util, false);
+
+	/* Keep track of the actual requested value */
+	tg->uclamp_pct[UCLAMP_MAX] = req.percent;
 
 	rcu_read_unlock();
 
@@ -7081,8 +7091,8 @@ static inline void cpu_uclamp_print(struct seq_file *sf,
 		return;
 	}
 
-	percent = uclamp_percent_from_scale(util_clamp);
-	percent = div_u64_rem(percent, 100, &rem);
+	percent = tg->uclamp_pct[clamp_id];
+	percent = div_u64_rem(percent, UCLAMP_PERCENT_SHIFT, &rem);
 	seq_printf(sf, "%llu.%u\n", percent, rem);
 }
 
