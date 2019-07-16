@@ -1027,8 +1027,8 @@ All time durations are in microseconds.
         A read-write single value file which exists on non-root cgroups.
         The default is "0", i.e. no utilization boosting.
 
-        The requested minimum utilization as a percentage rational number,
-        e.g. 12.34 for 12.34%.
+        The requested minimum utilization (pretection) as a percentage rational
+        number, e.g. 12.34 for 12.34%.
 
         This interface allows reading and setting minimum utilization clamp
         values similar to the sched_setattr(2). This minimum utilization
@@ -1038,8 +1038,8 @@ All time durations are in microseconds.
         A read-write single value file which exists on non-root cgroups.
         The default is "max". i.e. no utilization capping
 
-        The requested maximum utilization as a percentage rational number,
-        e.g. 98.76 for 98.76%.
+        The requested maximum utilization (limit) as a percentage rational
+        number, e.g. 98.76 for 98.76%.
 
         This interface allows reading and setting maximum utilization clamp
         values similar to the sched_setattr(2). This maximum utilization
