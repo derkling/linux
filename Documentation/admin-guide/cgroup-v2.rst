@@ -1034,6 +1034,10 @@ All time durations are in microseconds.
         values similar to the sched_setattr(2). This minimum utilization
         value is used to clamp the task specific minimum utilization clamp.
 
+	The requested minimum utilization (pretection) is always capped by the
+	current value for the maximum utilization (limit), i.e.
+	`cpu.uclamp.max`.
+
   cpu.uclamp.max
         A read-write single value file which exists on non-root cgroups.
         The default is "max". i.e. no utilization capping
