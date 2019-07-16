@@ -1028,7 +1028,9 @@ static void uclamp_update_root_tg(void)
 	uclamp_se_set(&tg->uclamp_req[UCLAMP_MAX],
 		      sysctl_sched_uclamp_util_max, false);
 
+	rcu_read_lock();
 	cpu_util_update_eff(&root_task_group.css);
+	rcu_read_unlock();
 }
 #else
 static void uclamp_update_root_tg(void) { }
