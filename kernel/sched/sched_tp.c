@@ -5,6 +5,7 @@
 #include <trace/events/sched.h>
 
 #define CREATE_TRACE_POINTS
+#include "sched.h"
 #include "sched_events.h"
 
 static inline struct cfs_rq *get_group_cfs_rq(struct sched_entity *se)
@@ -29,6 +30,11 @@ static void sched_pelt_cfs(void *data, struct cfs_rq *cfs_rq)
 
 		trace_sched_load_cfs_rq(cpu, path, avg);
 	}
+
+	if (trace_uclamp_cfs_enabled()) {
+		if (cfs_rq_is_root(cfs_rq))
+			trace_uclamp_cfs(rq_of(cfs_rq));
+	}
 }
 
 static void sched_pelt_rt(void *data, struct rq *rq)
@@ -41,6 +47,10 @@ static void sched_pelt_rt(void *data, struct rq *rq)
 			return;
 
 		trace_sched_pelt_rt(cpu, avg);
+	}
+
+	if (trace_uclamp_rt_enabled()) {
+		trace_uclamp_rt(rq);
 	}
 }
 
@@ -89,6 +99,15 @@ static void sched_pelt_se(void *data, struct sched_entity *se)
 		pid = p ? p->pid : -1;
 
 		trace_sched_load_se(cpu, path, comm, pid, &se->avg);
+	}
+
+	if (trace_uclamp_se_enabled()) {
+		if (entity_is_task(se) && !!se->on_rq) {
+			struct task_struct *p = container_of(
+				se, struct task_struct, se);
+
+			trace_uclamp_se(p);
+		}
 	}
 }
 

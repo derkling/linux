@@ -1013,6 +1013,24 @@ static inline struct rq *rq_of(struct cfs_rq *cfs_rq)
 }
 #endif
 
+static inline bool cfs_rq_is_root(struct cfs_rq *cfs_rq)
+{
+#ifdef CONFIG_FAIR_GROUP_SCHED
+	return &cfs_rq->rq->cfs == cfs_rq;
+#else
+	return true
+#endif
+}
+
+static inline bool rt_rq_is_root(struct rt_rq *rt_rq)
+{
+#ifdef CONFIG_RT_GROUP_SCHED
+	return &rt_rq->rq->rt == rt_rq;
+#else
+	return true;
+#endif
+}
+
 static inline int cpu_of(struct rq *rq)
 {
 #ifdef CONFIG_SMP
@@ -1022,6 +1040,10 @@ static inline int cpu_of(struct rq *rq)
 #endif
 }
 
+static inline int cfs_cpu_of(struct cfs_rq *cfs_rq)
+{
+	return  cpu_of(rq_of(cfs_rq));
+}
 
 #ifdef CONFIG_SCHED_SMT
 extern void __update_idle_core(struct rq *rq);
