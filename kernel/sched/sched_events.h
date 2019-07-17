@@ -105,6 +105,103 @@ TRACE_EVENT(sched_load_se,
 		  __entry->load, __entry->rbl_load,__entry->util)
 );
 
+
+#ifdef CONFIG_UCLAMP_TASK
+
+TRACE_EVENT(uclamp_se,
+
+	TP_PROTO(struct task_struct *p),
+
+	TP_ARGS(p),
+
+	TP_STRUCT__entry(
+		__field(	pid_t,	pid			)
+		__array(	 char,	comm,   TASK_COMM_LEN	)
+		__field(	  int,	cpu			)
+		__field(unsigned long,	util_avg		)
+		__field(unsigned long,	uclamp_avg		)
+		__field(unsigned long,	uclamp_min		)
+		__field(unsigned long,	uclamp_max		)
+	),
+
+	TP_fast_assign(
+		__entry->pid            = p->pid;
+		memcpy(__entry->comm, p->comm, TASK_COMM_LEN);
+		__entry->cpu            = p->cpu;
+		__entry->util_avg       = p->se.avg.util_avg;
+		__entry->uclamp_avg     = uclamp_util(cpu_rq(p->cpu), p->se.avg.util_avg);
+		__entry->uclamp_min     = cpu_rq(p->cpu)->uclamp[UCLAMP_MIN].value;
+		__entry->uclamp_max     = cpu_rq(p->cpu)->uclamp[UCLAMP_MAX].value;
+		),
+
+	TP_printk("pid=%d comm=%s cpu=%d util_avg=%lu uclamp_avg=%lu "
+		  "uclamp_min=%lu uclamp_max=%lu",
+		  __entry->pid, __entry->comm, __entry->cpu,
+		  __entry->util_avg, __entry->uclamp_avg,
+		  __entry->uclamp_min, __entry->uclamp_max)
+);
+
+TRACE_EVENT(uclamp_cfs,
+
+	TP_PROTO(struct rq *rq),
+
+	TP_ARGS(rq),
+
+	TP_STRUCT__entry(
+		__field(	  int,	cpu			)
+		__field(unsigned long,	util_avg		)
+		__field(unsigned long,	uclamp_avg		)
+		__field(unsigned long,	uclamp_min		)
+		__field(unsigned long,	uclamp_max		)
+	),
+
+	TP_fast_assign(
+		__entry->cpu            = rq->cpu;
+		__entry->util_avg       = rq->cfs.avg.util_avg;
+		__entry->uclamp_avg     = uclamp_util(rq, rq->cfs.avg.util_avg);
+		__entry->uclamp_min     = rq->uclamp[UCLAMP_MIN].value;
+		__entry->uclamp_max     = rq->uclamp[UCLAMP_MAX].value;
+		),
+
+	TP_printk("cpu=%d util_avg=%lu uclamp_avg=%lu "
+		  "uclamp_min=%lu uclamp_max=%lu",
+		  __entry->cpu, __entry->util_avg, __entry->uclamp_avg,
+		  __entry->uclamp_min, __entry->uclamp_max)
+);
+
+TRACE_EVENT(uclamp_rt,
+
+	    TP_PROTO(struct rq *rq),
+
+	    TP_ARGS(rq),
+
+	    TP_STRUCT__entry(
+		    __field(	      int,	cpu			)
+		    __field(unsigned long,	util_avg		)
+		    __field(unsigned long,	uclamp_avg		)
+		    __field(unsigned long,	uclamp_min		)
+		    __field(unsigned long,	uclamp_max		)
+		    ),
+
+	    TP_fast_assign(
+		    __entry->cpu            = rq->cpu;
+		    __entry->util_avg       = rq->avg_rt.util_avg;
+		    __entry->uclamp_avg     = uclamp_util(rq, rq->avg_rt.util_avg);
+		    __entry->uclamp_min     = rq->uclamp[UCLAMP_MIN].value;
+		    __entry->uclamp_max     = rq->uclamp[UCLAMP_MAX].value;
+		    ),
+
+	    TP_printk("cpu=%d util_avg=%lu uclamp_avg=%lu "
+		      "uclamp_min=%lu uclamp_max=%lu",
+		      __entry->cpu, __entry->util_avg, __entry->uclamp_avg,
+		      __entry->uclamp_min, __entry->uclamp_max)
+	);
+#else
+#define trace_uclamp_se(p) while(false) {}
+#define trace_uclamp_rt(rq) while(false) {}
+#define trace_uclamp_cfs(rq) while(false) {}
+#endif /* CONFIG_UCLAMP_TASK */
+
 TRACE_EVENT(sched_overutilized,
 
 	TP_PROTO(int overutilized, char *span),
