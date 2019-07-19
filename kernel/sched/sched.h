@@ -508,7 +508,14 @@ struct cfs_rq {
 
 #ifdef CONFIG_SMP
 
-	struct pelt_tg		pelt;
+
+
+
+	struct pelt_load	pelt;
+
+
+
+
 
 	/*
 	 * CFS load tracking
@@ -940,10 +947,10 @@ struct rq {
 
 
 
-	struct pelt_rq		pelt_rt;
-	struct pelt_rq		pelt_dl;
+	struct pelt_util	pelt_rt;
+	struct pelt_util	pelt_dl;
 #ifdef CONFIG_HAVE_SCHED_AVG_IRQ
-	struct pelt_rq		pelt_irq;
+	struct pelt_util	pelt_irq;
 #endif
 
 

@@ -33,29 +33,39 @@ typedef enum pelt_signal {
 #define UPDATE_UTIL	0x1 << PELT_UTIL,
 
 struct pelt_attrs {
-	u64 last_update_time;
+	u64			last_update_time;
+#ifndef CONFIG_64BIT
+	u64			last_update_time_copy;
+#endif
 	u32 period_contrib;
 };
 
 struct pelt_signal {
-	u64		sum;
-	unsigned long	avg;
+	u64			sum;
+	unsigned long		avg;
 };
 
+/* CPU's LOAD and UTILIZATION Tracking */
 struct pelt_all {
 	struct pelt_attrs	attrs;
+#ifdef CONFIG_SMP
 	struct pelt_signal	load;
 	struct pelt_signal	runnable;
+#endif
 	struct pelt_signal	running;
 	struct util_est		est;
 } ____cache_aligned;
 
+/* CFS rq's LOAD Tracking */
 struct pelt_load {
+#ifdef CONFIG_SMP
 	struct pelt_attrs	attrs;
 	struct pelt_signal	load;
 	struct pelt_signal	runnable;
+#endif
 } ____cache_aligned;
 
+/* Tasks's UTILIZATION tracking */
 struct pelt_util {
 	struct pelt_attrs	attrs;
 	struct pelt_signal	running;
