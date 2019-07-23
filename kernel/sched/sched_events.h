@@ -105,6 +105,65 @@ TRACE_EVENT(sched_load_se,
 		  __entry->load, __entry->rbl_load,__entry->util)
 );
 
+TRACE_EVENT(sched_util_est_task,
+
+	TP_PROTO(struct task_struct *p),
+
+	TP_ARGS(p),
+
+	TP_STRUCT__entry(
+		__array( char,	comm,	TASK_COMM_LEN		)
+		__field( pid_t,		pid			)
+		__field( int,		cpu			)
+		__field( unsigned int,	util_avg		)
+		__field( unsigned int,	est_enqueued	)
+		__field( unsigned int,	est_ewma		)
+		),
+
+	TP_fast_assign(
+		memcpy(__entry->comm, p->comm, TASK_COMM_LEN);
+		__entry->pid		= p->pid;
+		__entry->cpu		= task_cpu(p);
+		__entry->util_avg	= p->se.avg.util_avg;
+		__entry->est_enqueued	= p->se.avg.util_est.enqueued;
+		__entry->est_ewma	= p->se.avg.util_est.ewma;
+	),
+
+	TP_printk("comm=%s pid=%d cpu=%d util_avg=%u "
+		  "util_est_ewma=%u util_est_enqueued=%u",
+		  __entry->comm,
+		  __entry->pid,
+		  __entry->cpu,
+		  __entry->util_avg,
+		  __entry->est_ewma,
+		  __entry->est_enqueued
+	)
+);
+
+TRACE_EVENT(sched_util_est_cfs,
+
+	TP_PROTO(struct rq *rq),
+
+	TP_ARGS(rq),
+
+	TP_STRUCT__entry(
+		__field( int,		cpu			)
+		__field( unsigned int,	util_avg		)
+		__field( unsigned int,	util_est_enqueued	)
+	),
+
+	TP_fast_assign(
+		__entry->cpu			= cpu_of(rq);
+		__entry->util_avg		= rq->cfs.avg.util_avg;
+		__entry->util_est_enqueued	= rq->cfs.avg.util_est.enqueued;
+	),
+
+	TP_printk("cpu=%d util_avg=%u util_est_enqueued=%u",
+		  __entry->cpu,
+		  __entry->util_avg,
+		  __entry->util_est_enqueued
+	)
+);
 
 #ifdef CONFIG_UCLAMP_TASK
 

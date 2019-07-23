@@ -111,6 +111,18 @@ static void sched_pelt_se(void *data, struct sched_entity *se)
 	}
 }
 
+static void sched_util_est_cfs(void *data, struct rq *rq)
+{
+	if (trace_sched_util_est_cfs_enabled())
+		trace_sched_util_est_cfs(rq);
+}
+
+static void sched_util_est_task(void *data, struct task_struct *p)
+{
+	if (trace_sched_util_est_task_enabled())
+		trace_sched_util_est_task(p);
+}
+
 static void sched_overutilized(void *data, struct root_domain *rd, bool overutilized)
 {
 	if (trace_sched_overutilized_enabled()) {
@@ -129,6 +141,8 @@ static int sched_tp_init(void)
 	register_trace_pelt_dl_tp(sched_pelt_dl, NULL);
 	register_trace_pelt_irq_tp(sched_pelt_irq, NULL);
 	register_trace_pelt_se_tp(sched_pelt_se, NULL);
+	register_trace_util_est_cfs_tp(sched_util_est_cfs, NULL);
+	register_trace_util_est_task_tp(sched_util_est_task, NULL);
 	register_trace_sched_overutilized_tp(sched_overutilized, NULL);
 
 	return 0;
@@ -141,6 +155,8 @@ void sched_tp_finish(void)
 	unregister_trace_pelt_dl_tp(sched_pelt_dl, NULL);
 	unregister_trace_pelt_irq_tp(sched_pelt_irq, NULL);
 	unregister_trace_pelt_se_tp(sched_pelt_se, NULL);
+	unregister_trace_util_est_cfs_tp(sched_util_est_cfs, NULL);
+	unregister_trace_util_est_task_tp(sched_util_est_task, NULL);
 	unregister_trace_sched_overutilized_tp(sched_overutilized, NULL);
 }
 
