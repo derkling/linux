@@ -625,6 +625,14 @@ DECLARE_TRACE(sched_overutilized_tp,
 	TP_PROTO(struct root_domain *rd, bool overutilized),
 	TP_ARGS(rd, overutilized));
 
+DECLARE_TRACE(util_est_task_tp,
+	TP_PROTO(struct task_struct *p),
+	TP_ARGS(p));
+
+DECLARE_TRACE(util_est_cfs_tp,
+	TP_PROTO(struct rq *rq),
+	TP_ARGS(rq));
+
 #endif /* _TRACE_SCHED_H */
 
 /* This part must be outside protection */
