@@ -3808,8 +3808,11 @@ restart:
 
 	for_each_class(class) {
 		p = class->pick_next_task(rq, NULL, NULL);
-		if (p)
+		if (p) {
+			if (p->sched_class == class && p->server)
+				p->server = NULL;
 			return p;
+		}
 	}
 
 	/* The idle class should always have a runnable task: */
