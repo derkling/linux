@@ -2295,6 +2295,32 @@ static inline unsigned int uclamp_util(struct rq *rq, unsigned int util)
 {
 	return uclamp_util_with(rq, util, NULL);
 }
+
+static inline bool uclamp_task_fits_cpu(struct task_struct *p, int cpu)
+{
+	unsigned int min_cap;
+	unsigned int max_cap;
+	unsigned int cpu_cap;
+
+	/* Only asymmetric systems can benefit from this check */
+	if (!static_branch_unlikely(&sched_asym_cpucapacity))
+		return true;
+
+	min_cap = uclamp_eff_value(p, UCLAMP_MIN);
+	max_cap = uclamp_eff_value(p, UCLAMP_MAX);
+
+	cpu_cap = capacity_orig_of(cpu);
+
+	/*
+	 * uclamp allows min to be higher than max, which can usually happen
+	 * when the task is a cgroup hierarchy that has conflicting
+	 * requirements
+	 */
+	if (min_cap < max_cap)
+		return cpu_cap >= min_cap && cpu_cap <= max_cap;
+	else
+		return cpu_cap >= min_cap;
+}
 #else /* CONFIG_UCLAMP_TASK */
 static inline unsigned int uclamp_util_with(struct rq *rq, unsigned int util,
 					    struct task_struct *p)
@@ -2304,6 +2330,11 @@ static inline unsigned int uclamp_util_with(struct rq *rq, unsigned int util,
 static inline unsigned int uclamp_util(struct rq *rq, unsigned int util)
 {
 	return util;
+}
+
+static inline bool uclamp_task_fits_cpu(struct task_struct *p, int cpu)
+{
+	return true;
 }
 #endif /* CONFIG_UCLAMP_TASK */
 

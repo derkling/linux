@@ -1666,16 +1666,24 @@ static int find_lowest_rq(struct task_struct *task)
 	 *
 	 * We prioritize the last CPU that the task executed on since
 	 * it is most likely cache-hot in that location.
+	 *
+	 * We check the uclamp value to see if the task will fit the cpu
+	 * capacity value; which is only important in asymmetric systems.
 	 */
-	if (cpumask_test_cpu(cpu, lowest_mask))
+	if (cpumask_test_cpu(cpu, lowest_mask) &&
+	    uclamp_task_fits_cpu(task, cpu)) {
 		return cpu;
+	}
 
 	/*
 	 * Otherwise, we consult the sched_domains span maps to figure
 	 * out which CPU is logically closest to our hot cache data.
 	 */
-	if (!cpumask_test_cpu(this_cpu, lowest_mask))
-		this_cpu = -1; /* Skip this_cpu opt if not among lowest */
+	if (!cpumask_test_cpu(this_cpu, lowest_mask) ||
+	    !uclamp_task_fits_cpu(task, this_cpu)) {
+		/* Skip this_cpu opt if not among lowest or doesn't fit */
+		this_cpu = -1;
+	}
 
 	rcu_read_lock();
 	for_each_domain(cpu, sd) {
@@ -1694,7 +1702,8 @@ static int find_lowest_rq(struct task_struct *task)
 
 			best_cpu = cpumask_first_and(lowest_mask,
 						     sched_domain_span(sd));
-			if (best_cpu < nr_cpu_ids) {
+			if (best_cpu < nr_cpu_ids &&
+			    uclamp_task_fits_cpu(task, best_cpu)) {
 				rcu_read_unlock();
 				return best_cpu;
 			}
@@ -1711,7 +1720,7 @@ static int find_lowest_rq(struct task_struct *task)
 		return this_cpu;
 
 	cpu = cpumask_any(lowest_mask);
-	if (cpu < nr_cpu_ids)
+	if (cpu < nr_cpu_ids && uclamp_task_fits_cpu(task, cpu))
 		return cpu;
 
 	return -1;
