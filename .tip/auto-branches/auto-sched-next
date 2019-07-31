@@ -8,3 +8,4 @@ sched/idle
 sched/wait
 sched/locking
 sched/hrtimers
+sched/rt
