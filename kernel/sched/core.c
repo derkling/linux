@@ -4819,20 +4819,41 @@ static int __sched_setscheduler(struct task_struct *p,
 
 	/* The pi code expects interrupts enabled */
 	BUG_ON(pi && in_interrupt());
-recheck:
-	/* Double check policy once rq lock held: */
-	if (policy < 0) {
-		reset_on_fork = p->sched_reset_on_fork;
-		policy = oldpolicy = p->policy;
-	} else {
-		reset_on_fork = !!(attr->sched_flags & SCHED_FLAG_RESET_ON_FORK);
 
-		if (!valid_policy(policy))
-			return -EINVAL;
-	}
-
+	/* Verify all flags are valid */
 	if (attr->sched_flags & ~(SCHED_FLAG_ALL | SCHED_FLAG_SUGOV))
 		return -EINVAL;
+
+recheck:
+
+	/* /* Double check policy once rq lock held: *\/ */
+	/* if (policy < 0) { */
+	/* 	reset_on_fork = p->sched_reset_on_fork; */
+	/* 	policy = oldpolicy = p->policy; */
+	/* } else { */
+	/* 	reset_on_fork = !!(attr->sched_flags & SCHED_FLAG_RESET_ON_FORK); */
+
+	/* 	if (!valid_policy(policy)) */
+	/* 		return -EINVAL; */
+	/* } */
+
+	/* Set current policy when requested */
+	if (policy == SETPARAM_POLICY ||
+	    attr->sched_flags & SCHED_FLAG_KEEP_POLICY) {
+		policy = oldpolicy = p->policy;
+	}
+	if (!valid_policy(policy))
+		return -EINVAL;
+
+	/* Set default priority request */
+	if (attr->sched_flags & SCHED_FLAG_KEEP_PARAMS)
+		newprio = oldprio = p->prio;
+
+	/* Set default reset on fork */
+	if (policy == SETPARAM_POLICY)
+		reset_on_fork = p->sched_reset_on_fork;
+	else
+		reset_on_fork = !!(attr->sched_flags & SCHED_FLAG_RESET_ON_FORK);
 
 	printk(KERN_WARNING "__sched_setscheduler: sched_priority=%d flags=%llu\n",
 	       attr->sched_priority, attr->sched_flags);
@@ -5303,8 +5324,8 @@ SYSCALL_DEFINE3(sched_setattr, pid_t, pid, struct sched_attr __user *, uattr,
 
 	if ((int)attr.sched_policy < 0)
 		return -EINVAL;
-	if (attr.sched_flags & SCHED_FLAG_KEEP_POLICY)
-		attr.sched_policy = SETPARAM_POLICY;
+	/* if (attr.sched_flags & SCHED_FLAG_KEEP_POLICY) */
+	/* 	attr.sched_policy = SETPARAM_POLICY; */
 
 	rcu_read_lock();
 	retval = -ESRCH;
