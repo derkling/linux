@@ -892,6 +892,42 @@ static inline void perf_cgroup_sched_in(struct task_struct *prev,
 	rcu_read_unlock();
 }
 
+static int perf_cgroup_depth(struct perf_event *event, struct cgroup_subsys_state *css)
+{
+	struct perf_cpu_context *cpuctx;
+	struct perf_event **storage;
+	int cpu, ret = 0, depth = 3;
+
+	for (; css; css = css->parent)
+		depth++;
+
+	for_each_possible_cpu(cpu) {
+		cpuctx = per_cpu_ptr(event->pmu->pmu_cpu_context, cpu);
+		if (depth <= cpuctx->heap_size)
+			continue;
+
+		storage = kmalloc_node(depth * sizeof(struct perf_event *),
+				       GFP_KERNEL, cpu_to_node(cpu));
+		if (!storage) {
+			ret = -ENOMEM;
+			break;
+		}
+
+		raw_spin_lock_irq(&cpuctx->ctx.lock);
+		if (cpuctx->heap_size < depth) {
+			swap(cpuctx->heap_storage, storage);
+			if (storage == cpuctx->heap_default)
+				storage = NULL;
+			cpuctx->heap_size = depth;
+		}
+		raw_spin_unlock_irq(&cpuctx->ctx.lock);
+
+		kfree(storage);
+	}
+
+	return ret;
+}
+
 static inline int perf_cgroup_connect(int fd, struct perf_event *event,
 				      struct perf_event_attr *attr,
 				      struct perf_event *group_leader)
@@ -910,6 +946,10 @@ static inline int perf_cgroup_connect(int fd, struct perf_event *event,
 		ret = PTR_ERR(css);
 		goto out;
 	}
+
+	ret = perf_cgroup_depth(event, css);
+	if (ret)
+		goto out;
 
 	cgrp = container_of(css, struct perf_cgroup, css);
 	event->cgrp = cgrp;
@@ -3388,6 +3428,8 @@ visit_groups_merge(struct perf_cpu_context *cpuctx,
 			.storage = cpuctx->heap_storage,
 			.max = cpuctx->heap_size,
 		};
+
+		lockdep_assert_held(&cpuctx->ctx.lock);
 	} else {
 		event_heap = (struct min_heap){
 			.storage = array,
