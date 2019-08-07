@@ -8824,6 +8824,10 @@ static inline enum alb_status active_load_balance(struct lb_env *env)
 
 	raw_spin_lock_irqsave(&busiest->lock, flags);
 
+	/* Make sure we're not about to stop a task from a higher sched class */
+	if (busiest->curr->sched_class != &fair_sched_class)
+		goto unlock;
+
 	/*
 	 * Don't kick the active_load_balance_cpu_stop,
 	 * if the curr task on busiest CPU can't be
@@ -9193,8 +9197,8 @@ static int active_load_balance_cpu_stop(void *data)
 		     !busiest_rq->active_balance))
 		goto out_unlock;
 
-	/* Is there any task to move? */
-	if (busiest_rq->nr_running <= 1)
+	/* Is there any CFS task to move? */
+	if (busiest_rq->cfs.h_nr_running < 1)
 		goto out_unlock;
 
 	/*
