@@ -8794,6 +8794,74 @@ static int need_active_balance(struct lb_env *env)
 
 static int active_load_balance_cpu_stop(void *data);
 
+/* Active load balance */
+enum alb_status {
+	cancelled = 0,
+	cancelled_affinity,
+	started
+};
+
+/* Attempt to move a remote rq's running task to env's dst_cpu */
+static inline enum alb_status active_load_balance(struct lb_env *env)
+{
+	struct sched_domain *sd = env->sd;
+	struct rq *busiest = env->src_rq;
+	enum alb_status status = cancelled;
+	unsigned long flags;
+
+	schedstat_inc(sd->lb_failed[env->idle]);
+	/*
+	 * Increment the failure counter only on periodic balance.
+	 * We do not want newidle balance, which can be very
+	 * frequent, pollute the failure counter causing
+	 * excessive cache_hot migrations and active balances.
+	 */
+	if (env->idle != CPU_NEWLY_IDLE)
+		sd->nr_balance_failed++;
+
+	if (!need_active_balance(env))
+		goto out;
+
+	raw_spin_lock_irqsave(&busiest->lock, flags);
+
+	/*
+	 * Don't kick the active_load_balance_cpu_stop,
+	 * if the curr task on busiest CPU can't be
+	 * moved to this_cpu:
+	 */
+	if (!cpumask_test_cpu(env->dst_cpu, busiest->curr->cpus_ptr)) {
+		env->flags |= LBF_ALL_PINNED;
+		status = cancelled_affinity;
+		goto unlock;
+	}
+
+	/*
+	 * ->active_balance synchronizes accesses to
+	 * ->active_balance_work.  Once set, it's cleared
+	 * only after active load balance is finished.
+	 */
+	if (!busiest->active_balance) {
+		busiest->active_balance = 1;
+		busiest->push_cpu = env->dst_cpu;
+		status = started;
+	}
+
+unlock:
+	raw_spin_unlock_irqrestore(&busiest->lock, flags);
+
+	if (status == started) {
+		stop_one_cpu_nowait(cpu_of(busiest),
+				    active_load_balance_cpu_stop, busiest,
+				    &busiest->active_balance_work);
+
+		/* We've kicked active balancing, force task migration. */
+		sd->nr_balance_failed = sd->cache_nice_tries+1;
+	}
+
+out:
+	return status;
+}
+
 static int should_we_balance(struct lb_env *env)
 {
 	struct sched_group *sg = env->sd->groups;
@@ -8840,7 +8908,8 @@ static int load_balance(int this_cpu, struct rq *this_rq,
 			struct sched_domain *sd, enum cpu_idle_type idle,
 			int *continue_balancing)
 {
-	int ld_moved, cur_ld_moved, active_balance = 0;
+	enum alb_status active_balance;
+	int ld_moved, cur_ld_moved;
 	struct sched_domain *sd_parent = sd->parent;
 	struct sched_group *group;
 	struct rq *busiest;
@@ -8999,56 +9068,13 @@ more_balance:
 	}
 
 	if (!ld_moved) {
-		schedstat_inc(sd->lb_failed[idle]);
-		/*
-		 * Increment the failure counter only on periodic balance.
-		 * We do not want newidle balance, which can be very
-		 * frequent, pollute the failure counter causing
-		 * excessive cache_hot migrations and active balances.
-		 */
-		if (idle != CPU_NEWLY_IDLE)
-			sd->nr_balance_failed++;
+		active_balance = active_load_balance(&env);
+		if (active_balance == cancelled_affinity)
+			goto out_one_pinned;
 
-		if (need_active_balance(&env)) {
-			unsigned long flags;
-
-			raw_spin_lock_irqsave(&busiest->lock, flags);
-
-			/*
-			 * Don't kick the active_load_balance_cpu_stop,
-			 * if the curr task on busiest CPU can't be
-			 * moved to this_cpu:
-			 */
-			if (!cpumask_test_cpu(this_cpu, busiest->curr->cpus_ptr)) {
-				raw_spin_unlock_irqrestore(&busiest->lock,
-							    flags);
-				env.flags |= LBF_ALL_PINNED;
-				goto out_one_pinned;
-			}
-
-			/*
-			 * ->active_balance synchronizes accesses to
-			 * ->active_balance_work.  Once set, it's cleared
-			 * only after active load balance is finished.
-			 */
-			if (!busiest->active_balance) {
-				busiest->active_balance = 1;
-				busiest->push_cpu = this_cpu;
-				active_balance = 1;
-			}
-			raw_spin_unlock_irqrestore(&busiest->lock, flags);
-
-			if (active_balance) {
-				stop_one_cpu_nowait(cpu_of(busiest),
-					active_load_balance_cpu_stop, busiest,
-					&busiest->active_balance_work);
-			}
-
-			/* We've kicked active balancing, force task migration. */
-			sd->nr_balance_failed = sd->cache_nice_tries+1;
-		}
-	} else
+	} else {
 		sd->nr_balance_failed = 0;
+	}
 
 	if (likely(!active_balance) || voluntary_active_balance(&env)) {
 		/* We were unbalanced, so reset the balancing interval */
