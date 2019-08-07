@@ -3373,16 +3373,29 @@ static void __heap_add(struct min_heap *heap, struct perf_event *event)
 		heap->num++;
 }
 
-static noinline int visit_groups_merge(struct perf_event_groups *groups, int cpu,
-			      int (*func)(struct perf_event *, void *), void *data)
+static noinline int
+visit_groups_merge(struct perf_cpu_context *cpuctx,
+		   struct perf_event_groups *groups, int cpu,
+		   int (*func)(struct perf_event *, void *), void *data)
 {
-	struct perf_event *array[2+1];
-	struct min_heap event_heap = {
-		.storage = array,
-		.max = ARRAY_SIZE(array),
-	};
-	struct perf_event **evt = &array[0];
+	struct perf_event *array[3];
+	struct min_heap event_heap;
+	struct perf_event **evt;
 	int ret;
+
+	if (cpuctx) {
+		event_heap = (struct min_heap){
+			.storage = cpuctx->heap_storage,
+			.max = cpuctx->heap_size,
+		};
+	} else {
+		event_heap = (struct min_heap){
+			.storage = array,
+			.max = ARRAY_SIZE(array),
+		};
+	}
+
+	evt = event_heap.storage;
 
 	__heap_add(&event_heap, perf_event_groups_first(groups, -1));
 	__heap_add(&event_heap, perf_event_groups_first(groups, cpu));
@@ -3438,7 +3451,10 @@ ctx_pinned_sched_in(struct perf_event_context *ctx,
 {
 	int can_add_hw = 1;
 
-	visit_groups_merge(&ctx->pinned_groups,
+	if (ctx != &cpuctx->ctx)
+		cpuctx = NULL;
+
+	visit_groups_merge(cpuctx, &ctx->pinned_groups,
 			   smp_processor_id(),
 			   merge_sched_in, &can_add_hw);
 }
@@ -3449,7 +3465,10 @@ ctx_flexible_sched_in(struct perf_event_context *ctx,
 {
 	int can_add_hw = 1;
 
-	visit_groups_merge(&ctx->flexible_groups,
+	if (ctx != &cpuctx->ctx)
+		cpuctx = NULL;
+
+	visit_groups_merge(cpuctx, &ctx->flexible_groups,
 			   smp_processor_id(),
 			   merge_sched_in, &can_add_hw);
 }
@@ -10070,6 +10089,9 @@ skip_type:
 		cpuctx->online = cpumask_test_cpu(cpu, perf_online_mask);
 
 		__perf_mux_hrtimer_init(cpuctx, cpu);
+
+		cpuctx->heap_size = ARRAY_SIZE(cpuctx->heap_default);
+		cpuctx->heap_storage = cpuctx->heap_default;
 	}
 
 got_cpu_context:
