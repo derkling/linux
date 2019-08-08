@@ -822,6 +822,9 @@ struct perf_cpu_context {
 	int				sched_cb_usage;
 
 	int				online;
+	int				heap_size;
+	struct perf_event		**heap_storage;
+	struct perf_event		*heap_default[3];
 };
 
 struct perf_output_handle {
