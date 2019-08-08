@@ -5,6 +5,7 @@
 /*
  * Define nops for use with alternative() and for tracing.
  *
+ * *_NOP2 must be a single instruction
  * *_NOP5_ATOMIC must be a single instruction.
  */
 
