@@ -2581,10 +2581,7 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
 	memset(&p->se.statistics, 0, sizeof(p->se.statistics));
 #endif
 
-	RB_CLEAR_NODE(&p->dl.rb_node);
-	init_dl_task_timer(&p->dl);
-	init_dl_inactive_task_timer(&p->dl);
-	__dl_clear_params(p);
+	init_dl_entity(&p->dl);
 
 	INIT_LIST_HEAD(&p->rt.run_list);
 	p->rt.timeout		= 0;
@@ -3811,8 +3808,11 @@ restart:
 
 	for_each_class(class) {
 		p = class->pick_next_task(rq, NULL, NULL);
-		if (p)
+		if (p) {
+			if (p->sched_class == class && p->server)
+				p->server = NULL;
 			return p;
+		}
 	}
 
 	/* The idle class should always have a runnable task: */
@@ -6570,6 +6570,7 @@ void __init sched_init(void)
 #endif /* CONFIG_SMP */
 		hrtick_rq_init(rq);
 		atomic_set(&rq->nr_iowait, 0);
+		fair_server_init(rq);
 	}
 
 	set_load_weight(&init_task, false);
