@@ -4819,6 +4819,126 @@ static bool check_same_owner(struct task_struct *p)
 	return match;
 }
 
+
+static int __check_task_attrs(struct task_struct *p,
+			      const struct sched_attr *attr, bool user)
+{
+	int retval;
+
+	/* No additional checks for kernel code */
+	if (!user)
+		return 0;
+
+	/* Security check, first and foremost */
+	retval = security_task_setscheduler(p);
+	if (retval)
+		return retval;
+
+	/* Allow to change other task's attributes */
+	if (!check_same_owner(p) &&
+	    !capable(CAP_SYS_RESOURCE)) {
+		return -EPERM;
+	}
+
+	/* Enforce uclamp specific constraints */
+	retval = uclamp_validate(p, attr);
+	if (retval)
+		return retval;
+
+	return 0;
+}
+
+static int __check_sched_params(struct task_struct *p,
+				const struct sched_attr *attr,
+				bool user, int policy, int reset_on_fork)
+{
+	int retval;
+
+	/*
+	 * Valid priorities:
+	 * - SCHED_FIFO and SCHED_RR : 1..MAX_USER_RT_PRIO-1
+	 * - SCHED_NORMAL, SCHED_BATCH and SCHED_IDLE is : 0
+	 */
+	if (p->mm) {
+		if (attr->sched_priority > MAX_USER_RT_PRIO-1)
+			return -EINVAL;
+	} else {
+		if (attr->sched_priority > MAX_RT_PRIO-1)
+			return -EINVAL;
+	}
+	if (dl_policy(policy) && !__checkparam_dl(attr))
+		return -EINVAL;
+	if (rt_policy(policy) != (attr->sched_priority != 0))
+		return -EINVAL;
+
+	/* No additional checks for kernel code */
+	if (!user)
+		return 0;
+
+	/* Security check, first and foremost */
+	retval = security_task_setscheduler(p);
+	if (retval)
+		return retval;
+
+	/* Can't change other user's priorities */
+	if (!check_same_owner(p))
+		return -EPERM;
+
+	/* Allow unprivileged RT tasks to decrease priority */
+	if (capable(CAP_SYS_NICE))
+		return 0;
+
+	/* Schedutil is special, users cannot get that prio */
+	if (attr->sched_flags & SCHED_FLAG_SUGOV)
+		return -EINVAL;
+
+	/* Normal users shall not reset the sched_reset_on_fork flag */
+	if (p->sched_reset_on_fork && !reset_on_fork)
+		return -EPERM;
+
+	if (fair_policy(policy)) {
+		if (attr->sched_nice < task_nice(p) &&
+		    !can_nice(p, attr->sched_nice)) {
+			return -EPERM;
+		}
+	}
+
+	if (rt_policy(policy)) {
+		unsigned long rlim_rtprio = task_rlimit(p, RLIMIT_RTPRIO);
+
+		/* Can't set/change the rt policy */
+		if (policy != p->policy && !rlim_rtprio)
+			return -EPERM;
+
+		/* Can't increase priority */
+		if (attr->sched_priority > p->rt_priority &&
+		    attr->sched_priority > rlim_rtprio) {
+			return -EPERM;
+		}
+	}
+
+	if (dl_policy(policy)) {
+		/*
+		 * Can't set/change SCHED_DEADLINE policy at all for now
+		 * (safest behavior); in the future we would like to allow
+		 * unprivileged DL tasks to increase their relative deadline
+		 * or reduce their runtime (both ways reducing utilization)
+		 */
+		return -EPERM;
+	}
+
+	if (task_has_idle_policy(p)) {
+		/*
+		 * Treat SCHED_IDLE as nice 20. Only allow a switch to
+		 * SCHED_NORMAL if the RLIMIT_NICE would normally permit it.
+		 */
+		if (!idle_policy(policy) && !can_nice(p, task_nice(p)))
+			return -EPERM;
+	}
+
+	return 0;
+}
+
 static int __sched_setscheduler(struct task_struct *p,
 				const struct sched_attr *attr,
 				bool user, bool pi)
@@ -4835,96 +4955,38 @@ static int __sched_setscheduler(struct task_struct *p,
 
 	/* The pi code expects interrupts enabled */
 	BUG_ON(pi && in_interrupt());
-recheck:
-	/* Double check policy once rq lock held: */
-	if (policy < 0) {
-		reset_on_fork = p->sched_reset_on_fork;
-		policy = oldpolicy = p->policy;
-	} else {
-		reset_on_fork = !!(attr->sched_flags & SCHED_FLAG_RESET_ON_FORK);
 
-		if (!valid_policy(policy))
-			return -EINVAL;
-	}
-
+	/* Verify all flags are valid */
 	if (attr->sched_flags & ~(SCHED_FLAG_ALL | SCHED_FLAG_SUGOV))
 		return -EINVAL;
 
-	/*
-	 * Valid priorities for SCHED_FIFO and SCHED_RR are
-	 * 1..MAX_USER_RT_PRIO-1, valid priority for SCHED_NORMAL,
-	 * SCHED_BATCH and SCHED_IDLE is 0.
-	 */
-	if ((p->mm && attr->sched_priority > MAX_USER_RT_PRIO-1) ||
-	    (!p->mm && attr->sched_priority > MAX_RT_PRIO-1))
-		return -EINVAL;
-	if ((dl_policy(policy) && !__checkparam_dl(attr)) ||
-	    (rt_policy(policy) != (attr->sched_priority != 0)))
-		return -EINVAL;
+recheck:
 
-	/*
-	 * Allow unprivileged RT tasks to decrease priority:
-	 */
-	if (user && !capable(CAP_SYS_NICE)) {
-		if (fair_policy(policy)) {
-			if (attr->sched_nice < task_nice(p) &&
-			    !can_nice(p, attr->sched_nice))
-				return -EPERM;
-		}
-
-		if (rt_policy(policy)) {
-			unsigned long rlim_rtprio =
-					task_rlimit(p, RLIMIT_RTPRIO);
-
-			/* Can't set/change the rt policy: */
-			if (policy != p->policy && !rlim_rtprio)
-				return -EPERM;
-
-			/* Can't increase priority: */
-			if (attr->sched_priority > p->rt_priority &&
-			    attr->sched_priority > rlim_rtprio)
-				return -EPERM;
-		}
-
-		 /*
-		  * Can't set/change SCHED_DEADLINE policy at all for now
-		  * (safest behavior); in the future we would like to allow
-		  * unprivileged DL tasks to increase their relative deadline
-		  * or reduce their runtime (both ways reducing utilization)
-		  */
-		if (dl_policy(policy))
-			return -EPERM;
-
-		/*
-		 * Treat SCHED_IDLE as nice 20. Only allow a switch to
-		 * SCHED_NORMAL if the RLIMIT_NICE would normally permit it.
-		 */
-		if (task_has_idle_policy(p) && !idle_policy(policy)) {
-			if (!can_nice(p, task_nice(p)))
-				return -EPERM;
-		}
-
-		/* Can't change other user's priorities: */
-		if (!check_same_owner(p))
-			return -EPERM;
-
-		/* Normal users shall not reset the sched_reset_on_fork flag: */
-		if (p->sched_reset_on_fork && !reset_on_fork)
-			return -EPERM;
+	/* Set current policy when requested */
+	if (policy == SETPARAM_POLICY ||
+	    attr->sched_flags & SCHED_FLAG_KEEP_POLICY) {
+		policy = oldpolicy = p->policy;
+		reset_on_fork = p->sched_reset_on_fork;
+	} else {
+		reset_on_fork = !!(attr->sched_flags & SCHED_FLAG_RESET_ON_FORK);
 	}
+	if (!valid_policy(policy))
+		return -EINVAL;
 
-	if (user) {
-		if (attr->sched_flags & SCHED_FLAG_SUGOV)
-			return -EINVAL;
+	printk(KERN_WARNING "__sched_setscheduler: sched_priority=%d flags=%llu\n",
+	       attr->sched_priority, attr->sched_flags);
 
-		retval = security_task_setscheduler(p);
+	/*
+	 * When scheduling class specific parameter do not change, let's check
+	 * only class agnostic attibutes.
+	 */
+	if (attr->sched_flags & SCHED_FLAG_KEEP_ALL &&
+	    attr->sched_flags & SCHED_FLAG_UTIL_CLAMP) {
+		retval = __check_task_attrs(p, attr, user);
 		if (retval)
 			return retval;
-	}
-
-	/* Update task specific "requested" clamps */
-	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP) {
-		retval = uclamp_validate(p, attr);
+	} else {
+		retval = __check_sched_params(p, attr, user, policy, reset_on_fork);
 		if (retval)
 			return retval;
 	}
@@ -5304,8 +5366,8 @@ SYSCALL_DEFINE3(sched_setattr, pid_t, pid, struct sched_attr __user *, uattr,
 
 	if ((int)attr.sched_policy < 0)
 		return -EINVAL;
-	if (attr.sched_flags & SCHED_FLAG_KEEP_POLICY)
-		attr.sched_policy = SETPARAM_POLICY;
+	/* if (attr.sched_flags & SCHED_FLAG_KEEP_POLICY) */
+	/* 	attr.sched_policy = SETPARAM_POLICY; */
 
 	rcu_read_lock();
 	retval = -ESRCH;
