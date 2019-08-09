@@ -10288,11 +10288,11 @@ void online_fair_sched_group(struct task_group *tg)
 	for_each_possible_cpu(i) {
 		rq = cpu_rq(i);
 		se = tg->se[i];
-		rq_lock(rq, &rf);
+		rq_lock_irq(rq, &rf);
 		update_rq_clock(rq);
 		attach_entity_cfs_rq(se);
 		sync_throttle(tg, i);
-		rq_unlock(rq, &rf);
+		rq_unlock_irq(rq, &rf);
 	}
 }
 
