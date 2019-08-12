@@ -4752,10 +4752,8 @@ static struct task_struct *find_process_by_pid(pid_t pid)
 static void __setscheduler_params(struct task_struct *p,
 		const struct sched_attr *attr)
 {
-	int policy = attr->sched_policy;
-
-	if (policy == SETPARAM_POLICY)
-		policy = p->policy;
+	int policy = attr->sched_flags & SCHED_FLAG_KEEP_POLICY
+		? p->policy : attr->sched_policy;
 
 	p->policy = policy;
 
@@ -4961,8 +4959,7 @@ static int __sched_setscheduler(struct task_struct *p,
 recheck:
 
 	/* Set current policy when requested */
-	if (policy == SETPARAM_POLICY ||
-	    attr->sched_flags & SCHED_FLAG_KEEP_POLICY) {
+	if (attr->sched_flags & SCHED_FLAG_KEEP_POLICY) {
 		policy = oldpolicy = p->policy;
 		reset_on_fork = p->sched_reset_on_fork;
 	} else {
@@ -5160,8 +5157,12 @@ static int _sched_setscheduler(struct task_struct *p, int policy,
 		.sched_nice	= PRIO_TO_NICE(p->static_prio),
 	};
 
+	/* Fold SETPARAM_POLICY into sched_flags */
+	if (policy == SETPARAM_POLICY) {
+		attr.sched_flags |= SCHED_FLAG_KEEP_POLICY;
+		
 	/* Fixup the legacy SCHED_RESET_ON_FORK hack. */
-	if ((policy != SETPARAM_POLICY) && (policy & SCHED_RESET_ON_FORK)) {
+	} else if (policy & SCHED_RESET_ON_FORK) {
 		attr.sched_flags |= SCHED_FLAG_RESET_ON_FORK;
 		policy &= ~SCHED_RESET_ON_FORK;
 		attr.sched_policy = policy;
@@ -5368,8 +5369,6 @@ SYSCALL_DEFINE3(sched_setattr, pid_t, pid, struct sched_attr __user *, uattr,
 
 	if ((int)attr.sched_policy < 0)
 		return -EINVAL;
-	/* if (attr.sched_flags & SCHED_FLAG_KEEP_POLICY) */
-	/* 	attr.sched_policy = SETPARAM_POLICY; */
 
 	rcu_read_lock();
 	retval = -ESRCH;
