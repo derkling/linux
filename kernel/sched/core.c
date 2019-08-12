@@ -4734,6 +4734,48 @@ static int __check_sched_params(struct task_struct *p,
 	return 0;
 }
 
+static int __check_sched_params_locked(struct task_struct *p, struct rq *rq,
+				       const struct sched_attr *attr,
+				       int user, int policy)
+{
+	if (!user)
+		return 0;
+	if (attr->sched_flags & SCHED_FLAG_KEEP_ALL)
+		return 0;
+
+#ifdef CONFIG_RT_GROUP_SCHED
+	/* Do not allow realtime tasks into groups without runtime */
+	if (rt_bandwidth_enabled() && rt_policy(policy) &&
+	    task_group(p)->rt_bandwidth.rt_runtime == 0 &&
+	    !task_group_is_autogroup(task_group(p))) {
+		return -EPERM;
+	}
+#endif
+
+#ifdef CONFIG_SMP
+	if (dl_bandwidth_enabled() && dl_policy(policy) &&
+	    !(attr->sched_flags & SCHED_FLAG_SUGOV)) {
+		cpumask_t *span = rq->rd->span;
+
+		/*
+		 * Don't allow tasks with an affinity mask smaller than
+		 * the entire root_domain to become SCHED_DEADLINE.
+		 */
+		if (!cpumask_subset(span, p->cpus_ptr))
+			return -EPERM;
+
+		/*
+		 * Don't allow a task to become SCHED_DEADLINE if
+		 * there's no bandwidth available.
+		 */
+		if (rq->rd->dl_bw.bw == 0)
+			return -EPERM;
+	}
+#endif
+
+	return 0;
+}
+
 static int __sched_setscheduler(struct task_struct *p,
 				const struct sched_attr *attr,
 				bool user, bool pi)
@@ -4816,37 +4858,9 @@ recheck:
 	}
 change:
 
-	if (user) {
-#ifdef CONFIG_RT_GROUP_SCHED
-		/*
-		 * Do not allow realtime tasks into groups that have no runtime
-		 * assigned.
-		 */
-		if (rt_bandwidth_enabled() && rt_policy(policy) &&
-				task_group(p)->rt_bandwidth.rt_runtime == 0 &&
-				!task_group_is_autogroup(task_group(p))) {
-			retval = -EPERM;
-			goto unlock;
-		}
-#endif
-#ifdef CONFIG_SMP
-		if (dl_bandwidth_enabled() && dl_policy(policy) &&
-				!(attr->sched_flags & SCHED_FLAG_SUGOV)) {
-			cpumask_t *span = rq->rd->span;
-
-			/*
-			 * Don't allow tasks with an affinity mask smaller than
-			 * the entire root_domain to become SCHED_DEADLINE. We
-			 * will also fail if there's no bandwidth available.
-			 */
-			if (!cpumask_subset(span, p->cpus_ptr) ||
-			    rq->rd->dl_bw.bw == 0) {
-				retval = -EPERM;
-				goto unlock;
-			}
-		}
-#endif
-	}
+	retval = __check_sched_params_locked(p, rq, attr, user, policy);
+	if (retval)
+		goto unlock;
 
 	/* Re-check policy now with rq lock held: */
 	if (unlikely(oldpolicy != -1 && oldpolicy != p->policy)) {
