@@ -4781,9 +4781,10 @@ static int __sched_setscheduler(struct task_struct *p,
 				bool user, bool pi)
 {
 	int reset_on_fork = !!(attr->sched_flags & SCHED_FLAG_RESET_ON_FORK);
-	int retval, oldprio, oldpolicy = -1, queued, running;
-	int new_effective_prio, policy = attr->sched_policy;
+	int retval, oldprio, queued, running;
 	const struct sched_class *prev_class;
+	int policy = attr->sched_policy;
+	int new_effective_prio;
 	struct rq_flags rf;
 	int queue_flags = DEQUEUE_SAVE | DEQUEUE_MOVE | DEQUEUE_NOCLOCK;
 	struct rq *rq;
@@ -4795,12 +4796,12 @@ static int __sched_setscheduler(struct task_struct *p,
 	if (attr->sched_flags & ~(SCHED_FLAG_ALL | SCHED_FLAG_SUGOV))
 		return -EINVAL;
 
-recheck:
 
 	/* Set current policy when requested */
 	if (attr->sched_flags & SCHED_FLAG_KEEP_POLICY) {
-		policy = oldpolicy = p->policy;
+recheck:
 		reset_on_fork = p->sched_reset_on_fork;
+		policy = p->policy;
 	}
 
 	/* Changing only task attributes */
@@ -4826,8 +4827,17 @@ recheck:
 	 *
 	 * To be able to change p->policy safely, the appropriate
 	 * runqueue lock must be held.
+	 *
+	 * Then, re-check policy with rq lock held.
 	 */
 	rq = task_rq_lock(p, &rf);
+	if (unlikely(attr->sched_flags & SCHED_FLAG_KEEP_POLICY &&
+		     policy != p->policy)) {
+		task_rq_unlock(rq, p, &rf);
+		if (pi)
+			cpuset_read_unlock();
+		goto recheck;
+	}
 	update_rq_clock(rq);
 
 	/*
@@ -4861,15 +4871,6 @@ change:
 	retval = __check_sched_params_locked(p, rq, attr, user, policy);
 	if (retval)
 		goto unlock;
-
-	/* Re-check policy now with rq lock held: */
-	if (unlikely(oldpolicy != -1 && oldpolicy != p->policy)) {
-		policy = oldpolicy = -1;
-		task_rq_unlock(rq, p, &rf);
-		if (pi)
-			cpuset_read_unlock();
-		goto recheck;
-	}
 
 	/*
 	 * If setscheduling to SCHED_DEADLINE (or changing the parameters
