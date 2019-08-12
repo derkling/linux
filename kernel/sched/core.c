@@ -4823,6 +4823,10 @@ static int __check_task_attrs(struct task_struct *p,
 {
 	int retval;
 
+	/* If not task attrs are chaningnothing to do */
+	if (!(attr->sched_flags & SCHED_FLAG_UTIL_CLAMP))
+		return 0;
+
 	/* No additional checks for kernel code */
 	if (!user)
 		return 0;
@@ -4868,6 +4872,10 @@ static int __check_sched_params(struct task_struct *p,
 		return -EINVAL;
 	if (rt_policy(policy) != (attr->sched_priority != 0))
 		return -EINVAL;
+
+	retval = __check_task_attrs(p, attr);
+	if (retval)
+		return retval;
 
 	/* No additional checks for kernel code */
 	if (!user)
@@ -4941,13 +4949,18 @@ static int __sched_setscheduler(struct task_struct *p,
 				const struct sched_attr *attr,
 				bool user, bool pi)
 {
-	int retval, oldprio, oldpolicy = -1, queued, running;
-	int new_effective_prio, policy = attr->sched_policy;
-	const struct sched_class *prev_class;
-	struct rq_flags rf;
-	int reset_on_fork;
+	int reset_on_fork = !!(attr->sched_flags & SCHED_FLAG_RESET_ON_FORK);
 	int queue_flags = DEQUEUE_SAVE | DEQUEUE_MOVE | DEQUEUE_NOCLOCK;
+	const struct sched_class *prev_class;
+	int policy = attr->sched_policy;
+	int new_effective_prio;
+	struct rq_flags rf;
 	struct rq *rq;
+
+	int retval;
+	int oldprio;
+	int oldpolicy = -1;
+	int queued, running;
 
 	/* The pi code expects interrupts enabled */
 	BUG_ON(pi && in_interrupt());
@@ -4962,24 +4975,18 @@ recheck:
 	if (attr->sched_flags & SCHED_FLAG_KEEP_POLICY) {
 		policy = oldpolicy = p->policy;
 		reset_on_fork = p->sched_reset_on_fork;
-	} else {
-		reset_on_fork = !!(attr->sched_flags & SCHED_FLAG_RESET_ON_FORK);
 	}
 	if (!valid_policy(policy))
 		return -EINVAL;
 
-	printk(KERN_WARNING "__sched_setscheduler: sched_priority=%d flags=%llu\n",
-	       attr->sched_priority, attr->sched_flags);
-
-	/*
-	 * When scheduling class specific parameter do not change, let's check
-	 * only class agnostic attibutes.
-	 */
+	/* Changing (only) task attributes */
 	if (attr->sched_flags & SCHED_FLAG_KEEP_ALL &&
 	    attr->sched_flags & SCHED_FLAG_UTIL_CLAMP) {
 		retval = __check_task_attrs(p, attr, user);
 		if (retval)
 			return retval;
+
+	/* Changing (also) sched policy parameters */
 	} else {
 		retval = __check_sched_params(p, attr, user, policy, reset_on_fork);
 		if (retval)
