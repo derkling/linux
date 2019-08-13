@@ -4953,6 +4953,10 @@ static int __check_sched_params_locked(struct task_struct *p, struct rq *rq,
 				       const struct sched_attr *attr,
 				       int user, int policy)
 {
+	/* Changing the policy of the stop threads its a very bad idea */
+	if (p == rq->stop)
+		return -EINVAL;
+
 	if (!user)
 		return 0;
 	if (attr->sched_flags & SCHED_FLAG_KEEP_ALL)
@@ -5062,14 +5066,6 @@ recheck:
 		goto recheck;
 	}
 	update_rq_clock(rq);
-
-	/*
-	 * Changing the policy of the stop threads its a very bad idea:
-	 */
-	if (p == rq->stop) {
-		retval = -EINVAL;
-		goto unlock;
-	}
 
 	/*
 	 * If not changing anything there's no need to proceed further,
