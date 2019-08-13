@@ -5004,6 +5004,34 @@ static int __check_sched_params_locked(struct task_struct *p, struct rq *rq,
 	return 0;
 }
 
+static bool __sched_changes_required(struct task_struct *p,
+				     const struct sched_attr *attr,
+				     int policy)
+{
+	if (likely(policy != p->policy))
+		return true;
+
+	if (fair_policy(policy) &&
+	    attr->sched_nice != task_nice(p)) {
+		return true;
+	}
+
+	if (rt_policy(policy) &&
+	    attr->sched_priority != p->rt_priority) {
+		return true;
+	}
+
+	if (dl_policy(policy) &&
+	    dl_param_changed(p, attr)) {
+		return true;
+	}
+
+	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP)
+		return true;
+
+	return false;
+}
+
 static int __sched_setscheduler(struct task_struct *p,
 				const struct sched_attr *attr,
 				bool user, bool pi)
@@ -5067,26 +5095,16 @@ recheck:
 	}
 	update_rq_clock(rq);
 
-	/*
-	 * If not changing anything there's no need to proceed further,
-	 * but store a possible modification of reset_on_fork.
-	 */
-	if (unlikely(policy == p->policy)) {
-		if (fair_policy(policy) && attr->sched_nice != task_nice(p))
-			goto change;
-		if (rt_policy(policy) && attr->sched_priority != p->rt_priority)
-			goto change;
-		if (dl_policy(policy) && dl_param_changed(p, attr))
-			goto change;
-		if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP)
-			goto change;
-
+	if (!__sched_changes_required(p, attr, policy)) {
+		/*
+		 * No need to proceed further, but store a possible
+		 * modification of reset_on_fork.
+		 */
 		p->sched_reset_on_fork = reset_on_fork;
 
 		retval = 0;
 		goto unlock;
 	}
-change:
 
 	retval = __check_sched_params_locked(p, rq, attr, user, policy);
 	if (retval)
