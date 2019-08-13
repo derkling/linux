@@ -4773,7 +4773,16 @@ static int __check_sched_params_locked(struct task_struct *p, struct rq *rq,
 	}
 #endif
 
-	return 0
+	/*
+	 * If switching to SCHED_DEADLINE, or changing the parameters of a
+	 * SCHED_DEADLINE task, check enough bandwidth is available.
+	 */
+	if ((dl_policy(policy) || dl_task(p)) &&
+	    sched_dl_overflow(p, policy, attr)) {
+		return -EBUSY;
+	}
+
+	return 0;
 }
 
 static int __sched_setscheduler(struct task_struct *p,
@@ -4870,16 +4879,6 @@ change:
 	retval = __check_sched_params_locked(p, rq, attr, user, policy);
 	if (retval)
 		goto unlock;
-
-	/*
-	 * If setscheduling to SCHED_DEADLINE (or changing the parameters
-	 * of a SCHED_DEADLINE task) we need to check if enough bandwidth
-	 * is available.
-	 */
-	if ((dl_policy(policy) || dl_task(p)) && sched_dl_overflow(p, policy, attr)) {
-		retval = -EBUSY;
-		goto unlock;
-	}
 
 	p->sched_reset_on_fork = reset_on_fork;
 	oldprio = p->prio;
