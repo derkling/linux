@@ -4843,17 +4843,49 @@ __sched_queue_flags(struct task_struct *p, const struct sched_attr *attr,
 	return DEQUEUE_SAVE | DEQUEUE_MOVE | DEQUEUE_NOCLOCK;
 }
 
+static void
+__sched_requeue_task(struct task_struct *p, struct rq *rq,
+		     const struct sched_attr *attr, int pi)
+{
+	const struct sched_class *prev_class = p->sched_class;
+	int queue_flags = __sched_queue_flags(p, attr, pi);
+	int queued = task_on_rq_queued(p);
+	int running = task_current(rq, p);
+	int old_prio = p->prio;
+
+	if (queued)
+		dequeue_task(rq, p, queue_flags);
+	if (running)
+		put_prev_task(rq, p);
+
+	__setscheduler(rq, p, attr, pi);
+	__setscheduler_uclamp(p, attr);
+
+	if (queued) {
+		/*
+		 * We enqueue to tail when the priority of a task is
+		 * increased (user space view).
+		 */
+		if (old_prio < p->prio)
+			queue_flags |= ENQUEUE_HEAD;
+
+		enqueue_task(rq, p, queue_flags);
+	}
+	if (running)
+		set_next_task(rq, p);
+
+	check_class_changed(rq, p, prev_class, old_prio);
+}
+
 static int __sched_setscheduler(struct task_struct *p,
 				const struct sched_attr *attr,
 				bool user, bool pi)
 {
 	int reset_on_fork = !!(attr->sched_flags & SCHED_FLAG_RESET_ON_FORK);
-	int retval, oldprio, queued, running;
-	const struct sched_class *prev_class;
 	int policy = attr->sched_policy;
 	struct rq_flags rf;
-	int queue_flags;
 	struct rq *rq;
+	int retval;
 
 	/* The pi code expects interrupts enabled */
 	BUG_ON(pi && in_interrupt());
@@ -4919,36 +4951,7 @@ recheck:
 		goto unlock;
 
 	p->sched_reset_on_fork = reset_on_fork;
-	oldprio = p->prio;
-
-	queue_flags = __sched_queue_flags(p, attr, pi);
-
-	queued = task_on_rq_queued(p);
-	running = task_current(rq, p);
-	if (queued)
-		dequeue_task(rq, p, queue_flags);
-	if (running)
-		put_prev_task(rq, p);
-
-	prev_class = p->sched_class;
-
-	__setscheduler(rq, p, attr, pi);
-	__setscheduler_uclamp(p, attr);
-
-	if (queued) {
-		/*
-		 * We enqueue to tail when the priority of a task is
-		 * increased (user space view).
-		 */
-		if (oldprio < p->prio)
-			queue_flags |= ENQUEUE_HEAD;
-
-		enqueue_task(rq, p, queue_flags);
-	}
-	if (running)
-		set_next_task(rq, p);
-
-	check_class_changed(rq, p, prev_class, oldprio);
+	__sched_requeue_task(p, rq, attr, pi);
 
 	/* Avoid rq from going away on us: */
 	preempt_disable();
