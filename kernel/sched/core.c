@@ -5032,6 +5032,32 @@ static bool __sched_changes_required(struct task_struct *p,
 	return false;
 }
 
+static int
+__sched_queue_flags(struct task_struct *p, const struct sched_attr *attr,
+		    int pi)
+{
+	int old_prio = p->prio;
+	int new_prio;
+
+	if (!pi)
+		return DEQUEUE_SAVE | DEQUEUE_MOVE | DEQUEUE_NOCLOCK;
+
+	new_prio = dl_policy(attr->sched_policy)
+		? MAX_DL_PRIO - 1
+		: MAX_RT_PRIO - 1 - attr->sched_priority;
+	/*
+	 * Take priority boosted tasks into account. If the new
+	 * effective priority is unchanged, we just store the new
+	 * normal parameters and do not touch the scheduler class and
+	 * the runqueue. This will be done when the task deboost
+	 * itself.
+	 */
+	if (rt_effective_prio(p, new_prio) == old_prio)
+		return DEQUEUE_SAVE | DEQUEUE_NOCLOCK;
+
+	return DEQUEUE_SAVE | DEQUEUE_MOVE | DEQUEUE_NOCLOCK;
+}
+
 static int __sched_setscheduler(struct task_struct *p,
 				const struct sched_attr *attr,
 				bool user, bool pi)
@@ -5040,9 +5066,8 @@ static int __sched_setscheduler(struct task_struct *p,
 	int retval, oldprio, queued, running;
 	const struct sched_class *prev_class;
 	int policy = attr->sched_policy;
-	int new_effective_prio;
 	struct rq_flags rf;
-	int queue_flags = DEQUEUE_SAVE | DEQUEUE_MOVE | DEQUEUE_NOCLOCK;
+	int queue_flags;
 	struct rq *rq;
 
 	/* The pi code expects interrupts enabled */
@@ -5051,7 +5076,6 @@ static int __sched_setscheduler(struct task_struct *p,
 	/* Verify all flags are valid */
 	if (attr->sched_flags & ~(SCHED_FLAG_ALL | SCHED_FLAG_SUGOV))
 		return -EINVAL;
-
 
 	/* Set current policy when requested */
 	if (attr->sched_flags & SCHED_FLAG_KEEP_POLICY) {
@@ -5113,22 +5137,7 @@ recheck:
 	p->sched_reset_on_fork = reset_on_fork;
 	oldprio = p->prio;
 
-	if (pi) {
-		int newprio = dl_policy(attr->sched_policy)
-			? MAX_DL_PRIO - 1
-			: MAX_RT_PRIO - 1 - attr->sched_priority;
-
-		/*
-		 * Take priority boosted tasks into account. If the new
-		 * effective priority is unchanged, we just store the new
-		 * normal parameters and do not touch the scheduler class and
-		 * the runqueue. This will be done when the task deboost
-		 * itself.
-		 */
-		new_effective_prio = rt_effective_prio(p, newprio);
-		if (new_effective_prio == oldprio)
-			queue_flags &= ~DEQUEUE_MOVE;
-	}
+	queue_flags = __sched_queue_flags(p, attr, pi);
 
 	queued = task_on_rq_queued(p);
 	running = task_current(rq, p);
