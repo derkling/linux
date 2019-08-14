@@ -4823,8 +4823,6 @@ static int __sched_setscheduler(struct task_struct *p,
 				const struct sched_attr *attr,
 				bool user, bool pi)
 {
-	int newprio = dl_policy(attr->sched_policy) ? MAX_DL_PRIO - 1 :
-		      MAX_RT_PRIO - 1 - attr->sched_priority;
 	int retval, oldprio, oldpolicy = -1, queued, running;
 	int new_effective_prio, policy = attr->sched_policy;
 	const struct sched_class *prev_class;
@@ -5026,6 +5024,10 @@ change:
 	oldprio = p->prio;
 
 	if (pi) {
+		int newprio = dl_policy(attr->sched_policy)
+			? MAX_DL_PRIO - 1
+			: MAX_RT_PRIO - 1 - attr->sched_priority;
+
 		/*
 		 * Take priority boosted tasks into account. If the new
 		 * effective priority is unchanged, we just store the new
