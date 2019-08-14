@@ -4604,8 +4604,10 @@ static bool check_same_owner(struct task_struct *p)
 
 static int __check_sched_params(struct task_struct *p,
 				const struct sched_attr *attr,
-				int policy)
+				bool user, int policy)
 {
+	int retval;
+
 	if (unlikely(!valid_policy(policy)))
 		return -EINVAL;
 
@@ -4624,6 +4626,19 @@ static int __check_sched_params(struct task_struct *p,
 	if (dl_policy(policy) && !__checkparam_dl(attr))
 		return -EINVAL;
 	if (rt_policy(policy) != (attr->sched_priority != 0))
+		return -EINVAL;
+
+	/* No additional checks for kernel code */
+	if (!user)
+		return 0;
+
+	/* Security check, first and foremost */
+	retval = security_task_setscheduler(p);
+	if (retval)
+		return retval;
+
+	/* Schedutil is special, users cannot get that prio */
+	if (attr->sched_flags & SCHED_FLAG_SUGOV)
 		return -EINVAL;
 
 	return 0;
@@ -4657,7 +4672,7 @@ recheck:
 	}
 
 	/* Validate both sched params and task attrs */
-	retval = __check_sched_params(p, attr, policy);
+	retval = __check_sched_params(p, attr, user, policy);
 	if (retval)
 		return retval;
 
@@ -4710,15 +4725,6 @@ recheck:
 		/* Normal users shall not reset the sched_reset_on_fork flag: */
 		if (p->sched_reset_on_fork && !reset_on_fork)
 			return -EPERM;
-	}
-
-	if (user) {
-		if (attr->sched_flags & SCHED_FLAG_SUGOV)
-			return -EINVAL;
-
-		retval = security_task_setscheduler(p);
-		if (retval)
-			return retval;
 	}
 
 	/* Update task specific "requested" clamps */
