@@ -4604,7 +4604,7 @@ static bool check_same_owner(struct task_struct *p)
 
 static int __check_sched_params(struct task_struct *p,
 				const struct sched_attr *attr,
-				bool user, int policy)
+				bool user, int policy, int reset_on_fork)
 {
 	int retval;
 
@@ -4641,6 +4641,59 @@ static int __check_sched_params(struct task_struct *p,
 	if (attr->sched_flags & SCHED_FLAG_SUGOV)
 		return -EINVAL;
 
+	/* No additional checks for CAP_SYS_NICE code */
+	if (capable(CAP_SYS_NICE))
+		return 0;
+
+	/* Can't change other user's priorities */
+	if (!check_same_owner(p))
+		return -EPERM;
+
+	/* Normal users shall not reset the sched_reset_on_fork flag */
+	if (p->sched_reset_on_fork && !reset_on_fork)
+		return -EPERM;
+
+	if (fair_policy(policy)) {
+		if (attr->sched_nice < task_nice(p) &&
+		    !can_nice(p, attr->sched_nice)) {
+			return -EPERM;
+		}
+	}
+
+	/* Allow unprivileged RT tasks to decrease priority */
+	if (rt_policy(policy)) {
+		unsigned long rlim_rtprio = task_rlimit(p, RLIMIT_RTPRIO);
+
+		/* Can't set/change the rt policy */
+		if (policy != p->policy && !rlim_rtprio)
+			return -EPERM;
+
+		/* Can't increase priority */
+		if (attr->sched_priority > p->rt_priority &&
+		    attr->sched_priority > rlim_rtprio) {
+			return -EPERM;
+		}
+	}
+
+	if (dl_policy(policy)) {
+		/*
+		 * Can't set/change SCHED_DEADLINE policy at all for now
+		 * (safest behavior); in the future we would like to allow
+		 * unprivileged DL tasks to increase their relative deadline
+		 * or reduce their runtime (both ways reducing utilization)
+		 */
+		return -EPERM;
+	}
+
+	if (task_has_idle_policy(p)) {
+		/*
+		 * Treat SCHED_IDLE as nice 20. Only allow a switch to
+		 * SCHED_NORMAL if the RLIMIT_NICE would normally permit it.
+		 */
+		if (!idle_policy(policy) && !can_nice(p, task_nice(p)))
+			return -EPERM;
+	}
+
 	return 0;
 }
 
@@ -4672,60 +4725,9 @@ recheck:
 	}
 
 	/* Validate both sched params and task attrs */
-	retval = __check_sched_params(p, attr, user, policy);
+	retval = __check_sched_params(p, attr, user, policy, reset_on_fork);
 	if (retval)
 		return retval;
-
-	/*
-	 * Allow unprivileged RT tasks to decrease priority:
-	 */
-	if (user && !capable(CAP_SYS_NICE)) {
-		if (fair_policy(policy)) {
-			if (attr->sched_nice < task_nice(p) &&
-			    !can_nice(p, attr->sched_nice))
-				return -EPERM;
-		}
-
-		if (rt_policy(policy)) {
-			unsigned long rlim_rtprio =
-					task_rlimit(p, RLIMIT_RTPRIO);
-
-			/* Can't set/change the rt policy: */
-			if (policy != p->policy && !rlim_rtprio)
-				return -EPERM;
-
-			/* Can't increase priority: */
-			if (attr->sched_priority > p->rt_priority &&
-			    attr->sched_priority > rlim_rtprio)
-				return -EPERM;
-		}
-
-		 /*
-		  * Can't set/change SCHED_DEADLINE policy at all for now
-		  * (safest behavior); in the future we would like to allow
-		  * unprivileged DL tasks to increase their relative deadline
-		  * or reduce their runtime (both ways reducing utilization)
-		  */
-		if (dl_policy(policy))
-			return -EPERM;
-
-		/*
-		 * Treat SCHED_IDLE as nice 20. Only allow a switch to
-		 * SCHED_NORMAL if the RLIMIT_NICE would normally permit it.
-		 */
-		if (task_has_idle_policy(p) && !idle_policy(policy)) {
-			if (!can_nice(p, task_nice(p)))
-				return -EPERM;
-		}
-
-		/* Can't change other user's priorities: */
-		if (!check_same_owner(p))
-			return -EPERM;
-
-		/* Normal users shall not reset the sched_reset_on_fork flag: */
-		if (p->sched_reset_on_fork && !reset_on_fork)
-			return -EPERM;
-	}
 
 	/* Update task specific "requested" clamps */
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP) {
