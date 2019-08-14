@@ -4602,6 +4602,34 @@ static bool check_same_owner(struct task_struct *p)
 	return match;
 }
 
+static int __check_sched_params(struct task_struct *p,
+				const struct sched_attr *attr,
+				int policy)
+{
+
+	if (unlikely(!valid_policy(policy)))
+		return -EINVAL;
+
+	/*
+	 * Valid priorities:
+	 * - SCHED_FIFO and SCHED_RR : 1..MAX_USER_RT_PRIO-1
+	 * - SCHED_NORMAL, SCHED_BATCH and SCHED_IDLE is : 0
+	 */
+	if (p->mm) {
+		if (attr->sched_priority > MAX_USER_RT_PRIO-1)
+			return -EINVAL;
+	} else {
+		if (attr->sched_priority > MAX_RT_PRIO-1)
+			return -EINVAL;
+	}
+	if (dl_policy(policy) && !__checkparam_dl(attr))
+		return -EINVAL;
+	if (rt_policy(policy) != (attr->sched_priority != 0))
+		return -EINVAL;
+
+	return 0;
+}
+
 static int __sched_setscheduler(struct task_struct *p,
 				const struct sched_attr *attr,
 				bool user, bool pi)
@@ -4628,20 +4656,11 @@ recheck:
 		policy = oldpolicy = p->policy;
 		reset_on_fork = p->sched_reset_on_fork;
 	}
-	if (unlikely(!valid_policy(policy)))
-		return -EINVAL;
 
-	/*
-	 * Valid priorities for SCHED_FIFO and SCHED_RR are
-	 * 1..MAX_USER_RT_PRIO-1, valid priority for SCHED_NORMAL,
-	 * SCHED_BATCH and SCHED_IDLE is 0.
-	 */
-	if ((p->mm && attr->sched_priority > MAX_USER_RT_PRIO-1) ||
-	    (!p->mm && attr->sched_priority > MAX_RT_PRIO-1))
-		return -EINVAL;
-	if ((dl_policy(policy) && !__checkparam_dl(attr)) ||
-	    (rt_policy(policy) != (attr->sched_priority != 0)))
-		return -EINVAL;
+	/* Validate both sched params and task attrs */
+	retval = __check_sched_params(p, attr, policy);
+	if (retval)
+		return retval;
 
 	/*
 	 * Allow unprivileged RT tasks to decrease priority:
