@@ -5217,26 +5217,35 @@ SYSCALL_DEFINE3(sched_setattr, pid_t, pid, struct sched_attr __user *, uattr,
  * sys_sched_getscheduler - get the policy (scheduling class) of a thread
  * @pid: the pid in question.
  *
+ * For user-space backward compatibility. The returned policy is ORed with a
+ * SCHED_RESET_ON_FORK bit in case it is currently set of the pid in question.
+ *
  * Return: On success, the policy of the thread. Otherwise, a negative error
  * code.
  */
 SYSCALL_DEFINE1(sched_getscheduler, pid_t, pid)
 {
 	struct task_struct *p;
-	int retval;
+	int retval = -ESRCH;
 
 	if (pid < 0)
 		return -EINVAL;
 
-	retval = -ESRCH;
 	rcu_read_lock();
+
 	p = find_process_by_pid(pid);
-	if (p) {
-		retval = security_task_getscheduler(p);
-		if (!retval)
-			retval = p->policy
-				| (p->sched_reset_on_fork ? SCHED_RESET_ON_FORK : 0);
-	}
+	if (!p)
+		goto done;
+
+	retval = security_task_getscheduler(p);
+	if (retval)
+		goto done;
+
+	retval = p->policy;
+	if (p->sched_reset_on_fork)
+		retval |= SCHED_RESET_ON_FORK;
+
+done:
 	rcu_read_unlock();
 	return retval;
 }
