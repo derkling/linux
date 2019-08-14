@@ -4817,6 +4817,38 @@ static bool check_same_owner(struct task_struct *p)
 	return match;
 }
 
+static int __check_task_attrs(struct task_struct *p,
+			      const struct sched_attr *attr, bool user)
+{
+	int retval;
+
+	/* If not task attrs are chaning: nothing to do */
+	if (!(attr->sched_flags & SCHED_FLAG_UTIL_CLAMP))
+		return 0;
+
+	/* No additional checks for kernel code */
+	if (!user)
+		return 0;
+
+	/* Security check, first and foremost */
+	retval = security_task_setscheduler(p);
+	if (retval)
+		return retval;
+
+	/* Allow to change other task's attributes */
+	if (!check_same_owner(p) &&
+	    !capable(CAP_SYS_RESOURCE)) {
+		return -EPERM;
+	}
+
+	/* Enforce uclamp specific constraints */
+	retval = uclamp_validate(p, attr);
+	if (retval)
+		return retval;
+
+	return 0;
+}
+
 static int __check_sched_params(struct task_struct *p,
 				const struct sched_attr *attr,
 				bool user, int policy, int reset_on_fork)
@@ -4843,12 +4875,10 @@ static int __check_sched_params(struct task_struct *p,
 	if (rt_policy(policy) != (attr->sched_priority != 0))
 		return -EINVAL;
 
-	/* Enforce uclamp specific constraints */
-	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP) {
-		retval = uclamp_validate(p, attr);
-		if (retval)
-			return retval;
-	}
+	/* Check attrs in case we change them along with params */
+	retval = __check_task_attrs(p, attr, user);
+	if (retval)
+		return retval;
 
 	/* No additional checks for kernel code */
 	if (!user)
@@ -4946,10 +4976,18 @@ recheck:
 		reset_on_fork = p->sched_reset_on_fork;
 	}
 
-	/* Validate both sched params and task attrs */
-	retval = __check_sched_params(p, attr, user, policy, reset_on_fork);
-	if (retval)
-		return retval;
+	/* Changing only task attributes */
+	if (attr->sched_flags & SCHED_FLAG_KEEP_ALL) {
+		retval = __check_task_attrs(p, attr, user);
+		if (retval)
+			return retval;
+
+	/* Changing both sched params and task attrs */
+	} else {
+		retval = __check_sched_params(p, attr, user, policy, reset_on_fork);
+		if (retval)
+			return retval;
+	}
 
 	if (pi)
 		cpuset_read_lock();
