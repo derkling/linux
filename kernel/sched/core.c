@@ -4843,6 +4843,13 @@ static int __check_sched_params(struct task_struct *p,
 	if (rt_policy(policy) != (attr->sched_priority != 0))
 		return -EINVAL;
 
+	/* Enforce uclamp specific constraints */
+	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP) {
+		retval = uclamp_validate(p, attr);
+		if (retval)
+			return retval;
+	}
+
 	/* No additional checks for kernel code */
 	if (!user)
 		return 0;
@@ -4943,13 +4950,6 @@ recheck:
 	retval = __check_sched_params(p, attr, user, policy, reset_on_fork);
 	if (retval)
 		return retval;
-
-	/* Update task specific "requested" clamps */
-	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP) {
-		retval = uclamp_validate(p, attr);
-		if (retval)
-			return retval;
-	}
 
 	if (pi)
 		cpuset_read_lock();
