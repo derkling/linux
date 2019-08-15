@@ -4602,8 +4602,9 @@ static bool check_same_owner(struct task_struct *p)
 	return match;
 }
 
-static int __check_task_attrs(struct task_struct *p,
-			      const struct sched_attr *attr, bool user)
+static __always_inline int
+__check_task_attrs(struct task_struct *p,
+		   const struct sched_attr *attr, bool user)
 {
 	int retval;
 
@@ -4634,9 +4635,10 @@ static int __check_task_attrs(struct task_struct *p,
 	return 0;
 }
 
-static int __check_sched_params(struct task_struct *p,
-				const struct sched_attr *attr,
-				bool user, int policy, int reset_on_fork)
+static __always_inline int
+__check_sched_params(struct task_struct *p,
+		     const struct sched_attr *attr,
+		     bool user, int policy, int reset_on_fork)
 {
 	int retval;
 
@@ -4734,9 +4736,10 @@ static int __check_sched_params(struct task_struct *p,
 	return 0;
 }
 
-static int __check_sched_params_locked(struct task_struct *p, struct rq *rq,
-				       const struct sched_attr *attr,
-				       int user, int policy)
+static __always_inline int
+__check_sched_params_locked(struct task_struct *p, struct rq *rq,
+			    const struct sched_attr *attr,
+			    int user, int policy)
 {
 	/* Changing the policy of the stop threads its a very bad idea */
 	if (p == rq->stop)
@@ -4789,9 +4792,10 @@ static int __check_sched_params_locked(struct task_struct *p, struct rq *rq,
 	return 0;
 }
 
-static bool __sched_requeuing_required(struct task_struct *p,
-				       const struct sched_attr *attr,
-				       int policy)
+static __always_inline bool
+__sched_requeuing_required(struct task_struct *p,
+			   const struct sched_attr *attr,
+			   int policy)
 {
 	if (likely(policy != p->policy))
 		return true;
@@ -4817,9 +4821,9 @@ static bool __sched_requeuing_required(struct task_struct *p,
 	return false;
 }
 
-static int
-__sched_queue_flags(struct task_struct *p, const struct sched_attr *attr,
-		    int pi)
+static __always_inline int
+__sched_queue_flags(struct task_struct *p,
+		    const struct sched_attr *attr, int pi)
 {
 	int old_prio = p->prio;
 	int new_prio;
@@ -4843,7 +4847,7 @@ __sched_queue_flags(struct task_struct *p, const struct sched_attr *attr,
 	return DEQUEUE_SAVE | DEQUEUE_MOVE | DEQUEUE_NOCLOCK;
 }
 
-static void
+static __always_inline void
 __sched_requeue_task(struct task_struct *p, struct rq *rq,
 		     const struct sched_attr *attr, int pi)
 {
