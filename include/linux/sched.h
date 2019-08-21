@@ -578,6 +578,51 @@ struct sched_dl_entity {
 	struct hrtimer inactive_timer;
 };
 
+
+struct pelt_attrs {
+	u64			last_update_time;
+#ifndef CONFIG_64BIT
+	u64			last_update_time_copy;
+#endif
+	u32 period_contrib;
+};
+
+struct pelt_signal {
+	u64			sum;
+	unsigned long		avg;
+};
+
+/* CPU's LOAD and UTILIZATION Tracking */
+struct pelt_all {
+	struct pelt_attrs	attrs;
+#ifdef CONFIG_SMP
+	struct pelt_signal	load;
+	struct pelt_signal	runnable;
+#endif
+	struct pelt_signal	running;
+	struct util_est		est;
+} ____cache_aligned;
+
+/* CFS rq's LOAD Tracking */
+struct pelt_load {
+#ifdef CONFIG_SMP
+	struct pelt_attrs	attrs;
+	struct pelt_signal	load;
+	struct pelt_signal	runnable;
+#endif
+} ____cache_aligned;
+
+/* Tasks's UTILIZATION tracking */
+struct pelt_util {
+	struct pelt_attrs	attrs;
+	struct pelt_signal	running;
+	struct util_est		est;
+} ____cache_aligned;
+
+#define pelt_all_of(pa)		container_of(pa, struct pelt_all, attrs)
+#define pelt_load_of(pa)	container_of(pa, struct pelt_load, attrs)
+#define pelt_util_of(pa)	container_of(pa, struct pelt_util, attrs)
+
 #ifdef CONFIG_UCLAMP_TASK
 /* Number of utilization clamp buckets (shorter alias) */
 #define UCLAMP_BUCKETS CONFIG_UCLAMP_BUCKETS_COUNT
